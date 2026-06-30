@@ -950,142 +950,69 @@ const BAIRRO_COORDS = {
 /* ══════════════════════════════════════════════
    STATE
 ══════════════════════════════════════════════ */
-let allData   = [];
-let filtered  = [];
-let monthsFilter = 12;
-let charts    = {};
-let fornecedor = null;
-let map       = null;
-let heatLayer = null;
-let circleLayer = null;
-let clusterGroup = null;
-let mapMode   = 'heat';
-let bairroData = []; // computed per filter
+/* ════════════════════════════════════════════════════
+   SUBSTITUA loadAggregates() por isto.
+   Note: p_meses virou p_months, e os nomes das RPCs mudaram.
+═══════════════════════════════════════════════════════ */
 
-/* ══════════════════════════════════════════════
-   SLUG from URL
-══════════════════════════════════════════════ */
-function getSlug() {
-  const path = window.location.pathname;
-  const m = path.match(/\/fornecedor\/([^/]+)/);
-  if (m) return m[1];
-  const sp = new URLSearchParams(window.location.search);
-  if (sp.get('slug')) return sp.get('slug');
-  if (window.location.hash) return window.location.hash.slice(1);
-  const segs = path.split('/').filter(Boolean);
-  return segs[segs.length - 1] || null;
-}
+let aggData = {};
 
-/* ══════════════════════════════════════════════
-   UTILS
-══════════════════════════════════════════════ */
-function fmtBRL(v, compact=false) {
-  const n = Number(v) || 0;
-  if (compact) {
-    if (n >= 1e6) return 'R$ ' + (n/1e6).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + 'M';
-    if (n >= 1e3) return 'R$ ' + (n/1e3).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + 'k';
-  }
-  return 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+// monta string "YYYY-MM" a partir de ano/mes separados (as RPCs novas
+// devolvem colunas ano/mes em vez de uma string de mês pronta)
+function mesKey(ano, mes) {
+  return `${ano}-${String(mes).padStart(2, '0')}`;
 }
-function fmtKG(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' kg'; }
-function fmtPct(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + '%'; }
-function show(id) { document.getElementById(id).style.display = ''; }
-function hide(id) { document.getElementById(id).style.display = 'none'; }
-function roundMoney(value) {
-  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-}
-
-/* ══════════════════════════════════════════════
-   LOAD DATA
-══════════════════════════════════════════════ */
 
 async function loadAggregates(meses) {
-  const p = { p_fornecedor_id: fornecedor.id, p_meses: meses || null };
-  const [kpi, seg, prod, cli, bairro, grupo, margem, subgrupo, grupoMes, diaMes] = await Promise.all([
-    db.rpc('kpi_mensal', p),
-    db.rpc('agregado_segmento', p),
-    db.rpc('agregado_produto', p),
-    db.rpc('agregado_cliente', p),
-    db.rpc('agregado_bairro', p),
-    db.rpc('agregado_grupo', p),
-    db.rpc('agregado_margem_grupo', p),
-    db.rpc('agregado_subgrupo', p),
-    db.rpc('agregado_grupo_mes', p),
-    db.rpc('agregado_dia_mes', p),
+  const p_meses = meses || 0; // as functions usam 0 = "tudo", não null
+  const p = { p_fornecedor_id: fornecedor.id, p_months: p_meses };
+
+  const [
+    kpi, vendasMensais, seg, prod, cli, abc, recompraTop, recompraStats,
+    grupo, margem, subgrupo, sazon, diaMes, bairro
+  ] = await Promise.all([
+    db.rpc('get_kpis', p),
+    db.rpc('get_vendas_mensais', p),
+    db.rpc('get_vendas_segmento', p),
+    db.rpc('get_top_produtos', { ...p, p_limit: 8 }),
+    db.rpc('get_top_clientes', { ...p, p_limit: 8 }),
+    db.rpc('get_curva_abc_clientes', p),
+    db.rpc('get_recompra_clientes', p),
+    db.rpc('get_recompra_stats', p),
+    db.rpc('get_vendas_grupo', p),
+    db.rpc('get_margem_grupo', p),
+    db.rpc('get_subgrupo_detalhe', p),
+    db.rpc('get_sazonalidade_grupo', p),
+    db.rpc('get_heatmap_dia_mes', p),
+    db.rpc('get_vendas_bairro', p),
   ]);
-  for (const r of [kpi,seg,prod,cli,bairro,grupo,margem,subgrupo,grupoMes,diaMes]) {
+
+  for (const r of [kpi, vendasMensais, seg, prod, cli, abc, recompraTop, recompraStats,
+                    grupo, margem, subgrupo, sazon, diaMes, bairro]) {
     if (r.error) throw r.error;
   }
+
   aggData = {
-    kpi: kpi.data||[], seg: seg.data||[], prod: prod.data||[], cli: cli.data||[],
-    bairro: bairro.data||[], grupo: grupo.data||[], margem: margem.data||[],
-    subgrupo: subgrupo.data||[], grupoMes: grupoMes.data||[], diaMes: diaMes.data||[],
+    kpi: kpi.data?.[0] || {},
+    vendasMensais: vendasMensais.data || [],
+    seg: seg.data || [],
+    prod: prod.data || [],
+    cli: cli.data || [],
+    abc: abc.data || [],
+    recompraTop: recompraTop.data || [],
+    recompraStats: recompraStats.data?.[0] || {},
+    grupo: grupo.data || [],
+    margem: margem.data || [],
+    subgrupo: subgrupo.data || [],
+    sazon: sazon.data || [],
+    diaMes: diaMes.data || [],
+    bairro: bairro.data || [],
   };
 }
 
-async function init() {
-  const slug = getSlug();
-  if (!slug || slug === 'fornecedor.html') {
-    showError('Slug não encontrado', 'Acesse via /fornecedor/[slug]');
-    return;
-  }
-
-  const { data: fList, error: fErr } = await db.from('fornecedores').select('*').eq('slug', slug).limit(1);
-  if (fErr || !fList?.length) {
-    showError('Fornecedor não encontrado', `Nenhum fornecedor com o slug "${slug}".`);
-    return;
-  }
-  fornecedor = fList[0];
-
-  document.title = fornecedor.nome + ' — PMG Atacadista';
-  document.getElementById('heroTitle').textContent = fornecedor.nome;
-  document.getElementById('heroSub').textContent = (fornecedor.categoria || '') + (fornecedor.cnpj ? ' · CNPJ ' + fornecedor.cnpj : '');
-
-  const { count, error: cErr } = await db
-    .from('pedidos_fornecedor')
-    .select('id', { count: 'exact', head: true })
-    .eq('fornecedor_id', fornecedor.id);
-  if (cErr) throw cErr;
-  if (!count) {
-    showError('Sem dados ainda', 'O dashboard será publicado após o primeiro upload de dados.');
-    return;
-  }
-
-  await loadAggregates(monthsFilter);
-  hideLoader();
-  renderAll();
-}
-function showError(title, sub) {
-  hide('loaderScreen');
-  document.getElementById('errorTitle').textContent = title;
-  document.getElementById('errorSub').textContent = sub;
-  show('errorScreen');
-}
-
-function hideLoader() {
-  hide('loaderScreen');
-  show('heroSection');
-  show('filterBar');
-  show('mainContent');
-  show('dashFooter');
-  document.getElementById('footerDate').textContent = new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'});
-}
-
-/* ══════════════════════════════════════════════
-   FILTER
-══════════════════════════════════════════════ */
-async function setFilter(months) {
-  monthsFilter = months;
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.months) === months);
-  });
-  await loadAggregates(months);
-  renderAll();
-}
-
-/* ══════════════════════════════════════════════
-   RENDER ALL
-══════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════
+   renderAll — chama tudo após loadAggregates()
+═══════════════════════════════════════════════════════ */
 function renderAll() {
   updateKPIs();
   updateFilterInfo();
@@ -1102,67 +1029,48 @@ function renderAll() {
   renderSubgrupo();
 }
 
-/* ── KPIs ── */
+/* ════════════════════════════════════════════════════
+   KPIs — get_kpis já devolve tudo pronto, 1 linha só
+═══════════════════════════════════════════════════════ */
 function updateKPIs() {
-  const pedidos = aggData.kpi.reduce((a,r) => a + (r.total_pedidos||0), 0);
-  const vendas  = aggData.kpi.reduce((a,r) => a + (r.total_valor||0), 0);
-  const kg      = aggData.kpi.reduce((a,r) => a + (r.total_kg||0), 0);
-  const ticket  = pedidos ? vendas / pedidos : 0;
-
-  document.getElementById('kpiVendas').textContent  = fmtBRL(vendas, true);
-  document.getElementById('kpiPedidos').textContent = pedidos.toLocaleString('pt-BR');
-  document.getElementById('kpiKg').textContent      = fmtKG(kg);
-  document.getElementById('kpiTicket').textContent  = fmtBRL(ticket, true);
+  const k = aggData.kpi;
+  document.getElementById('kpiVendas').textContent  = fmtBRL(k.total_vendas || 0, true);
+  document.getElementById('kpiPedidos').textContent = (k.total_pedidos || 0).toLocaleString('pt-BR');
+  document.getElementById('kpiKg').textContent      = fmtKG(k.total_kg || 0);
+  document.getElementById('kpiTicket').textContent  = fmtBRL(k.ticket_medio || 0, true);
 }
 
 function updateFilterInfo() {
-  const meses = [...aggData.kpi].map(r => r.mes).sort();
-  if (!meses.length) { document.getElementById('filterInfo').textContent = '—'; return; }
-  const fmtMes = m => { const [y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y; };
-  const totalPedidos = aggData.kpi.reduce((a,r) => a + (r.total_pedidos||0), 0);
-  document.getElementById('filterInfo').innerHTML = `<strong>${totalPedidos.toLocaleString('pt-BR')}</strong> pedidos · ${fmtMes(meses[0])} → ${fmtMes(meses[meses.length-1])}`;
+  const k = aggData.kpi;
+  if (!k.data_inicio || !k.data_fim) { document.getElementById('filterInfo').textContent = '—'; return; }
+  const fmtD = d => { const dt = new Date(d); return MONTH_NAMES[dt.getMonth()] + '/' + dt.getFullYear(); };
+  document.getElementById('filterInfo').innerHTML =
+    `<strong>${(k.total_pedidos || 0).toLocaleString('pt-BR')}</strong> pedidos · ${fmtD(k.data_inicio)} → ${fmtD(k.data_fim)}`;
 }
 
-/* ── CHART HELPERS ── */
-const CHART_DEFAULTS = {
-  responsive: true, maintainAspectRatio: false,
-  animation: { duration: 400 },
-  plugins: { legend: { display: false } }
-};
-const TICK = { font: { size: 9, family: 'Inter' }, color: '#8fa89d' };
-const GRID = { color: '#f0f5f2', lineWidth: 1 };
-
-function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
-
-/* ── VENDAS POR MÊS ── */
+/* ════════════════════════════════════════════════════
+   VENDAS MENSAIS — get_vendas_mensais (ano, mes, total_valor, total_kg)
+═══════════════════════════════════════════════════════ */
 function renderMes() {
   destroyChart('mes');
-  const mesSerie = {};
-  filtered.forEach(r => {
-    const m = r.data ? String(r.data).slice(0,7) : null;
-    if (!m || m.length < 7) return;
-    if (!mesSerie[m]) mesSerie[m] = { venda: 0, kg: 0 };
-    mesSerie[m].venda += r.valor||0;
-    mesSerie[m].kg    += r.qtde_kg||0;
-  });
-  const meses = Object.keys(mesSerie).sort();
-  document.getElementById('badgeMeses').textContent = meses.length + ' meses';
+  const linhas = [...aggData.vendasMensais].sort((a, b) => mesKey(a.ano, a.mes).localeCompare(mesKey(b.ano, b.mes)));
+  document.getElementById('badgeMeses').textContent = linhas.length + ' meses';
 
   const ctx = document.getElementById('chartMes').getContext('2d');
   charts.mes = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); }),
+      labels: linhas.map(r => MONTH_NAMES[r.mes - 1] + '/' + String(r.ano).slice(2)),
       datasets: [
         {
           type: 'bar', label: 'Vendas R$',
-          data: meses.map(m => mesSerie[m].venda),
+          data: linhas.map(r => r.total_valor || 0),
           backgroundColor: 'rgba(45,122,79,0.7)',
           borderRadius: 5, borderSkipped: 'bottom', yAxisID: 'y',
         },
         {
           type: 'line', label: 'Volume kg',
-          data: meses.map(m => mesSerie[m].kg),
+          data: linhas.map(r => r.total_kg || 0),
           borderColor: 'rgba(245,158,11,0.8)',
           backgroundColor: 'rgba(245,158,11,0.08)',
           borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#f59e0b',
@@ -1178,11 +1086,330 @@ function renderMes() {
       },
       scales: {
         x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 } },
-        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v) } },
-        y2: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { ...TICK, callback: v => (v/1000).toFixed(0)+'t' } }
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) } },
+        y2: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { ...TICK, callback: v => (v / 1000).toFixed(0) + 't' } }
       }
     }
   });
+}
+
+/* ════════════════════════════════════════════════════
+   SEGMENTO — get_vendas_segmento (segmento, total_valor)
+═══════════════════════════════════════════════════════ */
+function renderSeg() {
+  destroyChart('seg');
+  const entries = aggData.seg.map(r => [r.segmento, r.total_valor || 0]);
+  const ctx = document.getElementById('chartSeg').getContext('2d');
+  charts.seg = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: entries.map(e => e[0]), datasets: [{ data: entries.map(e => e[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+    options: {
+      ...CHART_DEFAULTS, cutout: '58%',
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { font: { size: 9, family: 'Inter' }, color: '#1c3327', boxWidth: 8, padding: 6 } },
+        tooltip: { callbacks: { label: c => c.label + ': ' + fmtBRL(c.raw, true) } }
+      }
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════
+   TOP PRODUTOS / CLIENTES — get_top_produtos, get_top_clientes
+═══════════════════════════════════════════════════════ */
+function renderTopLists() {
+  renderTopListFromEntries('listProdutos', aggData.prod.map(r => [r.produto, r.total_valor || 0]));
+  renderTopListFromEntries('listClientes', aggData.cli.map(r => [r.cliente, r.total_valor || 0]));
+}
+function renderTopListFromEntries(elId, entries) {
+  const max = entries[0]?.[1] || 1;
+  document.getElementById(elId).innerHTML = entries.map((e, i) => `
+    <div class="top-item">
+      <div class="top-rank">${i + 1}</div>
+      <div class="top-bar-wrap">
+        <div class="top-name" title="${e[0]}">${e[0]}</div>
+        <div class="top-bar-bg"><div class="top-bar-fill" style="width:${Math.round(e[1] / max * 100)}%"></div></div>
+      </div>
+      <div class="top-val">${fmtBRL(e[1], true)}</div>
+    </div>`).join('');
+}
+
+/* ════════════════════════════════════════════════════
+   MAPA — get_heatmap_bairro_produto NÃO foi feita pro mapa
+   (é bairro × produto, top10 × top8). Aqui somamos por bairro
+   pra reaproveitar, mas SEM kg/pedidos reais (a RPC não devolve).
+   Recomendo criar get_vendas_bairro(p_fornecedor_id, p_months)
+   igual à get_vendas_grupo, e trocar esta função por uma chamada
+   direta a ela.
+═══════════════════════════════════════════════════════ */
+function buildBairroData() {
+  const map = {};
+  (aggData.bairroProduto || []).forEach(r => {
+    if (!r.bairro) return;
+    if (!map[r.bairro]) map[r.bairro] = { valor: 0 };
+    map[r.bairro].valor += r.total_valor || 0;
+  });
+
+  const out = [];
+  Object.entries(map).forEach(([bairro, v]) => {
+    const coords = getBairroCoords(bairro);
+    if (!coords) return;
+    out.push({
+      lat: coords[0], lon: coords[1],
+      valor: v.valor, kg: 0,            // kg não disponível nesta RPC
+      pedidos: { size: 0 },             // pedidos não disponível nesta RPC
+      bairro,
+    });
+  });
+  return out.filter(d => d.valor > 0);
+}
+
+/* ════════════════════════════════════════════════════
+   CURVA ABC — get_curva_abc_clientes já vem classificada
+   (cliente, total_valor, pct_acumulado, classe)
+═══════════════════════════════════════════════════════ */
+function renderABC() {
+  const linhas = aggData.abc;
+  const totalValor = linhas.reduce((a, r) => a + (r.total_valor || 0), 0) || 1;
+  const countA = linhas.filter(r => r.classe === 'A').length;
+  const countB = linhas.filter(r => r.classe === 'B').length;
+  const countC = linhas.filter(r => r.classe === 'C').length;
+  const valorA = linhas.filter(r => r.classe === 'A').reduce((a, r) => a + r.total_valor, 0);
+  const valorB = linhas.filter(r => r.classe === 'B').reduce((a, r) => a + r.total_valor, 0);
+  const valorC = linhas.filter(r => r.classe === 'C').reduce((a, r) => a + r.total_valor, 0);
+
+  document.getElementById('badgeABC').textContent = linhas.length + ' clientes';
+  document.getElementById('abcLegend').innerHTML = `
+    <div class="abc-badge"><div class="abc-dot" style="background:#1f6235"></div>A · ${countA} clientes · ${fmtPct(valorA / totalValor * 100)}</div>
+    <div class="abc-badge"><div class="abc-dot" style="background:#f59e0b"></div>B · ${countB} clientes · ${fmtPct(valorB / totalValor * 100)}</div>
+    <div class="abc-badge"><div class="abc-dot" style="background:#d1d5db"></div>C · ${countC} clientes · ${fmtPct(valorC / totalValor * 100)}</div>`;
+
+  document.getElementById('abcList').innerHTML = linhas.slice(0, 12).map(e => `
+    <div class="abc-item">
+      <div class="abc-class ${e.classe}">${e.classe}</div>
+      <div class="abc-name" title="${e.cliente}">${e.cliente}</div>
+      <div class="abc-pct">${fmtPct(e.total_valor / totalValor * 100)}</div>
+      <div class="abc-val">${fmtBRL(e.total_valor, true)}</div>
+    </div>`).join('');
+}
+
+/* ════════════════════════════════════════════════════
+   RECOMPRA — get_recompra_clientes (top 8) + get_recompra_stats (agregados)
+═══════════════════════════════════════════════════════ */
+function renderRecompra() {
+  const s = aggData.recompraStats;
+  document.getElementById('recompraStats').innerHTML = `
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Taxa de Recompra</div>
+      <div class="recompra-stat-val">${s.taxa_recompra ?? 0}%</div>
+      <div class="recompra-stat-sub">clientes com 2+ pedidos</div>
+    </div>
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Clientes Recorrentes</div>
+      <div class="recompra-stat-val">${(s.clientes_recorrentes || 0).toLocaleString('pt-BR')}</div>
+      <div class="recompra-stat-sub">de ${(s.total_clientes || 0).toLocaleString('pt-BR')} no período</div>
+    </div>
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Intervalo Médio</div>
+      <div class="recompra-stat-val">${s.intervalo_medio_dias ?? '—'}<span style="font-size:14px;font-weight:500"> dias</span></div>
+      <div class="recompra-stat-sub">entre pedidos</div>
+    </div>`;
+
+  document.getElementById('recompraList').innerHTML = aggData.recompraTop.map(r => {
+    const intervalo = r.intervalo_medio_dias;
+    let cls = 'ok', label = '—';
+    if (intervalo !== null && intervalo !== undefined) {
+      label = Math.round(intervalo) + 'd';
+      cls = intervalo > 60 ? 'danger' : intervalo > 30 ? 'warn' : 'ok';
+    }
+    return `<div class="recompra-item">
+      <div class="ri-name" title="${r.cliente}">${r.cliente}</div>
+      <div class="ri-freq">${r.n_pedidos}× pedidos</div>
+      <div class="ri-interval ${cls}">a cada ${label}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════════════
+   GRUPO / MARGEM — get_vendas_grupo, get_margem_grupo
+═══════════════════════════════════════════════════════ */
+function renderGrupo() {
+  destroyChart('grupo');
+  const entries = aggData.grupo.map(r => [r.grupo, r.total_valor || 0]);
+  const ctx = document.getElementById('chartGrupo').getContext('2d');
+  charts.grupo = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: entries.map(e => e[0]), datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((_, i) => `rgba(26,77,46,${1 - i * 0.08})`), borderRadius: 4, borderSkipped: 'bottom' }] },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtBRL(c.raw, true) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' } }
+      }
+    }
+  });
+}
+
+function renderMargem() {
+  if (!document.getElementById('chartMargem')) return;
+  destroyChart('margem');
+  const entries = (aggData.margem || []).filter(r => r.margem_media !== null).map(r => [r.grupo, r.margem_media || 0]);
+  if (!entries.length) {
+    const wrap = document.getElementById('chartMargem')?.parentElement;
+    if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:48px;color:var(--ghost);font-size:12px">Margem não disponível nos dados.</div>';
+    return;
+  }
+  const ctx = document.getElementById('chartMargem').getContext('2d');
+  charts.margem = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{
+        data: entries.map(e => e[1] * 100),
+        backgroundColor: entries.map(e => e[1] > 0.15 ? 'rgba(76,175,112,0.7)' : e[1] > 0.08 ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)'),
+        borderRadius: 4, borderSkipped: 'bottom'
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtPct(c.raw) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => v.toFixed(0) + '%' } }
+      }
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════
+   SAZONALIDADE — get_sazonalidade_grupo (grupo, ano, mes, total_valor)
+═══════════════════════════════════════════════════════ */
+function renderSazonalidade() {
+  destroyChart('sazon');
+  const linhas = aggData.sazon || [];
+  if (!linhas.length) return;
+
+  const mesesSet = new Set(linhas.map(r => mesKey(r.ano, r.mes)));
+  const meses = [...mesesSet].sort().slice(-12);
+
+  const grupoMes = {};
+  linhas.forEach(r => {
+    const mk = mesKey(r.ano, r.mes);
+    if (!grupoMes[r.grupo]) grupoMes[r.grupo] = {};
+    grupoMes[r.grupo][mk] = (grupoMes[r.grupo][mk] || 0) + (r.total_valor || 0);
+  });
+
+  const grupoTotals = Object.entries(grupoMes).map(([g, mv]) => [g, Object.values(mv).reduce((a, v) => a + v, 0)]);
+  const topGrupos = grupoTotals.sort((a, b) => b[1] - a[1]).slice(0, 6).map(e => e[0]);
+  const labels = meses.map(m => { const [y, mm] = m.split('-'); return MONTH_NAMES[+mm - 1] + '/' + y.slice(2); });
+
+  const datasets = topGrupos.map((g, i) => ({
+    label: g,
+    data: meses.map(m => grupoMes[g]?.[m] || 0),
+    borderColor: SAZON_PALETTE[i % SAZON_PALETTE.length],
+    backgroundColor: SAZON_PALETTE[i % SAZON_PALETTE.length] + '18',
+    borderWidth: 2, pointRadius: 3, fill: false, tension: 0.3,
+  }));
+
+  const ctx = document.getElementById('chartSazon').getContext('2d');
+  charts.sazon = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 9, family: 'Inter' }, color: '#5a7366', boxWidth: 8, padding: 10 } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtBRL(c.raw, true) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45 } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' } }
+      }
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════
+   HEATMAP DIA × MÊS — get_heatmap_dia_mes (dia_semana, ano, mes, total_valor)
+═══════════════════════════════════════════════════════ */
+function renderHeatmap() {
+  const linhas = aggData.diaMes || [];
+  const cell = {};
+  const mesesSet = new Set();
+
+  const map3 = { 'segunda': 'Seg', 'terca': 'Ter', 'terça': 'Ter', 'quarta': 'Qua', 'quinta': 'Qui', 'sexta': 'Sex', 'sabado': 'Sáb', 'sábado': 'Sáb', 'domingo': 'Dom' };
+
+  linhas.forEach(r => {
+    const mk = mesKey(r.ano, r.mes);
+    mesesSet.add(mk);
+    let dia = String(r.dia_semana || '').trim();
+    const norm = dia.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (map3[norm]) dia = map3[norm];
+    else if (dia.length >= 3) dia = dia.slice(0, 3).charAt(0).toUpperCase() + dia.slice(1, 3).toLowerCase();
+    const key = `${dia}||${mk}`;
+    cell[key] = (cell[key] || 0) + (r.total_valor || 0);
+  });
+
+  const meses = [...mesesSet].sort().slice(-12);
+  const diasOrdem = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+
+  let maxVal = 0;
+  diasOrdem.forEach(d => meses.forEach(m => { maxVal = Math.max(maxVal, cell[`${d}||${m}`] || 0); }));
+  if (!maxVal) maxVal = 1;
+
+  function heatColor(v) {
+    const t = Math.min(v / maxVal, 1);
+    const r = Math.round(228 - t * (228 - 26));
+    const g = Math.round(245 - t * (245 - 77));
+    const b = Math.round(235 - t * (235 - 46));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  const mesesLabels = meses.map(m => { const [y, mm] = m.split('-'); return MONTH_NAMES[+mm - 1] + '/' + y.slice(2); });
+
+  const table = document.getElementById('heatmapTable');
+  table.innerHTML = `
+    <tr><th></th>${mesesLabels.map(l => `<th>${l}</th>`).join('')}</tr>
+    ${diasOrdem.map(d => `
+      <tr>
+        <td class="hm-row-label">${d}</td>
+        ${meses.map(m => {
+          const v = cell[`${d}||${m}`] || 0;
+          const bg = heatColor(v);
+          const textColor = v / maxVal > 0.5 ? 'white' : '#1a4d2e';
+          const label = v >= 1000 ? 'R$' + (v / 1000).toFixed(0) + 'k' : v > 0 ? 'R$' + v.toFixed(0) : '';
+          return `<td><div class="hm-cell" style="background:${bg};color:${textColor}" title="${d} · ${m}: ${fmtBRL(v)}">${label}</div></td>`;
+        }).join('')}
+      </tr>`).join('')}
+  `;
+}
+
+/* ════════════════════════════════════════════════════
+   SUBGRUPO — get_subgrupo_detalhe (sub_grupo, grupo, n_pedidos, total_kg, total_valor, margem_media)
+═══════════════════════════════════════════════════════ */
+function renderSubgrupo() {
+  const linhas = aggData.subgrupo || [];
+  const totalValor = linhas.reduce((a, r) => a + (r.total_valor || 0), 0) || 1;
+  const maxValor = linhas[0]?.total_valor || 1;
+
+  document.getElementById('subgrupoBody').innerHTML = linhas.map((r, i) => {
+    const pct = (r.total_valor || 0) / totalValor * 100;
+    const margem = r.margem_media !== null && r.margem_media !== undefined ? r.margem_media * 100 : null;
+    const margemColor = margem === null ? '' : margem > 15 ? 'color:#166534' : margem > 8 ? 'color:#92400e' : 'color:#991b1b';
+    return `<tr>
+      <td style="font-size:10px;color:var(--ghost);font-weight:700">${i + 1}</td>
+      <td class="td-bold">${r.sub_grupo}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.grupo}</td>
+      <td class="td-num">${(r.n_pedidos || 0).toLocaleString('pt-BR')}</td>
+      <td class="td-num">${fmtKG(r.total_kg || 0)}</td>
+      <td class="td-num">${fmtBRL(r.total_valor || 0, true)}</td>
+      <td class="td-num" style="${margemColor}">${margem !== null ? fmtPct(margem) : '—'}</td>
+      <td class="td-bar-cell">
+        <div style="font-size:9px;color:var(--ghost);margin-bottom:2px">${pct.toFixed(1)}%</div>
+        <div class="td-mini-bar"><div class="td-mini-fill" style="width:${Math.round((r.total_valor || 0) / maxValor * 100)}%"></div></div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 /* ── SEGMENTO ── */
