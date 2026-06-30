@@ -1,0 +1,1844 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — PMG Atacadista</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet.heat -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --g900: #0d2b1a; --g800: #1a4d2e; --g700: #1f6235; --g600: #2d7a4f;
+      --g500: #3d9463; --g400: #4caf70; --g300: #7ecf98; --g200: #b8e8c7;
+      --g100: #e4f5eb; --g50: #f2faf5;
+      --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+      --ink: #0f1f14; --text: #1c3327; --muted: #5a7366; --ghost: #8fa89d;
+      --line: #ddeae2; --bg: #f0f5f2; --surface: #ffffff;
+      --radius-sm: 6px; --radius: 10px; --radius-lg: 16px; --radius-xl: 24px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+      --shadow: 0 4px 16px rgba(0,0,0,.08);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,.12);
+    }
+
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(135deg, var(--g900) 0%, var(--g800) 50%, #0a3d20 100%);
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 60% 80% at 85% 50%, rgba(76,175,112,.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 60% at 10% 80%, rgba(13,43,26,.6) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+    .hero-inner {
+      position: relative; z-index: 2;
+      max-width: 1200px; margin: 0 auto;
+      padding: 40px 32px 0;
+    }
+    .hero-brand {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 48px;
+    }
+    .hero-logo {
+      width: 40px; height: 40px;
+      background: white; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 12px; color: var(--g800);
+      letter-spacing: -0.5px;
+    }
+    .hero-brand-text { font-size: 13px; font-weight: 600; color: rgba(255,255,255,.55); letter-spacing: .3px; }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px;
+      background: rgba(76,175,112,.18); border: 1px solid rgba(76,175,112,.3);
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--g300); margin-bottom: 14px;
+    }
+    .hero-eyebrow-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--g400); animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+    .hero-title {
+      font-size: clamp(28px, 5vw, 52px);
+      font-weight: 900; color: white;
+      line-height: 1.05; letter-spacing: -1.5px;
+      margin-bottom: 8px;
+    }
+    .hero-title span { color: var(--g300); }
+    .hero-sub {
+      font-size: 14px; color: rgba(255,255,255,.45);
+      margin-bottom: 40px; font-weight: 400;
+    }
+
+    /* KPI strip */
+    .kpi-strip {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: rgba(255,255,255,.08);
+      border-top: 1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+    .kpi-card {
+      padding: 24px 28px;
+      background: rgba(255,255,255,.04);
+      transition: background .2s;
+      position: relative;
+    }
+    .kpi-card:first-child { border-radius: var(--radius-lg) 0 0 0; }
+    .kpi-card:last-child  { border-radius: 0 var(--radius-lg) 0 0; }
+    .kpi-card:hover { background: rgba(255,255,255,.07); }
+    .kpi-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: rgba(255,255,255,.35);
+      margin-bottom: 8px;
+    }
+    .kpi-value {
+      font-size: clamp(22px, 3vw, 36px);
+      font-weight: 900; color: white;
+      line-height: 1; letter-spacing: -1px;
+      margin-bottom: 4px;
+    }
+    .kpi-value.green { color: var(--g300); }
+    .kpi-sub { font-size: 10px; color: rgba(255,255,255,.3); }
+    .kpi-trend {
+      position: absolute; top: 20px; right: 20px;
+      font-size: 10px; font-weight: 600; padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .kpi-trend.up { background: rgba(76,175,112,.2); color: var(--g300); }
+    .kpi-trend.neutral { background: rgba(255,255,255,.1); color: rgba(255,255,255,.4); }
+
+    /* ── FILTER BAR ── */
+    .filter-bar {
+      background: var(--surface); border-bottom: 1px solid var(--line);
+      position: sticky; top: 0; z-index: 30;
+      box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+    .filter-inner {
+      max-width: 1200px; margin: 0 auto;
+      padding: 12px 32px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .filter-label { font-size: 11px; font-weight: 600; color: var(--ghost); text-transform: uppercase; letter-spacing: .5px; margin-right: 4px; }
+    .filter-btn {
+      padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600;
+      border: 1px solid var(--line); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all .15s; font-family: inherit;
+    }
+    .filter-btn:hover { border-color: var(--g400); color: var(--g700); }
+    .filter-btn.active { background: var(--g800); color: white; border-color: var(--g800); }
+    .filter-sep { flex: 1; }
+    .filter-info { font-size: 11px; color: var(--ghost); }
+    .filter-info strong { color: var(--text); }
+
+    /* ── CONTENT ── */
+    .content { max-width: 1200px; margin: 0 auto; padding: 32px 32px 64px; }
+
+    /* Section */
+    .section-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--ghost); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+    /* ── CHARTS GRID ── */
+    .charts-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .charts-half { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .charts-wide { margin-bottom: 16px; }
+
+    .card {
+      background: var(--surface); border-radius: var(--radius-lg);
+      border: 1px solid var(--line); padding: 20px 24px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-hdr {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--ink); }
+    .card-sub { font-size: 10px; color: var(--ghost); margin-top: 2px; }
+    .card-badge {
+      font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 10px;
+      background: var(--g100); color: var(--g700); text-transform: uppercase; letter-spacing: .5px;
+    }
+
+    /* ── CHART WRAPPERS ── */
+    .chart-h200 { height: 200px; position: relative; }
+    .chart-h240 { height: 240px; position: relative; }
+    .chart-h160 { height: 160px; position: relative; }
+    .chart-h300 { height: 300px; position: relative; }
+
+    /* ── TOP LIST ── */
+    .top-list { display: flex; flex-direction: column; gap: 0; }
+    .top-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--g50);
+    }
+    .top-item:last-child { border-bottom: none; }
+    .top-rank {
+      width: 20px; font-size: 10px; font-weight: 700;
+      color: var(--ghost); text-align: center; flex-shrink: 0;
+    }
+    .top-bar-wrap { flex: 1; }
+    .top-name { font-size: 11px; font-weight: 600; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+    .top-bar-bg { height: 4px; background: var(--g50); border-radius: 2px; overflow: hidden; }
+    .top-bar-fill { height: 100%; background: linear-gradient(90deg, var(--g600), var(--g400)); border-radius: 2px; transition: width .6s ease; }
+    .top-val { font-size: 11px; font-weight: 700; color: var(--ink); text-align: right; flex-shrink: 0; min-width: 80px; font-variant-numeric: tabular-nums; }
+
+    /* ── MAP STYLES ── */
+    .map-container {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    #spMap {
+      height: 480px;
+      width: 100%;
+      border-radius: var(--radius);
+    }
+    .map-controls {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center;
+    }
+    .map-toggle-btn {
+      padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 700;
+      border: 1px solid var(--line); background: transparent; color: var(--muted);
+      cursor: pointer; font-family: inherit; transition: all .15s; letter-spacing: .3px; text-transform: uppercase;
+    }
+    .map-toggle-btn:hover { border-color: var(--g400); color: var(--g700); }
+    .map-toggle-btn.active { background: var(--g700); color: white; border-color: var(--g700); }
+    .map-legend {
+      position: absolute; bottom: 24px; right: 12px; z-index: 500;
+      background: rgba(255,255,255,.94); backdrop-filter: blur(6px);
+      border-radius: 8px; padding: 10px 14px;
+      border: 1px solid var(--line); box-shadow: var(--shadow);
+      font-size: 10px; color: var(--text); min-width: 120px;
+    }
+    .map-legend-title { font-weight: 700; font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: var(--ghost); margin-bottom: 8px; }
+    .map-legend-bar {
+      height: 8px; border-radius: 4px;
+      background: linear-gradient(90deg, #e4f5eb, #2d7a4f, #0d2b1a);
+      margin-bottom: 4px;
+    }
+    .map-legend-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--ghost); font-weight: 600; }
+    .map-stats {
+      position: absolute; top: 12px; left: 12px; z-index: 500;
+      background: rgba(255,255,255,.94); backdrop-filter: blur(6px);
+      border-radius: 8px; padding: 10px 14px;
+      border: 1px solid var(--line); box-shadow: var(--shadow);
+      font-size: 10px;
+    }
+    .map-stat-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+    .map-stat-row:last-child { margin-bottom: 0; }
+    .map-stat-val { font-size: 16px; font-weight: 900; color: var(--ink); letter-spacing: -0.5px; }
+    .map-stat-label { font-size: 9px; color: var(--ghost); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+    /* Leaflet popup customization */
+    .leaflet-popup-content-wrapper {
+      border-radius: 10px !important;
+      box-shadow: var(--shadow-lg) !important;
+      border: 1px solid var(--line) !important;
+      font-family: 'Inter', sans-serif !important;
+      padding: 0 !important;
+    }
+    .leaflet-popup-content { margin: 0 !important; }
+    .leaflet-popup-tip { background: white !important; }
+    .map-popup {
+      padding: 14px 16px;
+      min-width: 200px;
+    }
+    .map-popup-bairro { font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 2px; }
+    .map-popup-sub { font-size: 10px; color: var(--ghost); margin-bottom: 10px; }
+    .map-popup-stats { display: flex; flex-direction: column; gap: 5px; }
+    .map-popup-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 11px; }
+    .map-popup-key { color: var(--muted); font-weight: 500; }
+    .map-popup-val { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .map-popup-bar { height: 3px; background: var(--g50); border-radius: 2px; margin-top: 2px; overflow: hidden; }
+    .map-popup-fill { height: 100%; background: var(--g500); border-radius: 2px; }
+
+    /* Cluster marker */
+    .cluster-marker {
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; font-weight: 800; color: white; font-size: 11px;
+      border: 2px solid rgba(255,255,255,.7);
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+      font-family: 'Inter', sans-serif;
+      transition: transform .15s;
+    }
+
+    /* ── HEATMAP (dia × mês) ── */
+    .heatmap-wrap { overflow-x: auto; }
+    .heatmap-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .heatmap-table th { padding: 5px 8px; text-align: center; font-weight: 600; color: var(--ghost); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+    .heatmap-table td { padding: 4px; text-align: center; }
+    .hm-cell {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 28px; border-radius: 4px;
+      font-size: 9px; font-weight: 700; color: white;
+      transition: transform .15s;
+    }
+    .hm-cell:hover { transform: scale(1.15); cursor: default; }
+    .hm-row-label { font-size: 10px; font-weight: 600; color: var(--muted); text-align: left; padding: 4px 10px 4px 0; white-space: nowrap; }
+
+    /* ── CURVA ABC ── */
+    .abc-legend {
+      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .abc-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; color: var(--text);
+    }
+    .abc-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .abc-list { display: flex; flex-direction: column; gap: 0; }
+    .abc-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 0; border-bottom: 1px solid var(--g50);
+    }
+    .abc-item:last-child { border-bottom: none; }
+    .abc-class {
+      width: 22px; height: 22px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 800; flex-shrink: 0; color: white;
+    }
+    .abc-class.A { background: var(--g700); }
+    .abc-class.B { background: var(--amber); }
+    .abc-class.C { background: #d1d5db; color: var(--muted); }
+    .abc-name { flex: 1; font-size: 11px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+    .abc-pct { font-size: 10px; color: var(--ghost); min-width: 50px; text-align: right; }
+    .abc-val { font-size: 11px; font-weight: 700; color: var(--ink); min-width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ── RECOMPRA ── */
+    .recompra-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    .recompra-stat {
+      background: var(--g50); border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .recompra-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--ghost); margin-bottom: 6px; }
+    .recompra-stat-val { font-size: 22px; font-weight: 900; color: var(--ink); letter-spacing: -1px; }
+    .recompra-stat-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .recompra-list { display: flex; flex-direction: column; gap: 0; }
+    .recompra-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 0; border-bottom: 1px solid var(--g50);
+    }
+    .recompra-item:last-child { border-bottom: none; }
+    .ri-name { flex: 1; font-size: 11px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+    .ri-freq { font-size: 10px; font-weight: 700; color: var(--g700); min-width: 70px; text-align: center; }
+    .ri-interval {
+      font-size: 10px; font-weight: 600; min-width: 70px; text-align: right;
+    }
+    .ri-interval.ok { color: var(--g600); }
+    .ri-interval.warn { color: var(--amber); }
+    .ri-interval.danger { color: var(--red); }
+
+    /* ── DETAIL TABLE ── */
+    .detail-table { width: 100%; border-collapse: collapse; }
+    .detail-table th {
+      padding: 8px 12px; text-align: left;
+      font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px;
+      color: var(--ghost); background: var(--g50); border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .detail-table td { padding: 10px 12px; font-size: 11px; border-bottom: 1px solid var(--g50); }
+    .detail-table tbody tr:hover { background: var(--g50); }
+    .detail-table tbody tr:last-child td { border-bottom: none; }
+    .td-bold { font-weight: 700; color: var(--ink); }
+    .td-num { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+    .td-bar-cell { width: 120px; }
+    .td-mini-bar { height: 4px; background: var(--g100); border-radius: 2px; overflow: hidden; margin-top: 2px; }
+    .td-mini-fill { height: 100%; background: var(--g500); border-radius: 2px; }
+
+    /* ── FOOTER ── */
+    .dash-footer {
+      text-align: center; padding: 32px;
+      font-size: 11px; color: var(--ghost);
+      border-top: 1px solid var(--line);
+      max-width: 1200px; margin: 0 auto;
+    }
+
+    /* ── LOADING / ERROR ── */
+    .loader-screen {
+      position: fixed; inset: 0;
+      background: var(--g900);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 999; gap: 16px;
+    }
+    .loader-logo { width: 56px; height: 56px; background: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: var(--g800); margin-bottom: 8px; }
+    .loader-text { color: rgba(255,255,255,.5); font-size: 13px; }
+    .loader-bar-bg { width: 160px; height: 3px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden; }
+    .loader-bar { height: 100%; background: var(--g400); border-radius: 2px; animation: load 1.6s ease-in-out infinite; }
+    @keyframes load { 0%{width:0%} 60%{width:80%} 100%{width:100%} }
+    .error-screen {
+      min-height: 80vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px; padding: 32px; text-align: center;
+    }
+    .error-icon { font-size: 48px; }
+    .error-title { font-size: 20px; font-weight: 700; color: var(--ink); }
+    .error-sub { font-size: 13px; color: var(--ghost); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .hero-inner { padding: 24px 16px 0; }
+      .kpi-strip { grid-template-columns: 1fr 1fr; }
+      .kpi-card:nth-child(1) { border-radius: var(--radius-lg) 0 0 0; }
+      .kpi-card:nth-child(2) { border-radius: 0 var(--radius-lg) 0 0; }
+      .kpi-card:nth-child(3), .kpi-card:nth-child(4) { border-radius: 0; }
+      .charts-main { grid-template-columns: 1fr; }
+      .charts-row { grid-template-columns: 1fr; }
+      .charts-half { grid-template-columns: 1fr; }
+      .filter-inner { padding: 10px 16px; }
+      .content { padding: 20px 16px 48px; }
+      .recompra-grid { grid-template-columns: 1fr 1fr; }
+      #spMap { height: 340px; }
+    }
+    @media (max-width: 480px) {
+      .kpi-strip { grid-template-columns: 1fr 1fr; }
+      .kpi-card { padding: 16px 14px; }
+      .kpi-value { font-size: 22px; }
+      .recompra-grid { grid-template-columns: 1fr; }
+    }
+    /* ═══════ ABAS ═══════ */
+.tab-bar { display:flex; gap:4px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:4px; margin-bottom:24px; }
+.tab-btn { flex:1; padding:9px 16px; border:none; border-radius:var(--radius); font-size:12px; font-weight:600; cursor:pointer; transition:all .15s; background:transparent; color:var(--muted); font-family:inherit; }
+.tab-btn:hover { background:var(--g50); color:var(--text); }
+.tab-btn.active { background:var(--g800); color:white; }
+.tab-panel { display:none; flex-direction:column; gap:16px; }
+.tab-panel.active { display:flex; }
+
+/* ═══════ SELL-IN ═══════ */
+.si-kpi-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.si-kpi { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-lg); padding:20px 24px; box-shadow:var(--shadow-sm); }
+.si-kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--ghost); margin-bottom:8px; }
+.si-kpi-val { font-size:28px; font-weight:900; color:var(--ink); letter-spacing:-1px; line-height:1; margin-bottom:4px; }
+.si-kpi-sub { font-size:10px; color:var(--muted); }
+.si-pct-badge { display:inline-block; background:rgba(245,158,11,.15); color:#d97706; border:1px solid rgba(245,158,11,.3); padding:2px 10px; border-radius:12px; font-size:11px; font-weight:700; margin-right:6px; }
+.notas-table { width:100%; border-collapse:collapse; font-size:12px; }
+.notas-table th { text-align:left; padding:8px 12px; background:var(--g50); color:var(--ghost); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; border-bottom:1px solid var(--line); }
+.notas-table td { padding:9px 12px; border-bottom:1px solid var(--g50); }
+.notas-table tr:last-child td { border-bottom:none; }
+.notas-table tr:hover td { background:var(--g50); }
+.badge-auth { background:#dcfce7; color:#166534; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+.badge-canc { background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+  </style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div class="loader-screen" id="loaderScreen">
+  <div class="loader-logo">PMG</div>
+  <div class="loader-text">Carregando dashboard…</div>
+  <div class="loader-bar-bg"><div class="loader-bar"></div></div>
+</div>
+
+<!-- HERO -->
+<section class="hero" id="heroSection" style="display:none">
+  <div class="hero-grid"></div>
+  <div class="hero-inner">
+    <div class="hero-brand">
+      <div class="hero-logo">PMG</div>
+      <span class="hero-brand-text">PMG Atacadista</span>
+    </div>
+    <div class="hero-eyebrow">
+      <span class="hero-eyebrow-dot"></span>
+      Dashboard do Fornecedor
+    </div>
+    <h1 class="hero-title" id="heroTitle">—</h1>
+    <p class="hero-sub" id="heroSub">—</p>
+  </div>
+  <div class="hero-inner" style="padding-top:0">
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-label">Total em Vendas</div>
+        <div class="kpi-value green" id="kpiVendas">—</div>
+        <div class="kpi-sub">no período selecionado</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pedidos</div>
+        <div class="kpi-value" id="kpiPedidos">—</div>
+        <div class="kpi-sub">ordens de compra</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Volume Total</div>
+        <div class="kpi-value" id="kpiKg">—</div>
+        <div class="kpi-sub">quilogramas</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Ticket Médio</div>
+        <div class="kpi-value" id="kpiTicket">—</div>
+        <div class="kpi-sub">por pedido</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FILTER BAR -->
+<div class="filter-bar" id="filterBar" style="display:none">
+  <div class="filter-inner">
+    <span class="filter-label">Período</span>
+    <button class="filter-btn" data-months="3" onclick="setFilter(3)">3M</button>
+    <button class="filter-btn" data-months="6" onclick="setFilter(6)">6M</button>
+    <button class="filter-btn active" data-months="12" onclick="setFilter(12)">12M</button>
+    <button class="filter-btn" data-months="0" onclick="setFilter(0)">Tudo</button>
+    <div class="filter-sep"></div>
+    <div class="filter-info" id="filterInfo">—</div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<main class="content" id="mainContent" style="display:none">
+
+    <!-- ABAS -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="mudarAba('sellout',this)">📈 Sell-Out</button>
+    <button class="tab-btn" onclick="mudarAba('sellin',this)">🧾 Sell-In / Débito</button>
+  </div>
+
+  <!-- PAINEL SELL-OUT -->
+  <div class="tab-panel active" id="panel-sellout">
+
+  <!-- Evolução temporal -->
+  <div class="section-title">Evolução de Vendas</div>
+  <div class="charts-main">
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Vendas Mensais (R$)</div>
+          <div class="card-sub">Faturamento e volume por mês</div>
+        </div>
+        <span class="card-badge" id="badgeMeses">—</span>
+      </div>
+      <div class="chart-h240"><canvas id="chartMes"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Por Segmento</div>
+          <div class="card-sub">Distribuição de vendas R$</div>
+        </div>
+      </div>
+      <div class="chart-h240"><canvas id="chartSeg"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Produtos + Clientes -->
+  <div class="section-title">Produtos & Clientes</div>
+  <div class="charts-half">
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Top Produtos</div>
+          <div class="card-sub">Por volume de vendas R$</div>
+        </div>
+      </div>
+      <div class="top-list" id="listProdutos"></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Top Clientes</div>
+          <div class="card-sub">Por volume comprado R$ · ID do cliente</div>
+        </div>
+      </div>
+      <div class="top-list" id="listClientes"></div>
+    </div>
+  </div>
+
+  <!-- MAPA REAL SP -->
+  <div class="section-title">Distribuição Geográfica</div>
+  <div class="card charts-wide">
+    <div class="card-hdr">
+      <div>
+        <div class="card-title">Mapa de Calor — São Paulo e Região</div>
+        <div class="card-sub">Concentração de vendas R$ por bairro/região · Clique nos marcadores para detalhes</div>
+      </div>
+      <span class="card-badge">Sell-out territorial</span>
+    </div>
+
+    <div class="map-controls">
+      <span class="filter-label" style="margin-right:2px">Visualização</span>
+      <button class="map-toggle-btn active" id="btnHeat" onclick="setMapMode('heat')">🔥 Calor</button>
+      <button class="map-toggle-btn" id="btnCircle" onclick="setMapMode('circle')">⬤ Bolhas</button>
+      <button class="map-toggle-btn" id="btnCluster" onclick="setMapMode('cluster')">◉ Bairros</button>
+    </div>
+
+    <div class="map-container">
+      <div id="spMap"></div>
+      <!-- Stats overlay -->
+      <div class="map-stats" id="mapStats">
+        <div class="map-stat-row">
+          <span class="map-stat-val" id="mapNBairros">—</span>
+          <span class="map-stat-label">Bairros</span>
+        </div>
+        <div class="map-stat-row">
+          <span class="map-stat-val" id="mapTopBairro">—</span>
+          <span class="map-stat-label">Maior venda</span>
+        </div>
+      </div>
+      <!-- Legend -->
+      <div class="map-legend">
+        <div class="map-legend-title">Intensidade R$</div>
+        <div class="map-legend-bar"></div>
+        <div class="map-legend-labels">
+          <span>Baixo</span><span>Alto</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CURVA ABC + RECOMPRA -->
+  <div class="section-title">Fidelização & Recorrência</div>
+  <div class="charts-half">
+    <!-- Curva ABC -->
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Curva ABC — Clientes</div>
+          <div class="card-sub">A = 80% do faturamento · B = 15% · C = 5%</div>
+        </div>
+        <span class="card-badge" id="badgeABC">—</span>
+      </div>
+      <div class="abc-legend" id="abcLegend"></div>
+      <div class="abc-list" id="abcList"></div>
+    </div>
+    <!-- Frequência de Recompra -->
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Frequência de Recompra</div>
+          <div class="card-sub">Pedidos por cliente · Intervalo médio entre compras</div>
+        </div>
+      </div>
+      <div class="recompra-grid" id="recompraStats"></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ghost);margin-bottom:8px">Top compradores recorrentes</div>
+      <div class="recompra-list" id="recompraList"></div>
+    </div>
+  </div>
+
+  <!-- Grupos de produto -->
+  <div class="section-title">Grupos de Produto</div>
+  <div class="charts-main" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Vendas por Grupo</div>
+          <div class="card-sub">R$ no período</div>
+        </div>
+      </div>
+      <div class="chart-h200"><canvas id="chartGrupo"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Margem Média por Grupo</div>
+          <div class="card-sub">% margem sobre venda</div>
+        </div>
+      </div>
+      <div class="chart-h200"><canvas id="chartMargem"></canvas></div>
+    </div>
+  </div>
+
+  <!-- SAZONALIDADE POR CATEGORIA -->
+  <div class="section-title">Sazonalidade por Categoria</div>
+  <div class="card charts-wide">
+    <div class="card-hdr">
+      <div>
+        <div class="card-title">Giro Mensal por Grupo de Produto</div>
+        <div class="card-sub">Identifica picos de demanda e risco de ruptura por categoria</div>
+      </div>
+      <span class="card-badge">Previsão de estoque</span>
+    </div>
+    <div class="chart-h300"><canvas id="chartSazon"></canvas></div>
+  </div>
+
+  <!-- Heatmap dia da semana × mês -->
+  <div class="section-title">Padrão de Compras</div>
+  <div class="card charts-wide">
+    <div class="card-hdr">
+      <div>
+        <div class="card-title">Volume por Dia da Semana × Mês</div>
+        <div class="card-sub">Intensidade de vendas R$ — mais escuro = maior volume</div>
+      </div>
+    </div>
+    <div class="heatmap-wrap">
+      <table class="heatmap-table" id="heatmapTable"></table>
+    </div>
+  </div>
+
+  <!-- Tabela de sub-grupos -->
+  <div class="section-title">Detalhamento por Sub-grupo</div>
+  <div class="card">
+    <div class="card-hdr">
+      <div>
+        <div class="card-title">Performance por Sub-grupo</div>
+        <div class="card-sub">Ranking por faturamento no período</div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="detail-table" id="subgrupoTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Sub-grupo</th>
+            <th>Grupo</th>
+            <th style="text-align:right">Pedidos</th>
+            <th style="text-align:right">Volume kg</th>
+            <th style="text-align:right">Vendas R$</th>
+            <th style="text-align:right">Margem %</th>
+            <th>Participação</th>
+          </tr>
+        </thead>
+        <tbody id="subgrupoBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /panel-sellout -->
+
+  <!-- PAINEL SELL-IN -->
+  <div class="tab-panel" id="panel-sellin">
+
+    <div class="si-kpi-row">
+      <div class="si-kpi">
+        <div class="si-kpi-label">Total Faturado (NFe)</div>
+        <div class="si-kpi-val" id="siTotalFaturado">—</div>
+        <div class="si-kpi-sub">notas autorizadas de venda</div>
+      </div>
+      <div class="si-kpi">
+        <div class="si-kpi-label">Débito Acumulado</div>
+        <div class="si-kpi-val" id="siDebito">—</div>
+        <div class="si-kpi-sub"><span class="si-pct-badge" id="siPctBadge">0%</span>do faturado</div>
+      </div>
+      <div class="si-kpi">
+        <div class="si-kpi-label">Notas Autorizadas</div>
+        <div class="si-kpi-val" id="siQtdNotas">—</div>
+        <div class="si-kpi-sub" id="siPeriodo">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Notas Fiscais — Sell-In</div>
+          <div class="card-sub" id="siTagPeriodo">—</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="notas-table">
+          <thead>
+            <tr>
+              <th>Número</th><th>Emissão</th><th>Emitente</th>
+              <th>Natureza</th><th>Situação</th>
+              <th style="text-align:right">Valor</th>
+            </tr>
+          </thead>
+          <tbody id="siTbody">
+            <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ghost)">Clique na aba para carregar.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /panel-sellin -->
+
+</main>
+
+<!-- MODAL DÉBITO -->
+<div id="modalDebito" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2);position:relative">
+    <button onclick="document.getElementById('modalDebito').style.display='none'"
+      style="position:absolute;top:14px;right:14px;border:none;background:var(--g50);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:16px;color:var(--muted)">×</button>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ghost);margin-bottom:6px">Extrato de Débito — Sell-In</div>
+    <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:20px" id="debitoModalForn">—</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+      <div style="background:var(--g50);border-radius:10px;padding:14px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ghost);margin-bottom:6px">Total Faturado</div>
+        <div style="font-size:22px;font-weight:900;color:var(--ink)" id="debitoModalFaturado">—</div>
+      </div>
+      <div style="background:#fef3c7;border-radius:10px;padding:14px;border:1px solid #fde68a">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#92400e;margin-bottom:6px">Débito Acumulado</div>
+        <div style="font-size:22px;font-weight:900;color:#b45309" id="debitoModalValor">—</div>
+        <div style="font-size:10px;color:#d97706;margin-top:2px" id="debitoModalPct">0% sobre faturado</div>
+      </div>
+    </div>
+
+    <div style="padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:11px;color:#c2410c;line-height:1.5">
+      ⚠️ Este valor representa o <strong>sell-in</strong> cobrado sobre as notas fiscais de venda autorizadas no período selecionado.
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button onclick="document.getElementById('modalDebito').style.display='none'"
+        style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);font-family:inherit">
+        Fechar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ERROR -->
+<div id="errorScreen" style="display:none">
+  <div class="error-screen">
+    <div class="error-icon">📭</div>
+    <div class="error-title" id="errorTitle">Fornecedor não encontrado</div>
+    <div class="error-sub" id="errorSub">O link pode estar incorreto ou o dashboard ainda não foi publicado.</div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="dash-footer" id="dashFooter" style="display:none">
+  PMG Atacadista · Dashboard gerado em <span id="footerDate">—</span> · Dados de uso exclusivo do fornecedor
+</footer>
+
+<script>
+    
+/* ══════════════════════════════════════════════
+   CONFIG
+══════════════════════════════════════════════ */
+const SUPABASE_URL      = 'https://tvryqkctzpzylsdiaige.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2cnlxa2N0enB6eWxzZGlhaWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MDAwMjYsImV4cCI6MjA5Nzk3NjAyNn0.OFTj5G9ipr9Ps-l7_xS0Hu1q6os16WaWQeX8wun0jpk';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const MONTH_NAMES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const PALETTE = ['#1a4d2e','#2d7a4f','#3d9463','#4caf70','#7ecf98','#b8e8c7','#f59e0b','#3b82f6','#8b5cf6','#ef4444'];
+const SAZON_PALETTE = ['#1a4d2e','#2d7a4f','#3d9463','#4caf70','#7ecf98','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#f97316'];
+
+/* ══════════════════════════════════════════════
+   BAIRROS SP — coordenadas aproximadas
+   Usado como fallback quando os dados não têm lat/lon
+══════════════════════════════════════════════ */
+const BAIRRO_COORDS = {
+  'vila mariana':       [-23.5892, -46.6352],
+  'moema':              [-23.6031, -46.6683],
+  'itaim bibi':         [-23.5844, -46.6734],
+  'pinheiros':          [-23.5651, -46.6944],
+  'jardins':            [-23.5698, -46.6513],
+  'brooklin':           [-23.6166, -46.6957],
+  'vila olimpia':       [-23.5953, -46.6855],
+  'perdizes':           [-23.5391, -46.6667],
+  'lapa':               [-23.5263, -46.7058],
+  'barra funda':        [-23.5266, -46.6624],
+  'santana':            [-23.4996, -46.6259],
+  'tatuape':            [-23.5357, -46.5710],
+  'mooca':              [-23.5564, -46.5968],
+  'ipiranga':           [-23.5908, -46.6088],
+  'saude':              [-23.6020, -46.6296],
+  'jabaquara':          [-23.6485, -46.6528],
+  'santo andre':        [-23.6629, -46.5273],
+  'sao bernardo':       [-23.6940, -46.5648],
+  'sao caetano':        [-23.6163, -46.5582],
+  'guarulhos':          [-23.4628, -46.5330],
+  'osasco':             [-23.5323, -46.7919],
+  'santo amaro':        [-23.6516, -46.7118],
+  'campo limpo':        [-23.6372, -46.7603],
+  'itaquera':           [-23.5417, -46.4556],
+  'penha':              [-23.5257, -46.5338],
+  'belem':              [-23.5376, -46.5567],
+  'liberdade':          [-23.5622, -46.6369],
+  'bela vista':         [-23.5591, -46.6464],
+  'consolacao':         [-23.5524, -46.6579],
+  'republica':          [-23.5440, -46.6413],
+  'se':                 [-23.5505, -46.6333],
+  'centro':             [-23.5505, -46.6333],
+  'cambuci':            [-23.5711, -46.6232],
+  'bom retiro':         [-23.5348, -46.6409],
+  'santa cecilia':      [-23.5445, -46.6556],
+  'higienopolis':       [-23.5479, -46.6619],
+  'pompeia':            [-23.5387, -46.6905],
+  'agua branca':        [-23.5173, -46.6985],
+  'butanta':            [-23.5724, -46.7212],
+  'morumbi':            [-23.6083, -46.7215],
+  'campo belo':         [-23.6242, -46.6839],
+  'santo antonio':      [-23.6353, -46.6742],
+  'cursino':            [-23.6148, -46.6117],
+  'sacomã':             [-23.6033, -46.5893],
+  'vila prudente':      [-23.5865, -46.5694],
+  'aricanduva':         [-23.5621, -46.5168],
+  'sao miguel':         [-23.4975, -46.4408],
+  'ermelino matarazzo': [-23.5043, -46.4637],
+  'vila matilde':       [-23.5394, -46.5017],
+  'agua rasa':          [-23.5508, -46.5586],
+  'carrao':             [-23.5499, -46.5380],
+  'vila formosa':       [-23.5613, -46.5258],
+  'bras':               [-23.5442, -46.6132],
+  'pari':               [-23.5326, -46.6201],
+  'bom jesus':          [-23.5231, -46.6083],
+  'tucuruvi':           [-23.4748, -46.5987],
+  'mandaqui':           [-23.4888, -46.6259],
+  'casa verde':         [-23.5091, -46.6610],
+  'limao':              [-23.5048, -46.6771],
+  'pirituba':           [-23.4934, -46.7200],
+  'jaragua':            [-23.4601, -46.7436],
+  'perus':              [-23.4219, -46.7461],
+  'vila guilherme':     [-23.5108, -46.5999],
+  'vila medeiros':      [-23.5001, -46.5721],
+  'tremembé':           [-23.4720, -46.6262],
+  'lajeado':            [-23.5359, -46.4368],
+  'guaianazes':         [-23.5451, -46.4005],
+  'itaim paulista':     [-23.5102, -46.4236],
+  'sao mateus':         [-23.5780, -46.4564],
+  'sapopemba':          [-23.5884, -46.4897],
+  'cidade ademar':      [-23.6605, -46.6329],
+  'pedreira':           [-23.6855, -46.6309],
+  'parelheiros':        [-23.8107, -46.7229],
+  'marsilac':           [-23.9631, -46.6561],
+  'grajaú':             [-23.7027, -46.6638],
+  'cidade dutra':       [-23.6902, -46.6633],
+  'vila andrade':       [-23.6387, -46.7252],
+  'capão redondo':      [-23.6678, -46.7580],
+  'campo grande':       [-23.6597, -46.7785],
+  'raposo tavares':     [-23.6258, -46.8012],
+  'vila sonia':         [-23.5975, -46.7453],
+  'socorro':            [-23.6565, -46.6999],
+  'jabaquara':          [-23.6485, -46.6528],
+  'diadema':            [-23.6862, -46.6228],
+  'maua':               [-23.6678, -46.4609],
+  'ribeirão pires':     [-23.7108, -46.4127],
+  'rio grande da serra':[-23.7432, -46.3979],
+  'carapicuiba':        [-23.5230, -46.8357],
+  'barueri':            [-23.5050, -46.8758],
+  'jandira':            [-23.5295, -46.9016],
+  'itapevi':            [-23.5487, -47.0001],
+  'cotia':              [-23.6031, -46.9194],
+  'embu das artes':     [-23.6493, -46.8506],
+  'embu guaçu':         [-23.8310, -46.8123],
+  'taboao da serra':    [-23.6096, -46.7603],
+  'ferraz de vasconcelos':[-23.5424, -46.3686],
+  'poá':                [-23.5297, -46.3428],
+  'suzano':             [-23.5418, -46.3116],
+  'mogi das cruzes':    [-23.5229, -46.1877],
+  'itaquaquecetuba':    [-23.4876, -46.3492],
+  'aruja':              [-23.3968, -46.3233],
+  'santa isabel':       [-23.3166, -46.2214],
+  'mairiporã':          [-23.3175, -46.5872],
+  'franco da rocha':    [-23.3297, -46.7276],
+  'cajamar':            [-23.3572, -46.8774],
+  'pirapora do bom jesus':[-23.3972, -47.0186],
+  'santana de parnaiba': [-23.4430, -46.9175],
+  'alphaville':         [-23.4930, -46.8597],
+  'caieiras':           [-23.3621, -46.7388],
+  'francisco morato':   [-23.2816, -46.7430],
+  'campo limpo paulista':[-23.2116, -46.7883],
+  'jundiai':            [-23.1856, -46.8977],
+  'itupeva':            [-23.1541, -47.0577],
+  'indaiatuba':         [-23.0901, -47.2186],
+  'campinas':           [-22.9099, -47.0626],
+};
+
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+let allData   = [];
+let filtered  = [];
+let monthsFilter = 12;
+let charts    = {};
+let fornecedor = null;
+let map       = null;
+let heatLayer = null;
+let circleLayer = null;
+let clusterGroup = null;
+let mapMode   = 'heat';
+let bairroData = []; // computed per filter
+
+/* ══════════════════════════════════════════════
+   SLUG from URL
+══════════════════════════════════════════════ */
+function getSlug() {
+  const path = window.location.pathname;
+  const m = path.match(/\/fornecedor\/([^/]+)/);
+  if (m) return m[1];
+  const sp = new URLSearchParams(window.location.search);
+  if (sp.get('slug')) return sp.get('slug');
+  if (window.location.hash) return window.location.hash.slice(1);
+  const segs = path.split('/').filter(Boolean);
+  return segs[segs.length - 1] || null;
+}
+
+/* ══════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════ */
+function fmtBRL(v, compact=false) {
+  const n = Number(v) || 0;
+  if (compact) {
+    if (n >= 1e6) return 'R$ ' + (n/1e6).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + 'M';
+    if (n >= 1e3) return 'R$ ' + (n/1e3).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + 'k';
+  }
+  return 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtKG(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' kg'; }
+function fmtPct(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + '%'; }
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+function roundMoney(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+/* ══════════════════════════════════════════════
+   LOAD DATA
+══════════════════════════════════════════════ */
+async function init() {
+  const slug = getSlug();
+  if (!slug || slug === 'fornecedor.html') {
+    showError('Slug não encontrado', 'Acesse via /fornecedor/[slug]');
+    return;
+  }
+
+  const { data: fList, error: fErr } = await db.from('fornecedores').select('*').eq('slug', slug).limit(1);
+  if (fErr || !fList?.length) {
+    showError('Fornecedor não encontrado', `Nenhum fornecedor com o slug "${slug}".`);
+    return;
+  }
+  fornecedor = fList[0];
+
+  document.title = fornecedor.nome + ' — PMG Atacadista';
+  document.getElementById('heroTitle').textContent = fornecedor.nome;
+  document.getElementById('heroSub').textContent = (fornecedor.categoria || '') + (fornecedor.cnpj ? ' · CNPJ ' + fornecedor.cnpj : '');
+
+  let all = [], from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('pedidos_fornecedor')
+      .select('*')
+      .eq('fornecedor_id', fornecedor.id)
+      .range(from, from + 999);
+    if (error) break;
+    if (!data?.length) break;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+
+  if (!all.length) {
+    showError('Sem dados ainda', 'O dashboard será publicado após o primeiro upload de dados.');
+    return;
+  }
+
+allData = all;
+  applyFilter(monthsFilter);
+  hideLoader();
+  renderAll();
+}
+
+function showError(title, sub) {
+  hide('loaderScreen');
+  document.getElementById('errorTitle').textContent = title;
+  document.getElementById('errorSub').textContent = sub;
+  show('errorScreen');
+}
+
+function hideLoader() {
+  hide('loaderScreen');
+  show('heroSection');
+  show('filterBar');
+  show('mainContent');
+  show('dashFooter');
+  document.getElementById('footerDate').textContent = new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'});
+}
+
+/* ══════════════════════════════════════════════
+   FILTER
+══════════════════════════════════════════════ */
+function setFilter(months) {
+  monthsFilter = months;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.months) === months);
+  });
+  applyFilter(months);
+  renderAll();
+}
+
+function applyFilter(months) {
+  if (!months) { filtered = allData; return; }
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  filtered = allData.filter(r => {
+    if (!r.data) return false;
+    return new Date(r.data) >= cutoff;
+  });
+}
+
+/* ══════════════════════════════════════════════
+   RENDER ALL
+══════════════════════════════════════════════ */
+function renderAll() {
+  updateKPIs();
+  updateFilterInfo();
+  renderMes();
+  renderSeg();
+  renderTopLists();
+  renderSpMap();
+  renderABC();
+  renderRecompra();
+  renderGrupo();
+  renderMargem();
+  renderSazonalidade();
+  renderHeatmap();
+  renderSubgrupo();
+}
+
+/* ── KPIs ── */
+function updateKPIs() {
+  const pedidos = new Set(filtered.map(r => r.id_pedido_venda).filter(Boolean)).size;
+  const vendas  = filtered.reduce((a,r) => a + (r.valor||0), 0);
+  const kg      = filtered.reduce((a,r) => a + (r.qtde_kg||0), 0);
+  const ticket  = pedidos ? vendas / pedidos : 0;
+
+  document.getElementById('kpiVendas').textContent  = fmtBRL(vendas, true);
+  document.getElementById('kpiPedidos').textContent = pedidos.toLocaleString('pt-BR');
+  document.getElementById('kpiKg').textContent      = fmtKG(kg);
+  document.getElementById('kpiTicket').textContent  = fmtBRL(ticket, true);
+}
+
+function updateFilterInfo() {
+  const datas = filtered.map(r => r.data).filter(Boolean).sort();
+  if (!datas.length) { document.getElementById('filterInfo').textContent = '—'; return; }
+  const ini = new Date(datas[0]).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
+  const fim = new Date(datas[datas.length-1]).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
+  document.getElementById('filterInfo').innerHTML = `<strong>${filtered.length.toLocaleString('pt-BR')}</strong> registros · ${ini} → ${fim}`;
+}
+
+/* ── CHART HELPERS ── */
+const CHART_DEFAULTS = {
+  responsive: true, maintainAspectRatio: false,
+  animation: { duration: 400 },
+  plugins: { legend: { display: false } }
+};
+const TICK = { font: { size: 9, family: 'Inter' }, color: '#8fa89d' };
+const GRID = { color: '#f0f5f2', lineWidth: 1 };
+
+function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
+
+/* ── VENDAS POR MÊS ── */
+function renderMes() {
+  destroyChart('mes');
+  const mesSerie = {};
+  filtered.forEach(r => {
+    const m = r.data ? String(r.data).slice(0,7) : null;
+    if (!m || m.length < 7) return;
+    if (!mesSerie[m]) mesSerie[m] = { venda: 0, kg: 0 };
+    mesSerie[m].venda += r.valor||0;
+    mesSerie[m].kg    += r.qtde_kg||0;
+  });
+  const meses = Object.keys(mesSerie).sort();
+  document.getElementById('badgeMeses').textContent = meses.length + ' meses';
+
+  const ctx = document.getElementById('chartMes').getContext('2d');
+  charts.mes = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); }),
+      datasets: [
+        {
+          type: 'bar', label: 'Vendas R$',
+          data: meses.map(m => mesSerie[m].venda),
+          backgroundColor: 'rgba(45,122,79,0.7)',
+          borderRadius: 5, borderSkipped: 'bottom', yAxisID: 'y',
+        },
+        {
+          type: 'line', label: 'Volume kg',
+          data: meses.map(m => mesSerie[m].kg),
+          borderColor: 'rgba(245,158,11,0.8)',
+          backgroundColor: 'rgba(245,158,11,0.08)',
+          borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#f59e0b',
+          fill: true, tension: 0.3, yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 9, family: 'Inter' }, color: '#5a7366', boxWidth: 8, padding: 12 } },
+        tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y' ? fmtBRL(c.raw) : fmtKG(c.raw) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v) } },
+        y2: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { ...TICK, callback: v => (v/1000).toFixed(0)+'t' } }
+      }
+    }
+  });
+}
+
+/* ── SEGMENTO ── */
+function renderSeg() {
+  destroyChart('seg');
+  const segMap = {};
+  filtered.forEach(r => { segMap[r.segmento||'Outros'] = (segMap[r.segmento||'Outros']||0) + (r.valor||0); });
+  const entries = Object.entries(segMap).sort((a,b) => b[1]-a[1]).slice(0,8);
+
+  const ctx = document.getElementById('chartSeg').getContext('2d');
+  charts.seg = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      cutout: '58%',
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { font: { size: 9, family: 'Inter' }, color: '#1c3327', boxWidth: 8, padding: 6 } },
+        tooltip: { callbacks: { label: c => c.label + ': ' + fmtBRL(c.raw, true) } }
+      }
+    }
+  });
+}
+
+/* ── TOP LISTS — usa id_cliente em vez de nome ── */
+function renderTopLists() {
+  const prodMap = {}, clienteMap = {};
+  filtered.forEach(r => {
+    const p = r.produto || '—';
+    // ID do cliente: usa id_cliente se existir, senão cliente como fallback identificador
+    const c = r.id_cliente ? String(r.id_cliente) : (r.cliente ? 'CLI-' + String(r.cliente).slice(0,8) : '—');
+    prodMap[p]    = (prodMap[p]||0)    + (r.valor||0);
+    clienteMap[c] = (clienteMap[c]||0) + (r.valor||0);
+  });
+  renderTopList('listProdutos',  prodMap,    8);
+  renderTopList('listClientes',  clienteMap, 8);
+}
+
+function renderTopList(elId, map, n) {
+  const entries = Object.entries(map).sort((a,b) => b[1]-a[1]).slice(0, n);
+  const max = entries[0]?.[1] || 1;
+  document.getElementById(elId).innerHTML = entries.map((e, i) => `
+    <div class="top-item">
+      <div class="top-rank">${i+1}</div>
+      <div class="top-bar-wrap">
+        <div class="top-name" title="${e[0]}">${e[0]}</div>
+        <div class="top-bar-bg">
+          <div class="top-bar-fill" style="width:${Math.round(e[1]/max*100)}%"></div>
+        </div>
+      </div>
+      <div class="top-val">${fmtBRL(e[1],true)}</div>
+    </div>
+  `).join('');
+}
+
+/* ══════════════════════════════════════════════
+   MAPA REAL SP (Leaflet)
+══════════════════════════════════════════════ */
+function getBairroCoords(bairro) {
+  if (!bairro) return null;
+  const key = bairro.toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  // Busca exata
+  for (const [k, v] of Object.entries(BAIRRO_COORDS)) {
+    const kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if (kn === key) return v;
+  }
+  // Busca parcial
+  for (const [k, v] of Object.entries(BAIRRO_COORDS)) {
+    const kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if (key.includes(kn) || kn.includes(key)) return v;
+  }
+  return null;
+}
+
+function buildBairroData() {
+  const bMap = {};
+  filtered.forEach(r => {
+    const b = r.bairro || r.bairro_entrega || null;
+    if (!b) return;
+
+    // Pega coordenadas: preferência para lat/lon nos dados, fallback para dicionário
+    let lat = r.latitude  || r.lat || null;
+    let lon = r.longitude || r.lon || r.lng || null;
+    if (!lat || !lon) {
+      const coords = getBairroCoords(b);
+      if (!coords) return;
+      [lat, lon] = coords;
+    }
+
+    if (!bMap[b]) bMap[b] = { lat: +lat, lon: +lon, valor: 0, pedidos: new Set(), kg: 0, bairro: b };
+    bMap[b].valor += r.valor || 0;
+    bMap[b].kg    += r.qtde_kg || 0;
+    if (r.id_pedido_venda) bMap[b].pedidos.add(r.id_pedido_venda);
+  });
+  return Object.values(bMap).filter(d => d.valor > 0);
+}
+
+function initMap() {
+  if (map) return; // já inicializado
+  map = L.map('spMap', {
+    center: [-23.5505, -46.6333],
+    zoom: 11,
+    zoomControl: true,
+  });
+
+  // Tile layer escuro e limpo (CartoDB Positron — ideal para overlay de dados)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+}
+
+function clearMapLayers() {
+  if (heatLayer)    { map.removeLayer(heatLayer);    heatLayer = null; }
+  if (circleLayer)  { map.removeLayer(circleLayer);  circleLayer = null; }
+  if (clusterGroup) { map.removeLayer(clusterGroup); clusterGroup = null; }
+}
+
+function renderSpMap() {
+  initMap();
+  bairroData = buildBairroData();
+  drawMapMode(mapMode);
+  updateMapStats();
+}
+
+function setMapMode(mode) {
+  mapMode = mode;
+  document.querySelectorAll('.map-toggle-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(mode === 'heat' ? 'btnHeat' : mode === 'circle' ? 'btnCircle' : 'btnCluster').classList.add('active');
+  clearMapLayers();
+  drawMapMode(mode);
+}
+
+function drawMapMode(mode) {
+  if (!map || !bairroData.length) return;
+
+  const maxVal = Math.max(...bairroData.map(d => d.valor));
+
+  if (mode === 'heat') {
+    // Leaflet.heat: [lat, lon, intensity 0-1]
+    const pts = bairroData.map(d => [d.lat, d.lon, d.valor / maxVal]);
+    heatLayer = L.heatLayer(pts, {
+      radius: 35,
+      blur: 25,
+      maxZoom: 14,
+      max: 1.0,
+      gradient: { 0.1: '#e4f5eb', 0.3: '#7ecf98', 0.55: '#2d7a4f', 0.8: '#1a4d2e', 1.0: '#0d2b1a' }
+    }).addTo(map);
+
+  } else if (mode === 'circle') {
+    const group = L.featureGroup();
+    bairroData.forEach(d => {
+      const r = Math.max(10, Math.sqrt(d.valor / maxVal) * 55);
+      const t = d.valor / maxVal;
+      const color = t > 0.7 ? '#1a4d2e' : t > 0.4 ? '#2d7a4f' : t > 0.15 ? '#3d9463' : '#7ecf98';
+      const circle = L.circleMarker([d.lat, d.lon], {
+        radius: r,
+        fillColor: color,
+        fillOpacity: 0.65,
+        color: 'white',
+        weight: 1.5,
+        opacity: 0.8,
+      });
+      circle.bindPopup(buildPopup(d, maxVal), { maxWidth: 240 });
+      group.addLayer(circle);
+    });
+    circleLayer = group;
+    group.addTo(map);
+
+  } else if (mode === 'cluster') {
+    // Marcadores por bairro com popup detalhado
+    const group = L.featureGroup();
+    const sorted = [...bairroData].sort((a,b) => b.valor - a.valor);
+    sorted.forEach((d, i) => {
+      const t = d.valor / maxVal;
+      const size = Math.max(28, Math.min(52, 28 + t * 40));
+      const color = t > 0.7 ? '#1a4d2e' : t > 0.4 ? '#2d7a4f' : t > 0.15 ? '#3d9463' : '#7ecf98';
+      const rank = i < 3 ? `#${i+1}` : fmtBRL(d.valor, true).replace('R$ ','');
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div class="cluster-marker" style="
+          width:${size}px;height:${size}px;
+          background:${color};
+          font-size:${size > 38 ? 10 : 9}px;
+        ">${rank}</div>`,
+        iconSize: [size, size],
+        iconAnchor: [size/2, size/2],
+      });
+
+      const marker = L.marker([d.lat, d.lon], { icon });
+      marker.bindPopup(buildPopup(d, maxVal), { maxWidth: 240 });
+      group.addLayer(marker);
+    });
+    clusterGroup = group;
+    group.addTo(map);
+  }
+}
+
+function buildPopup(d, maxVal) {
+  const pct = Math.round(d.valor / maxVal * 100);
+  return `<div class="map-popup">
+    <div class="map-popup-bairro">${d.bairro}</div>
+    <div class="map-popup-sub">Região</div>
+    <div class="map-popup-stats">
+      <div class="map-popup-row">
+        <span class="map-popup-key">Vendas</span>
+        <span class="map-popup-val">${fmtBRL(d.valor, true)}</span>
+      </div>
+      <div class="map-popup-bar"><div class="map-popup-fill" style="width:${pct}%"></div></div>
+      <div class="map-popup-row" style="margin-top:4px">
+        <span class="map-popup-key">Pedidos</span>
+        <span class="map-popup-val">${d.pedidos.size}</span>
+      </div>
+      <div class="map-popup-row">
+        <span class="map-popup-key">Volume</span>
+        <span class="map-popup-val">${fmtKG(d.kg)}</span>
+      </div>
+      <div class="map-popup-row">
+        <span class="map-popup-key">Ticket médio</span>
+        <span class="map-popup-val">${d.pedidos.size ? fmtBRL(d.valor / d.pedidos.size, true) : '—'}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function updateMapStats() {
+  document.getElementById('mapNBairros').textContent = bairroData.length;
+  const top = bairroData.sort((a,b) => b.valor - a.valor)[0];
+  document.getElementById('mapTopBairro').textContent = top ? top.bairro : '—';
+}
+
+/* ── CURVA ABC — usa id_cliente ── */
+function renderABC() {
+  const clienteMap = {};
+  filtered.forEach(r => {
+    const c = r.id_cliente ? String(r.id_cliente) : (r.cliente ? 'CLI-'+String(r.cliente).slice(0,8) : '—');
+    clienteMap[c] = (clienteMap[c] || 0) + (r.valor || 0);
+  });
+
+  const entries = Object.entries(clienteMap).sort((a,b) => b[1]-a[1]);
+  const totalValor = entries.reduce((a,e) => a+e[1], 0);
+  let cumul = 0;
+  let countA = 0, countB = 0, countC = 0;
+  let valorA = 0, valorB = 0, valorC = 0;
+
+  const classified = entries.map(([name, val]) => {
+    cumul += val;
+    const pct = cumul / totalValor;
+    let cls;
+    if (pct <= 0.80) cls = 'A';
+    else if (pct <= 0.95) cls = 'B';
+    else cls = 'C';
+    if (cls === 'A') { countA++; valorA += val; }
+    else if (cls === 'B') { countB++; valorB += val; }
+    else { countC++; valorC += val; }
+    return { name, val, cls };
+  });
+
+  document.getElementById('badgeABC').textContent = entries.length + ' clientes';
+
+  document.getElementById('abcLegend').innerHTML = `
+    <div class="abc-badge"><div class="abc-dot" style="background:#1f6235"></div>A · ${countA} clientes · ${fmtPct(valorA/totalValor*100)}</div>
+    <div class="abc-badge"><div class="abc-dot" style="background:#f59e0b"></div>B · ${countB} clientes · ${fmtPct(valorB/totalValor*100)}</div>
+    <div class="abc-badge"><div class="abc-dot" style="background:#d1d5db"></div>C · ${countC} clientes · ${fmtPct(valorC/totalValor*100)}</div>
+  `;
+
+  const preview = classified.slice(0, 12);
+  document.getElementById('abcList').innerHTML = preview.map(e => `
+    <div class="abc-item">
+      <div class="abc-class ${e.cls}">${e.cls}</div>
+      <div class="abc-name" title="${e.name}">${e.name}</div>
+      <div class="abc-pct">${fmtPct(e.val/totalValor*100)}</div>
+      <div class="abc-val">${fmtBRL(e.val,true)}</div>
+    </div>
+  `).join('');
+}
+
+/* ── FREQUÊNCIA DE RECOMPRA — usa id_cliente ── */
+function renderRecompra() {
+  const clientePedidos = {};
+  filtered.forEach(r => {
+    const c = r.id_cliente ? String(r.id_cliente) : (r.cliente ? 'CLI-'+String(r.cliente).slice(0,8) : '—');
+    const d = r.data ? String(r.data).slice(0,10) : null;
+    const pid = r.id_pedido_venda || r.data;
+    if (!clientePedidos[c]) clientePedidos[c] = { datas: new Set(), valor: 0 };
+    if (d) clientePedidos[c].datas.add(pid || d);
+    clientePedidos[c].valor += r.valor || 0;
+  });
+
+  const stats = Object.entries(clientePedidos).map(([name, v]) => {
+    const nPedidos = v.datas.size;
+    const periodo = monthsFilter ? monthsFilter * 30 : 365;
+    const intervalo = nPedidos > 1 ? Math.round(periodo / (nPedidos - 1)) : null;
+    return { name, nPedidos, intervalo, valor: v.valor };
+  }).filter(s => s.nPedidos > 1).sort((a,b) => b.nPedidos - a.nPedidos);
+
+  const totalClientes = Object.keys(clientePedidos).length;
+  const clientesRecorrentes = stats.length;
+  const taxaRecompra = totalClientes ? Math.round(clientesRecorrentes / totalClientes * 100) : 0;
+  const intervaloMedio = stats.length ? Math.round(stats.reduce((a,s) => a + (s.intervalo||0), 0) / stats.length) : 0;
+
+  document.getElementById('recompraStats').innerHTML = `
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Taxa de Recompra</div>
+      <div class="recompra-stat-val">${taxaRecompra}%</div>
+      <div class="recompra-stat-sub">clientes com 2+ pedidos</div>
+    </div>
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Clientes Recorrentes</div>
+      <div class="recompra-stat-val">${clientesRecorrentes.toLocaleString('pt-BR')}</div>
+      <div class="recompra-stat-sub">de ${totalClientes} no período</div>
+    </div>
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Intervalo Médio</div>
+      <div class="recompra-stat-val">${intervaloMedio || '—'}<span style="font-size:14px;font-weight:500"> dias</span></div>
+      <div class="recompra-stat-sub">entre pedidos</div>
+    </div>
+  `;
+
+  const top = stats.slice(0, 8);
+  document.getElementById('recompraList').innerHTML = top.map(s => {
+    let cls = 'ok', label = s.intervalo + 'd';
+    if (s.intervalo === null) { cls = 'ok'; label = '—'; }
+    else if (s.intervalo > 60) cls = 'danger';
+    else if (s.intervalo > 30) cls = 'warn';
+
+    return `<div class="recompra-item">
+      <div class="ri-name" title="${s.name}">${s.name}</div>
+      <div class="ri-freq">${s.nPedidos}× pedidos</div>
+      <div class="ri-interval ${cls}">a cada ${label}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── GRUPO ── */
+function renderGrupo() {
+  destroyChart('grupo');
+  const grupoMap = {};
+  filtered.forEach(r => { grupoMap[r.grupo||'—'] = (grupoMap[r.grupo||'—']||0) + (r.valor||0); });
+  const entries = Object.entries(grupoMap).sort((a,b) => b[1]-a[1]).slice(0,10);
+
+  const ctx = document.getElementById('chartGrupo').getContext('2d');
+  charts.grupo = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((_,i) => `rgba(26,77,46,${1-i*0.08})`), borderRadius: 4, borderSkipped: 'bottom' }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtBRL(c.raw, true) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v/1000).toFixed(0)+'k' } }
+      }
+    }
+  });
+}
+
+/* ── MARGEM ── */
+function renderMargem() {
+  if (!document.getElementById('chartMargem')) return;
+  destroyChart('margem');
+  const grupoMargem = {};
+  filtered.forEach(r => {
+    const g = r.grupo || '—';
+    if (!grupoMargem[g]) grupoMargem[g] = { total: 0, n: 0 };
+    if (r.margem) { grupoMargem[g].total += r.margem; grupoMargem[g].n++; }
+  });
+  const entries = Object.entries(grupoMargem)
+    .filter(([,v]) => v.n > 0)
+    .map(([k,v]) => [k, v.total/v.n])
+    .sort((a,b) => b[1]-a[1])
+    .slice(0,10);
+
+if (!entries.length) {
+    const wrap = document.getElementById('chartMargem')?.parentElement;
+    if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:48px;color:var(--ghost);font-size:12px">Margem não disponível nos dados.</div>';
+    return;
+  }
+
+  const ctx = document.getElementById('chartMargem').getContext('2d');
+  charts.margem = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{
+        data: entries.map(e => e[1]*100),
+        backgroundColor: entries.map(e => e[1] > 0.15 ? 'rgba(76,175,112,0.7)' : e[1] > 0.08 ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)'),
+        borderRadius: 4, borderSkipped: 'bottom'
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtPct(c.raw) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => v.toFixed(0)+'%' } }
+      }
+    }
+  });
+}
+
+/* ── SAZONALIDADE POR CATEGORIA ── */
+function renderSazonalidade() {
+  destroyChart('sazon');
+
+  const grupoMes = {};
+  const mesesSet = new Set();
+
+  filtered.forEach(r => {
+    const g = r.grupo || '—';
+    const m = r.data ? String(r.data).slice(0,7) : null;
+    if (!m) return;
+    mesesSet.add(m);
+    if (!grupoMes[g]) grupoMes[g] = {};
+    grupoMes[g][m] = (grupoMes[g][m] || 0) + (r.valor || 0);
+  });
+
+  const meses = [...mesesSet].sort().slice(-12);
+  if (!meses.length) return;
+
+  const grupoTotals = Object.entries(grupoMes).map(([g, mv]) => [g, Object.values(mv).reduce((a,v)=>a+v,0)]);
+  const topGrupos = grupoTotals.sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
+
+  const labels = meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); });
+
+  const datasets = topGrupos.map((g, i) => ({
+    label: g,
+    data: meses.map(m => grupoMes[g]?.[m] || 0),
+    borderColor: SAZON_PALETTE[i % SAZON_PALETTE.length],
+    backgroundColor: SAZON_PALETTE[i % SAZON_PALETTE.length] + '18',
+    borderWidth: 2, pointRadius: 3, fill: false, tension: 0.3,
+  }));
+
+  const ctx = document.getElementById('chartSazon').getContext('2d');
+  charts.sazon = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 9, family: 'Inter' }, color: '#5a7366', boxWidth: 8, padding: 10 } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtBRL(c.raw, true) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45 } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v/1000).toFixed(0)+'k' } }
+      }
+    }
+  });
+}
+
+/* ── HEATMAP DIA × MÊS ── */
+function renderHeatmap() {
+  const cell = {};
+  const mesesSet = new Set();
+
+  filtered.forEach(r => {
+    const m = r.data ? String(r.data).slice(0,7) : null;
+    if (!m) return;
+    mesesSet.add(m);
+    let dia = null;
+    if (r.dia_semana !== null && r.dia_semana !== undefined && r.dia_semana !== '') {
+      const n = parseInt(r.dia_semana, 10);
+      if (!isNaN(n) && n >= 1 && n <= 7) dia = DIAS[n - 1];
+      else dia = String(r.dia_semana); // já é um nome (ex: "Seg")
+    } else if (r.data) {
+      dia = DIAS[new Date(r.data).getDay()];
+    }
+    if (!dia) return;
+    const key = `${dia}||${m}`;
+    cell[key] = (cell[key]||0) + (r.valor||0);
+  });
+
+  const meses = [...mesesSet].sort().slice(-12);
+  const diasOrdem = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+
+  let maxVal = 0;
+  diasOrdem.forEach(d => meses.forEach(m => { maxVal = Math.max(maxVal, cell[`${d}||${m}`]||0); }));
+  if (!maxVal) maxVal = 1;
+
+  function heatColor(v) {
+    const t = Math.min(v / maxVal, 1);
+    const r = Math.round(228 - t*(228-26));
+    const g = Math.round(245 - t*(245-77));
+    const b = Math.round(235 - t*(235-46));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  const mesesLabels = meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); });
+
+  const table = document.getElementById('heatmapTable');
+  table.innerHTML = `
+    <tr>
+      <th></th>
+      ${mesesLabels.map(l => `<th>${l}</th>`).join('')}
+    </tr>
+    ${diasOrdem.map(d => `
+      <tr>
+        <td class="hm-row-label">${d}</td>
+        ${meses.map(m => {
+          const v = cell[`${d}||${m}`]||0;
+          const bg = heatColor(v);
+          const textColor = v/maxVal > 0.5 ? 'white' : '#1a4d2e';
+          const label = v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : v > 0 ? 'R$'+v.toFixed(0) : '';
+          return `<td><div class="hm-cell" style="background:${bg};color:${textColor}" title="${d} · ${m}: ${fmtBRL(v)}">${label}</div></td>`;
+        }).join('')}
+      </tr>
+    `).join('')}
+  `;
+}
+
+/* ── SUBGRUPO TABLE ── */
+function renderSubgrupo() {
+  const sgMap = {};
+  filtered.forEach(r => {
+    const sg = r.sub_grupo || '—';
+    if (!sgMap[sg]) sgMap[sg] = { grupo: r.grupo||'—', pedidos: new Set(), kg: 0, valor: 0, margem: 0, mn: 0 };
+    if (r.id_pedido_venda) sgMap[sg].pedidos.add(r.id_pedido_venda);
+    sgMap[sg].kg    += r.qtde_kg||0;
+    sgMap[sg].valor += r.valor||0;
+    if (r.margem) { sgMap[sg].margem += r.margem; sgMap[sg].mn++; }
+  });
+
+  const entries = Object.entries(sgMap).sort((a,b) => b[1].valor - a[1].valor).slice(0, 20);
+  const totalValor = entries.reduce((a,e) => a + e[1].valor, 0) || 1;
+  const maxValor   = entries[0]?.[1].valor || 1;
+
+  document.getElementById('subgrupoBody').innerHTML = entries.map(([sg, v], i) => {
+    const pct = (v.valor / totalValor * 100);
+    const margem = v.mn ? (v.margem / v.mn * 100) : null;
+    const margemColor = margem === null ? '' : margem > 15 ? 'color:#166534' : margem > 8 ? 'color:#92400e' : 'color:#991b1b';
+    return `<tr>
+      <td style="font-size:10px;color:var(--ghost);font-weight:700">${i+1}</td>
+      <td class="td-bold">${sg}</td>
+      <td style="font-size:11px;color:var(--muted)">${v.grupo}</td>
+      <td class="td-num">${v.pedidos.size.toLocaleString('pt-BR')}</td>
+      <td class="td-num">${fmtKG(v.kg)}</td>
+      <td class="td-num">${fmtBRL(v.valor,true)}</td>
+      <td class="td-num" style="${margemColor}">${margem !== null ? fmtPct(margem) : '—'}</td>
+      <td class="td-bar-cell">
+        <div style="font-size:9px;color:var(--ghost);margin-bottom:2px">${pct.toFixed(1)}%</div>
+        <div class="td-mini-bar"><div class="td-mini-fill" style="width:${Math.round(v.valor/maxValor*100)}%"></div></div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════ */
+init().catch(e => showError('Erro ao carregar', e.message || String(e)));
+/* ════ ABAS ════ */
+function mudarAba(aba, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + aba).classList.add('active');
+  if (aba === 'sellin') carregarSellIn();
+}
+
+/* ════ SELL-IN ════ */
+let siCarregado = false;
+
+async function carregarSellIn() {
+  if (siCarregado) return;
+
+  document.getElementById('siTbody').innerHTML =
+    '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ghost)">Carregando…</td></tr>';
+
+  try {
+    const pct = fornecedor.pct_sellin ?? 0;
+
+    let notas = [], from = 0;
+    while (true) {
+      const { data, error } = await db
+        .from('notas_fiscais')
+        .select('*')
+        .eq('fornecedor_id', fornecedor.id)
+        .range(from, from + 999);
+      if (error) throw error;
+      if (!data?.length) break;
+      notas = notas.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+
+    // Filtra pelo mesmo período do sell-out
+    const cutoff = monthsFilter ? new Date(new Date().setMonth(new Date().getMonth() - monthsFilter)) : null;
+    const visiveis = notas.filter(n => {
+      if (!cutoff || !n.emissao) return true;
+      return new Date(n.emissao) >= cutoff;
+    });
+
+    // ✅ DEPOIS — aceita qualquer nota com situação "autorizada" (ou variações)
+const autorizadas = visiveis.filter(n => {
+  const sit = (n.situacao || '').toLowerCase().trim();
+  return sit === 'autorizada' || sit === 'autorizado';
+});
+
+    const totalFaturado = roundMoney(
+  autorizadas.reduce((a, n) => a + roundMoney(n.valor || 0), 0)
+);
+    const debito = totalFaturado * (pct / 100);
+
+    document.getElementById('siTotalFaturado').textContent = fmtBRL(totalFaturado, true);
+document.getElementById('siDebito').textContent = fmtBRL(debito, true);
+document.getElementById('siDebito').style.cursor = 'pointer';
+document.getElementById('siDebito').style.textDecoration = 'underline dotted';
+document.getElementById('siDebito').onclick = () => abrirModalDebito(totalFaturado, debito, pct);    document.getElementById('siPctBadge').textContent = pct + '%';
+    document.getElementById('siQtdNotas').textContent = autorizadas.length;
+    document.getElementById('siPeriodo').textContent = monthsFilter ? `últimos ${monthsFilter} meses` : 'todo o período';
+    document.getElementById('siTagPeriodo').textContent = visiveis.length + ' notas no período';
+
+    if (!visiveis.length) {
+      document.getElementById('siTbody').innerHTML =
+        '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ghost)">Nenhuma nota no período.</td></tr>';
+      siCarregado = true;
+      return;
+    }
+
+    const fmtD = iso => iso ? iso.slice(0,10).split('-').reverse().join('/') : '—';
+    const isAuth = s => s?.toLowerCase() === 'autorizada';
+
+    document.getElementById('siTbody').innerHTML = visiveis
+      .sort((a, b) => (b.emissao || '').localeCompare(a.emissao || ''))
+      .map(n => `<tr>
+        <td><strong>${n.numero || '—'}</strong></td>
+        <td>${fmtD(n.emissao)}</td>
+        <td>${n.emitente || n.cnpj_emitente || '—'}</td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.natureza_operacao||''}">${n.natureza_operacao || '—'}</td>
+        <td><span class="${isAuth(n.situacao) ? 'badge-auth' : 'badge-canc'}">${n.situacao || '—'}</span></td>
+        <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums">${fmtBRL(roundMoney(n.valor || 0))}</td>
+      </tr>`).join('');
+
+    siCarregado = true;
+  } catch (err) {
+    document.getElementById('siTbody').innerHTML =
+      `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--red)">Erro: ${err.message}</td></tr>`;
+  }
+  function abrirModalDebito(faturado, debito, pct) {
+  document.getElementById('debitoModalForn').textContent = fornecedor.nome;
+  document.getElementById('debitoModalFaturado').textContent = fmtBRL(faturado, true);
+  document.getElementById('debitoModalValor').textContent = fmtBRL(debito, true);
+  document.getElementById('debitoModalPct').textContent = pct + '% sobre o faturado';
+  const el = document.getElementById('modalDebito');
+  el.style.display = 'flex';
+}
+// fechar clicando fora
+document.getElementById('modalDebito').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+}
+</script>
+</body>
+</html>

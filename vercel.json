@@ -1,0 +1,13 @@
+{
+  "rewrites": [
+    { "source": "/api/produtos", "destination": "/api/produtos" },
+    { "source": "/img-proxy", "destination": "/api/img-proxy" },
+    { "source": "/fornecedor/:slug", "destination": "/fornecedor/slug.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/sync-produtos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

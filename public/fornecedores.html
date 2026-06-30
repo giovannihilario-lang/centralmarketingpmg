@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fornecedores – PMG Atacadista</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --g900: #0d2b1a; --g800: #1a4d2e; --g700: #1f6235; --g600: #2d7a4f;
+      --g500: #3d9463; --g400: #4caf70; --g300: #7ecf98; --g200: #b8e8c7;
+      --g100: #e4f5eb; --g50: #f2faf5;
+      --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+      --ink: #0f1f14; --text: #1c3327; --muted: #5a7366; --ghost: #8fa89d;
+      --line: #ddeae2; --bg: #f0f5f2; --surface: #ffffff;
+      --radius-sm: 6px; --radius: 10px; --radius-lg: 16px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow: 0 4px 16px rgba(0,0,0,.07), 0 1px 4px rgba(0,0,0,.04);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,.10), 0 2px 8px rgba(0,0,0,.05);
+      --nav-w: 240px; --nav-w-col: 64px; --hdr-h: 60px;
+    }
+
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+
+    /* ── NAV ── */
+    .nav { width: var(--nav-w); min-width: var(--nav-w); background: var(--g800); display: flex; flex-direction: column; height: 100vh; position: relative; z-index: 50; transition: width .25s cubic-bezier(.4,0,.2,1), min-width .25s; overflow: hidden; }
+    .nav.col { width: var(--nav-w-col); min-width: var(--nav-w-col); }
+    .nav-toggle { position: absolute; top: 18px; right: -12px; width: 24px; height: 24px; background: var(--surface); border: 2px solid var(--line); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; box-shadow: var(--shadow-sm); }
+    .nav-toggle svg { width: 12px; height: 12px; color: var(--g800); transition: transform .25s; }
+    .nav.col .nav-toggle svg { transform: rotate(180deg); }
+    .nav-brand { padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 12px; min-height: var(--hdr-h); white-space: nowrap; overflow: hidden; }
+    .nav-logo { width: 36px; height: 36px; min-width: 36px; background: white; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; color: var(--g800); }
+    .nav-brand-name { font-size: 13px; font-weight: 700; color: white; line-height: 1.2; }
+    .nav-brand-sub { font-size: 9px; color: var(--g300); font-weight: 500; letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
+    .nav-body { flex: 1; padding: 12px 8px; overflow-y: auto; overflow-x: hidden; }
+    .nav-group { font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255,255,255,.25); padding: 10px 8px 5px; white-space: nowrap; overflow: hidden; transition: opacity .2s; }
+    .nav.col .nav-group { opacity: 0; }
+    .nav-link { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: rgba(255,255,255,.65); text-decoration: none; transition: all .15s; cursor: pointer; white-space: nowrap; overflow: hidden; position: relative; }
+    .nav-link:hover { background: rgba(255,255,255,.08); color: white; }
+    .nav-link.active { background: rgba(255,255,255,.14); color: white; font-weight: 600; }
+    .nav-link.active::before { content: ''; position: absolute; left: 0; top: 20%; height: 60%; width: 3px; background: var(--g300); border-radius: 0 2px 2px 0; }
+    .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .nav-footer { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,.08); font-size: 10px; color: rgba(255,255,255,.2); text-align: center; white-space: nowrap; overflow: hidden; }
+    .nav.col .nav-footer { opacity: 0; }
+
+    /* ── MAIN ── */
+    .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* ── HEADER ── */
+    .hdr { background: var(--g900); height: var(--hdr-h); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+    .hdr-title { color: white; font-size: 15px; font-weight: 600; }
+    .hdr-right { display: flex; align-items: center; gap: 8px; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; border: 1px solid; }
+    .pill-default { background: rgba(255,255,255,.07); color: rgba(255,255,255,.55); border-color: rgba(255,255,255,.12); }
+    .pill-green { background: rgba(76,175,112,.2); color: #a7e8be; border-color: rgba(76,175,112,.35); }
+    .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* ── STATS BAR ── */
+    .stats-bar { display: flex; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); flex-shrink: 0; }
+    .stat-cell { flex: 1; background: var(--surface); padding: 12px 20px; }
+    .stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--ghost); margin-bottom: 4px; }
+    .stat-value { font-size: 20px; font-weight: 800; color: var(--ink); line-height: 1; }
+    .stat-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+    /* ── TOOLBAR ── */
+    .toolbar { padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+    .search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 300px; }
+    .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--ghost); pointer-events: none; }
+    .search-input { width: 100%; padding: 8px 10px 8px 32px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; font-family: inherit; color: var(--text); background: var(--g50); transition: border-color .15s; }
+    .search-input:focus { outline: none; border-color: var(--g400); background: white; }
+    .filter-select { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; font-family: inherit; color: var(--text); background: var(--g50); cursor: pointer; }
+    .filter-select:focus { outline: none; border-color: var(--g400); }
+    .spacer { flex: 1; }
+    .btn-primary { padding: 8px 16px; background: var(--g800); color: white; border: none; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .15s; font-family: inherit; }
+    .btn-primary:hover { background: var(--g700); transform: translateY(-1px); box-shadow: var(--shadow); }
+    .btn-primary svg { width: 13px; height: 13px; }
+    .btn-ghost { padding: 8px 14px; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all .13s; font-family: inherit; }
+    .btn-ghost:hover { border-color: var(--g400); color: var(--text); }
+    .btn-ghost svg { width: 13px; height: 13px; }
+
+    /* ── TABLE ── */
+    .table-wrap { flex: 1; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead { position: sticky; top: 0; z-index: 5; }
+    thead th { background: var(--g50); padding: 10px 16px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--ghost); border-bottom: 1px solid var(--line); white-space: nowrap; cursor: pointer; user-select: none; }
+    thead th:hover { color: var(--text); }
+    .sort-icon { display: inline-block; margin-left: 3px; opacity: .4; }
+    thead th.sorted .sort-icon { opacity: 1; color: var(--g600); }
+    tbody tr { border-bottom: 1px solid var(--g50); transition: background .1s; }
+    tbody tr:hover { background: var(--g50); }
+    tbody td { padding: 12px 16px; font-size: 12px; color: var(--text); vertical-align: middle; }
+    .td-nome { font-weight: 700; color: var(--ink); font-size: 13px; }
+    .td-slug { font-size: 10px; color: var(--ghost); margin-top: 1px; font-family: monospace; }
+    .td-cnpj { font-size: 11px; color: var(--muted); }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-gray { background: var(--g100); color: var(--muted); }
+    .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+    .td-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+    .act-btn { padding: 5px 10px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 500; border: 1px solid; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all .13s; font-family: inherit; background: transparent; white-space: nowrap; }
+    .act-btn svg { width: 11px; height: 11px; }
+    .act-link { color: var(--g700); border-color: var(--g200); }
+    .act-link:hover { background: var(--g100); border-color: var(--g400); }
+    .act-upload { color: #b45309; border-color: #fde68a; }
+    .act-upload:hover { background: #fef3c7; }
+    .act-copy { color: var(--blue); border-color: #bfdbfe; }
+    .act-copy:hover { background: #eff6ff; }
+    .act-dash { color: var(--muted); border-color: var(--line); }
+    .act-dash:hover { background: var(--g50); border-color: var(--ghost); }
+    .act-nfe { color: #7c3aed; border-color: #ddd6fe; }
+    .act-nfe:hover { background: #f5f3ff; }
+
+    .upload-date { font-size: 10px; color: var(--ghost); white-space: nowrap; }
+    .upload-count { font-size: 11px; font-weight: 600; color: var(--text); }
+
+    /* ── EMPTY ── */
+    .empty-row td { text-align: center; padding: 48px; color: var(--ghost); }
+    .empty-icon { font-size: 32px; display: block; margin-bottom: 8px; opacity: .4; }
+
+    /* ── MODALS ── */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: 520px; max-width: calc(100vw - 32px); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-lg { width: 760px; }
+    .modal-hdr { padding: 20px 24px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .modal-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+    .modal-sub { font-size: 11px; color: var(--ghost); margin-top: 2px; }
+    .modal-close { width: 28px; height: 28px; border: none; background: var(--g50); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--muted); transition: all .13s; }
+    .modal-close:hover { background: var(--g100); color: var(--ink); }
+    .modal-close svg { width: 14px; height: 14px; }
+    .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+    .modal-foot { padding: 16px 24px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+
+    /* ── FORM ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group.full { grid-column: span 2; }
+    .form-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .form-input { padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit; color: var(--text); background: white; transition: border-color .15s; }
+    .form-input:focus { outline: none; border-color: var(--g500); box-shadow: 0 0 0 3px rgba(61,148,99,.1); }
+    .form-hint { font-size: 10px; color: var(--ghost); }
+
+    /* ── UPLOAD ZONE ── */
+    .upload-zone { border: 2px dashed var(--g200); border-radius: var(--radius); padding: 32px 24px; text-align: center; cursor: pointer; transition: all .2s; background: var(--g50); }
+    .upload-zone:hover, .upload-zone.drag { border-color: var(--g500); background: var(--g100); }
+    .upload-zone-icon { font-size: 32px; margin-bottom: 10px; display: block; }
+    .upload-zone-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .upload-zone-sub { font-size: 11px; color: var(--ghost); }
+    #fileInput { display: none; }
+
+    .upload-preview { margin-top: 14px; padding: 12px 14px; background: var(--g50); border: 1px solid var(--line); border-radius: var(--radius-sm); display: none; }
+    .upload-preview.show { display: flex; align-items: center; gap: 10px; }
+    .upload-preview-icon { width: 32px; height: 32px; background: #dcfce7; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .upload-preview-icon svg { width: 16px; height: 16px; color: #166534; }
+    .upload-preview-name { font-size: 12px; font-weight: 600; color: var(--ink); }
+    .upload-preview-meta { font-size: 10px; color: var(--ghost); margin-top: 1px; }
+    .upload-preview-remove { margin-left: auto; width: 22px; height: 22px; border: none; background: transparent; cursor: pointer; color: var(--ghost); display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+    .upload-preview-remove:hover { background: #fee2e2; color: var(--red); }
+    .upload-preview-remove svg { width: 13px; height: 13px; }
+
+    .progress-wrap { margin-top: 14px; display: none; }
+    .progress-wrap.show { display: block; }
+    .progress-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .progress-bar-bg { height: 6px; background: var(--g100); border-radius: 3px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: var(--g500); border-radius: 3px; transition: width .3s ease; width: 0%; }
+
+    /* ── PREVIEW DASH ── */
+    .kpi-mini { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
+    .kpi-mini-card { background: var(--g50); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+    .kpi-mini-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--ghost); margin-bottom: 4px; }
+    .kpi-mini-val { font-size: 18px; font-weight: 800; color: var(--ink); line-height: 1; }
+    .kpi-mini-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .dash-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .dash-chart-card { background: var(--g50); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+    .dash-chart-title { font-size: 11px; font-weight: 600; color: var(--ink); margin-bottom: 10px; }
+
+    /* ── LINK MODAL ── */
+    .link-box { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: var(--g50); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+    .link-url { flex: 1; font-size: 12px; font-family: monospace; color: var(--g700); word-break: break-all; }
+    .link-info { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .link-info-item { padding: 10px 12px; background: var(--g50); border-radius: var(--radius-sm); }
+    .link-info-label { font-size: 9px; text-transform: uppercase; letter-spacing: .7px; color: var(--ghost); margin-bottom: 3px; }
+    .link-info-val { font-size: 12px; font-weight: 600; color: var(--text); }
+
+    /* ── TOAST ── */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--ink); color: white; padding: 10px 18px; border-radius: var(--radius); font-size: 12px; font-weight: 500; box-shadow: var(--shadow-lg); z-index: 200; display: none; }
+    .toast.show { display: block; animation: slideUp .25s ease; }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.bell-btn { position: relative; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: rgba(255,255,255,.7); cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+.bell-btn:hover { background: rgba(255,255,255,.14); color: white; }
+.bell-badge { position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--red); color: white; font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid var(--g900); }
+.debitos-table { width: 100%; border-collapse: collapse; }
+.debitos-table th { text-align: left; padding: 8px 12px; background: var(--g50); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--ghost); border-bottom: 1px solid var(--line); }
+.debitos-table td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid var(--g50); vertical-align: middle; }
+.debitos-table tr:hover td { background: var(--g50); }
+.td-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .nav { display: none; }
+      .kpi-mini { grid-template-columns: 1fr 1fr; }
+      .dash-charts { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .stats-bar { flex-wrap: wrap; }
+      .stat-cell { min-width: 50%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav class="nav" id="mainNav">
+  <button class="nav-toggle" onclick="document.getElementById('mainNav').classList.toggle('col')" aria-label="Recolher menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <div class="nav-brand">
+    <div class="nav-logo">PMG</div>
+    <div>
+      <div class="nav-brand-name">PMG Atacadista</div>
+      <div class="nav-brand-sub">Marketing</div>
+    </div>
+  </div>
+  <div class="nav-body">
+    <div class="nav-group">Geral</div>
+    <a href="/index.html" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span>Início</span>
+    </a>
+    <div class="nav-group">Ferramentas</div>
+    <a href="/ferramentas/catalogo.html" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <span>Gerador de Catálogo</span>
+    </a>
+    <a href="/dashboard.html" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+      <span>Dashboards</span>
+    </a>
+    <a href="/fornecedores.html" class="nav-link active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>Fornecedores</span>
+    </a>
+  </div>
+  <div class="nav-footer">PMG Atacadista © 2025</div>
+</nav>
+
+<!-- ── MAIN ── -->
+<div class="main-col">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <h1 class="hdr-title">Gestão de Fornecedores</h1>
+    <div class="hdr-right">
+      <button class="bell-btn" id="bellDebitos" onclick="abrirModalDebitos()" title="Central de Débitos">
+  🔔
+  <span class="bell-badge" id="bellBadge" style="display:none">0</span>
+</button>
+      <span class="pill pill-default" id="pillTotal">— fornecedores</span>
+      <span class="pill pill-green"><span class="pill-dot"></span><span id="pillAtivos">—</span> ativos</span>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-cell"><div class="stat-label">Total Fornecedores</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub">cadastrados</div></div>
+    <div class="stat-cell"><div class="stat-label">Com dados</div><div class="stat-value" id="statComDados">—</div><div class="stat-sub">com upload realizado</div></div>
+    <div class="stat-cell"><div class="stat-label">Sem dados</div><div class="stat-value" id="statSemDados">—</div><div class="stat-sub">aguardando upload</div></div>
+    <div class="stat-cell"><div class="stat-label">Links gerados</div><div class="stat-value" id="statLinks">—</div><div class="stat-sub">dashboards públicos</div></div>
+    <div class="stat-cell"><div class="stat-label">Débito Sell-In</div><div class="stat-value" id="statDebitoTotal" style="color:#b45309">—</div><div class="stat-sub" id="statDebitoQtd">— fornecedores</div></div>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="search-input" id="searchInput" placeholder="Buscar fornecedor…" oninput="renderTabela()">
+    </div>
+    <select class="filter-select" id="filterStatus" onchange="renderTabela()">
+      <option value="">Todos os status</option>
+      <option value="ativo">Ativo</option>
+      <option value="sem_dados">Sem dados</option>
+      <option value="inativo">Inativo</option>
+    </select>
+    <div class="spacer"></div>
+    <button class="btn-ghost" onclick="exportarCSV()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Exportar CSV
+    </button>
+    <button class="btn-primary" onclick="abrirModalNovo()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Novo fornecedor
+    </button>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('nome')">Fornecedor <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('cnpj')">CNPJ <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('categoria')">Categoria <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('status')">Status <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('ultimo_upload')">Último upload <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('total_pedidos')">Pedidos <span class="sort-icon">↕</span></th>
+          <th onclick="sortByDebito()">Débito Sell-in <span class="sort-icon">↕</span></th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaBody">
+        <tr class="empty-row"><td colspan="8"><span class="empty-icon">⏳</span>Carregando fornecedores…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: NOVO/EDITAR FORNECEDOR ══════════ -->
+<div class="modal-backdrop" id="modalForm">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="modalFormTitle">Novo fornecedor</div>
+        <div class="modal-sub">Preencha os dados para criar o cadastro e gerar o link público.</div>
+      </div>
+      <button class="modal-close" onclick="fecharModal('modalForm')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group full">
+          <label class="form-label">Razão social / Nome</label>
+          <input type="text" class="form-input" id="fNome" placeholder="Alfameat Alimentos Ltda">
+        </div>
+        <div class="form-group">
+          <label class="form-label">CNPJ</label>
+          <input type="text" class="form-input" id="fCnpj" placeholder="00.000.000/0001-00" maxlength="18" oninput="mascaraCNPJ(this)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Categoria</label>
+          <select class="form-input" id="fCategoria">
+            <option value="">Selecionar…</option>
+            <option>Carnes Bovinas</option>
+            <option>Carnes Suínas</option>
+            <option>Carnes de Frango</option>
+            <option>Embutidos</option>
+            <option>Laticínios</option>
+            <option>Congelados</option>
+            <option>Outros</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Slug (URL pública)</label>
+          <input type="text" class="form-input" id="fSlug" placeholder="alfameat" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
+          <span class="form-hint" id="slugPreview">URL: /fornecedor/<strong>slug</strong></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contato (nome)</label>
+          <input type="text" class="form-input" id="fContato" placeholder="João Silva">
+        </div>
+        <div class="form-group">
+          <label class="form-label">E-mail</label>
+          <input type="email" class="form-input" id="fEmail" placeholder="contato@fornecedor.com">
+        </div>
+        <!-- CORRIGIDO: form-group limpo, sem texto solto nem duplicatas -->
+        <div class="form-group full">
+          <label class="form-label">% Sell-In (débito sobre faturamento NFe)</label>
+          <input type="number" class="form-input" id="fPctSellin" placeholder="Ex: 3.5" min="0" max="100" step="0.1">
+          <span class="form-hint">Percentual cobrado pelo fornecedor sobre as notas autorizadas de venda.</span>
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Status</label>
+          <select class="form-input" id="fStatus">
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="fecharModal('modalForm')">Cancelar</button>
+      <button class="btn-primary" onclick="salvarFornecedor()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        Salvar fornecedor
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: UPLOAD ══════════ -->
+<div class="modal-backdrop" id="modalUpload">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">Upload de dados</div>
+        <div class="modal-sub" id="uploadModalSub">Fornecedor</div>
+      </div>
+      <button class="modal-close" onclick="fecharModal('modalUpload')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()" ondragover="ev(event,'drag')" ondragleave="ev(event,'leave')" ondrop="ev(event,'drop')">
+        <span class="upload-zone-icon">📊</span>
+        <div class="upload-zone-title">Arraste o arquivo XLSX aqui</div>
+        <div class="upload-zone-sub">ou clique para selecionar · .xlsx até 20 MB</div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="onFileSelect(this.files[0])">
+
+      <div class="upload-preview" id="uploadPreview">
+        <div class="upload-preview-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div>
+          <div class="upload-preview-name" id="previewName">arquivo.xlsx</div>
+          <div class="upload-preview-meta" id="previewMeta">—</div>
+        </div>
+        <button class="upload-preview-remove" onclick="removerArquivo()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label"><span id="progressLabel">Processando…</span><span id="progressPct">0%</span></div>
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+      </div>
+
+      <div id="colMappingWrap" style="display:none; margin-top:16px;">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Colunas detectadas no arquivo</div>
+        <div id="colMappingList" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        <div style="margin-top:12px;padding:10px 12px;background:var(--g50);border-radius:var(--radius-sm);font-size:11px;color:var(--muted);">
+          ℹ️ O sistema mapeará automaticamente as colunas. Verifique se os nomes correspondem ao padrão esperado.
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="fecharModal('modalUpload')">Cancelar</button>
+      <button class="btn-primary" id="btnEnviar" onclick="enviarDados()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="15 18 21 12 15 6"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Importar dados
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: LINK ══════════ -->
+<div class="modal-backdrop" id="modalLink">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">Link do dashboard</div>
+        <div class="modal-sub" id="linkModalSub">Compartilhe com o fornecedor</div>
+      </div>
+      <button class="modal-close" onclick="fecharModal('modalLink')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11px;color:var(--ghost);margin-bottom:8px;">URL pública do dashboard</div>
+      <div class="link-box">
+        <div class="link-url" id="linkUrl">—</div>
+        <button class="act-btn act-copy" onclick="copiarLink()" style="flex-shrink:0;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copiar
+        </button>
+      </div>
+      <div class="link-info" id="linkInfo"></div>
+      <div style="margin-top:16px;padding:12px 14px;background:#fef3c7;border-radius:var(--radius-sm);font-size:11px;color:#92400e;">
+        ⚠️ Este link é público. Qualquer pessoa com o link pode ver o dashboard deste fornecedor.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="fecharModal('modalLink')">Fechar</button>
+      <button class="btn-primary" onclick="abrirDashboard()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Abrir dashboard
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalDebitos">
+  <div class="modal modal-lg">
+    <div class="modal-hdr">
+      <div><div class="modal-title">Central de Débitos — Sell-In</div><div class="modal-sub">Fornecedores com débito acumulado, do maior para o menor</div></div>
+      <button class="modal-close" onclick="fecharModal('modalDebitos')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="link-info" id="debitosResumo" style="margin-top:0;margin-bottom:16px"></div>
+      <table class="debitos-table">
+        <thead><tr><th>Fornecedor</th><th>%</th><th style="text-align:right">Faturado</th><th style="text-align:right">Débito</th><th></th></tr></thead>
+        <tbody id="debitosBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="fecharModal('modalDebitos')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: PREVIEW DASH ══════════ -->
+<div class="modal-backdrop" id="modalDash">
+  <div class="modal modal-lg">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title" id="dashModalTitle">Preview — Dados do fornecedor</div>
+        <div class="modal-sub" id="dashModalSub">—</div>
+      </div>
+      <button class="modal-close" onclick="fecharModal('modalDash')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="dashModalBody">
+      <div style="text-align:center;padding:40px;color:var(--ghost);">Carregando dados…</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="fecharModal('modalDash')">Fechar</button>
+      <button class="btn-primary" id="btnAbrirDashExt" onclick="">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Abrir dashboard completo
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: UPLOAD NFe ══════════ -->
+<!-- CORRIGIDO: movido para antes do <script> principal -->
+<div class="modal-backdrop" id="modalNFe">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-title">Upload Sell-In (NFe)</div>
+        <div class="modal-sub" id="nfeModalSub">Fornecedor</div>
+      </div>
+      <button class="modal-close" onclick="fecharModal('modalNFe')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="nfeUploadZone" onclick="document.getElementById('nfeFileInput').click()" ondragover="nfeEv(event,'drag')" ondragleave="nfeEv(event,'leave')" ondrop="nfeEv(event,'drop')">
+        <span class="upload-zone-icon">🧾</span>
+        <div class="upload-zone-title">Arraste o XLSX da Consulta NFe Destinada</div>
+        <div class="upload-zone-sub">ou clique para selecionar · .xlsx até 20 MB</div>
+      </div>
+      <input type="file" id="nfeFileInput" accept=".xlsx,.xls" style="display:none" onchange="onNFeSelect(this.files[0])">
+
+      <div class="upload-preview" id="nfePreview">
+        <div class="upload-preview-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div>
+          <div class="upload-preview-name" id="nfePreviewName">arquivo.xlsx</div>
+          <div class="upload-preview-meta" id="nfePreviewMeta">—</div>
+        </div>
+        <button class="upload-preview-remove" onclick="removerNFe()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="progress-wrap" id="nfeProgressWrap">
+        <div class="progress-label"><span id="nfeProgressLabel">Processando…</span><span id="nfeProgressPct">0%</span></div>
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="nfeProgressFill"></div></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="fecharModal('modalNFe')">Cancelar</button>
+      <button class="btn-primary" id="btnEnviarNFe" onclick="enviarNFe()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="15 18 21 12 15 6"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Importar NFe
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SQL MODAL (inserido inline para evitar dependência de JS) -->
+<div class="modal-backdrop" id="sqlModal">
+  <div class="modal modal-lg">
+    <div class="modal-hdr">
+      <div><div class="modal-title">SQL — Criação das tabelas</div><div class="modal-sub">Execute no editor SQL do Supabase</div></div>
+      <button class="modal-close" onclick="document.getElementById('sqlModal').classList.remove('open')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <pre id="sqlPre" style="background:var(--g900);color:#7ecf98;padding:16px;border-radius:var(--radius);font-size:11px;overflow:auto;line-height:1.6;white-space:pre-wrap">-- 1. Tabela de fornecedores
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id              BIGSERIAL PRIMARY KEY,
+  nome            TEXT NOT NULL,
+  cnpj            TEXT,
+  categoria       TEXT,
+  slug            TEXT UNIQUE NOT NULL,
+  contato         TEXT,
+  email           TEXT,
+  status          TEXT DEFAULT 'ativo',
+  ultimo_upload   TIMESTAMPTZ,
+  total_pedidos   INTEGER DEFAULT 0,
+  total_linhas    INTEGER DEFAULT 0,
+  total_valor     NUMERIC(15,2) DEFAULT 0,
+  total_kg        NUMERIC(15,3) DEFAULT 0,
+  pct_sellin      NUMERIC(12,4) DEFAULT 0,
+  criado_em       TIMESTAMPTZ DEFAULT now(),
+  atualizado_em   TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Tabela de pedidos por fornecedor
+CREATE TABLE IF NOT EXISTS pedidos_fornecedor (
+  id              BIGSERIAL PRIMARY KEY,
+  fornecedor_id   BIGINT REFERENCES fornecedores(id) ON DELETE CASCADE,
+  id_pedido_venda TEXT,
+  vendedor        TEXT,
+  tipo            TEXT,
+  id_cliente      TEXT,
+  cliente         TEXT,
+  bairro          TEXT,
+  cidade          TEXT,
+  uf              TEXT,
+  zona            TEXT,
+  segmento        TEXT,
+  data            DATE,
+  dia             INTEGER,
+  mes             INTEGER,
+  ano             INTEGER,
+  dia_semana      TEXT,
+  id_produto      TEXT,
+  grupo           TEXT,
+  sub_grupo       TEXT,
+  produto         TEXT,
+  qtde_pc         NUMERIC(12,3) DEFAULT 0,
+  qtde_kg         NUMERIC(12,3) DEFAULT 0,
+  valor           NUMERIC(12,2) DEFAULT 0,
+  margem          NUMERIC(12,4) DEFAULT 0,
+  digitador       TEXT,
+  validade        TEXT,
+  margem_grupo    NUMERIC(12,4) DEFAULT 0,
+  regiao          TEXT,
+  criado_em       TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Tabela de notas fiscais (NFe Sell-In)
+-- CORRIGIDO: tabela estava faltando no SQL original
+CREATE TABLE IF NOT EXISTS notas_fiscais (
+  id                BIGSERIAL PRIMARY KEY,
+  fornecedor_id     BIGINT REFERENCES fornecedores(id) ON DELETE CASCADE,
+  numero            TEXT,
+  emissao           DATE,
+  cnpj_emitente     TEXT,
+  emitente          TEXT,
+  natureza_operacao TEXT,
+  situacao          TEXT,
+  valor             NUMERIC(15,2) DEFAULT 0,
+  chave             TEXT,
+  criado_em         TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. Índices para performance
+CREATE INDEX IF NOT EXISTS idx_pedidos_fornecedor_id ON pedidos_fornecedor(fornecedor_id);
+CREATE INDEX IF NOT EXISTS idx_pedidos_data ON pedidos_fornecedor(data);
+CREATE INDEX IF NOT EXISTS idx_pedidos_bairro ON pedidos_fornecedor(bairro);
+CREATE INDEX IF NOT EXISTS idx_pedidos_produto ON pedidos_fornecedor(produto);
+CREATE INDEX IF NOT EXISTS idx_nfe_fornecedor_id ON notas_fiscais(fornecedor_id);
+
+-- 5. Row Level Security (RLS) — leitura pública por slug
+ALTER TABLE fornecedores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pedidos_fornecedor ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notas_fiscais ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "leitura_publica_fornecedores" ON fornecedores FOR SELECT USING (true);
+CREATE POLICY "leitura_publica_pedidos" ON pedidos_fornecedor FOR SELECT USING (true);
+CREATE POLICY "leitura_publica_nfe" ON notas_fiscais FOR SELECT USING (true);
+CREATE POLICY "insert_service_role_fornecedores" ON fornecedores FOR INSERT WITH CHECK (true);
+CREATE POLICY "update_service_role_fornecedores" ON fornecedores FOR UPDATE USING (true);
+CREATE POLICY "insert_service_role_pedidos" ON pedidos_fornecedor FOR INSERT WITH CHECK (true);
+CREATE POLICY "delete_service_role_pedidos" ON pedidos_fornecedor FOR DELETE USING (true);
+CREATE POLICY "insert_service_role_nfe" ON notas_fiscais FOR INSERT WITH CHECK (true);
+CREATE POLICY "delete_service_role_nfe" ON notas_fiscais FOR DELETE USING (true);</pre>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('sqlPre').textContent).then(()=>toast('✅ SQL copiado!'))">Copiar SQL</button>
+      <button class="btn-primary" onclick="document.getElementById('sqlModal').classList.remove('open');carregarFornecedores()">Já executei — recarregar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════
+   SUPABASE
+══════════════════════════════════════════════ */
+const SUPABASE_URL      = 'https://tvryqkctzpzylsdiaige.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2cnlxa2N0enB6eWxzZGlhaWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MDAwMjYsImV4cCI6MjA5Nzk3NjAyNn0.OFTj5G9ipr9Ps-l7_xS0Hu1q6os16WaWQeX8wun0jpk';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const BASE_URL = window.location.origin;
+const MONTH_NAMES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+let fornecedores = [];
+let sortField = 'nome', sortAsc = true;
+let uploadFornecedorId = null, uploadFornecedorSlug = null;
+let selectedFile = null, parsedRows = [];
+let dashCharts = {};
+let linkFornecedor = null;
+let debitosPorFornecedor = {};
+
+/* ══════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════ */
+function toast(msg, dur = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+function fmtBRL(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtBRLk(v) {
+  if (v >= 1e6) return 'R$ ' + (v/1e6).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + 'M';
+  if (v >= 1e3) return 'R$ ' + (v/1e3).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + 'k';
+  return fmtBRL(v);
+}
+function fmtKG(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' kg'; }
+function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return dt.toLocaleDateString('pt-BR'); }
+function mascaraCNPJ(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,14);
+  if (v.length > 12) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*/, '$1.$2.$3/$4-$5');
+  else if (v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4}?)/, '$1.$2.$3/$4');
+  else if (v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+  el.value = v;
+}
+
+// Slug preview
+document.getElementById('fSlug').addEventListener('input', function() {
+  document.getElementById('slugPreview').innerHTML = `URL: /fornecedor/<strong>${this.value || 'slug'}</strong>`;
+});
+document.getElementById('fNome').addEventListener('input', function() {
+  const slug = document.getElementById('fSlug');
+  if (!slug.dataset.manual) {
+    const s = this.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    slug.value = s;
+    document.getElementById('slugPreview').innerHTML = `URL: /fornecedor/<strong>${s || 'slug'}</strong>`;
+  }
+});
+document.getElementById('fSlug').addEventListener('keydown', function() { this.dataset.manual = '1'; });
+
+/* ══════════════════════════════════════════════
+   MODAIS
+══════════════════════════════════════════════ */
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-backdrop').forEach(m => {
+  m.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open')); });
+
+/* ══════════════════════════════════════════════
+   MODAL NOVO FORNECEDOR
+══════════════════════════════════════════════ */
+let editingId = null;
+
+function abrirModalNovo() {
+  editingId = null;
+  document.getElementById('modalFormTitle').textContent = 'Novo fornecedor';
+  ['fNome','fCnpj','fContato','fEmail','fSlug','fPctSellin'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fCategoria').value = '';
+  document.getElementById('fStatus').value = 'ativo';
+  delete document.getElementById('fSlug').dataset.manual;
+  abrirModal('modalForm');
+}
+
+function abrirModalEditar(f) {
+  editingId = f.id;
+  document.getElementById('modalFormTitle').textContent = 'Editar fornecedor';
+  document.getElementById('fNome').value = f.nome || '';
+  document.getElementById('fCnpj').value = f.cnpj || '';
+  document.getElementById('fCategoria').value = f.categoria || '';
+  document.getElementById('fSlug').value = f.slug || '';
+  document.getElementById('fSlug').dataset.manual = '1';
+  document.getElementById('fContato').value = f.contato || '';
+  document.getElementById('fEmail').value = f.email || '';
+  document.getElementById('fStatus').value = f.status || 'ativo';
+  document.getElementById('fPctSellin').value = f.pct_sellin || '';
+  document.getElementById('slugPreview').innerHTML = `URL: /fornecedor/<strong>${f.slug || '—'}</strong>`;
+  abrirModal('modalForm');
+}
+
+async function salvarFornecedor() {
+  const nome       = document.getElementById('fNome').value.trim();
+  const cnpj       = document.getElementById('fCnpj').value.trim();
+  const categoria  = document.getElementById('fCategoria').value;
+  const slug       = document.getElementById('fSlug').value.trim();
+  const contato    = document.getElementById('fContato').value.trim();
+  const email      = document.getElementById('fEmail').value.trim();
+  const status     = document.getElementById('fStatus').value;
+  const pct_sellin = parseFloat(document.getElementById('fPctSellin').value) || 0;
+
+  if (!nome || !slug) { toast('⚠️ Nome e Slug são obrigatórios.'); return; }
+
+  const payload = { nome, cnpj, categoria, slug, contato, email, status, pct_sellin, atualizado_em: new Date().toISOString() };
+
+  try {
+    if (editingId) {
+      const { error } = await db.from('fornecedores').update(payload).eq('id', editingId);
+      if (error) throw error;
+      toast('✅ Fornecedor atualizado!');
+    } else {
+      payload.criado_em = new Date().toISOString();
+      const { error } = await db.from('fornecedores').insert([payload]);
+      if (error) throw error;
+      toast('✅ Fornecedor cadastrado!');
+    }
+    fecharModal('modalForm');
+    await carregarFornecedores();
+  } catch(e) {
+    toast('❌ Erro: ' + (e.message || JSON.stringify(e)));
+  }
+}
+
+/* ══════════════════════════════════════════════
+   MODAL UPLOAD
+══════════════════════════════════════════════ */
+function abrirUpload(id, nome, slug) {
+  uploadFornecedorId   = id;
+  uploadFornecedorSlug = slug;
+  document.getElementById('uploadModalSub').textContent = nome;
+  removerArquivo();
+  document.getElementById('progressWrap').classList.remove('show');
+  document.getElementById('colMappingWrap').style.display = 'none';
+  abrirModal('modalUpload');
+}
+
+function ev(e, tipo) {
+  e.preventDefault();
+  const zone = document.getElementById('uploadZone');
+  if (tipo === 'drag') zone.classList.add('drag');
+  else if (tipo === 'leave') zone.classList.remove('drag');
+  else if (tipo === 'drop') { zone.classList.remove('drag'); if (e.dataTransfer.files[0]) onFileSelect(e.dataTransfer.files[0]); }
+}
+
+function onFileSelect(file) {
+  if (!file) return;
+  selectedFile = file;
+  document.getElementById('uploadPreview').classList.add('show');
+  document.getElementById('previewName').textContent = file.name;
+  document.getElementById('previewMeta').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + new Date().toLocaleDateString('pt-BR');
+  document.getElementById('btnEnviar').disabled = false;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    parsedRows = raw;
+    if (raw.length > 0) {
+      const cols = Object.keys(raw[0]);
+      document.getElementById('colMappingList').innerHTML = cols.map(c =>
+        `<span style="padding:3px 9px;background:var(--g100);border-radius:12px;font-size:10px;font-weight:600;color:var(--g700)">${c}</span>`
+      ).join('');
+      document.getElementById('colMappingWrap').style.display = 'block';
+      document.getElementById('previewMeta').textContent = (file.size/1024).toFixed(1) + ' KB · ' + raw.length.toLocaleString('pt-BR') + ' linhas detectadas';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function removerArquivo() {
+  selectedFile = null; parsedRows = [];
+  document.getElementById('uploadPreview').classList.remove('show');
+  document.getElementById('colMappingWrap').style.display = 'none';
+  document.getElementById('btnEnviar').disabled = true;
+  document.getElementById('fileInput').value = '';
+}
+
+/* ══════════════════════════════════════════════
+   NORMALIZADOR DE DATAS
+══════════════════════════════════════════════ */
+function normalizarData(dataStr) {
+  if (!dataStr || dataStr === '') return null;
+  const str = String(dataStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return str;
+  }
+  const match1 = str.match(/^(\d{1,2})[\/.\\-](\d{1,2})[\/.\\-](\d{4})$/);
+  if (match1) {
+    let [, dia, mes, ano] = match1;
+    dia = String(dia).padStart(2, '0');
+    mes = String(mes).padStart(2, '0');
+    const data = `${ano}-${mes}-${dia}`;
+    const d = new Date(data);
+    if (!isNaN(d.getTime())) return data;
+  }
+  const match2 = str.match(/^(\d{4})[\/.\\-](\d{1,2})[\/.\\-](\d{1,2})$/);
+  if (match2) {
+    let [, ano, mes, dia] = match2;
+    dia = String(dia).padStart(2, '0');
+    mes = String(mes).padStart(2, '0');
+    const data = `${ano}-${mes}-${dia}`;
+    const d = new Date(data);
+    if (!isNaN(d.getTime())) return data;
+  }
+  if (!isNaN(str) && str !== '') {
+    const num = Number(str);
+    if (num > 0 && num < 60000) {
+      const data = new Date((num - 25569) * 86400 * 1000);
+      if (!isNaN(data.getTime())) {
+        const iso = data.toISOString().split('T')[0];
+        const ano = parseInt(iso.slice(0, 4));
+        if (ano >= 1900 && ano <= 2100) return iso;
+      }
+    }
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const iso = d.toISOString().split('T')[0];
+    const ano = parseInt(iso.slice(0, 4));
+    if (ano >= 1900 && ano <= 2100) return iso;
+  }
+  return null;
+}
+
+const COL_MAP = {
+  'id_pedido_venda':   ['ID Pedido de Venda','id_pedido_venda','ID PEDIDO DE VENDA','Pedido'],
+  'vendedor':          ['Vendedor','vendedor','VENDEDOR'],
+  'tipo':              ['Tipo','tipo','TIPO'],
+  'id_cliente':        ['ID Cliente','id_cliente','ID CLIENTE'],
+  'cliente':           ['Cliente','cliente','CLIENTE'],
+  'bairro':            ['Bairro','bairro','BAIRRO'],
+  'cidade':            ['Cidade','cidade','CIDADE'],
+  'uf':                ['UF','uf'],
+  'zona':              ['Zona','zona','ZONA'],
+  'segmento':          ['Segmento','segmento','SEGMENTO'],
+  'data':              ['Data','data','DATA','Data Entrega','data_entrega'],
+  'dia':               ['Dia','dia','DIA'],
+  'mes':               ['Mês','mes','MES','Mês','mês'],
+  'ano':               ['Ano','ano','ANO'],
+  'dia_semana':        ['Dia da Semana','dia_semana','DIA DA SEMANA'],
+  'id_produto':        ['ID Produto','id_produto','ID PRODUTO'],
+  'grupo':             ['Grupo','grupo','GRUPO'],
+  'sub_grupo':         ['Sub-grupo','sub_grupo','SUB-GRUPO','Subgrupo'],
+  'produto':           ['Produto','produto','PRODUTO'],
+  'qtde_pc':           ['Qtde PC','qtde_pc','QTDE PC','Qtde. PC'],
+  'qtde_kg':           ['Qtde Kg','qtde_kg','QTDE KG','Qtde. Kg','Qtde_Kg'],
+  'valor':             ['Valor','valor','VALOR'],
+  'margem':            ['Margem','margem','MARGEM'],
+  'digitador':         ['Digitador','digitador','DIGITADOR'],
+  'validade':          ['Validade','validade','VALIDADE'],
+  'margem_grupo':      ['Margem do Grupo','margem_grupo','MARGEM DO GRUPO'],
+  'regiao':            ['Regiao','regiao','REGIAO','Região','região'],
+};
+
+function mapearColunas(row) {
+  const mapped = {};
+  for (const [campo, aliases] of Object.entries(COL_MAP)) {
+    for (const alias of aliases) {
+      if (row[alias] !== undefined) {
+        let valor = row[alias];
+        if (campo === 'data' && valor) valor = normalizarData(valor);
+        mapped[campo] = valor;
+        break;
+      }
+    }
+  }
+  return mapped;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+}
+
+async function enviarDados() {
+  if (!parsedRows.length) { toast('⚠️ Nenhum dado para importar.'); return; }
+
+  document.getElementById('btnEnviar').disabled = true;
+  document.getElementById('progressWrap').classList.add('show');
+
+  try {
+    setProgress(10, 'Limpando dados anteriores…');
+    const { error: delErr } = await db.from('pedidos_fornecedor').delete().eq('fornecedor_id', uploadFornecedorId);
+    if (delErr) throw delErr;
+
+    setProgress(30, 'Mapeando colunas…');
+    const rows = parsedRows.map(r => {
+      const m = mapearColunas(r);
+      m.fornecedor_id = uploadFornecedorId;
+      m.qtde_kg  = parseFloat(String(m.qtde_kg  || '0').replace(',','.')) || 0;
+      m.qtde_pc  = parseFloat(String(m.qtde_pc  || '0').replace(',','.')) || 0;
+      m.valor    = parseFloat(String(m.valor    || '0').replace(',','.')) || 0;
+      m.margem   = parseFloat(String(m.margem   || '0').replace(',','.')) || 0;
+      m.margem_grupo = parseFloat(String(m.margem_grupo || '0').replace(',','.')) || 0;
+      return m;
+    });
+
+    const BATCH = 500;
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const { error: insErr } = await db.from('pedidos_fornecedor').insert(batch);
+      if (insErr) throw insErr;
+      inserted += batch.length;
+      const pct = Math.round(30 + (inserted / rows.length) * 60);
+      setProgress(pct, `Importando… ${inserted.toLocaleString('pt-BR')} de ${rows.length.toLocaleString('pt-BR')} linhas`);
+    }
+
+    setProgress(95, 'Atualizando metadados…');
+    await db.from('fornecedores').update({
+      ultimo_upload:  new Date().toISOString(),
+      total_pedidos:  new Set(rows.map(r => r.id_pedido_venda)).size,
+      total_linhas:   rows.length,
+      total_valor:    rows.reduce((a,r) => a + (r.valor||0), 0),
+      total_kg:       rows.reduce((a,r) => a + (r.qtde_kg||0), 0),
+      status:         'ativo',
+    }).eq('id', uploadFornecedorId);
+
+    setProgress(100, '✅ Importação concluída!');
+    toast(`✅ ${rows.length.toLocaleString('pt-BR')} linhas importadas com sucesso!`);
+    setTimeout(() => { fecharModal('modalUpload'); carregarFornecedores(); }, 1200);
+
+  } catch(e) {
+    setProgress(0, '❌ Erro na importação');
+    toast('❌ Erro: ' + (e.message || JSON.stringify(e)));
+    document.getElementById('btnEnviar').disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   MODAL LINK
+══════════════════════════════════════════════ */
+function abrirModalLink(f) {
+  linkFornecedor = f;
+  const url = `${BASE_URL}/fornecedor/${f.slug}`;
+  document.getElementById('linkModalSub').textContent = f.nome;
+  document.getElementById('linkUrl').textContent = url;
+  document.getElementById('linkInfo').innerHTML = `
+    <div class="link-info-item"><div class="link-info-label">Fornecedor</div><div class="link-info-val">${f.nome}</div></div>
+    <div class="link-info-item"><div class="link-info-label">Slug</div><div class="link-info-val" style="font-family:monospace">${f.slug}</div></div>
+    <div class="link-info-item"><div class="link-info-label">Último upload</div><div class="link-info-val">${fmtDate(f.ultimo_upload)}</div></div>
+    <div class="link-info-item"><div class="link-info-label">Pedidos importados</div><div class="link-info-val">${(f.total_pedidos||0).toLocaleString('pt-BR')}</div></div>
+  `;
+  abrirModal('modalLink');
+}
+
+function copiarLink() {
+  const url = document.getElementById('linkUrl').textContent;
+  navigator.clipboard.writeText(url).then(() => toast('✅ Link copiado!'));
+}
+
+function abrirDashboard() {
+  if (!linkFornecedor) return;
+  window.open(`${BASE_URL}/fornecedor/${linkFornecedor.slug}`, '_blank');
+}
+
+/* ══════════════════════════════════════════════
+   MODAL PREVIEW DASHBOARD
+══════════════════════════════════════════════ */
+async function abrirPreviewDash(f) {
+  Object.values(dashCharts).forEach(c => c?.destroy?.());
+  dashCharts = {};
+
+  document.getElementById('dashModalTitle').textContent = f.nome;
+  document.getElementById('dashModalSub').textContent = f.categoria || '—';
+  document.getElementById('dashModalBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--ghost)">⏳ Carregando dados…</div>';
+  document.getElementById('btnAbrirDashExt').onclick = () => window.open(`${BASE_URL}/fornecedor/${f.slug}`, '_blank');
+  abrirModal('modalDash');
+
+  try {
+    let all = [], from = 0;
+    while (true) {
+      const { data, error } = await db.from('pedidos_fornecedor').select('*').eq('fornecedor_id', f.id).range(from, from + 999);
+      if (error) throw error;
+      if (!data?.length) break;
+      all = all.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+
+    if (!all.length) {
+      document.getElementById('dashModalBody').innerHTML = `
+        <div style="text-align:center;padding:40px;color:var(--ghost)">
+          <div style="font-size:32px;margin-bottom:8px;opacity:.4">📭</div>
+          <p>Nenhum dado importado ainda.</p>
+          <button class="btn-primary" style="margin-top:16px" onclick="fecharModal('modalDash');abrirUpload(${f.id},'${f.nome.replace(/'/g,"\\'")}','${f.slug}')">Fazer upload agora</button>
+        </div>`;
+      return;
+    }
+
+    renderPreviewDash(all, f);
+  } catch(e) {
+    document.getElementById('dashModalBody').innerHTML = `<div style="text-align:center;padding:40px;color:#991b1b">❌ Erro: ${e.message}</div>`;
+  }
+}
+
+function renderPreviewDash(data, f) {
+  const pedidos = new Set(data.map(r => r.id_pedido_venda)).size;
+  const vendas  = data.reduce((a,r) => a + (r.valor||0), 0);
+  const peso    = data.reduce((a,r) => a + (r.qtde_kg||0), 0);
+  const ticket  = pedidos ? vendas / pedidos : 0;
+
+  const mesSerie = {};
+  data.forEach(r => {
+    const m = r.data ? String(r.data).slice(0,7) : null;
+    if (!m || m.length < 7) return;
+    if (!mesSerie[m]) mesSerie[m] = { venda:0, peso:0 };
+    mesSerie[m].venda += r.valor||0;
+    mesSerie[m].peso  += r.qtde_kg||0;
+  });
+  const meses = Object.keys(mesSerie).sort();
+
+  const segMap = {};
+  data.forEach(r => { segMap[r.segmento||'—'] = (segMap[r.segmento||'—']||0) + (r.valor||0); });
+  const segEntries = Object.entries(segMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  const bairroMap = {};
+  data.forEach(r => { bairroMap[r.bairro||'—'] = (bairroMap[r.bairro||'—']||0) + (r.valor||0); });
+  const topBairros = Object.entries(bairroMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  const PALETTE = ['#1a4d2e','#2d7a4f','#4caf70','#7ecf98','#b8e8c7','#f59e0b'];
+
+  document.getElementById('dashModalBody').innerHTML = `
+    <div class="kpi-mini">
+      <div class="kpi-mini-card"><div class="kpi-mini-label">Pedidos</div><div class="kpi-mini-val">${pedidos.toLocaleString('pt-BR')}</div></div>
+      <div class="kpi-mini-card"><div class="kpi-mini-label">Venda R$</div><div class="kpi-mini-val">${fmtBRLk(vendas)}</div></div>
+      <div class="kpi-mini-card"><div class="kpi-mini-label">Volume KG</div><div class="kpi-mini-val">${fmtKG(peso)}</div></div>
+      <div class="kpi-mini-card"><div class="kpi-mini-label">Ticket Médio</div><div class="kpi-mini-val">${fmtBRLk(ticket)}</div></div>
+    </div>
+    <div class="dash-charts">
+      <div class="dash-chart-card"><div class="dash-chart-title">Vendas por Mês (R$)</div><div style="height:150px"><canvas id="dcMes"></canvas></div></div>
+      <div class="dash-chart-card"><div class="dash-chart-title">Por Segmento</div><div style="height:150px"><canvas id="dcSeg"></canvas></div></div>
+    </div>
+    <div class="dash-chart-card" style="margin-top:12px">
+      <div class="dash-chart-title">Top 5 Bairros por Venda R$</div>
+      <div style="height:120px"><canvas id="dcBairro"></canvas></div>
+    </div>
+  `;
+
+  const TICK = { font:{size:9,family:'Inter'}, color:'#8fa89d' };
+  const GRID = { color:'#f0f5f2', lineWidth:1 };
+  const OPTS = { responsive:true, maintainAspectRatio:false, animation:{duration:400}, plugins:{legend:{display:false}} };
+
+  const ctxM = document.getElementById('dcMes').getContext('2d');
+  dashCharts.mes = new Chart(ctxM, {
+    type:'bar',
+    data:{ labels: meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); }),
+           datasets:[{ data: meses.map(m=>mesSerie[m].venda), backgroundColor:'rgba(45,122,79,0.65)', borderRadius:4, borderSkipped:'bottom' }] },
+    options:{ ...OPTS, plugins:{...OPTS.plugins,tooltip:{callbacks:{label:c=>fmtBRL(c.raw)}}},
+              scales:{ x:{grid:{display:false},ticks:{...TICK,maxRotation:45,autoSkip:true,maxTicksLimit:8}},
+                       y:{grid:GRID,border:{display:false},ticks:{...TICK,callback:v=>'R$'+(v/1000).toFixed(0)+'k'}} } }
+  });
+
+  const ctxS = document.getElementById('dcSeg').getContext('2d');
+  dashCharts.seg = new Chart(ctxS, {
+    type:'doughnut',
+    data:{ labels:segEntries.map(x=>x[0]), datasets:[{ data:segEntries.map(x=>x[1]), backgroundColor:PALETTE, borderWidth:2, borderColor:'#fff' }] },
+    options:{ ...OPTS, cutout:'55%', plugins:{
+      legend:{display:true,position:'right',labels:{font:{size:9,family:'Inter'},color:'#1c3327',boxWidth:8,padding:5}},
+      tooltip:{callbacks:{label:c=>fmtBRL(c.raw)}} } }
+  });
+
+  const ctxB = document.getElementById('dcBairro').getContext('2d');
+  dashCharts.bairro = new Chart(ctxB, {
+    type:'bar',
+    data:{ labels: topBairros.map(x=>x[0]),
+           datasets:[{ data: topBairros.map(x=>x[1]), backgroundColor: topBairros.map((_,i)=>`rgba(26,77,46,${1-i*0.15})`), borderRadius:4, borderSkipped:'left' }] },
+    options:{ ...OPTS, indexAxis:'y', plugins:{...OPTS.plugins,tooltip:{callbacks:{label:c=>fmtBRL(c.raw)}}},
+              scales:{ x:{grid:GRID,border:{display:false},ticks:{...TICK,callback:v=>'R$'+(v/1000).toFixed(0)+'k'}},
+                       y:{grid:{display:false},ticks:{font:{size:9,family:'Inter'},color:'#1c3327'}} } }
+  });
+}
+
+/* ══════════════════════════════════════════════
+   TABELA
+══════════════════════════════════════════════ */
+function statusBadge(s, temDados) {
+  if (!temDados) return '<span class="badge badge-amber"><span class="badge-dot"></span>Sem dados</span>';
+  if (s === 'ativo') return '<span class="badge badge-green"><span class="badge-dot"></span>Ativo</span>';
+  if (s === 'inativo') return '<span class="badge badge-red"><span class="badge-dot"></span>Inativo</span>';
+  return '<span class="badge badge-gray">—</span>';
+}
+
+function sortBy(field) {
+  if (sortField === field) sortAsc = !sortAsc;
+  else { sortField = field; sortAsc = true; }
+  renderTabela();
+}
+
+function renderTabela() {
+  const q     = document.getElementById('searchInput').value.toLowerCase();
+  const stFil = document.getElementById('filterStatus').value;
+  
+
+  let list = fornecedores.filter(f => {
+    const match = (f.nome||'').toLowerCase().includes(q) || (f.cnpj||'').includes(q) || (f.slug||'').toLowerCase().includes(q);
+    if (!match) return false;
+    if (stFil === 'ativo')     return f.status === 'ativo' && f.ultimo_upload;
+    if (stFil === 'sem_dados') return !f.ultimo_upload;
+    if (stFil === 'inativo')   return f.status === 'inativo';
+    return true;
+  });
+
+  list.sort((a,b) => {
+    let va = sortField === '__debito' ? (debitosPorFornecedor[a.id]?.debito || 0) : (a[sortField] ?? '');
+    let vb = sortField === '__debito' ? (debitosPorFornecedor[b.id]?.debito || 0) : (b[sortField] ?? '');
+    if (typeof va === 'string') va = va.toLowerCase(); if (typeof vb === 'string') vb = vb.toLowerCase();
+    return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  });
+
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+
+  const tbody = document.getElementById('tabelaBody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8"><span class="empty-icon">🔍</span>Nenhum fornecedor encontrado.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(f => {
+    const temDados = !!f.ultimo_upload;
+    const debInfo = debitosPorFornecedor[f.id];
+    return `
+    <tr>
+      <td>
+        <div class="td-nome">${f.nome || '—'}</div>
+        <div class="td-slug">/fornecedor/${f.slug || '—'}</div>
+      </td>
+      <td class="td-cnpj">${f.cnpj || '—'}</td>
+      <td><span style="font-size:11px;color:var(--muted)">${f.categoria || '—'}</span></td>
+      <td>${statusBadge(f.status, temDados)}</td>
+      <td>
+        ${temDados ? `<div class="upload-count">${(f.total_pedidos||0).toLocaleString('pt-BR')} pedidos</div><div class="upload-date">${fmtDate(f.ultimo_upload)}</div>` : '<span style="font-size:11px;color:var(--ghost)">Nunca</span>'}
+      </td>
+      <td style="font-size:12px;font-variant-numeric:tabular-nums">
+        ${temDados ? `<div style="font-weight:600">${fmtBRLk(f.total_valor||0)}</div><div style="color:var(--ghost);font-size:10px">${fmtKG(f.total_kg||0)}</div>` : '—'}
+      </td>
+      <td>
+        ${debInfo && debInfo.debito > 0.01
+          ? `<span class="badge ${debInfo.debito > 20000 ? 'badge-red' : debInfo.debito > 5000 ? 'badge-amber' : 'badge-gray'}" style="cursor:pointer" onclick="abrirModalDebitos()">${fmtBRLk(debInfo.debito)}</span>`
+          : '<span style="font-size:11px;color:var(--ghost)">—</span>'}
+      </td>
+      <td>
+        <div class="td-actions">
+          <button class="act-btn act-nfe" onclick='abrirUploadNFe(${f.id},"${f.nome.replace(/"/g,"&quot;")}")' title="Upload NFe Sell-In">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            NFe
+          </button>
+          <button class="act-btn act-upload" onclick='abrirUpload(${f.id},"${f.nome.replace(/"/g,"&quot;")}","${f.slug}")' title="Upload XLSX">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            Upload
+          </button>
+          <button class="act-btn act-copy" onclick='abrirModalLink(${JSON.stringify(f).replace(/'/g,"&#39;")})' title="Copiar link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Link
+          </button>
+          ${temDados ? `<button class="act-btn act-dash" onclick='abrirPreviewDash(${JSON.stringify(f).replace(/'/g,"&#39;")})' title="Ver dados">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            Ver dados
+          </button>` : ''}
+          <button class="act-btn act-link" onclick='abrirModalEditar(${JSON.stringify(f).replace(/'/g,"&#39;")})' title="Editar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Editar
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function atualizarStats() {
+  const total    = fornecedores.length;
+  const comDados = fornecedores.filter(f => !!f.ultimo_upload).length;
+  const semDados = total - comDados;
+  const links    = total;
+  document.getElementById('statTotal').textContent    = total;
+  document.getElementById('statComDados').textContent = comDados;
+  document.getElementById('statSemDados').textContent = semDados;
+  document.getElementById('statLinks').textContent    = links;
+  document.getElementById('pillTotal').textContent    = total + ' fornecedores';
+  document.getElementById('pillAtivos').textContent   = comDados + ' ativos';
+}
+async function carregarDebitos() {
+  debitosPorFornecedor = {};
+  try {
+    let all = [], from = 0;
+    while (true) {
+      const { data, error } = await db.from('notas_fiscais').select('fornecedor_id, valor, situacao').range(from, from + 999);
+      if (error) throw error;
+      if (!data?.length) break;
+      all = all.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    const faturadoPorForn = {};
+    all.forEach(n => {
+      const sit = (n.situacao || '').toLowerCase().trim();
+      if (sit !== 'autorizada' && sit !== 'autorizado') return;
+      faturadoPorForn[n.fornecedor_id] = (faturadoPorForn[n.fornecedor_id] || 0) + (n.valor || 0);
+    });
+    fornecedores.forEach(f => {
+      const faturado = faturadoPorForn[f.id] || 0;
+      const pct = f.pct_sellin || 0;
+      debitosPorFornecedor[f.id] = { faturado, pct, debito: faturado * (pct / 100) };
+    });
+  } catch (e) { console.error('Erro ao carregar débitos:', e); }
+}
+
+function atualizarBadgeDebitos() {
+  const comDebito = Object.values(debitosPorFornecedor).filter(d => d.debito > 0.01);
+  const totalDebito = comDebito.reduce((a,d) => a + d.debito, 0);
+  const badge = document.getElementById('bellBadge');
+  if (comDebito.length > 0) { badge.textContent = comDebito.length; badge.style.display = 'flex'; }
+  else badge.style.display = 'none';
+  document.getElementById('statDebitoTotal').textContent = fmtBRLk(totalDebito);
+  document.getElementById('statDebitoQtd').textContent = comDebito.length + (comDebito.length === 1 ? ' fornecedor' : ' fornecedores') + ' com débito';
+}
+
+function abrirModalDebitos() {
+  const lista = Object.entries(debitosPorFornecedor)
+    .map(([id, d]) => ({ ...d, fornecedor: fornecedores.find(f => f.id == id) }))
+    .filter(d => d.fornecedor && d.debito > 0.01)
+    .sort((a,b) => b.debito - a.debito);
+  const totalDebito = lista.reduce((a,d) => a + d.debito, 0);
+
+  document.getElementById('debitosResumo').innerHTML = `
+    <div class="link-info-item"><div class="link-info-label">Fornecedores com débito</div><div class="link-info-val">${lista.length}</div></div>
+    <div class="link-info-item"><div class="link-info-label">Débito total acumulado</div><div class="link-info-val" style="color:#b45309">${fmtBRLk(totalDebito)}</div></div>
+  `;
+  document.getElementById('debitosBody').innerHTML = lista.length ? lista.map(d => {
+    const tier = d.debito > 20000 ? 'badge-red' : d.debito > 5000 ? 'badge-amber' : 'badge-gray';
+    return `<tr>
+      <td><div class="td-nome">${d.fornecedor.nome}</div><div class="td-slug">/fornecedor/${d.fornecedor.slug}</div></td>
+      <td style="font-size:11px;color:var(--muted)">${d.pct}%</td>
+      <td class="td-num">${fmtBRLk(d.faturado)}</td>
+      <td class="td-num"><span class="badge ${tier}">${fmtBRLk(d.debito)}</span></td>
+      <td><button class="act-btn act-dash" onclick="window.open('${BASE_URL}/fornecedor/${d.fornecedor.slug}','_blank')">Dashboard</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--ghost)">✅ Nenhum fornecedor com débito pendente.</td></tr>`;
+
+  abrirModal('modalDebitos');
+}
+
+function sortByDebito() { sortField = '__debito'; sortAsc = !sortAsc; renderTabela(); }
+
+/* ══════════════════════════════════════════════
+   CSV EXPORT
+══════════════════════════════════════════════ */
+function exportarCSV() {
+  if (!fornecedores.length) { toast('Sem dados para exportar.'); return; }
+  const cols = ['nome','cnpj','categoria','slug','contato','email','status','ultimo_upload','total_pedidos','total_valor','total_kg'];
+  const esc = v => { const s = String(v??''); return (s.includes(',') || s.includes('"')) ? `"${s.replace(/"/g,'""')}"` : s; };
+  const linhas = [cols.join(','), ...fornecedores.map(f => cols.map(c => esc(f[c])).join(','))];
+  const blob = new Blob(['\uFEFF' + linhas.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = Object.assign(document.createElement('a'), {href: URL.createObjectURL(blob), download: 'pmg_fornecedores.csv'});
+  a.click();
+  toast('✅ CSV exportado!');
+}
+
+/* ══════════════════════════════════════════════
+   CARREGAR DADOS
+══════════════════════════════════════════════ */
+async function carregarFornecedores() {
+  document.getElementById('tabelaBody').innerHTML = '<tr class="empty-row"><td colspan="8"><span class="empty-icon">⏳</span>Carregando…</td></tr>';
+  try {
+    const { data, error } = await db.from('fornecedores').select('*').order('nome');
+    if (error) throw error;
+    fornecedores = data || [];
+    atualizarStats();
+    renderTabela();
+  } catch(e) {
+    document.getElementById('tabelaBody').innerHTML = `
+      <tr class="empty-row"><td colspan="8">
+        <span class="empty-icon">🗄️</span>
+        Tabela <code>fornecedores</code> não encontrada no Supabase.<br>
+        <small style="display:block;margin-top:8px;color:var(--ghost)">
+          Crie a tabela no Supabase com o SQL abaixo para começar.
+        </small>
+        <button class="btn-primary" style="margin-top:12px" onclick="document.getElementById('sqlModal').classList.add('open')">
+          Ver SQL de criação
+        </button>
+      </td></tr>`;
+    document.getElementById('statTotal').textContent = document.getElementById('statComDados').textContent = document.getElementById('statSemDados').textContent = document.getElementById('statLinks').textContent = '—';
+  }
+}
+
+/* ══════════════════════════════════════════════
+   UPLOAD NFe
+══════════════════════════════════════════════ */
+let nfeFornecedorId = null;
+let nfeFile = null;
+let nfeParsedRows = [];
+
+function abrirUploadNFe(id, nome) {
+  nfeFornecedorId = id;
+  document.getElementById('nfeModalSub').textContent = nome;
+  removerNFe();
+  document.getElementById('nfeProgressWrap').classList.remove('show');
+  abrirModal('modalNFe');
+}
+
+function nfeEv(e, tipo) {
+  e.preventDefault();
+  const zone = document.getElementById('nfeUploadZone');
+  if (tipo === 'drag') zone.classList.add('drag');
+  else if (tipo === 'leave') zone.classList.remove('drag');
+  else if (tipo === 'drop') { zone.classList.remove('drag'); if (e.dataTransfer.files[0]) onNFeSelect(e.dataTransfer.files[0]); }
+}
+
+function onNFeSelect(file) {
+  if (!file) return;
+  nfeFile = file;
+  document.getElementById('nfePreview').classList.add('show');
+  document.getElementById('nfePreviewName').textContent = file.name;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    nfeParsedRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    document.getElementById('nfePreviewMeta').textContent =
+      (file.size / 1024).toFixed(1) + ' KB · ' + nfeParsedRows.length.toLocaleString('pt-BR') + ' linhas';
+    document.getElementById('btnEnviarNFe').disabled = false;
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function removerNFe() {
+  nfeFile = null; nfeParsedRows = [];
+  document.getElementById('nfePreview').classList.remove('show');
+  document.getElementById('btnEnviarNFe').disabled = true;
+  document.getElementById('nfeFileInput').value = '';
+}
+
+function setNFeProgress(pct, label) {
+  document.getElementById('nfeProgressFill').style.width = pct + '%';
+  document.getElementById('nfeProgressPct').textContent = pct + '%';
+  document.getElementById('nfeProgressLabel').textContent = label;
+}
+
+const NFE_COL_MAP = {
+  numero:             ['Número','Numero','numero','NF','Nº NF'],
+  emissao:            ['Data de Emissão','Data Emissão','Emissão','emissao','Data','DT Emissão'],
+  cnpj_emitente:      ['CNPJ Emitente','CNPJ do Emitente','cnpj_emitente','CNPJ Emit.'],
+  emitente:           ['Emitente','Nome Emitente','Razão Social Emitente','emitente'],
+  natureza_operacao:  ['Natureza da Operação','Natureza Operação','natureza_operacao','Natureza'],
+  situacao:           ['Situação','situacao','Status','Sit.'],
+  valor:              ['Valor Total','Valor','valor','Vl Total','Total NF'],
+  chave:              ['Chave de Acesso','Chave','chave','Chave NF-e'],
+};
+
+function mapearNFe(row) {
+  const mapped = {};
+  for (const [campo, aliases] of Object.entries(NFE_COL_MAP)) {
+    for (const alias of aliases) {
+      if (row[alias] !== undefined) {
+        let v = row[alias];
+        if (campo === 'emissao' && v) v = normalizarData(String(v));
+        if (campo === 'valor') {
+          if (typeof v === 'number') {
+            v = v; // já é número correto, não mexe
+          } else {
+            let s = String(v).trim();
+            // só remove ponto de milhar se houver vírgula decimal (formato BR em texto)
+            if (s.includes(',')) {
+              s = s.replace(/\./g, '').replace(',', '.');
+            }
+            v = parseFloat(s) || 0;
+          }
+        }
+        mapped[campo] = v;
+        break;
+      }
+    }
+  }
+  return mapped;
+}
+
+async function enviarNFe() {
+  if (!nfeParsedRows.length) { toast('⚠️ Nenhum dado para importar.'); return; }
+  document.getElementById('btnEnviarNFe').disabled = true;
+  document.getElementById('nfeProgressWrap').classList.add('show');
+
+  try {
+    setNFeProgress(10, 'Limpando notas anteriores…');
+    await db.from('notas_fiscais').delete().eq('fornecedor_id', nfeFornecedorId);
+
+    setNFeProgress(30, 'Mapeando colunas…');
+    const rows = nfeParsedRows.map(r => {
+      const m = mapearNFe(r);
+      m.fornecedor_id = nfeFornecedorId;
+      return m;
+    }).filter(r => r.emissao || r.numero);
+
+    const BATCH = 500;
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const { error } = await db.from('notas_fiscais').insert(rows.slice(i, i + BATCH));
+      if (error) throw error;
+      inserted += Math.min(BATCH, rows.length - i);
+      setNFeProgress(Math.round(30 + inserted / rows.length * 65), `Importando… ${inserted} de ${rows.length}`);
+    }
+
+    setNFeProgress(100, '✅ Concluído!');
+    toast(`✅ ${rows.length} notas importadas!`);
+    setTimeout(() => fecharModal('modalNFe'), 1200);
+
+  } catch (err) {
+    setNFeProgress(0, '❌ Erro');
+    toast('❌ ' + err.message);
+    document.getElementById('btnEnviarNFe').disabled = false;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   INIT — chamado por último, todas as funções já definidas
+══════════════════════════════════════════════ */
+document.getElementById('sqlModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
+(async function initPage() {
+  await carregarFornecedores();
+  await carregarDebitos();
+  atualizarBadgeDebitos();
+  renderTabela();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload de Relatório – PMG</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 500px; margin: 60px auto; }
+    h1 { color: #1a5c2a; }
+    input[type=file] { margin: 20px 0; display: block; }
+    button { background: #1a5c2a; color: white; padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+    #status { margin-top: 16px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>📤 Enviar Relatório de Vendas</h1>
+  <p>Selecione o arquivo XLSX exportado do sistema.</p>
+
+  <input type="file" id="arquivo" accept=".xlsx" />
+  <button onclick="enviar()">Enviar e processar</button>
+  <div id="status"></div>
+
+  <script>
+    async function enviar() {
+      const file = document.getElementById('arquivo').files[0];
+      const status = document.getElementById('status');
+
+      if (!file) return status.textContent = '⚠️ Selecione um arquivo.';
+      status.textContent = '⏳ Processando...';
+
+      // Converte para base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/processar-xlsx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileBase64: base64 })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        status.textContent = `✅ ${data.inseridos} pedidos importados com sucesso!`;
+      } else {
+        status.textContent = `❌ Erro: ${data.erro}`;
+      }
+    }
+  </script>
+</body>
+</html>

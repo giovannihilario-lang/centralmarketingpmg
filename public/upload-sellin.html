@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload Sell-In – PMG</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 520px; margin: 60px auto; }
+    h1 { color: #1a5c2a; }
+    label { font-weight: bold; display: block; margin-top: 16px; }
+    select, input[type=file] { width: 100%; margin-top: 6px; padding: 8px; font-size: 14px; }
+    button { background: #1a5c2a; color: white; padding: 10px 24px; border: none;
+             border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 20px; }
+    #status { margin-top: 16px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>📥 Upload Sell-In (NFe)</h1>
+  <p>Selecione o fornecedor e o arquivo XLSX da Consulta NFe Destinada.</p>
+
+  <label>Fornecedor</label>
+  <select id="fornecedor"><option value="">Carregando...</option></select>
+
+  <label>Arquivo XLSX</label>
+  <input type="file" id="arquivo" accept=".xlsx" />
+
+  <button onclick="enviar()">Enviar e processar</button>
+  <div id="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+   const SUPABASE_URL      = 'https://tvryqkctzpzylsdiaige.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2cnlxa2N0enB6eWxzZGlhaWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MDAwMjYsImV4cCI6MjA5Nzk3NjAyNn0.OFTj5G9ipr9Ps-l7_xS0Hu1q6os16WaWQeX8wun0jpk';
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function carregarFornecedores() {
+      const { data } = await sb.from('fornecedores').select('id, nome').order('nome');
+      const sel = document.getElementById('fornecedor');
+      sel.innerHTML = '<option value="">Selecione...</option>' +
+        (data || []).map(f => `<option value="${f.id}">${f.nome}</option>`).join('');
+    }
+    carregarFornecedores();
+
+    async function enviar() {
+      const fornecedorId = document.getElementById('fornecedor').value;
+      const file = document.getElementById('arquivo').files[0];
+      const status = document.getElementById('status');
+
+      if (!fornecedorId) return status.textContent = '⚠️ Selecione um fornecedor.';
+      if (!file) return status.textContent = '⚠️ Selecione um arquivo.';
+      status.textContent = '⏳ Processando...';
+
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/processar-sellin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileBase64: base64, fornecedorId: Number(fornecedorId) })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        status.textContent = `✅ ${data.inseridas} notas importadas! (${data.filtradas} filtradas fora)`;
+      } else {
+        status.textContent = `❌ Erro: ${data.erro}`;
+      }
+    }
+  </script>
+</body>
+</html>
