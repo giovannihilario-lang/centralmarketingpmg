@@ -1,0 +1,17 @@
+[33mab6ff0c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m add central marketing hub page and set marketing login redirect
+[33m6be6aa2[m[33m ([m[1;31morigin/main[m[33m, [m[1;32mbackup-antes-de-reverter[m[33m)[m slug.html: fix column name sub_grupo in WANTED_COLS
+[33m4ae44fc[m slug.html: stream 100k+ rows via column projection + batched cursor fetch
+[33m22f6c10[m tudo como era antes
+[33m7ec4a64[m teste
+[33m937acb3[m AAAAAAAAAAAAA
+[33mfa4febb[m AAAAAAAAAAAAA
+[33m061a879[m AAAAAAAAAAAAA
+[33me9910e1[m sla mano
+[33md46f6cf[m Adiciona conteudo do service worker sw.js
+[33mc027812[m Mostra erro real ao salvar subscricao push
+[33m85a130a[m Corrige escopo da funcao ativarNotificacoes e botao aninhado
+[33m4b4f8ec[m Adiciona botao de ativar notificacoes push
+[33mb164009[m Corrige formato do vapid subject
+[33m895b0ac[m Adiciona type module no package.json
+[33mc445d8d[m Adiciona cron de notificacao de debitos
+[33mbe10b02[m Primeiro commit
