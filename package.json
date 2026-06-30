@@ -1,4 +1,6 @@
 {
+  "type": "module",
+  "name": "pmg-marketing",
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
     "web-push": "^3.6.7",
