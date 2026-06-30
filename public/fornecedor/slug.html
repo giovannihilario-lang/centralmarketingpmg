@@ -986,8 +986,7 @@ const WANTED_COLS = `
 /* ──────────────────────────────────────────────
    2️⃣  STREAMING BATCH FETCH (cursor‑style)
    ────────────────────────────────────────────── */
-async function* fetchBatches(slug, batch = 2000) {
-  // resolve fornecedor_id once
+async function* fetchBatches(slug, batch = 1000) {
   const { data: f, error: ferr } = await db
     .from('fornecedores')
     .select('id')
