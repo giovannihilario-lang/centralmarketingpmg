@@ -962,6 +962,60 @@ let clusterGroup = null;
 let mapMode   = 'heat';
 let bairroData = []; // computed per filter
 
+/* ──────────────────────────────────────────────
+   1️⃣  COLUMNS WE ACTUALLY NEED (reduces payload)
+   ────────────────────────────────────────────── */
+const WANTED_COLS = `
+  id,
+  fornecedor_id,
+  data,
+  valor,
+  qtde_kg,
+  id_pedido_venda,
+  grupo,
+  subgrupo,
+  segmento,
+  bairro,
+  latitude,
+  longitude,
+  lat,
+  lon,
+  margem,
+  dia_semana,
+  id_cliente,
+  cliente,
+  produto,
+  sub_grupo
+`.trim();
+
+/* ──────────────────────────────────────────────
+   2️⃣  STREAMING BATCH FETCH (cursor‑style)
+   ────────────────────────────────────────────── */
+async function* fetchBatches(slug, batch = 2000) {
+  // resolve fornecedor_id once
+  const { data: f, error: ferr } = await db
+    .from('fornecedores')
+    .select('id')
+    .eq('slug', slug)
+    .single();
+  if (ferr || !f) throw new Error('fornecedor not found');
+
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('pedidos_fornecedor')
+      .select(WANTED_COLS)
+      .eq('fornecedor_id', f.id)
+      .order('data', { ascending: true })
+      .range(from, from + batch - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    yield data;
+    if (data.length < batch) break;
+    from += batch;
+  }
+}
+
 /* ══════════════════════════════════════════════
    SLUG from URL
 ══════════════════════════════════════════════ */
@@ -996,7 +1050,7 @@ function roundMoney(value) {
 }
 
 /* ══════════════════════════════════════════════
-   LOAD DATA
+   INIT – STREAMING LOAD
 ══════════════════════════════════════════════ */
 async function init() {
   const slug = getSlug();
@@ -1005,7 +1059,12 @@ async function init() {
     return;
   }
 
-  const { data: fList, error: fErr } = await db.from('fornecedores').select('*').eq('slug', slug).limit(1);
+  // 1️⃣  resolve fornecedor
+  const { data: fList, error: fErr } = await db
+    .from('fornecedores')
+    .select('*')
+    .eq('slug', slug)
+    .limit(1);
   if (fErr || !fList?.length) {
     showError('Fornecedor não encontrado', `Nenhum fornecedor com o slug "${slug}".`);
     return;
@@ -1014,28 +1073,24 @@ async function init() {
 
   document.title = fornecedor.nome + ' — PMG Atacadista';
   document.getElementById('heroTitle').textContent = fornecedor.nome;
-  document.getElementById('heroSub').textContent = (fornecedor.categoria || '') + (fornecedor.cnpj ? ' · CNPJ ' + fornecedor.cnpj : '');
+  document.getElementById('heroSub').textContent =
+    (fornecedor.categoria || '') + (fornecedor.cnpj ? ' · CNPJ ' + fornecedor.cnpj : '');
 
-  let all = [], from = 0;
-  while (true) {
-    const { data, error } = await db
-      .from('pedidos_fornecedor')
-      .select('*')
-      .eq('fornecedor_id', fornecedor.id)
-      .range(from, from + 999);
-    if (error) break;
-    if (!data?.length) break;
-    all = all.concat(data);
-    if (data.length < 1000) break;
-    from += 1000;
+  // 2️⃣  stream batches into allData
+  try {
+    for await (const batch of fetchBatches(slug, 2000)) {
+      allData.push(...batch);
+    }
+  } catch (e) {
+    showError('Erro ao carregar pedidos', e.message);
+    return;
   }
 
-  if (!all.length) {
+  if (!allData.length) {
     showError('Sem dados ainda', 'O dashboard será publicado após o primeiro upload de dados.');
     return;
   }
 
-allData = all;
   applyFilter(monthsFilter);
   hideLoader();
   renderAll();
