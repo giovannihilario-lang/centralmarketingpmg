@@ -5,7 +5,7 @@
       "password": "@PMGMarketing@2026",
       "role": "marketing",
       "name": "Equipe de Marketing",
-      "dashboard": "index.html"
+      "dashboard": "central.html"
     },
     {
       "username": "compras",
