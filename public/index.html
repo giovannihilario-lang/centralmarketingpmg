@@ -1,666 +1,321 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Marketing PMG Atacadista</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --verde:       #1B5E20;
-    --verde-med:   #2E7D32;
-    --verde-vivo:  #43A047;
-    --accent:      #81C784;
-    --bg:          #F4F6F4;
-    --surface:     #FFFFFF;
-    --border:      #E2E8E2;
-    --text:        #1A2A1A;
-    --muted:       #6B7B6B;
-    --danger:      #C62828;
-  }
-
-  html, body { height: 100%; }
-
-  body {
-    font-family: 'Inter', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-  }
-#login-screen {
-  position: fixed; inset: 0;
-  background: var(--verde);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 9999;
-  font-family: 'Inter', system-ui, sans-serif;
-}
-.login-box {
-  background: white;
-  border-radius: 16px;
-  padding: 40px 36px;
-  width: 340px;
-  display: flex; flex-direction: column; gap: 20px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-}
-.login-logo {
-  width: 48px; height: 48px;
-  background: var(--verde);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 13px; color: white;
-  margin-bottom: 4px;
-}
-.login-title { font-size: 18px; font-weight: 700; color: var(--text); }
-.login-sub   { font-size: 12px; color: var(--muted); margin-top: -12px; }
-.login-input {
-  width: 100%; padding: 11px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px; font-size: 14px;
-  outline: none; transition: border 0.15s;
-  font-family: inherit;
-}
-.login-input:focus { border-color: var(--verde-vivo); }
-.login-btn {
-  width: 100%; padding: 12px;
-  background: var(--verde); color: white;
-  border: none; border-radius: 8px;
-  font-size: 14px; font-weight: 600;
-  cursor: pointer; transition: background 0.15s;
-  font-family: inherit;
-}
-.login-btn:hover { background: var(--verde-med); }
-.login-erro {
-  font-size: 12px; color: var(--danger);
-  text-align: center; display: none;
-}
-  /* ── SIDEBAR ── */
-  .sidebar {
-    position: fixed;
-    top: 0; left: 0; bottom: 0;
-    width: 220px;
-    background: var(--verde);
-    display: flex;
-    flex-direction: column;
-    z-index: 50;
-  }
-
-  .sidebar-brand {
-    padding: 24px 20px 20px;
-    border-bottom: 1px solid rgba(255,255,255,.1);
-  }
-  .brand-logo {
-    width: 42px; height: 42px;
-    background: white;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 12px;
-    color: var(--verde);
-    letter-spacing: .5px;
-    margin-bottom: 12px;
-  }
-  .brand-name {
-    font-size: 13px;
-    font-weight: 700;
-    color: white;
-    line-height: 1.2;
-  }
-  .brand-dept {
-    font-size: 10px;
-    color: var(--accent);
-    font-weight: 500;
-    margin-top: 2px;
-    text-transform: uppercase;
-    letter-spacing: .8px;
-  }
-
-  .sidebar-nav {
-    flex: 1;
-    padding: 16px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    overflow-y: auto;
-  }
-
-  .nav-label {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,.35);
-    padding: 12px 8px 6px;
-    margin-top: 6px;
-  }
-  .nav-label:first-child { margin-top: 0; }
-
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 10px;
-    border-radius: 7px;
-    font-size: 13px;
-    font-weight: 500;
-    color: rgba(255,255,255,.75);
-    text-decoration: none;
-    transition: all .15s;
-    cursor: pointer;
-  }
-  .nav-item:hover, .nav-item.active {
-    background: rgba(255,255,255,.12);
-    color: white;
-  }
-  .nav-item.active { font-weight: 600; }
-  .nav-item .nav-icon { width: 16px; height: 16px; flex-shrink: 0; opacity: .8; }
-
-  .sidebar-footer {
-    padding: 16px;
-    border-top: 1px solid rgba(255,255,255,.1);
-    font-size: 10px;
-    color: rgba(255,255,255,.3);
-    text-align: center;
-  }
-
-  /* ── MAIN ── */
-  .main {
-    margin-left: 220px;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .topbar {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 14px 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 40;
-  }
-  .topbar-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .topbar-sub {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 1px;
-  }
-
-  .topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .badge-date {
-    font-size: 11px;
-    color: var(--muted);
-    background: var(--bg);
-    padding: 5px 11px;
-    border-radius: 20px;
-    border: 1px solid var(--border);
-  }
-
-  /* ── CONTENT ── */
-  .content {
-    flex: 1;
-    padding: 28px 32px;
-  }
-
-  /* ── HERO ── */
-  .hero {
-    background: var(--verde);
-    border-radius: 14px;
-    padding: 32px 36px;
-    margin-bottom: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    overflow: hidden;
-    position: relative;
-  }
-  .hero::before {
-    content: '';
-    position: absolute;
-    right: -60px; top: -60px;
-    width: 260px; height: 260px;
-    border-radius: 50%;
-    background: rgba(255,255,255,.04);
-  }
-  .hero::after {
-    content: '';
-    position: absolute;
-    right: 60px; bottom: -80px;
-    width: 200px; height: 200px;
-    border-radius: 50%;
-    background: rgba(129,199,132,.08);
-  }
-  .hero-text { position: relative; }
-  .hero-eyebrow {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 8px;
-  }
-  .hero-title {
-    font-family: 'DM Serif Display', serif;
-    font-size: 30px;
-    color: white;
-    line-height: 1.15;
-    margin-bottom: 10px;
-  }
-  .hero-desc {
-    font-size: 13px;
-    color: rgba(255,255,255,.65);
-    max-width: 420px;
-    line-height: 1.6;
-  }
-
-  /* ── SECTION HEADER ── */
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .section-title {
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--muted);
-  }
-
-  /* ── TOOLS GRID ── */
-  .tools-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 14px;
-    margin-bottom: 32px;
-  }
-
-  .tool-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-    text-decoration: none;
-    color: inherit;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    transition: all .18s;
-    cursor: pointer;
-  }
-  .tool-card:hover {
-    border-color: var(--verde-vivo);
-    box-shadow: 0 4px 16px rgba(27,94,32,.1);
-    transform: translateY(-2px);
-  }
-
-  .tool-icon {
-    width: 40px; height: 40px;
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .tool-icon.green  { background: #E8F5E9; }
-  .tool-icon.blue   { background: #E3F2FD; }
-  .tool-icon.amber  { background: #FFF8E1; }
-  .tool-icon.purple { background: #F3E5F5; }
-
-  .tool-name {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1.3;
-  }
-  .tool-desc {
-    font-size: 11px;
-    color: var(--muted);
-    line-height: 1.5;
-    flex: 1;
-  }
-  .tool-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: .6px;
-    text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: 20px;
-    width: fit-content;
-  }
-  .tool-badge.live    { background: #E8F5E9; color: #2E7D32; }
-  .tool-badge.soon    { background: #FFF8E1; color: #F57F17; }
-  .tool-badge.new     { background: #E3F2FD; color: #1565C0; }
-
-  /* ── ACTIVITY / INFO CARDS ── */
-  .info-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-
-  .info-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-  }
-  .info-card-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .8px;
-    color: var(--muted);
-    margin-bottom: 16px;
-  }
-
-  .update-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .update-item:last-child { border-bottom: none; padding-bottom: 0; }
-
-  .update-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-    margin-top: 5px;
-    flex-shrink: 0;
-  }
-  .update-text { font-size: 12px; color: var(--text); line-height: 1.5; }
-  .update-time { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-  .shortcut-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .shortcut-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text);
-    cursor: pointer;
-    text-decoration: none;
-    transition: all .15s;
-  }
-  .shortcut-btn:hover {
-    background: #E8F5E9;
-    border-color: var(--accent);
-    color: var(--verde);
-  }
-  .shortcut-btn svg { opacity: .6; flex-shrink: 0; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMG Marketing Portal - Login</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --verde-escuro: #1B5E20; --verde-med: #2E7D32;
+      --verde-claro: #C8E6C9; --verde-suave: #F1F8F1; --accent: #81C784;
+      --border: #D1D5DB; --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,.1);
+      --text-primary: #212121; --text-secondary: #666;
+      --danger: #D32F2F; --warning: #F57C00;
+    }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.15);
+      width: 100%;
+      max-width: 400px;
+      padding: 40px;
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .login-header h1 {
+      color: var(--verde-escuro);
+      margin-bottom: 8px;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .login-header p {
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 24px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: var(--verde-escuro);
+      font-size: 14px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 15px;
+      transition: all 0.3s ease;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--verde-med);
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    }
+    .btn-login {
+      width: 100%;
+      background: var(--verde-escuro);
+      color: white;
+      border: none;
+      padding: 14px;
+      font-weight: 700;
+      font-size: 16px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-login:hover {
+      background: var(--verde-med);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+    }
+    .btn-login:active {
+      transform: translateY(0);
+    }
+    .login-footer {
+      text-align: center;
+      margin-top: 24px;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+    .login-footer a {
+      color: var(--verde-med);
+      text-decoration: none;
+    }
+    .login-footer a:hover {
+      text-decoration: underline;
+    }
+    .alert {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      max-width: 90%;
+      text-align: center;
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from { transform: translate(-50%, -20px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    .alert-success {
+      background-color: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    .alert-error {
+      background-color: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+    .alert-warning {
+      background-color: #fffbeb;
+      color: #92400e;
+      border: 1px solid #fef3c7;
+    }
+  </style>
 </head>
 <body>
-
-<div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">PMG</div>
-    <div>
-      <div class="login-title">Portal de Marketing</div>
+  <div class="login-container">
+    <div class="login-header">
+      <h1><i class="fas fa-chart-line"></i> PMG Marketing Portal</h1>
+      <p>Portal interno de marketing e setores</p>
     </div>
-    <input
-      class="login-input"
-      id="login-input"
-      type="password"
-      placeholder="Digite a senha"
-      onkeydown="if(event.key==='Enter') tentarLogin()"
-      autocomplete="current-password"
-    />
-    <div class="login-erro" id="login-erro">Senha incorreta. Tente novamente.</div>
-    <button class="login-btn" onclick="tentarLogin()">Entrar</button>
+
+    <form id="loginForm" class="login-form">
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input type="text" id="username" placeholder="Digite seu usuário" required autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input type="password" id="password" placeholder="Digite sua senha" required autocomplete="current-password">
+      </div>
+
+      <button type="submit" class="btn-login">
+        <i class="fas fa-sign-in-alt"></i> Entrar
+      </button>
+    </form>
+
+    <div class="login-footer">
+      <p>© 2026 PMG Atacadista • Todos os direitos reservados</p>
+    </div>
   </div>
-</div>
 
-<!-- ── SIDEBAR ── -->
-<aside class="sidebar">
-  <div class="sidebar-brand">
-    <div class="brand-logo">PMG</div>
-    <div class="brand-name">PMG Atacadista</div>
-    <div class="brand-dept">Marketing</div>
-  </div>
-
-  <nav class="sidebar-nav">
-    <div class="nav-label">Geral</div>
-    <a href="/" class="nav-item active">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Início
-    </a>
-
-    <div class="nav-label">Ferramentas</div>
-    <a href="/ferramentas/catalogo.html" class="nav-item">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      Gerador de Catálogo
-    </a>
-    <a href="/dashboard.html" class="nav-item">
-  <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-  Dashboards
-</a>
-    <a href="#" class="nav-item" onclick="proximamente(event)">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-      Comunicados
-    </a>
-    <a href="#" class="nav-item" onclick="proximamente(event)">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      Materiais
-    </a>
-
-    <div class="nav-label">Relatórios</div>
-    <a href="#" class="nav-item" onclick="proximamente(event)">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      Vendas por Categoria
-    </a>
-    <a href="#" class="nav-item" onclick="proximamente(event)">
-      <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      Histórico de Envios
-    </a>
-  </nav>
-
-  <div class="sidebar-footer">PMG Atacadista © 2025</div>
-</aside>
-
-<!-- ── MAIN ── -->
-<main class="main">
-  <header class="topbar">
-    <div>
-      <div class="topbar-title">Portal de Marketing</div>
-      <div class="topbar-sub">Ferramentas e recursos do departamento</div>
-    </div>
-    <div class="topbar-right">
-      <span class="badge-date" id="dataAtual"></span>
-    </div>
-  </header>
-
-  <div class="content">
-
-    <!-- HERO -->
-    <div class="hero">
-      <div class="hero-text">
-        <div class="hero-eyebrow">PMG Atacadista</div>
-        <h1 class="hero-title">Central do<br>Marketing</h1>
-        <p class="hero-desc">Catálogos, dashboards e materiais de comunicação em um só lugar, conectados diretamente à base de dados da PMG.</p>
-      </div>
-    </div>
-
-    <!-- FERRAMENTAS -->
-    <div class="section-header">
-      <div class="section-title">Ferramentas disponíveis</div>
-    </div>
-
-    <div class="tools-grid">
-      <a href="/ferramentas/catalogo.html" class="tool-card">
-        <div class="tool-icon green">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2E7D32" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-        </div>
-        <div>
-          <div class="tool-name">Gerador de Catálogo</div>
-          <div class="tool-desc">Monte catálogos em PDF com produtos sincronizados direto da API PMG.</div>
-        </div>
-        <span class="tool-badge live">● Ativo</span>
-      </a>
-
-      <a href="/dashboard.html" class="tool-card">
-  <div class="tool-icon blue">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1565C0" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        </div>
-        <div>
-          <div class="tool-name">Dashboards</div>
-          <div class="tool-desc">Visualizações de desempenho de campanhas, vendas e alcance.</div>
-        </div>
-        <span class="tool-badge new">● Ativo</span>
-</a>
-
-      <div class="tool-card" onclick="proximamente(event)">
-        <div class="tool-icon amber">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E65100" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-        </div>
-        <div>
-          <div class="tool-name">Envio de Materiais</div>
-          <div class="tool-desc">Disparo de catálogos e comunicados para clientes e equipe.</div>
-        </div>
-        <span class="tool-badge soon">Em breve</span>
-      </div>
-
-      <div class="tool-card" onclick="proximamente(event)">
-        <div class="tool-icon purple">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6A1B9A" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        </div>
-        <div>
-          <div class="tool-name">Banco de Materiais</div>
-          <div class="tool-desc">Repositório de artes, logos, templates e arquivos aprovados.</div>
-        </div>
-        <span class="tool-badge soon">Em breve</span>
-      </div>
-    </div>
-
-    <!-- INFO ROW -->
-    <div class="info-row">
-      <div class="info-card">
-        <div class="info-card-title">Atualizações recentes</div>
-        <div class="update-item">
-          <div class="update-dot"></div>
-          <div>
-            <div class="update-text">Gerador de Catálogo integrado à API PMG com proxy Vercel</div>
-            <div class="update-time">Hoje</div>
-          </div>
-        </div>
-        <div class="update-item">
-          <div class="update-dot" style="background:#90CAF9"></div>
-          <div>
-            <div class="update-text">Portal de Marketing criado e publicado</div>
-            <div class="update-time">Hoje</div>
-          </div>
-        </div>
-        <div class="update-item">
-          <div class="update-dot" style="background:#CE93D8"></div>
-          <div>
-            <div class="update-text">Dashboards e envio de materiais em desenvolvimento</div>
-            <div class="update-time">Em breve</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="info-card">
-        <div class="info-card-title">Atalhos rápidos</div>
-        <div class="shortcut-grid">
-          <a href="/ferramentas/catalogo.html" class="shortcut-btn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-            Novo catálogo
-          </a>
-          <a href="/ferramentas/catalogo.html" class="shortcut-btn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4v5h5M20 20v-5h-5"/><path d="M4.07 15A9 9 0 1 0 5.5 5.5L4 4"/></svg>
-            Sincronizar API
-          </a>
-          <a href="/dashboard.html" class="shortcut-btn">
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-  Ver dashboard
-</a>
-          <a href="#" onclick="proximamente(event)" class="shortcut-btn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Exportar PDF
-          </a>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /content -->
-</main>
-
-<script>
-(function() {
-  const SENHA    = '@PMGMarketing@2026';        // ← troque pela senha que quiser
-  const DURACAO  = 8 * 60 * 60 * 1000; // 8 horas em ms
-  const CHAVE    = 'pmg_auth';
-
-  const screen = document.getElementById('login-screen');
-
-  // Verifica se já está autenticado
-  const salvo = localStorage.getItem(CHAVE);
-  if (salvo) {
-    const { expira } = JSON.parse(salvo);
-    if (Date.now() < expira) { screen.style.display = 'none'; return; }
-    localStorage.removeItem(CHAVE);
-  }
-
-  window.tentarLogin = function() {
-    const input = document.getElementById('login-input');
-    const erro  = document.getElementById('login-erro');
-    if (input.value === SENHA) {
-      localStorage.setItem(CHAVE, JSON.stringify({ expira: Date.now() + DURACAO }));
-      screen.style.display = 'none';
-    } else {
-      erro.style.display = 'block';
-      input.value = '';
-      input.focus();
+  <script>
+    // Função para carregar usuários do users.json
+    async function loadUsers() {
+      try {
+        const response = await fetch('users.json');
+        if (!response.ok) {
+          throw new Error('Falha ao carregar usuários');
+        }
+        const data = await response.json();
+        return data.users || [];
+      } catch (error) {
+        console.error('Erro ao carregar usuários:', error);
+        // Fallback para hardcoded users em caso de falha
+        return [
+          {
+            "username": "marketing",
+            "password": "@PMGMarketing@2026",
+            "role": "marketing",
+            "name": "Equipe de Marketing",
+            "dashboard": "index.html"
+          },
+          {
+            "username": "compras",
+            "password": "@PGMCompras@2026",
+            "role": "compras",
+            "name": "Setor de Compras",
+            "dashboard": "fornecedores.html"
+          },
+          {
+            "username": "contas_pagar",
+            "password": "@PGMContasPagar@2026",
+            "role": "contas_pagar",
+            "name": "Contas a Pagar",
+            "dashboard": "dashboard.html"
+          }
+        ];
+      }
     }
-  };
-})();
 
-  // Data atual
-  const d = new Date();
-  document.getElementById('dataAtual').textContent =
-    d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    // Função para autenticar usuário
+    async function authenticateUser(username, password) {
+      const users = await loadUsers();
+      const user = users.find(u =>
+        u.username.toLowerCase() === username.toLowerCase().trim() &&
+        u.password === password
+      );
+      return user || null;
+    }
 
-  function proximamente(e) {
-    e.preventDefault();
-    const el = document.createElement('div');
-    el.textContent = 'Em breve — em desenvolvimento.';
-    el.style.cssText = `
-      position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
-      background:#1B5E20; color:white; padding:10px 20px;
-      border-radius:8px; font-size:13px; font-weight:600;
-      box-shadow:0 4px 16px rgba(0,0,0,.2); z-index:999;
-      animation: fadein .2s ease;
-    `;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 2500);
-  }
-</script>
+    // Função para fazer login
+    async function login() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        showAlert('Por favor, preencha todos os campos', 'error');
+        return;
+      }
+
+      try {
+        const user = await authenticateUser(username, password);
+
+        if (user) {
+          // Salva dados do usuário na sessionStorage
+          sessionStorage.setItem('isLoggedIn', 'true');
+          sessionStorage.setItem('user', JSON.stringify(user));
+          sessionStorage.setItem('loginTime', Date.now().toString());
+
+          showAlert(`Bem-vindo, ${user.name}!`, 'success');
+
+          // Redireciona para o dashboard apropriado após um pequeno delay
+          setTimeout(() => {
+            window.location.href = user.dashboard;
+          }, 1500);
+        } else {
+          showAlert('Usuário ou senha incorretos. Tente novamente.', 'error');
+        }
+      } catch (error) {
+        console.error('Erro no login:', error);
+        showAlert('Erro interno. Tente novamente mais tarde.', 'error');
+      }
+    }
+
+    // Função para mostrar alertas
+    function showAlert(message, type) {
+      // Remove alertas existentes
+      const existingAlert = document.querySelector('.alert');
+      if (existingAlert) {
+        existingAlert.remove();
+      }
+
+      const alertDiv = document.createElement('div');
+      alertDiv.className = `alert alert-${type}`;
+      alertDiv.textContent = message;
+
+      // Estilos do alerta
+      alertDiv.style.position = 'fixed';
+      alertDiv.style.top = '20px';
+      alertDiv.style.left = '50%';
+      alertDiv.style.transform = 'translateX(-50%)';
+      alertDiv.style.padding = '12px 24px';
+      alertDiv.style.borderRadius = '8px';
+      alertDiv.style.fontSize = '14px';
+      alertDiv.style.fontWeight = '600';
+      alertDiv.style.zIndex = '1000';
+      alertDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+      alertDiv.style.maxWidth = '90%';
+      alertDiv.style.textAlign = 'center';
+      alertDiv.style.animation = 'slideIn 0.3s ease-out';
+
+      if (type === 'success') {
+        alertDiv.style.backgroundColor = '#dcfce7';
+        alertDiv.style.color = '#166534';
+        alertDiv.style.border = '1px solid #bbf7d0';
+      } else if (type === 'error') {
+        alertDiv.style.backgroundColor = '#fef2f2';
+        alertDiv.style.color = '#991b1b';
+        alertDiv.style.border = '1px solid #fecaca';
+      } else if (type === 'warning') {
+        alertDiv.style.backgroundColor = '#fffbeb';
+        alertDiv.style.color = '#92400e';
+        alertDiv.style.border = '1px solid #fef3c7';
+      }
+
+      document.body.appendChild(alertDiv);
+
+      // Remove o alerta após 3 segundos
+      setTimeout(() => {
+        if (alertDiv.parentNode) {
+          alertDiv.remove();
+        }
+      }, 3000);
+    }
+
+    // Event listener do formulário
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      login();
+    });
+
+    // Foca no campo de username ao carregar
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('username').focus();
+    });
+  </script>
 </body>
 </html>

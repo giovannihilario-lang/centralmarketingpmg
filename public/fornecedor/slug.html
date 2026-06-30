@@ -998,6 +998,31 @@ function roundMoney(value) {
 /* ══════════════════════════════════════════════
    LOAD DATA
 ══════════════════════════════════════════════ */
+
+async function loadAggregates(meses) {
+  const p = { p_fornecedor_id: fornecedor.id, p_meses: meses || null };
+  const [kpi, seg, prod, cli, bairro, grupo, margem, subgrupo, grupoMes, diaMes] = await Promise.all([
+    db.rpc('kpi_mensal', p),
+    db.rpc('agregado_segmento', p),
+    db.rpc('agregado_produto', p),
+    db.rpc('agregado_cliente', p),
+    db.rpc('agregado_bairro', p),
+    db.rpc('agregado_grupo', p),
+    db.rpc('agregado_margem_grupo', p),
+    db.rpc('agregado_subgrupo', p),
+    db.rpc('agregado_grupo_mes', p),
+    db.rpc('agregado_dia_mes', p),
+  ]);
+  for (const r of [kpi,seg,prod,cli,bairro,grupo,margem,subgrupo,grupoMes,diaMes]) {
+    if (r.error) throw r.error;
+  }
+  aggData = {
+    kpi: kpi.data||[], seg: seg.data||[], prod: prod.data||[], cli: cli.data||[],
+    bairro: bairro.data||[], grupo: grupo.data||[], margem: margem.data||[],
+    subgrupo: subgrupo.data||[], grupoMes: grupoMes.data||[], diaMes: diaMes.data||[],
+  };
+}
+
 async function init() {
   const slug = getSlug();
   if (!slug || slug === 'fornecedor.html') {
@@ -1016,31 +1041,20 @@ async function init() {
   document.getElementById('heroTitle').textContent = fornecedor.nome;
   document.getElementById('heroSub').textContent = (fornecedor.categoria || '') + (fornecedor.cnpj ? ' · CNPJ ' + fornecedor.cnpj : '');
 
-  let all = [], from = 0;
-  while (true) {
-    const { data, error } = await db
-      .from('pedidos_fornecedor')
-      .select('*')
-      .eq('fornecedor_id', fornecedor.id)
-      .range(from, from + 999);
-    if (error) break;
-    if (!data?.length) break;
-    all = all.concat(data);
-    if (data.length < 1000) break;
-    from += 1000;
-  }
-
-  if (!all.length) {
+  const { count, error: cErr } = await db
+    .from('pedidos_fornecedor')
+    .select('id', { count: 'exact', head: true })
+    .eq('fornecedor_id', fornecedor.id);
+  if (cErr) throw cErr;
+  if (!count) {
     showError('Sem dados ainda', 'O dashboard será publicado após o primeiro upload de dados.');
     return;
   }
 
-allData = all;
-  applyFilter(monthsFilter);
+  await loadAggregates(monthsFilter);
   hideLoader();
   renderAll();
 }
-
 function showError(title, sub) {
   hide('loaderScreen');
   document.getElementById('errorTitle').textContent = title;
@@ -1060,49 +1074,406 @@ function hideLoader() {
 /* ══════════════════════════════════════════════
    FILTER
 ══════════════════════════════════════════════ */
-function setFilter(months) {
+async function setFilter(months) {
   monthsFilter = months;
   document.querySelectorAll('.filter-btn').forEach(b => {
     b.classList.toggle('active', parseInt(b.dataset.months) === months);
   });
-  applyFilter(months);
+  await loadAggregates(months);
   renderAll();
-}
-
-function applyFilter(months) {
-  if (!months) { filtered = allData; return; }
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
-  filtered = allData.filter(r => {
-    if (!r.data) return false;
-    return new Date(r.data) >= cutoff;
-  });
 }
 
 /* ══════════════════════════════════════════════
    RENDER ALL
 ══════════════════════════════════════════════ */
-function renderAll() {
-  updateKPIs();
-  updateFilterInfo();
-  renderMes();
-  renderSeg();
-  renderTopLists();
-  renderSpMap();
-  renderABC();
-  renderRecompra();
-  renderGrupo();
-  renderMargem();
-  renderSazonalidade();
-  renderHeatmap();
-  renderSubgrupo();
+/* ── VENDAS POR MÊS — usa aggData.kpi ── */
+function renderMes() {
+  destroyChart('mes');
+  const linhas = [...aggData.kpi].sort((a,b) => a.mes.localeCompare(b.mes));
+  document.getElementById('badgeMeses').textContent = linhas.length + ' meses';
+
+  const ctx = document.getElementById('chartMes').getContext('2d');
+  charts.mes = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: linhas.map(r => { const[y,mm]=r.mes.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); }),
+      datasets: [
+        {
+          type: 'bar', label: 'Vendas R$',
+          data: linhas.map(r => r.total_valor||0),
+          backgroundColor: 'rgba(45,122,79,0.7)',
+          borderRadius: 5, borderSkipped: 'bottom', yAxisID: 'y',
+        },
+        {
+          type: 'line', label: 'Volume kg',
+          data: linhas.map(r => r.total_kg||0),
+          borderColor: 'rgba(245,158,11,0.8)',
+          backgroundColor: 'rgba(245,158,11,0.08)',
+          borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#f59e0b',
+          fill: true, tension: 0.3, yAxisID: 'y2',
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 9, family: 'Inter' }, color: '#5a7366', boxWidth: 8, padding: 12 } },
+        tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y' ? fmtBRL(c.raw) : fmtKG(c.raw) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v) } },
+        y2: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { ...TICK, callback: v => (v/1000).toFixed(0)+'t' } }
+      }
+    }
+  });
+}
+
+/* ── SEGMENTO — usa aggData.seg ── */
+function renderSeg() {
+  destroyChart('seg');
+  const entries = aggData.seg.slice(0,8).map(r => [r.segmento, r.valor||0]);
+
+  const ctx = document.getElementById('chartSeg').getContext('2d');
+  charts.seg = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      cutout: '58%',
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { font: { size: 9, family: 'Inter' }, color: '#1c3327', boxWidth: 8, padding: 6 } },
+        tooltip: { callbacks: { label: c => c.label + ': ' + fmtBRL(c.raw, true) } }
+      }
+    }
+  });
+}
+
+/* ── TOP LISTS — usa aggData.prod / aggData.cli ── */
+function renderTopLists() {
+  const prodEntries = aggData.prod.slice(0,8).map(r => [r.produto, r.valor||0]);
+  const cliEntries  = aggData.cli.slice(0,8).map(r => [r.id_cliente, r.valor||0]);
+  renderTopListFromEntries('listProdutos', prodEntries);
+  renderTopListFromEntries('listClientes', cliEntries);
+}
+
+function renderTopListFromEntries(elId, entries) {
+  const max = entries[0]?.[1] || 1;
+  document.getElementById(elId).innerHTML = entries.map((e, i) => `
+    <div class="top-item">
+      <div class="top-rank">${i+1}</div>
+      <div class="top-bar-wrap">
+        <div class="top-name" title="${e[0]}">${e[0]}</div>
+        <div class="top-bar-bg">
+          <div class="top-bar-fill" style="width:${Math.round(e[1]/max*100)}%"></div>
+        </div>
+      </div>
+      <div class="top-val">${fmtBRL(e[1],true)}</div>
+    </div>
+  `).join('');
+}
+
+/* ── MAPA — buildBairroData agora vem de aggData.bairro ── */
+function buildBairroData() {
+  const out = [];
+  (aggData.bairro||[]).forEach(r => {
+    if (!r.bairro) return;
+    const coords = getBairroCoords(r.bairro);
+    if (!coords) return;
+    out.push({
+      lat: coords[0], lon: coords[1],
+      valor: r.valor||0, kg: r.kg||0,
+      pedidos: { size: r.pedidos||0 }, // mantém .size pra não quebrar o resto do código
+      bairro: r.bairro,
+    });
+  });
+  return out.filter(d => d.valor > 0);
+}
+
+/* ── CURVA ABC — usa aggData.cli ── */
+function renderABC() {
+  const entries = [...aggData.cli].sort((a,b) => (b.valor||0)-(a.valor||0)).map(r => [r.id_cliente, r.valor||0]);
+  const totalValor = entries.reduce((a,e) => a+e[1], 0) || 1;
+  let cumul = 0;
+  let countA = 0, countB = 0, countC = 0;
+  let valorA = 0, valorB = 0, valorC = 0;
+
+  const classified = entries.map(([name, val]) => {
+    cumul += val;
+    const pct = cumul / totalValor;
+    let cls;
+    if (pct <= 0.80) cls = 'A';
+    else if (pct <= 0.95) cls = 'B';
+    else cls = 'C';
+    if (cls === 'A') { countA++; valorA += val; }
+    else if (cls === 'B') { countB++; valorB += val; }
+    else { countC++; valorC += val; }
+    return { name, val, cls };
+  });
+
+  document.getElementById('badgeABC').textContent = entries.length + ' clientes';
+
+  document.getElementById('abcLegend').innerHTML = `
+    <div class="abc-badge"><div class="abc-dot" style="background:#1f6235"></div>A · ${countA} clientes · ${fmtPct(valorA/totalValor*100)}</div>
+    <div class="abc-badge"><div class="abc-dot" style="background:#f59e0b"></div>B · ${countB} clientes · ${fmtPct(valorB/totalValor*100)}</div>
+    <div class="abc-badge"><div class="abc-dot" style="background:#d1d5db"></div>C · ${countC} clientes · ${fmtPct(valorC/totalValor*100)}</div>
+  `;
+
+  const preview = classified.slice(0, 12);
+  document.getElementById('abcList').innerHTML = preview.map(e => `
+    <div class="abc-item">
+      <div class="abc-class ${e.cls}">${e.cls}</div>
+      <div class="abc-name" title="${e.name}">${e.name}</div>
+      <div class="abc-pct">${fmtPct(e.val/totalValor*100)}</div>
+      <div class="abc-val">${fmtBRL(e.val,true)}</div>
+    </div>
+  `).join('');
+}
+
+/* ── FREQUÊNCIA DE RECOMPRA — usa aggData.cli (n_pedidos, primeira_compra, ultima_compra) ── */
+function renderRecompra() {
+  const stats = (aggData.cli||[]).map(r => {
+    const nPedidos = r.n_pedidos || 0;
+    let intervalo = null;
+    if (nPedidos > 1 && r.primeira_compra && r.ultima_compra) {
+      const dias = (new Date(r.ultima_compra) - new Date(r.primeira_compra)) / 86400000;
+      intervalo = Math.round(dias / (nPedidos - 1));
+    }
+    return { name: r.id_cliente, nPedidos, intervalo, valor: r.valor||0 };
+  }).filter(s => s.nPedidos > 1).sort((a,b) => b.nPedidos - a.nPedidos);
+
+  const totalClientes = (aggData.cli||[]).length;
+  const clientesRecorrentes = stats.length;
+  const taxaRecompra = totalClientes ? Math.round(clientesRecorrentes / totalClientes * 100) : 0;
+  const comIntervalo = stats.filter(s => s.intervalo !== null);
+  const intervaloMedio = comIntervalo.length ? Math.round(comIntervalo.reduce((a,s) => a + s.intervalo, 0) / comIntervalo.length) : 0;
+
+  document.getElementById('recompraStats').innerHTML = `
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Taxa de Recompra</div>
+      <div class="recompra-stat-val">${taxaRecompra}%</div>
+      <div class="recompra-stat-sub">clientes com 2+ pedidos</div>
+    </div>
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Clientes Recorrentes</div>
+      <div class="recompra-stat-val">${clientesRecorrentes.toLocaleString('pt-BR')}</div>
+      <div class="recompra-stat-sub">de ${totalClientes} no período</div>
+    </div>
+    <div class="recompra-stat">
+      <div class="recompra-stat-label">Intervalo Médio</div>
+      <div class="recompra-stat-val">${intervaloMedio || '—'}<span style="font-size:14px;font-weight:500"> dias</span></div>
+      <div class="recompra-stat-sub">entre pedidos</div>
+    </div>
+  `;
+
+  const top = stats.slice(0, 8);
+  document.getElementById('recompraList').innerHTML = top.map(s => {
+    let cls = 'ok', label = s.intervalo + 'd';
+    if (s.intervalo === null) { cls = 'ok'; label = '—'; }
+    else if (s.intervalo > 60) cls = 'danger';
+    else if (s.intervalo > 30) cls = 'warn';
+
+    return `<div class="recompra-item">
+      <div class="ri-name" title="${s.name}">${s.name}</div>
+      <div class="ri-freq">${s.nPedidos}× pedidos</div>
+      <div class="ri-interval ${cls}">a cada ${label}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── GRUPO — usa aggData.grupo ── */
+function renderGrupo() {
+  destroyChart('grupo');
+  const entries = aggData.grupo.slice(0,10).map(r => [r.grupo, r.valor||0]);
+
+  const ctx = document.getElementById('chartGrupo').getContext('2d');
+  charts.grupo = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((_,i) => `rgba(26,77,46,${1-i*0.08})`), borderRadius: 4, borderSkipped: 'bottom' }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtBRL(c.raw, true) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v/1000).toFixed(0)+'k' } }
+      }
+    }
+  });
+}
+
+/* ── MARGEM — usa aggData.margem ── */
+function renderMargem() {
+  if (!document.getElementById('chartMargem')) return;
+  destroyChart('margem');
+  const entries = (aggData.margem||[]).filter(r => r.margem_media !== null).slice(0,10).map(r => [r.grupo, r.margem_media||0]);
+
+  if (!entries.length) {
+    const wrap = document.getElementById('chartMargem')?.parentElement;
+    if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:48px;color:var(--ghost);font-size:12px">Margem não disponível nos dados.</div>';
+    return;
+  }
+
+  const ctx = document.getElementById('chartMargem').getContext('2d');
+  charts.margem = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [{
+        data: entries.map(e => e[1]*100),
+        backgroundColor: entries.map(e => e[1] > 0.15 ? 'rgba(76,175,112,0.7)' : e[1] > 0.08 ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)'),
+        borderRadius: 4, borderSkipped: 'bottom'
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtPct(c.raw) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => v.toFixed(0)+'%' } }
+      }
+    }
+  });
+}
+
+/* ── SAZONALIDADE — usa aggData.grupoMes ── */
+function renderSazonalidade() {
+  destroyChart('sazon');
+
+  const linhas = aggData.grupoMes || [];
+  const mesesSet = new Set(linhas.map(r => r.mes));
+  const meses = [...mesesSet].sort().slice(-12);
+  if (!meses.length) return;
+
+  const grupoMes = {};
+  linhas.forEach(r => {
+    if (!grupoMes[r.grupo]) grupoMes[r.grupo] = {};
+    grupoMes[r.grupo][r.mes] = (grupoMes[r.grupo][r.mes]||0) + (r.valor||0);
+  });
+
+  const grupoTotals = Object.entries(grupoMes).map(([g, mv]) => [g, Object.values(mv).reduce((a,v)=>a+v,0)]);
+  const topGrupos = grupoTotals.sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
+
+  const labels = meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); });
+
+  const datasets = topGrupos.map((g, i) => ({
+    label: g,
+    data: meses.map(m => grupoMes[g]?.[m] || 0),
+    borderColor: SAZON_PALETTE[i % SAZON_PALETTE.length],
+    backgroundColor: SAZON_PALETTE[i % SAZON_PALETTE.length] + '18',
+    borderWidth: 2, pointRadius: 3, fill: false, tension: 0.3,
+  }));
+
+  const ctx = document.getElementById('chartSazon').getContext('2d');
+  charts.sazon = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end', labels: { font: { size: 9, family: 'Inter' }, color: '#5a7366', boxWidth: 8, padding: 10 } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtBRL(c.raw, true) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45 } },
+        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v/1000).toFixed(0)+'k' } }
+      }
+    }
+  });
+}
+
+/* ── HEATMAP DIA × MÊS — usa aggData.diaMes ── */
+function renderHeatmap() {
+  const linhas = aggData.diaMes || [];
+  const cell = {};
+  const mesesSet = new Set();
+
+  linhas.forEach(r => {
+    mesesSet.add(r.mes);
+    // normaliza nome do dia pro padrão 3 letras
+    let dia = String(r.dia_semana||'').trim();
+    const map3 = { 'segunda':'Seg','terca':'Ter','terça':'Ter','quarta':'Qua','quinta':'Qui','sexta':'Sex','sabado':'Sáb','sábado':'Sáb','domingo':'Dom' };
+    const norm = dia.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if (map3[norm]) dia = map3[norm];
+    else if (dia.length >= 3) dia = dia.slice(0,3).charAt(0).toUpperCase() + dia.slice(1,3).toLowerCase();
+    const key = `${dia}||${r.mes}`;
+    cell[key] = (cell[key]||0) + (r.valor||0);
+  });
+
+  const meses = [...mesesSet].sort().slice(-12);
+  const diasOrdem = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+
+  let maxVal = 0;
+  diasOrdem.forEach(d => meses.forEach(m => { maxVal = Math.max(maxVal, cell[`${d}||${m}`]||0); }));
+  if (!maxVal) maxVal = 1;
+
+  function heatColor(v) {
+    const t = Math.min(v / maxVal, 1);
+    const r = Math.round(228 - t*(228-26));
+    const g = Math.round(245 - t*(245-77));
+    const b = Math.round(235 - t*(235-46));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  const mesesLabels = meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); });
+
+  const table = document.getElementById('heatmapTable');
+  table.innerHTML = `
+    <tr>
+      <th></th>
+      ${mesesLabels.map(l => `<th>${l}</th>`).join('')}
+    </tr>
+    ${diasOrdem.map(d => `
+      <tr>
+        <td class="hm-row-label">${d}</td>
+        ${meses.map(m => {
+          const v = cell[`${d}||${m}`]||0;
+          const bg = heatColor(v);
+          const textColor = v/maxVal > 0.5 ? 'white' : '#1a4d2e';
+          const label = v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : v > 0 ? 'R$'+v.toFixed(0) : '';
+          return `<td><div class="hm-cell" style="background:${bg};color:${textColor}" title="${d} · ${m}: ${fmtBRL(v)}">${label}</div></td>`;
+        }).join('')}
+      </tr>
+    `).join('')}
+  `;
+}
+
+/* ── SUBGRUPO TABLE — usa aggData.subgrupo ── */
+function renderSubgrupo() {
+  const linhas = (aggData.subgrupo||[]).slice(0,20);
+  const totalValor = linhas.reduce((a,r) => a + (r.valor||0), 0) || 1;
+  const maxValor   = linhas[0]?.valor || 1;
+
+  document.getElementById('subgrupoBody').innerHTML = linhas.map((r, i) => {
+    const pct = (r.valor||0) / totalValor * 100;
+    const margem = r.margem_media !== null && r.margem_media !== undefined ? r.margem_media*100 : null;
+    const margemColor = margem === null ? '' : margem > 15 ? 'color:#166534' : margem > 8 ? 'color:#92400e' : 'color:#991b1b';
+    return `<tr>
+      <td style="font-size:10px;color:var(--ghost);font-weight:700">${i+1}</td>
+      <td class="td-bold">${r.sub_grupo}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.grupo}</td>
+      <td class="td-num">${(r.pedidos||0).toLocaleString('pt-BR')}</td>
+      <td class="td-num">${fmtKG(r.kg||0)}</td>
+      <td class="td-num">${fmtBRL(r.valor||0,true)}</td>
+      <td class="td-num" style="${margemColor}">${margem !== null ? fmtPct(margem) : '—'}</td>
+      <td class="td-bar-cell">
+        <div style="font-size:9px;color:var(--ghost);margin-bottom:2px">${pct.toFixed(1)}%</div>
+        <div class="td-mini-bar"><div class="td-mini-fill" style="width:${Math.round((r.valor||0)/maxValor*100)}%"></div></div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 /* ── KPIs ── */
 function updateKPIs() {
-  const pedidos = new Set(filtered.map(r => r.id_pedido_venda).filter(Boolean)).size;
-  const vendas  = filtered.reduce((a,r) => a + (r.valor||0), 0);
-  const kg      = filtered.reduce((a,r) => a + (r.qtde_kg||0), 0);
+  const pedidos = aggData.kpi.reduce((a,r) => a + (r.total_pedidos||0), 0);
+  const vendas  = aggData.kpi.reduce((a,r) => a + (r.total_valor||0), 0);
+  const kg      = aggData.kpi.reduce((a,r) => a + (r.total_kg||0), 0);
   const ticket  = pedidos ? vendas / pedidos : 0;
 
   document.getElementById('kpiVendas').textContent  = fmtBRL(vendas, true);
@@ -1112,11 +1483,11 @@ function updateKPIs() {
 }
 
 function updateFilterInfo() {
-  const datas = filtered.map(r => r.data).filter(Boolean).sort();
-  if (!datas.length) { document.getElementById('filterInfo').textContent = '—'; return; }
-  const ini = new Date(datas[0]).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
-  const fim = new Date(datas[datas.length-1]).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
-  document.getElementById('filterInfo').innerHTML = `<strong>${filtered.length.toLocaleString('pt-BR')}</strong> registros · ${ini} → ${fim}`;
+  const meses = [...aggData.kpi].map(r => r.mes).sort();
+  if (!meses.length) { document.getElementById('filterInfo').textContent = '—'; return; }
+  const fmtMes = m => { const [y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y; };
+  const totalPedidos = aggData.kpi.reduce((a,r) => a + (r.total_pedidos||0), 0);
+  document.getElementById('filterInfo').innerHTML = `<strong>${totalPedidos.toLocaleString('pt-BR')}</strong> pedidos · ${fmtMes(meses[0])} → ${fmtMes(meses[meses.length-1])}`;
 }
 
 /* ── CHART HELPERS ── */
