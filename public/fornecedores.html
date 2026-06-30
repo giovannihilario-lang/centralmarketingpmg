@@ -261,8 +261,8 @@
       <button class="bell-btn" id="bellDebitos" onclick="abrirModalDebitos()" title="Central de Débitos">
   🔔
   <span class="bell-badge" id="bellBadge" style="display:none">0</span>
-  <button class="btn-ghost" onclick="ativarNotificacoes()" style="color:white;border-color:rgba(255,255,255,.2)">🔔 Ativar Alertas</button>
 </button>
+<button class="btn-ghost" onclick="ativarNotificacoes()" style="color:white;border-color:rgba(255,255,255,.2)">🔔 Ativar Alertas</button>
       <span class="pill pill-default" id="pillTotal">— fornecedores</span>
       <span class="pill pill-green"><span class="pill-dot"></span><span id="pillAtivos">—</span> ativos</span>
     </div>
@@ -714,6 +714,29 @@ let selectedFile = null, parsedRows = [];
 let dashCharts = {};
 let linkFornecedor = null;
 let debitosPorFornecedor = {};
+
+const VAPID_PUBLIC_KEY = 'BMqO4_Calsh0PSCc4uAwO5HUGfahVN5E-LrOnBpgKmKbvEjq3LFdrgCfYehpMsNR_YE7iiGcrYei2mKnwp3PGjQ';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function ativarNotificacoes() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    toast('❌ Navegador não suporta notificações push.'); return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast('⚠️ Permissão negada.'); return; }
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+    await fetch('/api/salvar-subscricao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
+    toast('✅ Alertas ativados! Você vai receber 3 avisos por dia.');
+  } catch (e) { toast('❌ Erro: ' + e.message); }
+}
 
 /* ══════════════════════════════════════════════
    UTILS
@@ -1339,28 +1362,7 @@ function abrirModalDebitos() {
     .filter(d => d.fornecedor && d.debito > 0.01)
     .sort((a,b) => b.debito - a.debito);
   const totalDebito = lista.reduce((a,d) => a + d.debito, 0);
-const VAPID_PUBLIC_KEY = 'BMqO4_Calsh0PSCc4uAwO5HUGfahVN5E-LrOnBpgKmKbvEjq3LFdrgCfYehpMsNR_YE7iiGcrYei2mKnwp3PGjQ';
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
-}
-
-async function ativarNotificacoes() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    toast('❌ Navegador não suporta notificações push.'); return;
-  }
-  try {
-    const reg = await navigator.serviceWorker.register('/sw.js');
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { toast('⚠️ Permissão negada.'); return; }
-    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
-    await fetch('/api/salvar-subscricao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
-    toast('✅ Alertas ativados! Você vai receber 3 avisos por dia.');
-  } catch (e) { toast('❌ Erro: ' + e.message); }
-}
   document.getElementById('debitosResumo').innerHTML = `
     <div class="link-info-item"><div class="link-info-label">Fornecedores com débito</div><div class="link-info-val">${lista.length}</div></div>
     <div class="link-info-item"><div class="link-info-label">Débito total acumulado</div><div class="link-info-val" style="color:#b45309">${fmtBRLk(totalDebito)}</div></div>
