@@ -1,0 +1,15 @@
+name: Notificar Débitos
+
+on:
+  schedule:
+    - cron: '0 12 * * *'
+    - cron: '0 16 * * *'
+    - cron: '0 21 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  notificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de notificação
+        run: curl -f -X GET https://pmgmarketing.vercel.app/api/notificar-debitos
