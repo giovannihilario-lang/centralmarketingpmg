@@ -1072,7 +1072,7 @@ async function init() {
 
   // 2️⃣  stream batches into allData
   try {
-    for await (const batch of fetchBatches(slug, 2000)) {
+    for await (const batch of fetchBatches(slug, 1000)){
       allData.push(...batch);
     }
   } catch (e) {
