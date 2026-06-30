@@ -962,58 +962,6 @@ let clusterGroup = null;
 let mapMode   = 'heat';
 let bairroData = []; // computed per filter
 
-/* ──────────────────────────────────────────────
-   1️⃣  COLUMNS WE ACTUALLY NEED (reduces payload)
-   ────────────────────────────────────────────── */
-const WANTED_COLS = `
-  id,
-  fornecedor_id,
-  data,
-  valor,
-  qtde_kg,
-  id_pedido_venda,
-  grupo,
-  sub_grupo,
-  segmento,
-  bairro,
-  latitude,
-  longitude,
-  lat,
-  lon,
-  margem,
-  dia_semana,
-  id_cliente,
-  cliente,
-  produto
-`.trim();
-
-/* ──────────────────────────────────────────────
-   2️⃣  STREAMING BATCH FETCH (cursor‑style)
-   ────────────────────────────────────────────── */
-async function* fetchBatches(slug, batch = 2000) {
-  // resolve fornecedor_id once
-  const { data: f, error: ferr } = await db
-    .from('fornecedores')
-    .select('id')
-    .eq('slug', slug)
-    .single();
-  if (ferr || !f) throw new Error('fornecedor not found');
-
-  let from = 0;
-  while (true) {
-    const { data, error } = await db
-      .from('pedidos_fornecedor')
-      .select(WANTED_COLS)
-      .eq('fornecedor_id', f.id)
-      .order('data', { ascending: true })
-      .range(from, from + batch - 1);
-    if (error) throw error;
-    if (!data?.length) break;
-    yield data;
-    if (data.length < batch) break;
-    from += batch;
-  }
-}
 
 /* ══════════════════════════════════════════════
    SLUG from URL
