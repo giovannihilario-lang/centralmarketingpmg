@@ -1002,10 +1002,10 @@ async function carregarPedidos(fornecedorId) {
   const COLS = 'data, valor, qtde_kg, id_pedido_venda, segmento, produto, id_cliente, cliente, bairro, grupo, sub_grupo, margem, dia_semana';
   const PAGE = 1000;
 
-  const { count, error: countErr } = await db
-    .from('pedidos_fornecedor')
-    .select('id', { count: 'exact', head: true })
-    .eq('fornecedor_id', fornecedorId);
+  const { count, error: cErr } = await db
+  .from('pedidos_fornecedor')
+  .select('id', { count: 'estimated', head: true })
+  .eq('fornecedor_id', fornecedor.id);
   if (countErr) throw countErr;
   if (!count) return [];
 
