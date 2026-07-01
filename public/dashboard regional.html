@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Regional de Vendas PMG</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --green-dark:   #1a4d2e;
+    --green-mid:    #2d7a4f;
+    --green-light:  #4caf70;
+    --green-pale:   #e8f5ed;
+    --green-border: #c3e0cd;
+    --amber:        #f59e0b;
+    --amber-pale:   #fef3d9;
+    --violet:       #8b5cf6;
+    --violet-pale:  #efe9fd;
+    --blue:         #3b82f6;
+    --blue-pale:    #e6f0fe;
+    --white:        #ffffff;
+    --gray-0:       #f4f5f4;
+    --gray-1:       #eceeed;
+    --gray-2:       #d4d6d3;
+    --gray-text:    #6b7280;
+    --text-dark:    #111827;
+    --radius:       10px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--gray-0); color: var(--text-dark); height: 100vh;
+    display: flex; flex-direction: column; overflow: hidden; margin-left: 220px;
+  }
+  @keyframes cardEnter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes shimmerMove { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(76,175,112,0.4); } 50% { box-shadow: 0 0 0 8px rgba(76,175,112,0); } }
+  @keyframes floatUp { from { opacity:0; transform: translateY(8px) scale(0.9); } to { opacity:1; transform: translateY(0) scale(1); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes countUp { from { opacity: 0.4; } to { opacity: 1; } }
+
+  .hdr { background: var(--green-dark); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; height: 54px; flex-shrink: 0; position: relative; overflow: hidden; }
+  .hdr::after { content: ''; position: absolute; left:0; right:0; bottom:0; height:2px; background: linear-gradient(90deg, transparent, var(--green-light), transparent); background-size: 200% 100%; animation: shimmerMove 4.5s linear infinite; }
+  .hdr-left { display: flex; align-items: center; gap: 12px; }
+  .hdr-badge { width: 36px; height: 36px; background: white; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; color: var(--green-dark); }
+  .hdr h1 { color: white; font-size: 15px; font-weight: 500; }
+  .hdr-right { display: flex; align-items: center; gap: 8px; }
+  .hdr-pill { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.82); font-size: 11px; padding: 3px 11px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); }
+  .hdr-pill.active { background: rgba(76,175,112,0.3); border-color: rgba(76,175,112,0.5); color: #b3f0cc; }
+  .hdr-pill#filtroAtivo { animation: pulseGlow 2.2s ease-in-out infinite; background:rgba(240,165,0,0.25); border-color:rgba(240,165,0,0.5); color:#fde68a; }
+
+  .body-layout { display: grid; grid-template-columns: 210px 1fr; flex: 1; overflow: hidden; }
+  .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+  .sb-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; }
+  .sb-section-header { display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; margin-bottom:7px; }
+  .sb-chevron { width:14px; height:14px; color:var(--gray-text); transition: transform .2s; flex-shrink:0; }
+  .sb-chevron.collapsed { transform: rotate(-90deg); }
+  .sb-collapse { overflow:hidden; transition: max-height .25s ease, opacity .2s ease; max-height:600px; opacity:1; }
+  .sb-collapse.collapsed { max-height:0; opacity:0; }
+  .chip-group { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+  .chip { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--gray-1); background: var(--gray-0); font-size: 12px; cursor: pointer; transition: all .14s ease, transform .12s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
+  .chip:hover { border-color: var(--green-mid); background: var(--green-pale); }
+  .chip.active { background: var(--green-dark); color: white; border-color: var(--green-dark); }
+  .chip:active { transform: scale(0.96); }
+  .chip .badge { font-size: 10px; opacity: .65; font-variant-numeric: tabular-nums; }
+  .btn-apply { padding: 9px; background: var(--green-dark); color: white; border: none; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; width: 100%; transition: all .15s ease; }
+  .btn-apply:hover { background: var(--green-mid); }
+  .btn-reset { padding: 8px; background: transparent; color: var(--gray-text); border: 1px solid var(--gray-1); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; }
+  .btn-reset:hover { border-color: var(--gray-2); color: var(--text-dark); }
+  .btn-export { padding: 8px 10px; background: transparent; color: var(--green-dark); border: 1px solid var(--green-border); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; text-align:left; }
+  .btn-export:hover { background: var(--green-pale); border-color: var(--green-mid); }
+  .btn-upload { padding: 9px 10px; background: var(--green-dark); color: white; border: none; border-radius: 7px; font-size: 11px; font-weight: 500; cursor: pointer; width: 100%; text-align:left; display:flex; align-items:center; gap:7px; }
+  .btn-upload:hover { background: var(--green-mid); }
+  .btn-upload:disabled { background: var(--gray-2); cursor: not-allowed; }
+  .upload-status { font-size: 10.5px; color: var(--gray-text); line-height: 1.4; min-height: 14px; }
+  .upload-status.err { color: #9b2c1d; }
+  .upload-status.ok { color: #166534; }
+  .upload-progress-track { width:100%; height:4px; background: var(--gray-1); border-radius:3px; overflow:hidden; display:none; }
+  .upload-progress-track.show { display:block; }
+  .upload-progress-bar { height:100%; width:0%; background: var(--green-mid); transition: width .2s; }
+
+  .main { overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .kpi-card { background: var(--white); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 13px 14px 13px 17px; position: relative; overflow: hidden; animation: cardEnter .55s cubic-bezier(.2,.7,.3,1) both; transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
+  .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 26px -14px rgba(26,77,46,.28); border-color: var(--green-border); }
+  .kpi-card::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--accent-color, var(--green-dark)); }
+  .kpi-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-text); margin-bottom: 5px; font-weight: 500; }
+  .kpi-value { font-size: 20px; font-weight: 700; line-height: 1; background: linear-gradient(90deg, var(--accent-color, var(--green-dark)), var(--accent-color2, var(--green-mid))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .kpi-foot { margin-top: 5px; display: flex; align-items: center; gap: 5px; }
+  .kpi-delta { font-size: 9.5px; padding: 2px 6px; border-radius: 5px; font-weight: 600; }
+  .kpi-delta.up { background:#e8f5ed; color:#166534; }
+  .kpi-delta.down { background:#fef2f0; color:#9b2c1d; }
+  .kpi-sub { font-size: 10px; color: var(--gray-text); }
+  .kpi-icon { position:absolute; top:12px; right:12px; width:26px; height:26px; border-radius:8px; background: var(--accent-soft, var(--green-pale)); color: var(--accent-color, var(--green-dark)); display:flex; align-items:center; justify-content:center; transition: transform .25s ease; }
+  .kpi-card:hover .kpi-icon { transform: rotate(-6deg) scale(1.08); }
+
+  .row-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+  .row-2-even { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .row-full { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+  .chart-box { background: var(--white); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 16px; position: relative; overflow: hidden; animation: cardEnter .55s cubic-bezier(.2,.7,.3,1) both; transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
+  .chart-box:hover { transform: translateY(-2px); box-shadow: 0 12px 26px -16px rgba(26,77,46,.22); border-color: var(--green-border); }
+  .chart-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .chart-title { font-size: 12px; font-weight: 500; color: var(--text-dark); }
+  .chart-tag { font-size: 10px; background: var(--green-pale); color: var(--green-dark); padding: 2px 9px; border-radius: 12px; border: 1px solid var(--green-border); }
+  .chart-select { font-size: 10px; padding: 3px 6px; border: 1px solid var(--gray-1); border-radius: 5px; background: var(--gray-0); cursor: pointer; }
+
+  .loading-overlay { display:none; position:absolute; inset:0; background:rgba(255,255,255,.7); border-radius: var(--radius); align-items:center; justify-content:center; z-index:5; }
+  .loading-overlay.show { display:flex; }
+  .spinner { width:22px; height:22px; border:2px solid var(--green-border); border-top-color: var(--green-dark); border-radius:50%; animation: spin .7s linear infinite; }
+
+  .toast { position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; padding: 10px 18px; border-radius: 8px; font-size: 12px; z-index: 100; display: none; }
+  .toast.show { display: block; animation: floatUp .2s; }
+
+  /* ── Mapa ── */
+  #mapaLeaflet { height: 460px; width: 100%; border-radius: 8px; z-index: 1; }
+  .map-legend { position:absolute; bottom:14px; left:14px; background: rgba(255,255,255,0.95); border-radius:8px; padding:10px 12px; font-size:10.5px; box-shadow: 0 4px 14px rgba(0,0,0,.12); z-index: 400; }
+  .map-legend-row { display:flex; align-items:center; gap:6px; margin-top:4px; }
+  .map-legend-dot { border-radius:50%; background: var(--green-mid); opacity:.55; border: 1px solid var(--green-dark); flex-shrink:0; }
+  .map-toggle-row { display:flex; gap:6px; position:absolute; top:14px; right:14px; z-index:400; }
+  .map-toggle-btn { background: rgba(255,255,255,0.95); border:1px solid var(--gray-1); border-radius:7px; font-size:10.5px; padding:5px 10px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.08); transition: all .15s; }
+  .map-toggle-btn.active { background: var(--green-dark); color:white; border-color: var(--green-dark); }
+
+  /* ── Ranking cidades ── */
+  .rank-list { display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:4px; }
+  .rank-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background: var(--gray-0); transition: background .15s, transform .15s; animation: floatUp .4s both; }
+  .rank-item:hover { background: var(--green-pale); transform: translateX(2px); }
+  .rank-pos { width:24px; height:24px; border-radius:6px; background: var(--green-dark); color:white; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .rank-item:nth-child(1) .rank-pos { background: linear-gradient(135deg,#f0a500,#e07b00); }
+  .rank-item:nth-child(2) .rank-pos { background: linear-gradient(135deg,#9ca3af,#6b7280); }
+  .rank-item:nth-child(3) .rank-pos { background: linear-gradient(135deg,#cd7f32,#a0522d); }
+  .rank-info { flex:1; min-width:0; }
+  .rank-city { font-size:12.5px; font-weight:600; color: var(--text-dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rank-uf { font-size:10px; color: var(--gray-text); }
+  .rank-bar-track { height:5px; background: var(--gray-1); border-radius:3px; margin-top:4px; overflow:hidden; }
+  .rank-bar-fill { height:100%; background: linear-gradient(90deg, var(--green-mid), var(--green-light)); border-radius:3px; transition: width .6s cubic-bezier(.2,.7,.3,1); }
+  .rank-value { font-size:12px; font-weight:700; color: var(--green-dark); white-space:nowrap; flex-shrink:0; }
+
+  /* ── Heatmap tabela ── */
+  .heatmap-table { width:100%; border-collapse: collapse; font-size:10.5px; }
+  .heatmap-table th { font-size:9.5px; text-transform:uppercase; color: var(--gray-text); font-weight:600; padding:6px 4px; text-align:center; letter-spacing:.3px; }
+  .heatmap-table th:first-child { text-align:left; }
+  .heatmap-table td { text-align:center; padding:2px; }
+  .heatmap-table td:first-child { text-align:left; font-weight:600; color:var(--text-dark); padding:4px 8px; font-size:11px; white-space:nowrap; }
+  .heat-cell { width:100%; height:26px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:9px; color:transparent; transition: all .18s; cursor:pointer; }
+  .heat-cell:hover { transform: scale(1.12); color: white; font-weight:700; z-index:2; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+
+  .toggle-group { display:flex; gap:4px; background: var(--gray-0); border-radius:7px; padding:2px; }
+  .toggle-btn { font-size:10px; padding:4px 9px; border-radius:5px; cursor:pointer; border:none; background:transparent; color: var(--gray-text); font-weight:500; }
+  .toggle-btn.active { background: var(--white); color: var(--green-dark); box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kpi-card, .chart-box, .hdr::after, .hdr-pill#filtroAtivo, .rank-item { animation: none !important; }
+    * { transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-badge">PMG</div>
+    <h1>Mapa Regional de Vendas — PMG</h1>
+  </div>
+  <div class="hdr-right">
+    <span class="hdr-pill" id="hdrPeriodo">carregando…</span>
+    <span class="hdr-pill" id="hdrRegistros">0 registros</span>
+    <span class="hdr-pill active" id="filtroAtivo" style="display:none;">Filtro ativo</span>
+  </div>
+</div>
+
+<div class="body-layout">
+  <aside class="sidebar">
+
+    <div>
+      <div class="sb-section-header" onclick="toggleSbSection(this)">
+        <div class="sb-section-title">Região</div>
+        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="sb-collapse"><div class="chip-group" id="regiaoChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div></div>
+    </div>
+
+    <div>
+      <div class="sb-section-header" onclick="toggleSbSection(this)">
+        <div class="sb-section-title">UF</div>
+        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="sb-collapse"><div class="chip-group" id="ufChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div></div>
+    </div>
+
+    <div>
+      <div class="sb-section-header" onclick="toggleSbSection(this)">
+        <div class="sb-section-title">Segmento</div>
+        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="sb-collapse"><div class="chip-group" id="segmentoChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div></div>
+    </div>
+
+    <div>
+      <div class="sb-section-header" onclick="toggleSbSection(this)">
+        <div class="sb-section-title">Grupo</div>
+        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="sb-collapse"><div class="chip-group" id="grupoChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div></div>
+    </div>
+
+    <div>
+      <div class="sb-section-header" onclick="toggleSbSection(this)">
+        <div class="sb-section-title">Fornecedor</div>
+        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="sb-collapse"><div class="chip-group" id="fornecedorChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div></div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <button class="btn-apply" onclick="aplicarFiltros()">Aplicar filtros</button>
+      <button class="btn-reset" onclick="resetarFiltros()">Limpar filtros</button>
+    </div>
+
+    <div style="border-top:1px solid var(--gray-1); padding-top:12px; display:flex; flex-direction:column; gap:8px;">
+      <div class="sb-section-title" style="margin-bottom:0;">Dados</div>
+      <button class="btn-upload" onclick="document.getElementById('fileInput').click()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Importar CSV / Excel
+      </button>
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileUpload(event)">
+      <div class="upload-progress-track" id="uploadProgressTrack"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
+      <div class="upload-status" id="uploadStatus"></div>
+      <button class="btn-export" onclick="exportarPDF()">↓ Exportar relatório (PDF)</button>
+    </div>
+
+  </aside>
+
+  <main class="main">
+
+    <div class="kpi-row" id="kpiRow"></div>
+
+    <div class="row-2">
+      <div class="chart-box" style="position:relative;">
+        <div class="chart-hdr">
+          <div class="chart-title">Mapa de Bolhas — Faturamento por Cidade</div>
+          <div class="chart-tag" id="mapCidadesCount">0 cidades</div>
+        </div>
+        <div style="position:relative;">
+          <div id="mapaLeaflet"></div>
+          <div class="map-toggle-row">
+            <button class="map-toggle-btn active" id="mapModeValor" onclick="setMapMode('valor')">Valor</button>
+            <button class="map-toggle-btn" id="mapModeKg" onclick="setMapMode('kg')">Kg</button>
+          </div>
+          <div class="map-legend">
+            <div style="font-weight:600; font-size:10.5px;">Intensidade</div>
+            <div class="map-legend-row"><div class="map-legend-dot" style="width:8px;height:8px;"></div><span>Baixa</span></div>
+            <div class="map-legend-row"><div class="map-legend-dot" style="width:16px;height:16px;"></div><span>Média</span></div>
+            <div class="map-legend-row"><div class="map-legend-dot" style="width:26px;height:26px;"></div><span>Alta</span></div>
+          </div>
+        </div>
+        <div class="loading-overlay" id="mapLoading"><div class="spinner"></div></div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-hdr">
+          <div class="chart-title">Top 10 Cidades</div>
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="rankModeValor" onclick="setRankMode('valor')">R$</button>
+            <button class="toggle-btn" id="rankModeKg" onclick="setRankMode('kg')">Kg</button>
+          </div>
+        </div>
+        <div class="rank-list" id="rankList"></div>
+      </div>
+    </div>
+
+    <div class="row-2-even">
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Evolução Mensal — Faturamento por Ano</div><div class="chart-tag">Linha</div></div>
+        <canvas id="chartEvolucao" height="130"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Heatmap — UF x Mês (Faturamento)</div><div class="chart-tag">Grid</div></div>
+        <div style="overflow-x:auto;"><table class="heatmap-table" id="heatmapTable"></table></div>
+      </div>
+    </div>
+
+    <div class="row-3">
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Faturamento por Região</div><div class="chart-tag">Barras</div></div>
+        <canvas id="chartRegiao" height="180"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Faturamento por Segmento</div><div class="chart-tag">Barras</div></div>
+        <canvas id="chartSegmento" height="180"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Top 10 Fornecedores</div><div class="chart-tag">Rosca</div></div>
+        <canvas id="chartFornecedor" height="180"></canvas>
+      </div>
+    </div>
+
+    <div class="row-2">
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Grupo x Região (Composição)</div><div class="chart-tag">Empilhado</div></div>
+        <canvas id="chartGrupoRegiao" height="150"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Top 10 Grupos por Kg</div><div class="chart-tag">Barras horizontais</div></div>
+        <canvas id="chartGrupoKg" height="150"></canvas>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="geo-data.js"></script>
+<script>
+/* ══════════════════ CONFIG ══════════════════ */
+const SUPABASE_URL = 'SUA_SUPABASE_URL_AQUI';
+const SUPABASE_KEY = 'SUA_SUPABASE_ANON_KEY_AQUI';
+const TABLE_NAME = 'Fechamento Mensal PMG - Regional';
+const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+const COLS = {
+  cidade: 'Cidade', uf: 'UF', zona: 'Zona', segmento: 'Segmento',
+  mes: 'Mês', ano: 'Ano', grupo: 'Grupo', qtdeKg: 'Qtde Kg',
+  valor: 'Valor', regiao: 'Regiao', fornecedor: 'Fornecedor'
+};
+function col(r, key) { return r[COLS[key]]; }
+
+const MESES_NOME_PARA_NUM = {
+  'janeiro':'01','fevereiro':'02','março':'03','marco':'03','abril':'04','maio':'05','junho':'06',
+  'julho':'07','agosto':'08','setembro':'09','outubro':'10','novembro':'11','dezembro':'12',
+  'jan':'01','fev':'02','mar':'03','abr':'04','mai':'05','jun':'06','jul':'07','ago':'08','set':'09','out':'10','nov':'11','dez':'12'
+};
+function normalizeMesNum(v){ if(v===null||v===undefined) return null; const s=String(v).trim().toLowerCase(); if(!s) return null; if(/^\d{1,2}$/.test(s)) return s.padStart(2,'0'); return MESES_NOME_PARA_NUM[s]||null; }
+function rowYearMonth(r){ const m=normalizeMesNum(col(r,'mes')); const a=String(col(r,'ano')||'').trim(); if(!m||!a||a.length!==4) return null; return `${a}-${m}`; }
+function parseNumBR(v){ if(v===null||v===undefined) return 0; if(typeof v==='number') return v; const s=String(v).trim().replace(/\./g,'').replace(',','.'); const n=parseFloat(s); return isNaN(n)?0:n; }
+function fmtMoney(n){ return 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function fmtKg(n){ return n.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}) + ' kg'; }
+function fmtNum(n){ return n.toLocaleString('pt-BR'); }
+
+/* ══════════════════ ESTADO GLOBAL ══════════════════ */
+let allData = [];
+let filteredData = [];
+let filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='';
+let mapMode = 'valor';
+let rankMode = 'valor';
+let charts = {};
+let leafletMap = null;
+let markerLayer = null;
+
+const PALETTE = ['#1a4d2e','#4caf70','#f59e0b','#8b5cf6','#3b82f6','#ec4899','#14b8a6','#ef4444','#a855f7','#84cc16'];
+
+/* ══════════════════ AGRUPAMENTO ══════════════════ */
+function agrupar(data, key, metric, top) {
+  const map = {};
+  data.forEach(r => {
+    const k = String(col(r, key) || 'N/D').trim() || 'N/D';
+    const val = metric === 'kg' ? parseNumBR(col(r,'qtdeKg')) : parseNumBR(col(r,'valor'));
+    map[k] = (map[k] || 0) + val;
+  });
+  let arr = Object.entries(map).sort((a,b) => b[1]-a[1]);
+  if (top) arr = arr.slice(0, top);
+  return arr;
+}
+
+function agruparCidade(data, metric) {
+  const map = {};
+  data.forEach(r => {
+    const cidade = String(col(r,'cidade')||'').trim();
+    const uf = String(col(r,'uf')||'').trim();
+    if (!cidade || !uf) return;
+    const key = cidade + '|' + uf;
+    if (!map[key]) map[key] = { cidade, uf, valor:0, kg:0 };
+    map[key].valor += parseNumBR(col(r,'valor'));
+    map[key].kg += parseNumBR(col(r,'qtdeKg'));
+  });
+  return Object.values(map).sort((a,b) => b[metric]-a[metric]);
+}
+
+/* ══════════════════ CHIPS / SIDEBAR ══════════════════ */
+function toggleSbSection(headerEl) {
+  const collapse = headerEl.nextElementSibling;
+  const chevron = headerEl.querySelector('.sb-chevron');
+  collapse.classList.toggle('collapsed');
+  chevron.classList.toggle('collapsed');
+}
+function buildChips(containerId, values, filterKey) {
+  const container = document.getElementById(containerId);
+  const countMap = {};
+  allData.forEach(r => { const v = col(r, filterKey); if (v) countMap[v] = (countMap[v]||0)+1; });
+  container.innerHTML = `<div class="chip active" data-val="">Todos <span class="badge">${allData.length}</span></div>`;
+  values.forEach(v => {
+    const div = document.createElement('div');
+    div.className = 'chip'; div.dataset.val = v;
+    div.innerHTML = `<span>${v}</span><span class="badge">${countMap[v]||0}</span>`;
+    div.onclick = () => { container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); div.classList.add('active'); };
+    container.appendChild(div);
+  });
+  container.querySelector('.chip[data-val=""]').onclick = () => { container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); container.querySelector('.chip[data-val=""]').classList.add('active'); };
+}
+
+function aplicarFiltros() {
+  filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
+  filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
+  filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
+  filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
+  filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+
+  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor;
+  document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
+
+  filteredData = allData.filter(r => {
+    if (filtroRegiao && col(r,'regiao') !== filtroRegiao) return false;
+    if (filtroUF && col(r,'uf') !== filtroUF) return false;
+    if (filtroSegmento && col(r,'segmento') !== filtroSegmento) return false;
+    if (filtroGrupo && col(r,'grupo') !== filtroGrupo) return false;
+    if (filtroFornecedor && col(r,'fornecedor') !== filtroFornecedor) return false;
+    return true;
+  });
+  renderDashboard();
+}
+function resetarFiltros() {
+  document.querySelectorAll('.chip-group').forEach(g => {
+    g.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+    g.querySelector('.chip[data-val=""]').classList.add('active');
+  });
+  aplicarFiltros();
+}
+
+/* ══════════════════ KPIs ══════════════════ */
+function renderKPIs() {
+  const totalValor = filteredData.reduce((s,r)=>s+parseNumBR(col(r,'valor')),0);
+  const totalKg = filteredData.reduce((s,r)=>s+parseNumBR(col(r,'qtdeKg')),0);
+  const nCidades = new Set(filteredData.map(r=>col(r,'cidade')+'|'+col(r,'uf'))).size;
+  const nUFs = new Set(filteredData.map(r=>col(r,'uf')).filter(Boolean)).size;
+  const nFornecedores = new Set(filteredData.map(r=>col(r,'fornecedor')).filter(Boolean)).size;
+  const ticketMedio = filteredData.length ? totalValor/filteredData.length : 0;
+
+  const kpis = [
+    { label:'Faturamento Total', value: fmtMoney(totalValor), icon:'💰', color:'--green-dark', color2:'--green-mid', soft:'--green-pale' },
+    { label:'Volume Total', value: fmtKg(totalKg), icon:'📦', color:'--blue', color2:'--blue', soft:'--blue-pale' },
+    { label:'Cidades Atendidas', value: fmtNum(nCidades), icon:'📍', color:'--amber', color2:'--amber', soft:'--amber-pale' },
+    { label:'UFs Atendidas', value: fmtNum(nUFs), icon:'🗺️', color:'--violet', color2:'--violet', soft:'--violet-pale' },
+    { label:'Fornecedores Ativos', value: fmtNum(nFornecedores), icon:'🏭', color:'--green-mid', color2:'--green-light', soft:'--green-pale' },
+    { label:'Ticket Médio / Registro', value: fmtMoney(ticketMedio), icon:'📊', color:'--blue', color2:'--violet', soft:'--blue-pale' },
+  ];
+
+  document.getElementById('kpiRow').innerHTML = kpis.map((k,i) => `
+    <div class="kpi-card" style="animation-delay:${i*0.05}s; --accent-color:var(${k.color}); --accent-color2:var(${k.color2}); --accent-soft:var(${k.soft});">
+      <div class="kpi-icon">${k.icon}</div>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('hdrRegistros').textContent = `${fmtNum(filteredData.length)} registros`;
+  const meses = filteredData.map(rowYearMonth).filter(Boolean).sort();
+  if (meses.length) document.getElementById('hdrPeriodo').textContent = `${meses[0]} → ${meses[meses.length-1]}`;
+}
+
+/* ══════════════════ MAPA ══════════════════ */
+function initMap() {
+  leafletMap = L.map('mapaLeaflet', { scrollWheelZoom: true }).setView([-14.5, -51.9], 4);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
+  }).addTo(leafletMap);
+  markerLayer = L.layerGroup().addTo(leafletMap);
+}
+function setMapMode(mode) {
+  mapMode = mode;
+  document.getElementById('mapModeValor').classList.toggle('active', mode==='valor');
+  document.getElementById('mapModeKg').classList.toggle('active', mode==='kg');
+  renderMapa();
+}
+function renderMapa() {
+  document.getElementById('mapLoading').classList.add('show');
+  markerLayer.clearLayers();
+  const cidades = agruparCidade(filteredData, mapMode);
+  const maxVal = Math.max(...cidades.map(c => c[mapMode]), 1);
+  let plotadas = 0;
+
+  cidades.forEach(c => {
+    const coords = lookupGeo(c.cidade, c.uf);
+    if (!coords) return;
+    plotadas++;
+    const intensidade = c[mapMode] / maxVal;
+    const radius = 6 + intensidade * 34;
+    const marker = L.circleMarker(coords, {
+      radius, fillColor: '#4caf70', color: '#1a4d2e', weight: 1.5,
+      fillOpacity: 0.35 + intensidade * 0.4
+    });
+    marker.bindTooltip(
+      `<b>${c.cidade}/${c.uf}</b><br>Valor: ${fmtMoney(c.valor)}<br>Kg: ${fmtKg(c.kg)}`,
+      { direction: 'top', offset: [0,-radius] }
+    );
+    marker.addTo(markerLayer);
+  });
+
+  document.getElementById('mapCidadesCount').textContent = `${plotadas} cidades`;
+  document.getElementById('mapLoading').classList.remove('show');
+}
+
+/* ══════════════════ RANKING TOP 10 CIDADES ══════════════════ */
+function setRankMode(mode) {
+  rankMode = mode;
+  document.getElementById('rankModeValor').classList.toggle('active', mode==='valor');
+  document.getElementById('rankModeKg').classList.toggle('active', mode==='kg');
+  renderRanking();
+}
+function renderRanking() {
+  const cidades = agruparCidade(filteredData, rankMode).slice(0,10);
+  const max = cidades.length ? cidades[0][rankMode] : 1;
+  document.getElementById('rankList').innerHTML = cidades.map((c,i) => `
+    <div class="rank-item" style="animation-delay:${i*0.04}s;">
+      <div class="rank-pos">${i+1}</div>
+      <div class="rank-info">
+        <div class="rank-city">${c.cidade} <span class="rank-uf">${c.uf}</span></div>
+        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(c[rankMode]/max*100).toFixed(0)}%"></div></div>
+      </div>
+      <div class="rank-value">${rankMode==='valor' ? fmtMoney(c.valor) : fmtKg(c.kg)}</div>
+    </div>
+  `).join('') || '<div style="font-size:12px; color:var(--gray-text); padding:12px;">Sem dados para o filtro atual.</div>';
+}
+
+/* ══════════════════ CHARTS ══════════════════ */
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+function renderEvolucao() {
+  destroyChart('evolucao');
+  const porAno = {};
+  filteredData.forEach(r => {
+    const ano = String(col(r,'ano')||'').trim();
+    const mes = normalizeMesNum(col(r,'mes'));
+    if (!ano || !mes) return;
+    porAno[ano] = porAno[ano] || Array(12).fill(0);
+    porAno[ano][parseInt(mes,10)-1] += parseNumBR(col(r,'valor'));
+  });
+  const labels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const datasets = Object.keys(porAno).sort().map((ano,i) => ({
+    label: ano, data: porAno[ano], borderColor: PALETTE[i%PALETTE.length],
+    backgroundColor: PALETTE[i%PALETTE.length]+'22', tension: 0.35, fill: true, pointRadius: 3
+  }));
+  charts.evolucao = new Chart(document.getElementById('chartEvolucao'), {
+    type:'line', data:{ labels, datasets },
+    options:{ responsive:true, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
+  });
+}
+
+function renderBarSimples(canvasId, key, metric, color) {
+  destroyChart(canvasId);
+  const arr = agrupar(filteredData, key, metric, 10);
+  charts[canvasId] = new Chart(document.getElementById(canvasId), {
+    type:'bar',
+    data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: color, borderRadius: 6 }] },
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
+  });
+}
+
+function renderFornecedor() {
+  destroyChart('chartFornecedor');
+  const arr = agrupar(filteredData, 'fornecedor', 'valor', 10);
+  charts.chartFornecedor = new Chart(document.getElementById('chartFornecedor'), {
+    type:'doughnut',
+    data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: PALETTE, borderWidth:2, borderColor:'#fff' }] },
+    options:{ responsive:true, plugins:{legend:{position:'right', labels:{boxWidth:9,font:{size:9}}}} }
+  });
+}
+
+function renderGrupoRegiao() {
+  destroyChart('chartGrupoRegiao');
+  const regioes = [...new Set(filteredData.map(r=>col(r,'regiao')).filter(Boolean))];
+  const grupos = agrupar(filteredData, 'grupo', 'valor', 6).map(a=>a[0]);
+  const datasets = regioes.map((reg,i) => ({
+    label: reg,
+    data: grupos.map(g => filteredData.filter(r=>col(r,'grupo')===g && col(r,'regiao')===reg).reduce((s,r)=>s+parseNumBR(col(r,'valor')),0)),
+    backgroundColor: PALETTE[i%PALETTE.length]
+  }));
+  charts.chartGrupoRegiao = new Chart(document.getElementById('chartGrupoRegiao'), {
+    type:'bar', data:{ labels: grupos, datasets },
+    options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:9}}}}, scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>fmtMoney(v)}}} }
+  });
+}
+
+function renderGrupoKg() {
+  destroyChart('chartGrupoKg');
+  const arr = agrupar(filteredData, 'grupo', 'kg', 10);
+  charts.chartGrupoKg = new Chart(document.getElementById('chartGrupoKg'), {
+    type:'bar',
+    data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: '#3b82f6', borderRadius:6 }] },
+    options:{ indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{ticks:{callback:v=>fmtKg(v)}}} }
+  });
+}
+
+/* ══════════════════ HEATMAP UF x MÊS ══════════════════ */
+function renderHeatmap() {
+  const meses = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+  const mesesLabel = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const ufs = [...new Set(filteredData.map(r=>col(r,'uf')).filter(Boolean))].sort();
+  const grid = {};
+  let max = 0;
+  filteredData.forEach(r => {
+    const uf = col(r,'uf'); const mes = normalizeMesNum(col(r,'mes'));
+    if (!uf || !mes) return;
+    grid[uf] = grid[uf] || Array(12).fill(0);
+    const idx = parseInt(mes,10)-1;
+    grid[uf][idx] += parseNumBR(col(r,'valor'));
+    if (grid[uf][idx] > max) max = grid[uf][idx];
+  });
+  function colorFor(v) {
+    if (!v) return '#f0f1f0';
+    const t = v / max;
+    const r = Math.round(232 - t*(232-26)), g = Math.round(245 - t*(245-77)), b = Math.round(237 - t*(237-46));
+    return `rgb(${r},${g},${b})`;
+  }
+  let html = '<tr><th>UF</th>' + mesesLabel.map(m=>`<th>${m}</th>`).join('') + '</tr>';
+  ufs.forEach(uf => {
+    html += `<tr><td>${uf}</td>` + meses.map((_,i) => {
+      const v = (grid[uf] && grid[uf][i]) || 0;
+      const dark = v/max > 0.55;
+      return `<td><div class="heat-cell" style="background:${colorFor(v)}; ${dark?'color:white':''}" title="${uf} • ${mesesLabel[i]}: ${fmtMoney(v)}">${v?Math.round(v/1000)+'k':''}</div></td>`;
+    }).join('') + '</tr>';
+  });
+  document.getElementById('heatmapTable').innerHTML = html;
+}
+
+/* ══════════════════ RENDER GERAL ══════════════════ */
+function renderDashboard() {
+  renderKPIs();
+  renderMapa();
+  renderRanking();
+  renderEvolucao();
+  renderBarSimples('chartRegiao', 'regiao', 'valor', '#1a4d2e');
+  renderBarSimples('chartSegmento', 'segmento', 'valor', '#f59e0b');
+  renderFornecedor();
+  renderGrupoRegiao();
+  renderGrupoKg();
+  renderHeatmap();
+}
+
+/* ══════════════════ TOAST ══════════════════ */
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 3200);
+}
+
+/* ══════════════════ UPLOAD ══════════════════ */
+function handleFileUpload(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('uploadStatus');
+  statusEl.className = 'upload-status'; statusEl.textContent = 'Lendo arquivo…';
+
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv') {
+    Papa.parse(file, { header:true, skipEmptyLines:true, complete: res => processUploadedRows(res.data) });
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type:'binary' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'' });
+      processUploadedRows(rows);
+    };
+    reader.readAsBinaryString(file);
+  }
+}
+
+async function processUploadedRows(rows) {
+  const statusEl = document.getElementById('uploadStatus');
+  const track = document.getElementById('uploadProgressTrack');
+  const bar = document.getElementById('uploadProgressBar');
+  if (!rows.length) { statusEl.textContent='Arquivo vazio.'; statusEl.className='upload-status err'; return; }
+  if (!db) { statusEl.textContent='Configure SUPABASE_URL / SUPABASE_KEY no código.'; statusEl.className='upload-status err'; return; }
+
+  track.classList.add('show');
+  const batchSize = 500;
+  const batches = [];
+  for (let i=0; i<rows.length; i+=batchSize) batches.push(rows.slice(i, i+batchSize));
+
+  let enviados = 0;
+  for (let i=0; i<batches.length; i++) {
+    const { error } = await db.from(TABLE_NAME).insert(batches[i]);
+    if (error) { statusEl.textContent = 'Erro: ' + error.message; statusEl.className='upload-status err'; return; }
+    enviados += batches[i].length;
+    bar.style.width = Math.round((enviados/rows.length)*100) + '%';
+  }
+  finishUpload(true, `${enviados} linha(s) importada(s) com sucesso!`);
+  showToast('Importação concluída: ' + enviados + ' linha(s).');
+  await inicializar();
+}
+function finishUpload(ok, msg) {
+  const statusEl = document.getElementById('uploadStatus');
+  statusEl.textContent = msg; statusEl.className = 'upload-status ' + (ok?'ok':'err');
+  setTimeout(()=>{ document.getElementById('uploadProgressTrack').classList.remove('show'); document.getElementById('uploadProgressBar').style.width='0%'; }, 1500);
+  document.getElementById('fileInput').value = '';
+}
+
+/* ══════════════════ EXPORTAR PDF ══════════════════ */
+function exportarPDF() {
+  const filtroTexto = `Filtros ativos:${filtroRegiao?' · Região: '+filtroRegiao:''}${filtroUF?' · UF: '+filtroUF:''}${filtroSegmento?' · Segmento: '+filtroSegmento:''}${filtroGrupo?' · Grupo: '+filtroGrupo:''}${filtroFornecedor?' · Fornecedor: '+filtroFornecedor:''}`;
+  showToast('Gerando relatório… ' + (filtroRegiao||filtroUF||filtroSegmento||filtroGrupo||filtroFornecedor ? filtroTexto : 'sem filtros ativos'));
+  window.print();
+}
+
+/* ══════════════════ INICIALIZAÇÃO ══════════════════ */
+async function inicializar() {
+  if (!db) { showToast('Configure as credenciais do Supabase no topo do arquivo.'); return; }
+  const { data, error } = await db.from(TABLE_NAME).select('*');
+  if (error) { showToast('Erro ao carregar dados: ' + error.message); return; }
+  allData = data || [];
+  filteredData = allData;
+
+  const regioes = [...new Set(allData.map(r=>col(r,'regiao')))].filter(v=>v&&String(v).trim()).sort();
+  const ufs = [...new Set(allData.map(r=>col(r,'uf')))].filter(v=>v&&String(v).trim()).sort();
+  const segmentos = [...new Set(allData.map(r=>col(r,'segmento')))].filter(v=>v&&String(v).trim()).sort();
+  const grupos = [...new Set(allData.map(r=>col(r,'grupo')))].filter(v=>v&&String(v).trim()).sort();
+  const fornecedores = [...new Set(allData.map(r=>col(r,'fornecedor')))].filter(v=>v&&String(v).trim()).sort();
+
+  buildChips('regiaoChips', regioes, 'regiao');
+  buildChips('ufChips', ufs, 'uf');
+  buildChips('segmentoChips', segmentos, 'segmento');
+  buildChips('grupoChips', grupos, 'grupo');
+  buildChips('fornecedorChips', fornecedores, 'fornecedor');
+
+  renderDashboard();
+}
+
+window.addEventListener('DOMContentLoaded', () => { initMap(); inicializar(); });
+</script>
+</body>
+</html>
