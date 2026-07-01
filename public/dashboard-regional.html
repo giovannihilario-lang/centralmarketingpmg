@@ -812,9 +812,10 @@ function renderHeatmap() {
   function colorFor(v) {
     if (!v) return '#f0f1f0';
     const t = v / max;
-    const r = Math.round(232 - t*(232-26)), g = Math.round(245 - t*(245-77)), b = Math.round(237 - t*(237-46));
+    const r = Math.round(112 - t*(112-26)), g = Math.round(148 - t*(148-77)), b = Math.round(127 - t*(127-46));
     return `rgb(${r},${g},${b})`;
   }
+  
   let html = '<tr><th>UF</th>' + mesesLabel.map(m=>`<th>${m}</th>`).join('') + '</tr>';
   ufs.forEach(uf => {
     html += `<tr><td>${uf}</td>` + meses.map((_,i) => {
