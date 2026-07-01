@@ -217,18 +217,29 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- BODY -->
 <div class="body-layout">
   <!-- SIDEBAR -->
-  <aside class="sidebar">
-    <div>
-      <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">Tipologia de Cliente</div>
-        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="sb-collapse">
-        <div class="chip-group" id="tipologiaChips">
-          <div class="chip active" data-val="">Todos <span class="badge">–</span></div>
-        </div>
-      </div>
+  <div>
+  <div class="sb-section-header" onclick="toggleSbSection(this)">
+    <div class="sb-section-title">Tipologia de Cliente</div>
+    <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+  <div class="sb-collapse">
+    <div class="chip-group" id="tipologiaChips">
+      <div class="chip active" data-val="">Todos <span class="badge">–</span></div>
     </div>
+  </div>
+</div>
+
+<div>
+  <div class="sb-section-header" onclick="toggleSbSection(this)">
+    <div class="sb-section-title">Categoria</div>
+    <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+  <div class="sb-collapse">
+    <div class="chip-group" id="categoriaChips">
+      <div class="chip active" data-val="">Todos <span class="badge">–</span></div>
+    </div>
+  </div>
+</div>
 
     <div>
       <div class="sb-section-header" onclick="toggleSbSection(this)">
@@ -394,14 +405,14 @@ const TABLE_NAME = 'Fechamento Mensal PMG - Vendas';
 
 // Mapa: chave lógica usada no código -> nome real da coluna no banco.
 const COLS = {
-  pedidoId:  'ID Pedido de Venda',
-  data:      'Data',
-  cliente:   'Cliente',
-  tipologia: 'Tipologia de Cliente',
-  produto:   'Produto',
-  categoria: 'Categoria',
-  qtdeKg:    'Qtde Kg',
-  valor:     'Valor'
+  pedidoId: 'ID Pedido de Venda',
+  segmento: 'Segmento',
+  mes:      'Mês',
+  ano:      'Ano',
+  grupo:    'Grupo',
+  subgrupo: 'Sub-Grupo',
+  qtdeKg:   'Qtde Kg',
+  valor:    'Valor'
 };
 
 function col(row, key) { return row[COLS[key]]; }
@@ -413,8 +424,9 @@ let allData      = [];
 let filteredData = [];
 let charts       = {};
 
-let filtroTipologia = '';
-let filtroCategoria = '';
+let filtroSegmento = '';
+let filtroGrupo = '';
+let filtroSubgrupo = '';
 
 /* ══════════════════════════════════════════
   PARSERS — número BR (vírgula decimal) e data DD/MM/AAAA
@@ -431,22 +443,28 @@ function parseNumBR(v) {
   return isNaN(n) ? 0 : n;
 }
 
-function parseDateBR(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  const parts = s.split('/');
-  if (parts.length !== 3) return null;
-  const [d, m, y] = parts;
-  if (!d || !m || !y) return null;
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const MESES_NOME_PARA_NUM = {
+  'janeiro':'01','fevereiro':'02','março':'03','marco':'03','abril':'04',
+  'maio':'05','junho':'06','julho':'07','agosto':'08','setembro':'09',
+  'outubro':'10','novembro':'11','dezembro':'12',
+  'jan':'01','fev':'02','mar':'03','abr':'04','mai':'05','jun':'06',
+  'jul':'07','ago':'08','set':'09','out':'10','nov':'11','dez':'12'
+};
+
+function normalizeMesNum(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().toLowerCase();
+  if (!s) return null;
+  if (/^\d{1,2}$/.test(s)) return s.padStart(2, '0');
+  return MESES_NOME_PARA_NUM[s] || null;
 }
 
-function toYearMonth(v) {
-  const iso = parseDateBR(v);
-  return iso ? iso.slice(0, 7) : null;
+function rowYearMonth(r) {
+  const mesNum = normalizeMesNum(col(r, 'mes'));
+  const ano = String(col(r, 'ano') || '').trim();
+  if (!mesNum || !ano || ano.length !== 4) return null;
+  return `${ano}-${mesNum}`;
 }
-
-function rowYearMonth(r) { return toYearMonth(col(r, 'data')); }
 
 /* ══════════════════════════════════════════
   TIMELINE (arrastável com filtro real)
@@ -734,8 +752,9 @@ function exportarPDF() {
   infoBanner.innerHTML = `
     <span><strong>PMG Connect</strong> — Evolução do Fechamento Mensal (Faturamento)</span>
     <span>Período: ${fmtYM(periodoStart)} a ${fmtYM(periodoEnd)}
-    ${filtroTipologia ? ' · Tipologia: ' + filtroTipologia : ''}
-    ${filtroCategoria ? ' · Categoria: ' + filtroCategoria : ''}
+    ${filtroSegmento ? ' · Segmento: ' + filtroSegmento : ''}
+${filtroGrupo ? ' · Grupo: ' + filtroGrupo : ''}
+${filtroSubgrupo ? ' · Sub-Grupo: ' + filtroSubgrupo : ''}
     · Gerado em ${new Date().toLocaleDateString('pt-BR')}</span>
   `;
   document.body.insertBefore(infoBanner, document.body.firstChild);
@@ -789,11 +808,13 @@ async function inicializar() {
       document.getElementById('periodoLabel').textContent = fmtYM(window.tlDateMin) + ' – ' + fmtYM(window.tlDateMax);
     }
 
-    const tipologias = [...new Set(allData.map(r => col(r, 'tipologia')))].filter(v => v && String(v).trim()).sort();
-    const categorias = [...new Set(allData.map(r => col(r, 'categoria')))].filter(v => v && String(v).trim()).sort();
+    const segmentos = [...new Set(allData.map(r => col(r, 'segmento')))].filter(v => v && String(v).trim()).sort();
+const grupos    = [...new Set(allData.map(r => col(r, 'grupo')))].filter(v => v && String(v).trim()).sort();
+const subgrupos = [...new Set(allData.map(r => col(r, 'subgrupo')))].filter(v => v && String(v).trim()).sort();
 
-    buildChips('tipologiaChips', tipologias, 'tipologia');
-    buildChips('categoriaChips', categorias, 'categoria');
+buildChips('segmentoChips', segmentos, 'segmento');
+buildChips('grupoChips', grupos, 'grupo');
+buildChips('subgrupoChips', subgrupos, 'subgrupo');
 
     aplicarFiltros();
 
@@ -808,13 +829,15 @@ async function inicializar() {
   APLICAR / RESETAR FILTROS
 ══════════════════════════════════════════ */
 function aplicarFiltros() {
-  const tipChip = document.querySelector('#tipologiaChips .chip.active');
-  const catChip = document.querySelector('#categoriaChips .chip.active');
+  const segChip = document.querySelector('#segmentoChips .chip.active');
+  const gruChip = document.querySelector('#grupoChips .chip.active');
+  const subChip = document.querySelector('#subgrupoChips .chip.active');
 
-  filtroTipologia = tipChip ? tipChip.dataset.val : '';
-  filtroCategoria = catChip ? catChip.dataset.val : '';
+  filtroSegmento = segChip ? segChip.dataset.val : '';
+  filtroGrupo    = gruChip ? gruChip.dataset.val : '';
+  filtroSubgrupo = subChip ? subChip.dataset.val : '';
 
-  const temFiltro = filtroTipologia || filtroCategoria;
+  const temFiltro = filtroSegmento || filtroGrupo || filtroSubgrupo;
   const pilFiltro = document.getElementById('filtroAtivo');
   if (pilFiltro) pilFiltro.style.display = temFiltro ? 'inline-flex' : 'none';
 
@@ -822,8 +845,9 @@ function aplicarFiltros() {
   const periodoEnd   = pctToYearMonth(tlEndPct);
 
   filteredData = allData.filter(r => {
-    if (filtroTipologia && col(r, 'tipologia') !== filtroTipologia) return false;
-    if (filtroCategoria && col(r, 'categoria') !== filtroCategoria) return false;
+    if (filtroSegmento && col(r, 'segmento') !== filtroSegmento) return false;
+    if (filtroGrupo && col(r, 'grupo') !== filtroGrupo) return false;
+    if (filtroSubgrupo && col(r, 'subgrupo') !== filtroSubgrupo) return false;
     const mes = rowYearMonth(r);
     if (mes && (mes < periodoStart || mes > periodoEnd)) return false;
     return true;
@@ -853,10 +877,11 @@ function renderDashboard() {
   const ant          = calcularPeriodoAnterior(periodoStart, periodoEnd);
 
   const dadosBase = allData.filter(r => {
-    if (filtroTipologia && col(r, 'tipologia') !== filtroTipologia) return false;
-    if (filtroCategoria && col(r, 'categoria') !== filtroCategoria) return false;
-    return true;
-  });
+  if (filtroSegmento && col(r, 'segmento') !== filtroSegmento) return false;
+  if (filtroGrupo && col(r, 'grupo') !== filtroGrupo) return false;
+  if (filtroSubgrupo && col(r, 'subgrupo') !== filtroSubgrupo) return false;
+  return true;
+});
 
   const kpiAtual = agregaKPIs(filteredData, periodoStart, periodoEnd);
   const kpiAnt   = agregaKPIs(dadosBase,    ant.start,    ant.end);
@@ -1050,7 +1075,7 @@ function renderVolume(serie, meses) {
 /* ── 3. Desempenho por Tipologia de Cliente ── */
 function renderTipologia() {
   const metric = document.getElementById('tipMetric').value;
-  const { labels, values } = agrupar(filteredData, 'tipologia', metric, 8);
+  const { labels, values } = agrupar(filteredData, 'segmento', metric, 8);
 
   destroyChart('tip');
   if (!labels.length) { mostrarVazio('graficoTipologia'); return; }
@@ -1088,7 +1113,7 @@ function renderTipologia() {
 /* ── 4. Performance por Categoria ── */
 function renderCategoria() {
   const metric = document.getElementById('catMetric').value;
-  const { labels, values } = agrupar(filteredData, 'categoria', metric, 10);
+  const { labels, values } = agrupar(filteredData, 'grupo', metric, 10);
 
   destroyChart('cat');
   if (!labels.length) { mostrarVazio('graficoCategoria'); return; }
@@ -1122,7 +1147,7 @@ function renderCategoria() {
 /* ── 5. Performance por Produto ── */
 function renderProduto() {
   const metric = document.getElementById('proMetric').value;
-  const { labels, values } = agrupar(filteredData, 'produto', metric, 20);
+  const { labels, values } = agrupar(filteredData, 'subgrupo', metric, 20);
 
   destroyChart('pro');
   if (!labels.length) { mostrarVazio('graficoProduto'); return; }
