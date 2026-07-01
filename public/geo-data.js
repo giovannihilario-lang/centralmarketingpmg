@@ -558,10 +558,38 @@ const GEO_BR = {
 
 function normalizeStr(s) {
   return String(s || '').trim().toUpperCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/['´`]/g, ' ')   // apóstrofos -> espaço (D'OESTE -> D OESTE)
+    .replace(/-/g, ' ')       // hífens -> espaço (EMBU-GUACU -> EMBU GUACU)
+    .replace(/\s+/g, ' ')     // colapsa espaços duplicados
+    .trim();
 }
 
+// Índice normalizado do dicionário (aplica a mesma normalização nas chaves do GEO_BR)
+const GEO_BR_NORMALIZED = {};
+Object.keys(GEO_BR).forEach(k => {
+  GEO_BR_NORMALIZED[normalizeStr(k)] = GEO_BR[k];
+});
+
+// Apelidos, nomes antigos, grafias alternativas e erros de digitação recorrentes na base.
+// Chave = como o nome chega normalizado | Valor = "Cidade correta|UF"
+const ALIASES = {
+  'EMBU|SP': 'Embu das Artes|SP',
+  'PARATI|RJ': 'Paraty|RJ',
+  'SAO LUIS DO PARAITINGA|SP': 'Sao Luiz do Paraitinga|SP',
+  'BRASOPOLIS|MG': 'Brazopolis|MG',
+  'JOANOPOLIS SE|SP': 'Joanopolis|SP',
+  'SANTA BARBARA D OEST|SP': 'Santa Barbara D Oeste|SP',
+  // distritos/bairros sem coordenada própria -> aponta pra sede do município
+  'JAFA|SP': 'Rio Claro|SP',
+  'PEREQUE ACU|SP': 'Ubatuba|SP',
+};
+
 function lookupGeo(cidade, uf) {
-  const key = normalizeStr(cidade) + '|' + normalizeStr(uf);
-  return GEO_BR[key] || null;
+  let key = normalizeStr(cidade) + '|' + normalizeStr(uf);
+  if (ALIASES[key]) {
+    const [c, u] = ALIASES[key].split('|');
+    key = normalizeStr(c) + '|' + normalizeStr(u);
+  }
+  return GEO_BR_NORMALIZED[key] || null;
 }
