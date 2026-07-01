@@ -219,6 +219,21 @@
       <div class="sb-collapse"><div class="chip-group" id="fornecedorChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div></div>
     </div>
 
+    <div>
+  <div class="sb-section-header" onclick="toggleSbSection(this)">
+    <div class="sb-section-title">Período</div>
+    <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+  </div>
+  <div class="sb-collapse">
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <label style="font-size:10px;color:var(--gray-text);">De</label>
+      <select id="periodoDe" class="chart-select" style="width:100%; padding:6px;"></select>
+      <label style="font-size:10px;color:var(--gray-text);">Até</label>
+      <select id="periodoAte" class="chart-select" style="width:100%; padding:6px;"></select>
+    </div>
+  </div>
+</div>
+
     <div style="display:flex; flex-direction:column; gap:8px;">
       <button class="btn-apply" onclick="aplicarFiltros()">Aplicar filtros</button>
       <button class="btn-reset" onclick="resetarFiltros()">Limpar filtros</button>
@@ -373,15 +388,67 @@ function agrupar(data, key, metric, top) {
 function agruparCidade(data, metric) {
   const map = {};
   data.forEach(r => {
-    const cidade = String(col(r,'cidade')||'').trim();
-    const uf = String(col(r,'uf')||'').trim();
-    if (!cidade || !uf) return;
-    const key = cidade + '|' + uf;
-    if (!map[key]) map[key] = { cidade, uf, valor:0, kg:0 };
+    const key = cidadeKeyUF(r);
+    if (!key) return;
+    const uf = String(col(r,'uf')||'').trim().toUpperCase();
+    if (!map[key]) map[key] = { cidade: cidadeDisplay(key), uf, valor:0, kg:0 };
     map[key].valor += parseNumBR(col(r,'valor'));
     map[key].kg += parseNumBR(col(r,'qtdeKg'));
   });
   return Object.values(map).sort((a,b) => b[metric]-a[metric]);
+}
+/* ══════════════════ NORMALIZAÇÃO DE CIDADES (mescla variações) ══════════════════ */
+function normalizeKey(str) {
+  if (!str) return '';
+  return String(str)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+}
+
+let cidadeDisplayMap = {}; // chave normalizada -> nome "bonito" pra exibir
+
+function buildCidadeDisplayMap(data) {
+  const counts = {};
+  data.forEach(r => {
+    const raw = String(col(r,'cidade')||'').trim();
+    const uf = String(col(r,'uf')||'').trim();
+    if (!raw || !uf) return;
+    const key = normalizeKey(raw) + '|' + normalizeKey(uf);
+    counts[key] = counts[key] || {};
+    counts[key][raw] = (counts[key][raw]||0) + 1;
+  });
+  const display = {};
+  Object.entries(counts).forEach(([key, variants]) => {
+    // escolhe a variante mais frequente; em empate, prefere a que tem letra minúscula (mais "arrumada")
+    let best = null, bestScore = -1;
+    Object.entries(variants).forEach(([name, n]) => {
+      const arrumada = /[a-z]/.test(name) ? 1 : 0;
+      const score = n * 10 + arrumada;
+      if (score > bestScore) { bestScore = score; best = name; }
+    });
+    display[key] = toTitleCasePtBr(best);
+  });
+  cidadeDisplayMap = display;
+}
+
+function toTitleCasePtBr(str) {
+  const minusculas = ['de','da','do','das','dos','e'];
+  return str.toLowerCase().split(' ').map((w,i) => {
+    if (i>0 && minusculas.includes(w)) return w;
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
+}
+
+function cidadeKeyUF(r) {
+  const cidade = String(col(r,'cidade')||'').trim();
+  const uf = String(col(r,'uf')||'').trim();
+  if (!cidade || !uf) return null;
+  return normalizeKey(cidade) + '|' + normalizeKey(uf);
+}
+function cidadeDisplay(key) {
+  return cidadeDisplayMap[key] || key.split('|')[0];
 }
 
 /* ══════════════════ CHIPS / SIDEBAR ══════════════════ */
@@ -406,14 +473,24 @@ function buildChips(containerId, values, filterKey) {
   container.querySelector('.chip[data-val=""]').onclick = () => { container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); container.querySelector('.chip[data-val=""]').classList.add('active'); };
 }
 
+function buildPeriodoOptions() {
+  const meses = [...new Set(allData.map(rowYearMonth).filter(Boolean))].sort();
+  const deSel = document.getElementById('periodoDe');
+  const ateSel = document.getElementById('periodoAte');
+  deSel.innerHTML = '<option value="">Início</option>' + meses.map(m=>`<option value="${m}">${m}</option>`).join('');
+  ateSel.innerHTML = '<option value="">Fim</option>' + meses.map(m=>`<option value="${m}">${m}</option>`).join('');
+}
+
 function aplicarFiltros() {
   filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
   filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
   filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
   filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
   filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+  const periodoDe = document.getElementById('periodoDe').value;
+  const periodoAte = document.getElementById('periodoAte').value;
 
-  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor;
+  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
   document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
 
   filteredData = allData.filter(r => {
@@ -422,15 +499,21 @@ function aplicarFiltros() {
     if (filtroSegmento && col(r,'segmento') !== filtroSegmento) return false;
     if (filtroGrupo && col(r,'grupo') !== filtroGrupo) return false;
     if (filtroFornecedor && col(r,'fornecedor') !== filtroFornecedor) return false;
+    const ym = rowYearMonth(r);
+    if (periodoDe && (!ym || ym < periodoDe)) return false;
+    if (periodoAte && (!ym || ym > periodoAte)) return false;
     return true;
   });
   renderDashboard();
 }
+
 function resetarFiltros() {
   document.querySelectorAll('.chip-group').forEach(g => {
     g.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
     g.querySelector('.chip[data-val=""]').classList.add('active');
   });
+  document.getElementById('periodoDe').value = '';   // ← adicionar
+  document.getElementById('periodoAte').value = '';  // ← adicionar
   aplicarFiltros();
 }
 
@@ -716,7 +799,8 @@ async function inicializar() {
   if (error) { showToast('Erro ao carregar dados: ' + error.message); return; }
   allData = data || [];
   filteredData = allData;
-
+  buildCidadeDisplayMap(allData);
+  
   const regioes = [...new Set(allData.map(r=>col(r,'regiao')))].filter(v=>v&&String(v).trim()).sort();
   const ufs = [...new Set(allData.map(r=>col(r,'uf')))].filter(v=>v&&String(v).trim()).sort();
   const segmentos = [...new Set(allData.map(r=>col(r,'segmento')))].filter(v=>v&&String(v).trim()).sort();
@@ -728,6 +812,7 @@ async function inicializar() {
   buildChips('segmentoChips', segmentos, 'segmento');
   buildChips('grupoChips', grupos, 'grupo');
   buildChips('fornecedorChips', fornecedores, 'fornecedor');
+  buildPeriodoOptions();
 
   renderDashboard();
 }
