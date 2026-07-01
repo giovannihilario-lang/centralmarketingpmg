@@ -641,16 +641,25 @@ function setMapMode(mode) {
   document.getElementById('mapModeKg').classList.toggle('active', mode==='kg');
   renderMapa();
 }
+
 function renderMapa() {
   document.getElementById('mapLoading').classList.add('show');
   markerLayer.clearLayers();
   const cidades = agruparCidade(filteredData, mapMode);
   const maxVal = Math.max(...cidades.map(c => c[mapMode]), 1);
   let plotadas = 0;
+  const semMatch = [];
 
   cidades.forEach(c => {
     const coords = lookupGeo(c.cidade, c.uf);
-    if (!coords) return;
+    if (!coords) {
+      semMatch.push({
+        cidade_raw: c.cidade,
+        uf_raw: c.uf,
+        chave_normalizada: normalizeStr(c.cidade) + '|' + normalizeStr(c.uf)
+      });
+      return;
+    }
     plotadas++;
     const intensidade = c[mapMode] / maxVal;
     const radius = 6 + intensidade * 34;
@@ -665,7 +674,14 @@ function renderMapa() {
     marker.addTo(markerLayer);
   });
 
-  document.getElementById('mapCidadesCount').textContent = `${plotadas} cidades`;
+  document.getElementById('mapCidadesCount').textContent =
+    semMatch.length ? `${plotadas} cidades (${semMatch.length} sem match)` : `${plotadas} cidades`;
+
+  if (semMatch.length) {
+    console.warn(`${semMatch.length} cidades sem coordenada:`);
+    console.table(semMatch);
+  }
+
   document.getElementById('mapLoading').classList.remove('show');
 }
 
