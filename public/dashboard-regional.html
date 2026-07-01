@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -390,6 +389,19 @@ let mapMode = 'valor';
 let rankMode = 'valor';
 let charts = {};
 let leafletMap = null;
+let cidadesCache = [];
+
+function getFiltrosParams() {
+  return {
+    p_regiao: filtroRegiao || null,
+    p_uf: filtroUF || null,
+    p_segmento: filtroSegmento || null,
+    p_grupo: filtroGrupo || null,
+    p_fornecedor: filtroFornecedor || null,
+    p_de: document.getElementById('periodoDe').value || null,
+    p_ate: document.getElementById('periodoAte').value || null,
+  };
+}
 let markerLayer = null;
 
 const PALETTE = ['#1a4d2e','#4caf70','#f59e0b','#8b5cf6','#3b82f6','#ec4899','#14b8a6','#ef4444','#a855f7','#84cc16'];
@@ -404,73 +416,12 @@ function normalizeKey(str) {
     .replace(/\s+/g, ' ');
 }
 
-let cidadeDisplayMap = {}; // chave normalizada -> nome "bonito" pra exibir
-
-function buildCidadeDisplayMap(data) {
-  const counts = {};
-  data.forEach(r => {
-    const raw = String(col(r,'cidade')||'').trim();
-    const uf = String(col(r,'uf')||'').trim();
-    if (!raw || !uf) return;
-    const key = normalizeKey(raw) + '|' + normalizeKey(uf);
-    counts[key] = counts[key] || {};
-    counts[key][raw] = (counts[key][raw]||0) + 1;
-  });
-  const display = {};
-  Object.entries(counts).forEach(([key, variants]) => {
-    let best = null, bestScore = -1;
-    Object.entries(variants).forEach(([name, n]) => {
-      const arrumada = /[a-z]/.test(name) ? 1 : 0;
-      const score = n * 10 + arrumada;
-      if (score > bestScore) { bestScore = score; best = name; }
-    });
-    display[key] = toTitleCasePtBr(best);
-  });
-  cidadeDisplayMap = display;
-}
-
 function toTitleCasePtBr(str) {
   const minusculas = ['de','da','do','das','dos','e'];
   return str.toLowerCase().split(' ').map((w,i) => {
     if (i>0 && minusculas.includes(w)) return w;
     return w.charAt(0).toUpperCase() + w.slice(1);
   }).join(' ');
-}
-
-function cidadeKeyUF(r) {
-  const cidade = String(col(r,'cidade')||'').trim();
-  const uf = String(col(r,'uf')||'').trim();
-  if (!cidade || !uf) return null;
-  return normalizeKey(cidade) + '|' + normalizeKey(uf);
-}
-function cidadeDisplay(key) {
-  return cidadeDisplayMap[key] || key.split('|')[0];
-}
-
-/* ══════════════════ AGRUPAMENTO ══════════════════ */
-function agrupar(data, key, metric, top) {
-  const map = {};
-  data.forEach(r => {
-    const k = String(col(r, key) || 'N/D').trim() || 'N/D';
-    const val = metric === 'kg' ? parseNumBR(col(r,'qtdeKg')) : parseNumBR(col(r,'valor'));
-    map[k] = (map[k] || 0) + val;
-  });
-  let arr = Object.entries(map).sort((a,b) => b[1]-a[1]);
-  if (top) arr = arr.slice(0, top);
-  return arr;
-}
-
-function agruparCidade(data, metric) {
-  const map = {};
-  data.forEach(r => {
-    const key = cidadeKeyUF(r);
-    if (!key) return;
-    const uf = String(col(r,'uf')||'').trim().toUpperCase();
-    if (!map[key]) map[key] = { cidade: cidadeDisplay(key), uf, valor:0, kg:0 };
-    map[key].valor += parseNumBR(col(r,'valor'));
-    map[key].kg += parseNumBR(col(r,'qtdeKg'));
-  });
-  return Object.values(map).sort((a,b) => b[metric]-a[metric]);
 }
 
 /* ══════════════════ CHIPS / SIDEBAR ══════════════════ */
@@ -480,15 +431,17 @@ function toggleSbSection(headerEl) {
   collapse.classList.toggle('collapsed');
   chevron.classList.toggle('collapsed');
 }
-function buildChips(containerId, values, filterKey) {
+async function buildChipsRPC(containerId, coluna) {
   const container = document.getElementById(containerId);
-  const countMap = {};
-  allData.forEach(r => { const v = col(r, filterKey); if (v) countMap[v] = (countMap[v]||0)+1; });
-  container.innerHTML = `<div class="chip active" data-val="">Todos <span class="badge">${allData.length}</span></div>`;
-  values.forEach(v => {
+  const { data, error } = await db.rpc('valores_distintos', { p_coluna: coluna });
+  if (error) { console.error(error); showToast('Erro ao carregar filtros: ' + error.message); return; }
+  const total = data.reduce((s,r)=>s+Number(r.qtd),0);
+  container.innerHTML = `<div class="chip active" data-val="">Todos <span class="badge">${fmtNum(total)}</span></div>`;
+  data.forEach(row => {
+    const v = row.valor;
     const div = document.createElement('div');
     div.className = 'chip'; div.dataset.val = v;
-    div.innerHTML = `<span>${v}</span><span class="badge">${countMap[v]||0}</span>`;
+    div.innerHTML = `<span>${v}</span><span class="badge">${fmtNum(Number(row.qtd))}</span>`;
     div.onclick = () => { container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); div.classList.add('active'); };
     container.appendChild(div);
   });
@@ -516,8 +469,10 @@ function filtrarChips(containerId, termo) {
   }
 }
 
-function buildPeriodoOptions() {
-  const meses = [...new Set(allData.map(rowYearMonth).filter(Boolean))].sort();
+async function buildPeriodoOptionsRPC() {
+  const { data, error } = await db.rpc('periodos_distintos');
+  if (error) { console.error(error); showToast('Erro ao carregar períodos: ' + error.message); return; }
+  const meses = (data||[]).map(r => `${r.ano}-${r.mes}`).sort();
   const deSel = document.getElementById('periodoDe');
   const ateSel = document.getElementById('periodoAte');
   deSel.innerHTML = '<option value="">Início</option>' + meses.map(m=>`<option value="${m}">${m}</option>`).join('');
@@ -557,7 +512,7 @@ function limparPeriodo() {
   aplicarFiltros();
 }
 
-function aplicarFiltros() {
+async function aplicarFiltros() {
   filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
   filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
   filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
@@ -571,18 +526,8 @@ function aplicarFiltros() {
   const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
   document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
 
-  filteredData = allData.filter(r => {
-    if (filtroRegiao && col(r,'regiao') !== filtroRegiao) return false;
-    if (filtroUF && col(r,'uf') !== filtroUF) return false;
-    if (filtroSegmento && col(r,'segmento') !== filtroSegmento) return false;
-    if (filtroGrupo && col(r,'grupo') !== filtroGrupo) return false;
-    if (filtroFornecedor && col(r,'fornecedor') !== filtroFornecedor) return false;
-    const ym = rowYearMonth(r);
-    if (periodoDe && (!ym || ym < periodoDe)) return false;
-    if (periodoAte && (!ym || ym > periodoAte)) return false;
-    return true;
-  });
-  renderDashboard();
+  document.getElementById('hdrPeriodo').textContent = document.getElementById('periodoAtual').textContent;
+  await renderDashboard();
 }
 
 function resetarFiltros() {
@@ -596,13 +541,17 @@ function resetarFiltros() {
 }
 
 /* ══════════════════ KPIs ══════════════════ */
-function renderKPIs() {
-  const totalValor = filteredData.reduce((s,r)=>s+parseNumBR(col(r,'valor')),0);
-  const totalKg = filteredData.reduce((s,r)=>s+parseNumBR(col(r,'qtdeKg')),0);
-  const nCidades = new Set(filteredData.map(r=>cidadeKeyUF(r)).filter(Boolean)).size;
-  const nUFs = new Set(filteredData.map(r=>col(r,'uf')).filter(Boolean)).size;
-  const nFornecedores = new Set(filteredData.map(r=>col(r,'fornecedor')).filter(Boolean)).size;
-  const ticketMedio = filteredData.length ? totalValor/filteredData.length : 0;
+async function renderKPIs() {
+  const { data, error } = await db.rpc('kpis_agregados', getFiltrosParams());
+  if (error) { console.error(error); showToast('Erro ao carregar KPIs: ' + error.message); return; }
+  const k = (data && data[0]) || {};
+  const totalValor = Number(k.total_valor) || 0;
+  const totalKg = Number(k.total_kg) || 0;
+  const nRegistros = Number(k.n_registros) || 0;
+  const nCidades = Number(k.n_cidades) || 0;
+  const nUFs = Number(k.n_ufs) || 0;
+  const nFornecedores = Number(k.n_fornecedores) || 0;
+  const ticketMedio = nRegistros ? totalValor / nRegistros : 0;
 
   const kpis = [
     { label:'Faturamento Total', value: fmtMoney(totalValor), icon:'💰', color:'--green-dark', color2:'--green-mid', soft:'--green-pale' },
@@ -621,9 +570,18 @@ function renderKPIs() {
     </div>
   `).join('');
 
-  document.getElementById('hdrRegistros').textContent = `${fmtNum(filteredData.length)} registros`;
-  const meses = filteredData.map(rowYearMonth).filter(Boolean).sort();
-  if (meses.length) document.getElementById('hdrPeriodo').textContent = `${meses[0]} → ${meses[meses.length-1]}`;
+  document.getElementById('hdrRegistros').textContent = `${fmtNum(nRegistros)} registros`;
+}
+
+async function fetchCidades() {
+  const { data, error } = await db.rpc('agregado_cidades', getFiltrosParams());
+  if (error) { console.error(error); showToast('Erro ao carregar cidades: ' + error.message); cidadesCache = []; return; }
+  cidadesCache = (data||[]).map(r => ({
+    cidade: toTitleCasePtBr(String(r.cidade||'').trim()),
+    uf: String(r.uf||'').trim().toUpperCase(),
+    valor: Number(r.valor) || 0,
+    kg: Number(r.kg) || 0
+  }));
 }
 
 /* ══════════════════ MAPA ══════════════════ */
@@ -644,7 +602,7 @@ function setMapMode(mode) {
 function renderMapa() {
   document.getElementById('mapLoading').classList.add('show');
   markerLayer.clearLayers();
-  const cidades = agruparCidade(filteredData, mapMode);
+  const cidades = [...cidadesCache].sort((a,b)=>b[mapMode]-a[mapMode]);
   const maxVal = Math.max(...cidades.map(c => c[mapMode]), 1);
   let plotadas = 0;
   const semMatch = [];
@@ -692,7 +650,7 @@ function setRankMode(mode) {
   renderRanking();
 }
 function renderRanking() {
-  const cidades = agruparCidade(filteredData, rankMode).slice(0,10);
+  const cidades = [...cidadesCache].sort((a,b)=>b[rankMode]-a[rankMode]).slice(0,10);
   const max = cidades.length ? cidades[0][rankMode] : 1;
   document.getElementById('rankList').innerHTML = cidades.map((c,i) => `
     <div class="rank-item" style="animation-delay:${i*0.04}s;">
@@ -709,15 +667,16 @@ function renderRanking() {
 /* ══════════════════ CHARTS ══════════════════ */
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
-function renderEvolucao() {
+async function renderEvolucao() {
   destroyChart('evolucao');
+  const { data, error } = await db.rpc('evolucao_mensal', getFiltrosParams());
+  if (error) { console.error(error); return; }
   const porAno = {};
-  filteredData.forEach(r => {
-    const ano = String(col(r,'ano')||'').trim();
-    const mes = normalizeMesNum(col(r,'mes'));
-    if (!ano || !mes) return;
+  (data||[]).forEach(r => {
+    const ano = String(r.ano).trim();
+    const idx = parseInt(r.mes,10) - 1;
     porAno[ano] = porAno[ano] || Array(12).fill(0);
-    porAno[ano][parseInt(mes,10)-1] += parseNumBR(col(r,'valor'));
+    porAno[ano][idx] += Number(r.valor) || 0;
   });
   const labels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const datasets = Object.keys(porAno).sort().map((ano,i) => ({
@@ -730,9 +689,13 @@ function renderEvolucao() {
   });
 }
 
-function renderBarSimples(canvasId, key, metric, color) {
+async function renderBarSimples(canvasId, dimensao, metrica, color) {
   destroyChart(canvasId);
-  const arr = agrupar(filteredData, key, metric, 10);
+  const { data, error } = await db.rpc('agregado_por_dimensao', {
+    p_dimensao: dimensao, p_metrica: metrica, p_limit: 10, ...getFiltrosParams()
+  });
+  if (error) { console.error(error); return; }
+  const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts[canvasId] = new Chart(document.getElementById(canvasId), {
     type:'bar',
     data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: color, borderRadius: 6 }] },
@@ -740,9 +703,13 @@ function renderBarSimples(canvasId, key, metric, color) {
   });
 }
 
-function renderFornecedor() {
+async function renderFornecedor() {
   destroyChart('chartFornecedor');
-  const arr = agrupar(filteredData, 'fornecedor', 'valor', 10);
+  const { data, error } = await db.rpc('agregado_por_dimensao', {
+    p_dimensao: 'Fornecedor', p_metrica: 'Valor', p_limit: 10, ...getFiltrosParams()
+  });
+  if (error) { console.error(error); return; }
+  const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts.chartFornecedor = new Chart(document.getElementById('chartFornecedor'), {
     type:'doughnut',
     data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: PALETTE, borderWidth:2, borderColor:'#fff' }] },
@@ -750,13 +717,21 @@ function renderFornecedor() {
   });
 }
 
-function renderGrupoRegiao() {
+async function renderGrupoRegiao() {
   destroyChart('chartGrupoRegiao');
-  const regioes = [...new Set(filteredData.map(r=>col(r,'regiao')).filter(Boolean))];
-  const grupos = agrupar(filteredData, 'grupo', 'valor', 6).map(a=>a[0]);
+  const { data, error } = await db.rpc('agregado_grupo_regiao', getFiltrosParams());
+  if (error) { console.error(error); return; }
+  const rows = data || [];
+  const regioes = [...new Set(rows.map(r=>r.regiao))];
+  const totaisPorGrupo = {};
+  rows.forEach(r => { totaisPorGrupo[r.grupo] = (totaisPorGrupo[r.grupo]||0) + (Number(r.valor)||0); });
+  const grupos = Object.entries(totaisPorGrupo).sort((a,b)=>b[1]-a[1]).slice(0,6).map(a=>a[0]);
   const datasets = regioes.map((reg,i) => ({
     label: reg,
-    data: grupos.map(g => filteredData.filter(r=>col(r,'grupo')===g && col(r,'regiao')===reg).reduce((s,r)=>s+parseNumBR(col(r,'valor')),0)),
+    data: grupos.map(g => {
+      const found = rows.find(r => r.grupo===g && r.regiao===reg);
+      return found ? Number(found.valor)||0 : 0;
+    }),
     backgroundColor: PALETTE[i%PALETTE.length]
   }));
   charts.chartGrupoRegiao = new Chart(document.getElementById('chartGrupoRegiao'), {
@@ -765,9 +740,13 @@ function renderGrupoRegiao() {
   });
 }
 
-function renderGrupoKg() {
+async function renderGrupoKg() {
   destroyChart('chartGrupoKg');
-  const arr = agrupar(filteredData, 'grupo', 'kg', 10);
+  const { data, error } = await db.rpc('agregado_por_dimensao', {
+    p_dimensao: 'Grupo', p_metrica: 'Qtde Kg', p_limit: 10, ...getFiltrosParams()
+  });
+  if (error) { console.error(error); return; }
+  const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts.chartGrupoKg = new Chart(document.getElementById('chartGrupoKg'), {
     type:'bar',
     data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: '#3b82f6', borderRadius:6 }] },
@@ -776,19 +755,21 @@ function renderGrupoKg() {
 }
 
 /* ══════════════════ HEATMAP UF x MÊS ══════════════════ */
-function renderHeatmap() {
+async function renderHeatmap() {
+  const { data, error } = await db.rpc('heatmap_uf_mes', getFiltrosParams());
+  if (error) { console.error(error); return; }
   const meses = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const mesesLabel = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const ufs = [...new Set(filteredData.map(r=>col(r,'uf')).filter(Boolean))].sort();
+  const rows = data || [];
+  const ufs = [...new Set(rows.map(r=>r.uf))].sort();
   const grid = {};
   let max = 0;
-  filteredData.forEach(r => {
-    const uf = col(r,'uf'); const mes = normalizeMesNum(col(r,'mes'));
-    if (!uf || !mes) return;
-    grid[uf] = grid[uf] || Array(12).fill(0);
-    const idx = parseInt(mes,10)-1;
-    grid[uf][idx] += parseNumBR(col(r,'valor'));
-    if (grid[uf][idx] > max) max = grid[uf][idx];
+  rows.forEach(r => {
+    grid[r.uf] = grid[r.uf] || Array(12).fill(0);
+    const idx = parseInt(r.mes,10) - 1;
+    const v = Number(r.valor) || 0;
+    grid[r.uf][idx] = v;
+    if (v > max) max = v;
   });
   function colorFor(v) {
     if (!v) return '#f0f1f0';
@@ -796,7 +777,6 @@ function renderHeatmap() {
     const r = Math.round(112 - t*(112-26)), g = Math.round(148 - t*(148-77)), b = Math.round(127 - t*(127-46));
     return `rgb(${r},${g},${b})`;
   }
-
   let html = '<tr><th>UF</th>' + mesesLabel.map(m=>`<th>${m}</th>`).join('') + '</tr>';
   ufs.forEach(uf => {
     html += `<tr><td>${uf}</td>` + meses.map((_,i) => {
@@ -809,17 +789,20 @@ function renderHeatmap() {
 }
 
 /* ══════════════════ RENDER GERAL ══════════════════ */
-function renderDashboard() {
-  renderKPIs();
+async function renderDashboard() {
+  await fetchCidades();
   renderMapa();
   renderRanking();
-  renderEvolucao();
-  renderBarSimples('chartRegiao', 'regiao', 'valor', '#1a4d2e');
-  renderBarSimples('chartSegmento', 'segmento', 'valor', '#f59e0b');
-  renderFornecedor();
-  renderGrupoRegiao();
-  renderGrupoKg();
-  renderHeatmap();
+  await Promise.all([
+    renderKPIs(),
+    renderEvolucao(),
+    renderBarSimples('chartRegiao', 'Regiao', 'Valor', '#1a4d2e'),
+    renderBarSimples('chartSegmento', 'Segmento', 'Valor', '#f59e0b'),
+    renderFornecedor(),
+    renderGrupoRegiao(),
+    renderGrupoKg(),
+    renderHeatmap()
+  ]);
 }
 
 /* ══════════════════ TOAST ══════════════════ */
@@ -886,57 +869,20 @@ function exportarPDF() {
   showToast('Gerando relatório… ' + (filtroRegiao||filtroUF||filtroSegmento||filtroGrupo||filtroFornecedor ? filtroTexto : 'sem filtros ativos'));
   window.print();
 }
-/* ══════════════════ BUSCA PAGINADA (evita limite de 1000 linhas do Supabase) ══════════════════ */
-async function fetchAllRows() {
-  const pageSize = 1000;
-  let allRows = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await db
-      .from(TABLE_NAME)
-      .select('*')
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    allRows = allRows.concat(data);
-    if (data.length < pageSize) break; // última página, não precisa buscar mais
-    from += pageSize;
-  }
-
-  return allRows;
-}
 
 /* ══════════════════ INICIALIZAÇÃO ══════════════════ */
 async function inicializar() {
   if (!db) { showToast('Configure as credenciais do Supabase no topo do arquivo.'); return; }
-  let data;
-  try {
-    data = await fetchAllRows();
-  } catch (error) {
-    showToast('Erro ao carregar dados: ' + error.message);
-    return;
-  }
-  allData = data || [];
-  filteredData = allData;
-  buildCidadeDisplayMap(allData);
-
-  const regioes = [...new Set(allData.map(r=>col(r,'regiao')))].filter(v=>v&&String(v).trim()).sort();
-  const ufs = [...new Set(allData.map(r=>col(r,'uf')))].filter(v=>v&&String(v).trim()).sort();
-  const segmentos = [...new Set(allData.map(r=>col(r,'segmento')))].filter(v=>v&&String(v).trim()).sort();
-  const grupos = [...new Set(allData.map(r=>col(r,'grupo')))].filter(v=>v&&String(v).trim()).sort();
-  const fornecedores = [...new Set(allData.map(r=>col(r,'fornecedor')))].filter(v=>v&&String(v).trim()).sort();
-
-  buildChips('regiaoChips', regioes, 'regiao');
-  buildChips('ufChips', ufs, 'uf');
-  buildChips('segmentoChips', segmentos, 'segmento');
-  buildChips('grupoChips', grupos, 'grupo');
-  buildChips('fornecedorChips', fornecedores, 'fornecedor');
-  buildPeriodoOptions();
-
-  renderDashboard();
+  document.getElementById('hdrPeriodo').textContent = 'Todo o histórico';
+  await Promise.all([
+    buildChipsRPC('regiaoChips', 'Regiao'),
+    buildChipsRPC('ufChips', 'UF'),
+    buildChipsRPC('segmentoChips', 'Segmento'),
+    buildChipsRPC('grupoChips', 'Grupo'),
+    buildChipsRPC('fornecedorChips', 'Fornecedor'),
+    buildPeriodoOptionsRPC()
+  ]);
+  await renderDashboard();
 }
 
 window.addEventListener('DOMContentLoaded', () => { initMap(); inicializar(); });
