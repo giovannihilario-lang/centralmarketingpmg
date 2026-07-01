@@ -4,372 +4,492 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Evolução do Fechamento Mensal PMG (Faturamento)</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-/* ══════════════════════════════════════════════════════
-   PMG · IDENTIDADE — "CADEIA FRIA → FATURAMENTO"
-   Paleta dual: frost (kg / volume gelado) x ember (R$ / calor do caixa)
-   Assinatura: selo circular giratório, referência aos selos de
-   inspeção do setor frigorífico.
-══════════════════════════════════════════════════════ */
-:root{
-  --bg:            #0A1410;
-  --bg-2:          #0E1C16;
-  --surface:       rgba(255,255,255,0.035);
-  --surface-solid: #12241D;
-  --line:          rgba(255,255,255,0.09);
-  --line-soft:     rgba(255,255,255,0.05);
-
-  --frost:      #6EE7D8;
-  --frost-dim:  rgba(110,231,216,0.16);
-  --ember:      #F2A65A;
-  --ember-dim:  rgba(242,166,90,0.16);
-  --fresh:      #8FE3A0;
-  --alert:      #F0755A;
-
-  --ink:      #EAF4EE;
-  --ink-dim:  #8FA79B;
-  --ink-mute: #5E7469;
-
-  --radius: 14px;
-  --radius-sm: 9px;
-
-  --f-display: 'Big Shoulders Display', sans-serif;
-  --f-body: 'Manrope', -apple-system, sans-serif;
-  --f-mono: 'IBM Plex Mono', monospace;
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.kpi-card { cursor: default; }
+.kpi-sub  { cursor: help; }
+  :root {
+    --green-dark:   #1a4d2e;
+    --green-mid:    #2d7a4f;
+    --green-light:  #4caf70;
+    --green-pale:   #e8f5ed;
+    --green-border: #c3e0cd;
+    --white:        #ffffff;
+    --gray-0:       #f4f5f4;
+    --gray-1:       #eceeed;
+    --gray-2:       #d4d6d3;
+    --gray-text:    #6b7280;
+    --text-dark:    #111827;
+    --radius:       10px;
+  }
+.btn-export {
+padding: 8px 10px;
+background: transparent;
+color: var(--green-dark);
+border: 1px solid var(--green-border);
+border-radius: 7px;
+font-size: 11px;
+cursor: pointer;
+width: 100%;
+text-align: left;
+transition: all 0.13s;
 }
-
-*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
-
-body{
-  font-family: var(--f-body);
-  background: var(--bg);
-  color: var(--ink);
-  height:100vh; display:flex; flex-direction:column;
-  overflow:hidden; margin-left:216px;
-  background-image:
-    radial-gradient(circle at 12% 8%, rgba(110,231,216,0.05), transparent 40%),
-    radial-gradient(circle at 88% 92%, rgba(242,166,90,0.055), transparent 45%);
+.btn-export:hover {
+background: var(--green-pale);
+border-color: var(--green-mid);
 }
-
-::-webkit-scrollbar{ width:8px; height:8px; }
-::-webkit-scrollbar-track{ background:transparent; }
-::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.12); border-radius:8px; }
-::-webkit-scrollbar-thumb:hover{ background:rgba(255,255,255,0.2); }
-
-/* ── ANIMAÇÕES ── */
-@keyframes fadeInUp{ from{opacity:0; transform:translateY(16px);} to{opacity:1; transform:translateY(0);} }
-@keyframes spinSlow{ to{ transform:rotate(360deg); } }
-@keyframes spinSlowRev{ to{ transform:rotate(-360deg); } }
-@keyframes pulseGlow{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
-@keyframes gradientShift{ 0%{background-position:0% 50%;} 50%{background-position:100% 50%;} 100%{background-position:0% 50%;} }
-@keyframes shimmer{ 0%{ background-position:-300px 0; } 100%{ background-position:300px 0; } }
-@keyframes stampIn{ 0%{opacity:0; transform:scale(1.3) rotate(-6deg);} 60%{opacity:1; transform:scale(0.96) rotate(1deg);} 100%{opacity:1; transform:scale(1) rotate(0);} }
-@keyframes dotBlink{ 0%,100%{opacity:1;} 50%{opacity:.25;} }
-
-.anim-card{ animation: fadeInUp .55s cubic-bezier(.2,.8,.2,1) backwards; }
-.anim-card:nth-child(1){ animation-delay: .02s; }
-.anim-card:nth-child(2){ animation-delay: .07s; }
-.anim-card:nth-child(3){ animation-delay: .12s; }
-.anim-card:nth-child(4){ animation-delay: .17s; }
-.anim-card:nth-child(5){ animation-delay: .22s; }
-.anim-card:nth-child(6){ animation-delay: .27s; }
-.anim-card:nth-child(7){ animation-delay: .32s; }
-.anim-card:nth-child(8){ animation-delay: .37s; }
-
-/* ── SIDEBAR DO PORTAL ── */
-.portal-aside{
-  position:fixed; top:0; left:0; bottom:0; width:216px;
-  background: linear-gradient(180deg, #0C1712, #091009);
-  border-right:1px solid var(--line);
-  display:flex; flex-direction:column; z-index:100;
+.btn-upload {
+padding: 9px 10px;
+background: var(--green-dark);
+color: white;
+border: none;
+border-radius: 7px;
+font-size: 11px;
+font-weight: 500;
+cursor: pointer;
+width: 100%;
+text-align: left;
+display: flex;
+align-items: center;
+gap: 7px;
+transition: background 0.15s;
 }
-.portal-logo-wrap{ padding:22px 18px 18px; border-bottom:1px solid var(--line); }
-.portal-badge{
-  width:42px; height:42px; border-radius:10px;
-  background:linear-gradient(135deg, var(--frost), var(--ember));
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--f-display); font-weight:800; font-size:13px; color:#08120D;
-  margin-bottom:12px; box-shadow:0 0 22px rgba(110,231,216,.18);
+.btn-upload:hover { background: var(--green-mid); }
+.btn-upload:disabled { background: var(--gray-2); cursor: not-allowed; }
+.upload-status {
+font-size: 10.5px;
+color: var(--gray-text);
+line-height: 1.4;
+min-height: 14px;
 }
-.portal-title{ font-size:13px; font-weight:700; color:var(--ink); line-height:1.2; letter-spacing:.2px; }
-.portal-sub{ font-size:9.5px; color:var(--frost); font-weight:600; margin-top:3px; text-transform:uppercase; letter-spacing:1.2px; }
-.portal-nav{ flex:1; padding:16px 11px; display:flex; flex-direction:column; gap:2px; }
-.portal-eyebrow{ font-size:9px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--ink-mute); padding:13px 9px 6px; }
-.portal-link{
-  display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px;
-  font-size:12.5px; font-weight:500; color:var(--ink-dim); text-decoration:none;
-  transition: all .15s;
+.upload-status.err { color: #9b2c1d; }
+.upload-status.ok  { color: #166534; }
+.upload-progress-track {
+width: 100%; height: 4px; background: var(--gray-1);
+border-radius: 3px; overflow: hidden; display: none;
 }
-.portal-link:hover{ background:var(--surface); color:var(--ink); }
-.portal-link.active{ color:var(--bg); font-weight:700; background:linear-gradient(90deg,var(--frost),var(--ember)); }
-.portal-foot{ padding:16px; border-top:1px solid var(--line); font-size:9.5px; color:var(--ink-mute); text-align:center; }
+.upload-progress-track.show { display: block; }
+.upload-progress-bar {
+height: 100%; width: 0%; background: var(--green-mid);
+transition: width 0.2s;
+}
+.sb-section-header {
+display: flex;
+align-items: center;
+justify-content: space-between;
+cursor: pointer;
+user-select: none;
+padding: 2px 0;
+margin-bottom: 7px;
+}
+.sb-section-header:hover .sb-section-title {
+color: var(--text-dark);
+}
+.sb-chevron {
+width: 14px; height: 14px;
+color: var(--gray-text);
+transition: transform 0.2s;
+flex-shrink: 0;
+}
+.sb-chevron.collapsed {
+transform: rotate(-90deg);
+}
+.sb-collapse {
+overflow: hidden;
+transition: max-height 0.25s ease, opacity 0.2s ease;
+max-height: 600px;
+opacity: 1;
+}
+.sb-collapse.collapsed {
+max-height: 0;
+opacity: 0;
+}
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--gray-0);
+    color: var(--text-dark);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-left: 220px;
+  }
 
-/* ── HEADER ── */
-.hdr{
-  background: linear-gradient(90deg, #0C1712, #0F1D17 60%, #0C1712);
-  border-bottom:1px solid var(--line);
-  padding:0 26px; height:62px; flex-shrink:0; z-index:10;
-  display:flex; align-items:center; justify-content:space-between;
-}
-.hdr-left{ display:flex; align-items:center; gap:14px; }
-.hdr-title-wrap{ display:flex; flex-direction:column; }
-.hdr h1{
-  font-family:var(--f-display); font-weight:700; font-size:19px; letter-spacing:.3px;
-  background:linear-gradient(90deg, var(--frost), #cdeee6 35%, var(--ember));
-  background-size:220% auto;
-  -webkit-background-clip:text; background-clip:text; color:transparent;
-  animation:gradientShift 9s ease infinite;
-}
-.hdr-eyebrow{ font-size:9.5px; color:var(--ink-mute); letter-spacing:1.6px; text-transform:uppercase; font-weight:600; margin-top:2px; }
-.seal{ animation:spinSlow 46s linear infinite; flex-shrink:0; }
-.seal-inner{ animation:spinSlowRev 30s linear infinite; transform-origin:50px 50px; }
+  /* ── HEADER ── */
+  .hdr {
+    background: var(--green-dark);
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 54px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .hdr-left { display: flex; align-items: center; gap: 12px; }
+  .hdr-badge {
+    width: 36px; height: 36px;
+    background: white; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 11px; color: var(--green-dark);
+    letter-spacing: -0.5px; line-height: 1;
+  }
+  .hdr h1 { color: white; font-size: 15px; font-weight: 500; letter-spacing: 0.2px; }
+  .hdr-right { display: flex; align-items: center; gap: 8px; }
+  .hdr-pill {
+    background: rgba(255,255,255,0.13);
+    color: rgba(255,255,255,0.82);
+    font-size: 11px; padding: 3px 11px;
+    border-radius: 20px; border: 1px solid rgba(255,255,255,0.18);
+  }
+  .hdr-pill.active {
+    background: rgba(76,175,112,0.3);
+    border-color: rgba(76,175,112,0.5);
+    color: #b3f0cc;
+  }
 
-.hdr-right{ display:flex; align-items:center; gap:8px; }
-.hdr-pill{
-  background:var(--surface); color:var(--ink-dim);
-  font-size:10.5px; font-family:var(--f-mono); padding:5px 12px;
-  border-radius:20px; border:1px solid var(--line); letter-spacing:.3px;
-}
-.hdr-pill.active{
-  background:linear-gradient(90deg, var(--frost-dim), var(--ember-dim));
-  border-color:rgba(110,231,216,.35); color:var(--ink); font-weight:600;
-}
-.hdr-pill.warn{
-  background:rgba(242,166,90,0.16); border-color:rgba(242,166,90,.4); color:var(--ember);
-  display:flex; align-items:center; gap:6px;
-}
-.dot-live{ width:6px; height:6px; border-radius:50%; background:var(--ember); animation:dotBlink 1.6s infinite; }
+  /* ── TIMELINE ── */
+  .timeline-wrap {
+    background: #112e1c;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    padding: 8px 28px 6px;
+    flex-shrink: 0;
+  }
+  .tl-label {
+    font-size: 9px; text-transform: uppercase;
+    letter-spacing: 1px; color: rgba(255,255,255,0.35);
+    margin-bottom: 5px;
+  }
+  .tl-track {
+    position: relative; height: 18px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px; overflow: hidden; cursor: pointer;
+  }
+  .tl-gradient {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(76,175,112,0.1) 15%,
+      rgba(76,175,112,0.3) 55%,
+      rgba(76,175,112,0.45) 83%,
+      transparent 100%);
+  }
+  .tl-handle {
+    position: absolute; top: 0; height: 100%; width: 16%;
+    background: rgba(76,175,112,0.35);
+    border: 1px solid rgba(76,175,112,0.65);
+    border-radius: 3px; left: 70%; cursor: grab;
+    transition: background 0.15s;
+  }
+  .tl-handle:hover { background: rgba(76,175,112,0.5); }
+  .tl-months {
+    display: flex; justify-content: space-between;
+    margin-top: 4px;
+  }
+  .tl-months span { color: rgba(255,255,255,0.28); font-size: 9px; }
 
-/* ── TIMELINE ── */
-.timeline-wrap{ background:#081008; border-bottom:1px solid var(--line); padding:9px 26px 7px; flex-shrink:0; }
-.tl-label{ font-size:9px; text-transform:uppercase; letter-spacing:1.4px; color:var(--ink-mute); margin-bottom:6px; font-family:var(--f-mono); }
-.tl-track{ position:relative; height:20px; background:rgba(255,255,255,0.045); border-radius:5px; overflow:hidden; cursor:pointer; }
-.tl-gradient{ position:absolute; inset:0; background:linear-gradient(90deg, transparent, var(--frost-dim) 30%, var(--ember-dim) 70%, transparent); }
-.tl-months{ display:flex; justify-content:space-between; margin-top:5px; }
-.tl-months span{ color:var(--ink-mute); font-size:9px; font-family:var(--f-mono); }
+  /* ── BODY LAYOUT ── */
+  .body-layout {
+    display: grid;
+    grid-template-columns: 210px 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
 
-/* ── BODY LAYOUT ── */
-.body-layout{ display:grid; grid-template-columns:212px 1fr; flex:1; overflow:hidden; }
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--white);
+    border-right: 1px solid var(--gray-1);
+    padding: 16px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .sb-section-title {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--gray-text);
+    font-weight: 600; margin-bottom: 7px;
+  }
+  .chip-group { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+  .chip {
+    padding: 6px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--gray-1);
+    background: var(--gray-0);
+    font-size: 12px; color: var(--text-dark);
+    cursor: pointer; transition: all 0.13s;
+    display: flex; justify-content: space-between; align-items: center;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--green-mid); background: var(--green-pale); }
+  .chip.active {
+    background: var(--green-dark); color: white;
+    border-color: var(--green-dark);
+  }
+  .chip .badge { font-size: 10px; opacity: 0.65; font-variant-numeric: tabular-nums; }
+  .chip.active .badge { opacity: 0.7; }
+  .sb-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .btn-apply {
+    padding: 9px; background: var(--green-dark); color: white;
+    border: none; border-radius: 7px; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s; width: 100%;
+  }
+  .btn-apply:hover { background: var(--green-mid); }
+  .btn-reset {
+    padding: 8px; background: transparent; color: var(--gray-text);
+    border: 1px solid var(--gray-1); border-radius: 7px;
+    font-size: 11px; cursor: pointer; width: 100%; transition: all 0.13s;
+  }
+  .btn-reset:hover { border-color: var(--gray-2); color: var(--text-dark); }
 
-/* ── SIDEBAR FILTROS ── */
-.sidebar{
-  background:var(--bg-2); border-right:1px solid var(--line);
-  padding:18px 14px; overflow-y:auto; display:flex; flex-direction:column; gap:16px;
-}
-.sb-section-title{ font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-mute); font-weight:700; margin-bottom:8px; font-family:var(--f-mono); }
-.sb-section-header{ display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; padding:2px 0; margin-bottom:8px; }
-.sb-section-header:hover .sb-section-title{ color:var(--frost); }
-.sb-chevron{ width:13px; height:13px; color:var(--ink-mute); transition:transform .2s; flex-shrink:0; }
-.sb-chevron.collapsed{ transform:rotate(-90deg); }
-.sb-collapse{ overflow:hidden; transition:max-height .25s ease, opacity .2s ease; max-height:600px; opacity:1; }
-.sb-collapse.collapsed{ max-height:0; opacity:0; }
-.chip-group{ display:flex; flex-direction:column; gap:4px; max-height:170px; overflow-y:auto; }
-.chip{
-  padding:7px 10px; border-radius:8px; border:1px solid var(--line);
-  background:var(--surface); font-size:11.5px; color:var(--ink-dim);
-  cursor:pointer; transition:all .15s; display:flex; justify-content:space-between; align-items:center; user-select:none;
-}
-.chip:hover{ border-color:var(--frost); color:var(--ink); background:var(--frost-dim); }
-.chip.active{ background:linear-gradient(90deg, var(--frost), var(--ember)); color:#08120D; border-color:transparent; font-weight:700; }
-.chip .badge{ font-size:9.5px; opacity:.7; font-family:var(--f-mono); }
-.sb-actions{ display:flex; flex-direction:column; gap:6px; margin-top:2px; }
-.btn-apply{
-  padding:10px; background:linear-gradient(90deg, var(--frost), var(--ember)); color:#08120D;
-  border:none; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer;
-  transition:filter .15s, transform .1s; width:100%; font-family:var(--f-body);
-}
-.btn-apply:hover{ filter:brightness(1.08); }
-.btn-apply:active{ transform:scale(.98); }
-.btn-reset{ padding:8px; background:transparent; color:var(--ink-mute); border:1px solid var(--line); border-radius:8px; font-size:11px; cursor:pointer; width:100%; transition:all .15s; }
-.btn-reset:hover{ border-color:var(--ink-dim); color:var(--ink); }
-.btn-export{
-  padding:9px 10px; background:var(--surface); color:var(--frost); border:1px solid var(--line);
-  border-radius:8px; font-size:11px; cursor:pointer; width:100%; text-align:left; transition:all .15s;
-}
-.btn-export:hover{ background:var(--frost-dim); border-color:var(--frost); }
-.btn-upload{
-  padding:10px; background:linear-gradient(90deg, var(--ember), #d98d43); color:#1a0f04;
-  border:none; border-radius:8px; font-size:11px; font-weight:800; cursor:pointer; width:100%;
-  text-align:left; display:flex; align-items:center; gap:7px; transition:filter .15s;
-}
-.btn-upload:hover{ filter:brightness(1.08); }
-.btn-upload:disabled{ background:var(--surface); color:var(--ink-mute); cursor:not-allowed; }
-.upload-status{ font-size:10px; color:var(--ink-mute); line-height:1.4; min-height:14px; font-family:var(--f-mono); }
-.upload-status.err{ color:var(--alert); }
-.upload-status.ok{ color:var(--fresh); }
-.upload-progress-track{ width:100%; height:4px; background:var(--surface); border-radius:3px; overflow:hidden; display:none; }
-.upload-progress-track.show{ display:block; }
-.upload-progress-bar{ height:100%; width:0%; background:linear-gradient(90deg, var(--frost), var(--ember)); transition:width .2s; }
+  /* loading state */
+  .loading-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(255,255,255,0.7);
+    border-radius: var(--radius);
+    align-items: center; justify-content: center;
+    z-index: 5;
+  }
+  .loading-overlay.show { display: flex; }
+  .spinner {
+    width: 22px; height: 22px;
+    border: 2px solid var(--green-border);
+    border-top-color: var(--green-dark);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-/* loading */
-.loading-overlay{ display:none; position:absolute; inset:0; background:rgba(10,20,16,0.72); backdrop-filter:blur(2px); border-radius:var(--radius); align-items:center; justify-content:center; z-index:5; }
-.loading-overlay.show{ display:flex; }
-.mini-seal{ width:26px; height:26px; border-radius:50%; border:2px dashed var(--frost); animation:spinSlow 2.2s linear infinite; opacity:.8; }
+  /* ── MAIN ── */
+  .main {
+    overflow-y: auto; padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
 
-/* ── MAIN ── */
-.main{ overflow-y:auto; padding:18px 22px 30px; display:flex; flex-direction:column; gap:22px; }
+  /* ── KPI ROW ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .kpi-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-1);
+    padding: 14px 16px 14px 20px;
+    position: relative; overflow: hidden;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: var(--green-dark);
+    border-radius: var(--radius) 0 0 var(--radius);
+  }
+  .kpi-label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--gray-text);
+    margin-bottom: 6px; font-weight: 500;
+  }
+  .kpi-value { font-size: 24px; font-weight: 700; color: var(--green-dark); line-height: 1; }
+  .kpi-foot { margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .kpi-delta {
+    font-size: 10px; padding: 2px 7px; border-radius: 5px; font-weight: 600;
+  }
+  .kpi-delta.up   { background: #e8f5ed; color: #166534; }
+  .kpi-delta.down { background: #fef2f0; color: #9b2c1d; }
+  .kpi-sub { font-size: 11px; color: var(--gray-text); }
+  .spark-wrap { position: absolute; bottom: 10px; right: 12px; opacity: 0.5; }
 
-.section-eyebrow{ display:flex; align-items:center; gap:12px; margin-bottom:2px; }
-.section-eyebrow .tag{
-  font-family:var(--f-display); font-weight:700; font-size:13px; letter-spacing:2px; text-transform:uppercase;
-  color:var(--ink);
-}
-.section-eyebrow .rule{ flex:1; height:1px; background:linear-gradient(90deg, var(--frost), var(--ember) 60%, transparent); opacity:.5; }
-.section-eyebrow .note{ font-size:10.5px; color:var(--ink-mute); font-family:var(--f-mono); }
+  /* ── CHART GRID ── */
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .row-full { display: grid; grid-template-columns: 1fr; gap: 14px; }
 
-/* ── KPI ROW ── */
-.kpi-row{ display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; }
-.kpi-card{
-  background:var(--surface-solid); border:1px solid var(--line); border-radius:var(--radius);
-  padding:15px 16px; position:relative; overflow:hidden; transition:transform .2s, border-color .2s, box-shadow .2s;
-}
-.kpi-card:hover{ transform:translateY(-3px); border-color:rgba(110,231,216,.4); box-shadow:0 14px 30px rgba(0,0,0,.35), 0 0 0 1px rgba(110,231,216,.08); }
-.kpi-card::before{ content:''; position:absolute; top:0; left:0; width:3px; height:100%; background:linear-gradient(180deg, var(--frost), var(--ember)); }
-.kpi-ring{ position:absolute; top:12px; right:12px; width:26px; height:26px; border-radius:50%; border:1.4px dashed rgba(255,255,255,.16); animation:spinSlow 22s linear infinite; }
-.kpi-ring::after{ content:''; position:absolute; inset:7px; border-radius:50%; background:var(--frost); opacity:.4; }
-.kpi-label{ font-size:9.5px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-mute); margin-bottom:8px; font-weight:700; font-family:var(--f-mono); }
-.kpi-value{ font-family:var(--f-mono); font-size:23px; font-weight:600; color:var(--ink); line-height:1; }
-.kpi-foot{ margin-top:8px; display:flex; align-items:center; gap:6px; }
-.kpi-delta{ font-size:10px; padding:2px 7px; border-radius:5px; font-weight:700; font-family:var(--f-mono); }
-.kpi-delta.up{ background:rgba(143,227,160,.15); color:var(--fresh); }
-.kpi-delta.down{ background:rgba(240,117,90,.15); color:var(--alert); }
-.kpi-sub{ font-size:10px; color:var(--ink-mute); }
-.spark-wrap{ position:absolute; bottom:12px; right:12px; opacity:.65; }
+  .chart-box {
+    background: var(--white);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-1);
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+  .chart-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .chart-title { font-size: 12px; font-weight: 500; color: var(--text-dark); }
+  .chart-tag {
+    font-size: 10px; background: var(--green-pale); color: var(--green-dark);
+    padding: 2px 9px; border-radius: 12px; border: 1px solid var(--green-border);
+  }
+  .chart-select {
+    font-size: 10px; padding: 3px 6px;
+    border: 1px solid var(--gray-1); border-radius: 5px;
+    background: var(--gray-0); color: var(--text-dark); cursor: pointer;
+  }
 
-/* ── CHART GRID ── */
-.row-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-.row-full{ display:grid; grid-template-columns:1fr; gap:14px; }
+  /* ── TOAST / ERRO ── */
+  .toast {
+    position: fixed; bottom: 20px; right: 20px;
+    background: #1f2937; color: white;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 12px; z-index: 100;
+    display: none; animation: fadeIn 0.2s;
+  }
+  .toast.show { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-.chart-box{
-  background:var(--surface-solid); border:1px solid var(--line); border-radius:var(--radius);
-  padding:17px 18px; position:relative; overflow:hidden; transition:border-color .2s, box-shadow .2s;
-}
-.chart-box:hover{ border-color:rgba(255,255,255,.16); box-shadow:0 10px 26px rgba(0,0,0,.3); }
-.chart-hdr{ display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
-.chart-title{ font-size:12.5px; font-weight:700; color:var(--ink); letter-spacing:.2px; }
-.chart-tag{ font-size:9.5px; background:var(--frost-dim); color:var(--frost); padding:3px 10px; border-radius:12px; border:1px solid rgba(110,231,216,.3); font-family:var(--f-mono); }
-.chart-tag.amber{ background:var(--ember-dim); color:var(--ember); border-color:rgba(242,166,90,.35); }
-.chart-select{ font-size:10px; padding:4px 8px; border:1px solid var(--line); border-radius:6px; background:var(--surface); color:var(--ink); cursor:pointer; font-family:var(--f-mono); }
+  /* ── ANIMAÇÕES ── */
+  @keyframes cardEnter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes shimmerMove { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes softPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(76,175,112,0.35); } 50% { box-shadow: 0 0 0 5px rgba(76,175,112,0); } }
+  @keyframes dotBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-/* ── RANKING LIST ── */
-.rank-list{ display:flex; flex-direction:column; gap:9px; margin-top:2px; }
-.rank-row{ display:flex; align-items:center; gap:9px; }
-.r-rank{ width:16px; text-align:right; font-size:10px; color:var(--ink-mute); flex-shrink:0; font-family:var(--f-mono); }
-.r-name{ flex:1; font-size:11.5px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.r-bar-track{ width:90px; height:5px; background:var(--surface); border-radius:3px; flex-shrink:0; overflow:hidden; }
-.r-bar{ height:5px; border-radius:3px; background:linear-gradient(90deg, var(--frost), var(--ember)); }
-.r-val{ width:64px; text-align:right; font-size:10.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums; flex-shrink:0; font-family:var(--f-mono); }
+  .kpi-card, .chart-box { animation: cardEnter 0.55s cubic-bezier(.2,.7,.3,1) both; }
+  .kpi-card { transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease; }
+  .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 26px -14px rgba(26,77,46,0.28); border-color: var(--green-border); }
+  .chart-box { transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease; }
+  .chart-box:hover { transform: translateY(-2px); box-shadow: 0 12px 26px -16px rgba(26,77,46,0.22); border-color: var(--green-border); }
 
-/* ── TOAST ── */
-.toast{ position:fixed; bottom:20px; right:20px; background:var(--surface-solid); border:1px solid var(--line); color:var(--ink); padding:11px 18px; border-radius:10px; font-size:12px; z-index:100; display:none; animation:fadeIn .2s; box-shadow:0 10px 30px rgba(0,0,0,.4); }
-.toast.show{ display:block; }
-@keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+  .kpi-value { background: linear-gradient(90deg, var(--green-dark), var(--green-mid)); -webkit-background-clip: text; background-clip: text; color: transparent; transition: filter 0.2s; }
+  .kpi-card:hover .kpi-value { filter: brightness(1.08); }
 
-@media print{
-  body{ height:auto; overflow:visible; background:white; color:#111; margin-left:0; }
-  .hdr,.timeline-wrap{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  .main{ overflow:visible; }
-  .chart-box,.kpi-card{ break-inside:avoid; page-break-inside:avoid; }
-  .kpi-row,.row-2,.row-full{ break-inside:avoid; }
-  .loading-overlay,.toast{ display:none !important; }
-  #pdf-banner{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .kpi-icon {
+    position: absolute; top: 14px; right: 14px;
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--accent-soft, var(--green-pale));
+    color: var(--accent-color, var(--green-dark));
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.25s ease;
+  }
+  .kpi-card:hover .kpi-icon { transform: rotate(-6deg) scale(1.08); }
+  .kpi-card::before { background: var(--accent-color, var(--green-dark)); transition: background 0.2s; }
+
+  .kpi-delta { transition: background 0.2s, color 0.2s; }
+  .chip { transition: all 0.14s ease, transform 0.12s ease; }
+  .chip:active { transform: scale(0.96); }
+
+  .hdr { position: relative; overflow: hidden; }
+  .hdr::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--green-light), transparent);
+    background-size: 200% 100%;
+    animation: shimmerMove 4.5s linear infinite;
+  }
+  .hdr-pill#filtroAtivo { animation: softPulse 2.2s ease-in-out infinite; }
+
+  .btn-apply, .btn-upload, .btn-export, .btn-reset { transition: all 0.15s ease, transform 0.1s ease; }
+  .btn-apply:active, .btn-upload:active { transform: scale(0.98); }
+  .btn-export:hover, .btn-reset:hover { transform: translateX(2px); }
+
+  #tlHandleStart, #tlHandleEnd { transition: box-shadow 0.15s ease; }
+  #tlHandleStart:hover, #tlHandleEnd:hover { box-shadow: 0 0 0 4px rgba(76,175,112,0.28); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kpi-card, .chart-box, .hdr::after, .hdr-pill#filtroAtivo { animation: none !important; }
+    * { transition-duration: 0.01ms !important; }
+  }
+
+  @media print {
+body { height: auto; overflow: visible; background: white; }
+.hdr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.kpi-card::before { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.main { overflow: visible; }
+.chart-box { break-inside: avoid; page-break-inside: avoid; }
+.kpi-row   { break-inside: avoid; }
+.row-2, .row-full { break-inside: avoid; }
+
+.loading-overlay { display: none !important; }
+.toast { display: none !important; }
+#pdf-banner { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 </head>
 <body>
 <script>
 function checkLoginStatus() {
-  const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
-  if (!isLoggedIn && !window.location.pathname.endsWith('index.html')) {
-    window.location.href = 'index.html';
-    return false;
-  }
-  if (isLoggedIn && window.location.pathname.endsWith('index.html')) {
-    const user = JSON.parse(sessionStorage.getItem('user') || '{}');
-    const dashboard = user.dashboard || 'index.html';
-    window.location.href = dashboard;
-    return false;
-  }
-  return true;
+const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+
+if (!isLoggedIn && !window.location.pathname.endsWith('index.html')) {
+  window.location.href = 'index.html';
+  return false;
 }
-document.addEventListener('DOMContentLoaded', function() { if (!checkLoginStatus()) return; });
+
+if (isLoggedIn && window.location.pathname.endsWith('index.html')) {
+  const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+  const dashboard = user.dashboard || 'index.html';
+  window.location.href = dashboard;
+  return false;
+}
+
+return true;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+if (!checkLoginStatus()) {
+  return;
+}
+});
 </script>
 
 <!-- SIDEBAR DO PORTAL -->
-<aside class="portal-aside">
-  <div class="portal-logo-wrap">
-    <div class="portal-badge">PMG</div>
-    <div class="portal-title">PMG Atacadista</div>
-    <div class="portal-sub">Marketing</div>
-  </div>
-  <nav class="portal-nav">
-    <div class="portal-eyebrow">Geral</div>
-    <a href="/index.html" class="portal-link">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-      Início
-    </a>
-    <div class="portal-eyebrow">Ferramentas</div>
-    <a href="/ferramentas/catalogo.html" class="portal-link">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      Gerador de Catálogo
-    </a>
-    <a href="/dashboard.html" class="portal-link active">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-      Dashboards
-    </a>
-  </nav>
-  <div class="portal-foot">PMG Atacadista © 2026</div>
+<aside style="
+position: fixed; top: 0; left: 0; bottom: 0; width: 220px;
+background: #1B5E20; display: flex; flex-direction: column;
+z-index: 100; font-family: 'Inter', system-ui, sans-serif;
+">
+<div style="padding: 24px 20px 20px; border-bottom: 1px solid rgba(255,255,255,.1);">
+  <div style="width:42px;height:42px;background:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#1B5E20;margin-bottom:12px;">PMG</div>
+  <div style="font-size:13px;font-weight:700;color:white;line-height:1.2;">PMG Atacadista</div>
+  <div style="font-size:10px;color:#81C784;font-weight:500;margin-top:2px;text-transform:uppercase;letter-spacing:.8px;">Marketing</div>
+</div>
+<nav style="flex:1;padding:16px 12px;display:flex;flex-direction:column;gap:2px;">
+  <div style="font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:12px 8px 6px;">Geral</div>
+  <a href="/index.html" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;font-size:13px;font-weight:500;color:rgba(255,255,255,.75);text-decoration:none;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Início
+  </a>
+  <div style="font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:12px 8px 6px;">Ferramentas</div>
+  <a href="/ferramentas/catalogo.html" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;font-size:13px;font-weight:500;color:rgba(255,255,255,.75);text-decoration:none;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    Gerador de Catálogo
+  </a>
+  <a href="/dashboard.html" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;font-size:13px;font-weight:700;color:white;text-decoration:none;background:rgba(255,255,255,.12);">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Dashboards
+  </a>
+</nav>
+<div style="padding:16px;border-top:1px solid rgba(255,255,255,.1);font-size:10px;color:rgba(255,255,255,.3);text-align:center;">PMG Atacadista © 2025</div>
 </aside>
 
 <!-- ── HEADER ── -->
 <header class="hdr">
-  <div class="hdr-left">
-    <svg class="seal" width="42" height="42" viewBox="0 0 100 100">
-      <defs>
-        <linearGradient id="sealGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#6EE7D8"/>
-          <stop offset="1" stop-color="#F2A65A"/>
-        </linearGradient>
-        <path id="sealPath" d="M50,50 m-40,0 a40,40 0 1,1 80,0 a40,40 0 1,1 -80,0"/>
-      </defs>
-      <g class="seal-inner">
-        <circle cx="50" cy="50" r="47" fill="none" stroke="url(#sealGrad)" stroke-width="1.2" stroke-dasharray="1.5 3.5" opacity=".85"/>
-        <text font-size="7" fill="#8FA79B" letter-spacing="2">
-          <textPath href="#sealPath" xlink:href="#sealPath">PMG ATACADISTA • FECHAMENTO MENSAL • </textPath>
-        </text>
-      </g>
-      <circle cx="50" cy="50" r="29" fill="none" stroke="#6EE7D8" stroke-width="1" opacity=".35"/>
-      <text x="50" y="54" font-family="'Big Shoulders Display', sans-serif" font-size="20" font-weight="800" fill="#EAF4EE" text-anchor="middle">PMG</text>
-    </svg>
-    <div class="hdr-title-wrap">
-      <h1>Evolução do Fechamento Mensal PMG</h1>
-      <div class="hdr-eyebrow">Faturamento · Volume · Performance Comercial</div>
-    </div>
-  </div>
-  <div class="hdr-right">
-    <span class="hdr-pill warn" id="filtroAtivo" style="display:none;"><span class="dot-live"></span> Filtro ativo</span>
-    <span class="hdr-pill" id="anoRangeLabel">–</span>
-    <span class="hdr-pill active" id="periodoLabel">Carregando…</span>
-  </div>
+<div class="hdr-left">
+  <div class="hdr-badge">PMG</div>
+  <h1>Evolução do Fechamento Mensal PMG (Faturamento)</h1>
+</div>
+<div class="hdr-right">
+  <span class="hdr-pill" id="filtroAtivo" style="display:none; background:rgba(240,165,0,0.25); border-color:rgba(240,165,0,0.5); color:#fde68a;">
+● Filtro ativo
+</span>
+  <span class="hdr-pill" id="anoRangeLabel">–</span>
+  <span class="hdr-pill active" id="periodoLabel">Carregando…</span>
+</div>
 </header>
 
 <!-- ── TIMELINE ── -->
 <div class="timeline-wrap">
-  <div class="tl-label">Linha do tempo — arraste para filtrar período</div>
-  <div class="tl-track" id="tlTrack">
-    <div class="tl-gradient"></div>
-    <div id="tlRange"      style="position:absolute;top:0;height:100%;background:rgba(110,231,216,0.18);border-top:1px solid rgba(110,231,216,0.45);border-bottom:1px solid rgba(242,166,90,0.45);cursor:grab;"></div>
-    <div id="tlHandleStart" style="position:absolute;top:0;height:100%;width:10px;background:linear-gradient(180deg,#6EE7D8,#4fc9ba);border-radius:3px 0 0 3px;cursor:ew-resize;transform:translateX(-50%);"></div>
-    <div id="tlHandleEnd"   style="position:absolute;top:0;height:100%;width:10px;background:linear-gradient(180deg,#F2A65A,#d98d43);border-radius:0 3px 3px 0;cursor:ew-resize;transform:translateX(-50%);left:100%;"></div>
-  </div>
-  <div class="tl-months" id="tlMonthsLabels"><span>–</span></div>
+<div class="tl-label">Linha do tempo — arraste para filtrar período</div>
+<div class="tl-track" id="tlTrack">
+<div class="tl-gradient"></div>
+<div id="tlRange"      style="position:absolute;top:0;height:100%;background:rgba(76,175,112,0.25);border-top:1px solid rgba(76,175,112,0.5);border-bottom:1px solid rgba(76,175,112,0.5);cursor:grab;"></div>
+<div id="tlHandleStart" style="position:absolute;top:0;height:100%;width:10px;background:rgba(76,175,112,0.8);border-radius:3px 0 0 3px;cursor:ew-resize;transform:translateX(-50%);"></div>
+<div id="tlHandleEnd"   style="position:absolute;top:0;height:100%;width:10px;background:rgba(76,175,112,0.8);border-radius:0 3px 3px 0;cursor:ew-resize;transform:translateX(-50%);left:100%;"></div>
+</div>
+</div>
+<div class="tl-months" id="tlMonthsLabels">
+  <span>–</span>
+</div>
 </div>
 
 <!-- ── BODY ── -->
@@ -381,50 +501,56 @@ document.addEventListener('DOMContentLoaded', function() { if (!checkLoginStatus
   <div>
     <div class="sb-section-header" onclick="toggleSbSection(this)">
       <div class="sb-section-title">Segmento de Cliente</div>
-      <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </div>
     <div class="sb-collapse">
-      <div class="chip-group" id="segmentoChips"><div class="chip active" data-val="">Todos <span class="badge" id="badgeTodosSeg">–</span></div></div>
+      <div class="chip-group" id="segmentoChips">
+        <div class="chip active" data-val="">Todos <span class="badge" id="badgeTodosSeg">–</span></div>
+      </div>
     </div>
   </div>
 
   <div>
     <div class="sb-section-header" onclick="toggleSbSection(this)">
       <div class="sb-section-title">Grupo</div>
-      <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </div>
     <div class="sb-collapse">
-      <div class="chip-group" id="grupoChips"><div class="chip active" data-val="">Todos <span class="badge"></span></div></div>
+      <div class="chip-group" id="grupoChips">
+        <div class="chip active" data-val="">Todos <span class="badge"></span></div>
+      </div>
     </div>
   </div>
 
   <div>
     <div class="sb-section-header" onclick="toggleSbSection(this)">
       <div class="sb-section-title">Sub-grupo</div>
-      <svg class="sb-chevron collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </div>
     <div class="sb-collapse collapsed">
-      <div class="chip-group" id="subgrupoChips"><div class="chip active" data-val="">Todos <span class="badge"></span></div></div>
+      <div class="chip-group" id="subgrupoChips">
+        <div class="chip active" data-val="">Todos <span class="badge"></span></div>
+      </div>
     </div>
   </div>
 
   <div>
     <div class="sb-section-header" onclick="toggleSbSection(this)">
       <div class="sb-section-title">Vendedor</div>
-      <svg class="sb-chevron collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      <svg class="sb-chevron collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </div>
     <div class="sb-collapse collapsed">
-      <div class="chip-group" id="vendedorChips"><div class="chip active" data-val="">Todos <span class="badge"></span></div></div>
-    </div>
-  </div>
-
-  <div>
-    <div class="sb-section-header" onclick="toggleSbSection(this)">
-      <div class="sb-section-title">Zona</div>
-      <svg class="sb-chevron collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <div class="sb-collapse collapsed">
-      <div class="chip-group" id="zonaChips"><div class="chip active" data-val="">Todos <span class="badge"></span></div></div>
+      <div class="chip-group" id="vendedorChips">
+        <div class="chip active" data-val="">Todos <span class="badge"></span></div>
+      </div>
     </div>
   </div>
 
@@ -433,15 +559,19 @@ document.addEventListener('DOMContentLoaded', function() { if (!checkLoginStatus
     <button class="btn-reset" onclick="resetarFiltros()">Limpar filtros</button>
   </div>
 
-  <div style="padding-top:12px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:6px;">
+  <div style="padding-top: 12px; border-top: 1px solid var(--gray-1); display: flex; flex-direction: column; gap: 6px;">
     <div class="sb-section-title" style="margin-bottom:0">Importar Dados</div>
     <input type="file" id="uploadInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileUpload(event)">
-    <button class="btn-upload" id="btnUpload" onclick="document.getElementById('uploadInput').click()">⬆ Importar planilha (CSV/XLSX)</button>
-    <div class="upload-progress-track" id="uploadProgressTrack"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
+    <button class="btn-upload" id="btnUpload" onclick="document.getElementById('uploadInput').click()">
+      ⬆ Importar planilha (CSV/XLSX)
+    </button>
+    <div class="upload-progress-track" id="uploadProgressTrack">
+      <div class="upload-progress-bar" id="uploadProgressBar"></div>
+    </div>
     <div class="upload-status" id="uploadStatus"></div>
   </div>
 
-  <div style="margin-top:auto; padding-top:12px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:6px;">
+  <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid var(--gray-1); display: flex; flex-direction: column; gap: 6px;">
     <div class="sb-section-title" style="margin-bottom:0">Exportar</div>
     <button class="btn-export" onclick="exportarCSV()">⬇ CSV — dados filtrados</button>
     <button class="btn-export" onclick="exportarPDF()">🖨 PDF — dashboard atual</button>
@@ -453,155 +583,238 @@ document.addEventListener('DOMContentLoaded', function() { if (!checkLoginStatus
 <main class="main">
 
   <!-- KPIs -->
-  <div class="kpi-row" id="kpiRow">
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
-      <div class="kpi-label">Faturamento Total</div>
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+      <div class="kpi-label">Faturamento Total (R$)</div>
       <div class="kpi-value" id="kpiFaturamento">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiFaturamentoDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark1" width="76" height="24"></canvas></div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiFaturamentoDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
+      <div class="spark-wrap"><canvas id="spark1" width="80" height="26"></canvas></div>
     </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
+    <div class="kpi-card">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg></div>
       <div class="kpi-label">Volume Total (KG)</div>
       <div class="kpi-value" id="kpiVolume">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiVolumeDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark2" width="76" height="24"></canvas></div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiVolumeDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
+      <div class="spark-wrap"><canvas id="spark2" width="80" height="26"></canvas></div>
     </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
-      <div class="kpi-label">Preço Médio / KG</div>
-      <div class="kpi-value" id="kpiPrecoKg">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiPrecoKgDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark3" width="76" height="24"></canvas></div>
-    </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
-      <div class="kpi-label">Ticket Médio</div>
-      <div class="kpi-value" id="kpiTicket">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiTicketDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark4" width="76" height="24"></canvas></div>
-    </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
+    <div class="kpi-card">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6l1 4H8l1-4z"/><path d="M4 8h16l-1.5 12a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2L4 8z"/></svg></div>
       <div class="kpi-label">Total de Pedidos</div>
       <div class="kpi-value" id="kpiPedidos">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiPedidosDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark5" width="76" height="24"></canvas></div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiPedidosDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
+      <div class="spark-wrap"><canvas id="spark3" width="80" height="26"></canvas></div>
     </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
+    <div class="kpi-card">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div class="kpi-label">Ticket Médio (R$/Pedido)</div>
+      <div class="kpi-value" id="kpiTicket">–</div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiTicketDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
+      <div class="spark-wrap"><canvas id="spark4" width="80" height="26"></canvas></div>
+    </div>
+  </div>
+
+  <!-- KPIs adicionais -->
+  <div class="kpi-row">
+    <div class="kpi-card" style="--accent-color:#f0a500; --accent-soft:#fdf1d9;">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 8a5 5 0 0 0-10 0c0 5 10 4 10 9a5 5 0 0 1-10 0"/></svg></div>
+      <div class="kpi-label">Margem Média (%)</div>
+      <div class="kpi-value" id="kpiMargem">–</div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiMargemDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
+    </div>
+    <div class="kpi-card" style="--accent-color:#8b5cf6; --accent-soft:#efe9fd;">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c.7-3.5 3.3-5.5 6.5-5.5s5.8 2 6.5 5.5"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M15.8 14.8c2.3.3 4 2 4.6 5.2"/></svg></div>
       <div class="kpi-label">Clientes Ativos</div>
       <div class="kpi-value" id="kpiClientes">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiClientesDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark6" width="76" height="24"></canvas></div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiClientesDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
     </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
-      <div class="kpi-label">Margem Média do Grupo</div>
-      <div class="kpi-value" id="kpiMargem">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiMargemDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark7" width="76" height="24"></canvas></div>
+    <div class="kpi-card" style="--accent-color:#2d7a4f; --accent-soft:#e8f5ed;">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/></svg></div>
+      <div class="kpi-label">Vendedores Ativos</div>
+      <div class="kpi-value" id="kpiVendedores">–</div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiVendedoresDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
     </div>
-    <div class="kpi-card anim-card"><div class="kpi-ring"></div>
-      <div class="kpi-label">Peso Médio / Pedido</div>
-      <div class="kpi-value" id="kpiPesoPedido">–</div>
-      <div class="kpi-foot"><span class="kpi-delta up" id="kpiPesoPedidoDelta"></span><span class="kpi-sub">vs período ant.</span></div>
-      <div class="spark-wrap"><canvas id="spark8" width="76" height="24"></canvas></div>
-    </div>
-  </div>
-
-  <!-- SEÇÃO FINANCEIRO -->
-  <div>
-    <div class="section-eyebrow"><span class="tag">Financeiro</span><div class="rule"></div><span class="note">R$ · faturamento e ticket</span></div>
-  </div>
-  <div class="row-2">
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Faturamento (Venda R$) — Evolução Mensal</span><span class="chart-tag amber" id="tagFat">–</span></div>
-      <div style="position:relative;height:200px;"><canvas id="graficoFaturamento"></canvas></div>
-      <div class="loading-overlay" id="loadFat"><div class="mini-seal"></div></div>
-    </div>
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Volume (Venda KG) — Evolução Mensal</span><span class="chart-tag" id="tagVol">–</span></div>
-      <div style="position:relative;height:200px;"><canvas id="graficoVolume"></canvas></div>
-      <div class="loading-overlay" id="loadVol"><div class="mini-seal"></div></div>
-    </div>
-  </div>
-  <div class="row-2">
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Comparação Mês a Mês (Faturamento)</span><span class="chart-tag amber">MoM %</span></div>
-      <div style="position:relative;height:190px;"><canvas id="graficoMoM"></canvas></div>
-      <div class="loading-overlay" id="loadMoM"><div class="mini-seal"></div></div>
-    </div>
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Ticket Médio — Evolução Mensal</span><span class="chart-tag">R$/Pedido</span></div>
-      <div style="position:relative;height:190px;"><canvas id="graficoTicket"></canvas></div>
-      <div class="loading-overlay" id="loadTicket"><div class="mini-seal"></div></div>
+    <div class="kpi-card" style="--accent-color:#4caf70; --accent-soft:#eaf7ee;">
+      <div class="kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3l-9 9"/><path d="M15 3h6v6"/></svg></div>
+      <div class="kpi-label">Preço Médio por KG</div>
+      <div class="kpi-value" id="kpiPrecoKg">–</div>
+      <div class="kpi-foot">
+        <span class="kpi-delta up" id="kpiPrecoKgDelta"></span>
+        <span class="kpi-sub">vs período ant.</span>
+      </div>
     </div>
   </div>
 
-  <!-- SEÇÃO CLIENTES -->
-  <div>
-    <div class="section-eyebrow"><span class="tag">Clientes &amp; Mercado</span><div class="rule"></div><span class="note">segmento · zona · vendedor</span></div>
-  </div>
+  <!-- 1. Faturamento + 2. Volume -->
   <div class="row-2">
-    <div class="chart-box anim-card">
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Faturamento (Venda R$) — Evolução Mensal</span>
+        <span class="chart-tag" id="tagFat">–</span>
+      </div>
+      <div style="position:relative;height:190px;">
+        <canvas id="graficoFaturamento" role="img" aria-label="Faturamento mensal em reais">Carregando gráfico.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadFat"><div class="spinner"></div></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Volume (Venda KG) — Evolução Mensal</span>
+        <span class="chart-tag" id="tagVol">–</span>
+      </div>
+      <div style="position:relative;height:190px;">
+        <canvas id="graficoVolume" role="img" aria-label="Volume mensal em quilos">Carregando gráfico.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadVol"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- 3. Segmento + 5. Grupo -->
+  <div class="row-2">
+    <div class="chart-box">
       <div class="chart-hdr">
         <span class="chart-title">Desempenho por Segmento de Cliente</span>
-        <select class="chart-select" id="segMetric" onchange="renderSegmento()"><option value="valor">Por R$</option><option value="qtdeKg">Por KG</option></select>
+        <select class="chart-select" id="segMetric" onchange="renderSegmento()">
+          <option value="valor">Por R$</option>
+          <option value="qtdeKg">Por KG</option>
+        </select>
       </div>
-      <div style="position:relative;height:220px;"><canvas id="graficoSegmento"></canvas></div>
-      <div class="loading-overlay" id="loadSeg"><div class="mini-seal"></div></div>
+      <div style="position:relative;height:210px;">
+        <canvas id="graficoSegmento" role="img" aria-label="Distribuição por segmento de cliente">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadSeg"><div class="spinner"></div></div>
     </div>
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Clientes Ativos — Evolução Mensal</span><span class="chart-tag" id="tagClientes">–</span></div>
-      <div style="position:relative;height:220px;"><canvas id="graficoClientes"></canvas></div>
-      <div class="loading-overlay" id="loadClientes"><div class="mini-seal"></div></div>
-    </div>
-  </div>
-  <div class="row-2">
-    <div class="chart-box anim-card">
+    <div class="chart-box">
       <div class="chart-hdr">
-        <span class="chart-title">Faturamento por Zona</span>
-        <select class="chart-select" id="zonaMetric" onchange="renderZona()"><option value="valor">Por R$</option><option value="qtdeKg">Por KG</option></select>
+        <span class="chart-title">Performance por Grupo</span>
+        <select class="chart-select" id="grpMetric" onchange="renderGrupo()">
+          <option value="valor">Por R$</option>
+          <option value="qtdeKg">Por KG</option>
+        </select>
       </div>
-      <div style="position:relative;height:210px;"><canvas id="graficoZona"></canvas></div>
-      <div class="loading-overlay" id="loadZona"><div class="mini-seal"></div></div>
-    </div>
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Top 10 Vendedores</span><span class="chart-tag amber">por R$</span></div>
-      <div style="position:relative;height:210px;"><canvas id="graficoVendedor"></canvas></div>
-      <div class="loading-overlay" id="loadVend"><div class="mini-seal"></div></div>
+      <div style="position:relative;height:210px;">
+        <canvas id="graficoGrupo" role="img" aria-label="Ranking de faturamento por grupo">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadGrp"><div class="spinner"></div></div>
     </div>
   </div>
 
-  <!-- SEÇÃO PRODUTO -->
-  <div>
-    <div class="section-eyebrow"><span class="tag">Produto &amp; Fornecimento</span><div class="rule"></div><span class="note">grupo · sub-grupo · fornecedor</span></div>
-  </div>
-  <div class="row-2">
-    <div class="chart-box anim-card">
-      <div class="chart-hdr">
-        <span class="chart-title">Performance por Grupo</span>
-        <select class="chart-select" id="grpMetric" onchange="renderGrupo()"><option value="valor">Por R$</option><option value="qtdeKg">Por KG</option></select>
-      </div>
-      <div style="position:relative;height:220px;"><canvas id="graficoGrupo"></canvas></div>
-      <div class="loading-overlay" id="loadGrp"><div class="mini-seal"></div></div>
-    </div>
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Margem Média por Grupo</span><span class="chart-tag">%</span></div>
-      <div style="position:relative;height:220px;"><canvas id="graficoMargemGrupo"></canvas></div>
-      <div class="loading-overlay" id="loadMargem"><div class="mini-seal"></div></div>
-    </div>
-  </div>
+  <!-- 4. Sub-grupo -->
   <div class="row-full">
-    <div class="chart-box anim-card">
+    <div class="chart-box">
       <div class="chart-hdr">
         <span class="chart-title">Performance por Sub-grupo</span>
-        <select class="chart-select" id="subMetric" onchange="renderSubgrupo()"><option value="valor">Por R$</option><option value="qtdeKg">Por KG</option></select>
+        <select class="chart-select" id="subMetric" onchange="renderSubgrupo()">
+          <option value="valor">Por R$</option>
+          <option value="qtdeKg">Por KG</option>
+        </select>
       </div>
-      <div style="position:relative;height:330px;"><canvas id="graficoSubgrupo"></canvas></div>
-      <div class="loading-overlay" id="loadSub"><div class="mini-seal"></div></div>
+      <div style="position:relative;height:320px;">
+        <canvas id="graficoSubgrupo" role="img" aria-label="Ranking de faturamento por sub-grupo">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadSub"><div class="spinner"></div></div>
     </div>
   </div>
-  <div class="row-full">
-    <div class="chart-box anim-card">
-      <div class="chart-hdr"><span class="chart-title">Top 10 Fornecedores</span><span class="chart-tag amber">por R$</span></div>
-      <div class="rank-list" id="fornecedorList"><div style="color:var(--ink-mute);font-size:12px;">Carregando…</div></div>
-      <div class="loading-overlay" id="loadForn"><div class="mini-seal"></div></div>
+
+  <!-- 6. Vendedor + 7. Cliente -->
+  <div class="row-2">
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Performance por Vendedor</span>
+        <select class="chart-select" id="venMetric" onchange="renderVendedor()">
+          <option value="valor">Por R$</option>
+          <option value="qtdeKg">Por KG</option>
+        </select>
+      </div>
+      <div style="position:relative;height:230px;">
+        <canvas id="graficoVendedor" role="img" aria-label="Ranking de faturamento por vendedor">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadVen"><div class="spinner"></div></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Top 10 Clientes</span>
+        <select class="chart-select" id="cliMetric" onchange="renderCliente()">
+          <option value="valor">Por R$</option>
+          <option value="qtdeKg">Por KG</option>
+        </select>
+      </div>
+      <div style="position:relative;height:230px;">
+        <canvas id="graficoCliente" role="img" aria-label="Ranking dos 10 maiores clientes">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadCli"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- 8. Fornecedor + 9. Região -->
+  <div class="row-2">
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Performance por Fornecedor</span>
+        <select class="chart-select" id="forMetric" onchange="renderFornecedor()">
+          <option value="valor">Por R$</option>
+          <option value="qtdeKg">Por KG</option>
+        </select>
+      </div>
+      <div style="position:relative;height:230px;">
+        <canvas id="graficoFornecedor" role="img" aria-label="Ranking de faturamento por fornecedor">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadFor"><div class="spinner"></div></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Distribuição por Região</span>
+        <span class="chart-tag" id="tagReg">–</span>
+      </div>
+      <div style="position:relative;height:230px;">
+        <canvas id="graficoRegiao" role="img" aria-label="Distribuição de vendas por região">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadReg"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- 10. Dia da semana + 11. Margem por Grupo -->
+  <div class="row-2">
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Vendas por Dia da Semana</span>
+        <span class="chart-tag" id="tagDia">–</span>
+      </div>
+      <div style="position:relative;height:210px;">
+        <canvas id="graficoDiaSemana" role="img" aria-label="Vendas por dia da semana">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadDia"><div class="spinner"></div></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-hdr">
+        <span class="chart-title">Margem Média por Grupo (Top 10)</span>
+        <span class="chart-tag" id="tagMar">–</span>
+      </div>
+      <div style="position:relative;height:210px;">
+        <canvas id="graficoMargem" role="img" aria-label="Margem média por grupo">Carregando.</canvas>
+      </div>
+      <div class="loading-overlay" id="loadMar"><div class="spinner"></div></div>
     </div>
   </div>
 
@@ -620,9 +833,19 @@ const SUPABASE_URL      = 'https://tvryqkctzpzylsdiaige.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2cnlxa2N0enB6eWxzZGlhaWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MDAwMjYsImV4cCI6MjA5Nzk3NjAyNn0.OFTj5G9ipr9Ps-l7_xS0Hu1q6os16WaWQeX8wun0jpk';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Animação padrão suave para todos os gráficos Chart.js
+if (window.Chart) {
+  Chart.defaults.animation = { duration: 700, easing: 'easeOutQuart' };
+  Chart.defaults.animations.colors = { duration: 400 };
+  Chart.defaults.transitions.active.animation.duration = 250;
+}
+
+// Nome da tabela no Supabase (schema public)
 const TABLE_NAME = 'Evolução do Fechamento Mensal PMG';
 
-// Mapa: chave lógica usada no código -> nome real da coluna no banco (sem snake_case).
+// Mapa: chave lógica usada no código -> nome real da coluna no banco.
+// Se a tabela usar snake_case (ex: "id_pedido_de_venda", "qtde_kg", "sub_grupo"),
+// troque só os valores abaixo — o resto do código não precisa mudar.
 const COLS = {
   pedidoId:     'ID Pedido de Venda',
   vendedor:     'Vendedor',
@@ -668,100 +891,150 @@ let filtroSegmento = '';
 let filtroGrupo    = '';
 let filtroSubgrupo = '';
 let filtroVendedor = '';
-let filtroZona     = '';
 
 /* ══════════════════════════════════════════
-  PARSERS — número (BR ou padrão) e data DD/MM/AAAA
+  PARSERS — número BR (vírgula decimal) e data DD/MM/AAAA
 ══════════════════════════════════════════ */
 function parseNumBR(v) {
   if (v === null || v === undefined) return 0;
   if (typeof v === 'number') return v;
   let s = String(v).trim();
   if (!s) return 0;
-  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  if (s.includes(',')) {
+    // Formato BR: ponto = milhar, vírgula = decimal (ex: "1.234,56")
+    s = s.replace(/\./g, '').replace(',', '.');
+  }
+  // Sem vírgula: já é um número simples (possivelmente com ponto decimal, ex. de XLSX)
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
+
 function parseDateBR(v) {
   if (!v) return null;
-  const parts = String(v).trim().split('/');
+  const s = String(v).trim();
+  const parts = s.split('/');
   if (parts.length !== 3) return null;
   const [d, m, y] = parts;
   if (!d || !m || !y) return null;
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
-function toYearMonth(v) { const iso = parseDateBR(v); return iso ? iso.slice(0, 7) : null; }
+
+function toYearMonth(v) {
+  const iso = parseDateBR(v);
+  return iso ? iso.slice(0, 7) : null;
+}
+
 function rowYearMonth(r) { return toYearMonth(col(r, 'data')); }
 
 /* ══════════════════════════════════════════
-  TIMELINE
+  TIMELINE (arrastável com filtro real)
 ══════════════════════════════════════════ */
-let tlStartPct = 0, tlEndPct = 100, dragging = null, dragOrigin = null;
+let tlStartPct = 0;
+let tlEndPct   = 100;
+let dragging   = null;
+let dragOrigin = null;
 
 function pctToYearMonth(pct) {
-  const min = window.tlDateMin || '2024-01', max = window.tlDateMax || '2026-05';
-  const [minY, minM] = min.split('-').map(Number), [maxY, maxM] = max.split('-').map(Number);
-  const totalMonths = (maxY - minY) * 12 + (maxM - minM);
-  const offset = Math.round((pct / 100) * totalMonths);
-  let m = minM - 1 + offset, y = minY + Math.floor(m / 12); m = m % 12;
+  const min  = window.tlDateMin || '2024-01';
+  const max  = window.tlDateMax || '2026-05';
+  const [minY, minM] = min.split('-').map(Number);
+  const [maxY, maxM] = max.split('-').map(Number);
+  const totalMonths  = (maxY - minY) * 12 + (maxM - minM);
+  const offset       = Math.round((pct / 100) * totalMonths);
+  let m = minM - 1 + offset;
+  let y = minY + Math.floor(m / 12);
+  m = m % 12;
   return `${y}-${String(m + 1).padStart(2, '0')}`;
 }
+
 function fmtYM(ym) {
   const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  const [y, m] = ym.split('-'); return nomes[+m - 1] + '/' + y.slice(2);
+  const [y, m] = ym.split('-');
+  return nomes[+m - 1] + '/' + y.slice(2);
 }
+
 function updateTlLabel() {
-  document.getElementById('periodoLabel').textContent = fmtYM(pctToYearMonth(tlStartPct)) + ' – ' + fmtYM(pctToYearMonth(tlEndPct));
+  const s = pctToYearMonth(tlStartPct);
+  const e = pctToYearMonth(tlEndPct);
+  document.getElementById('periodoLabel').textContent = fmtYM(s) + ' – ' + fmtYM(e);
 }
+
 function buildTlMonthLabels() {
-  const min = window.tlDateMin || '2024-01', max = window.tlDateMax || '2026-05';
-  const [minY, minM] = min.split('-').map(Number), [maxY, maxM] = max.split('-').map(Number);
+  const min = window.tlDateMin || '2024-01';
+  const max = window.tlDateMax || '2026-05';
+  const [minY, minM] = min.split('-').map(Number);
+  const [maxY, maxM] = max.split('-').map(Number);
   const totalMonths = (maxY - minY) * 12 + (maxM - minM);
   const steps = Math.min(10, totalMonths + 1);
-  const wrap = document.getElementById('tlMonthsLabels'); wrap.innerHTML = '';
+  const wrap = document.getElementById('tlMonthsLabels');
+  wrap.innerHTML = '';
   for (let i = 0; i < steps; i++) {
     const pct = steps === 1 ? 0 : (i / (steps - 1)) * 100;
-    const span = document.createElement('span'); span.textContent = fmtYM(pctToYearMonth(pct)); wrap.appendChild(span);
+    const span = document.createElement('span');
+    span.textContent = fmtYM(pctToYearMonth(pct));
+    wrap.appendChild(span);
   }
   document.getElementById('anoRangeLabel').textContent = fmtYM(min) + ' – ' + fmtYM(max);
 }
+
 function initTimeline() {
-  const track = document.getElementById('tlTrack'), hStart = document.getElementById('tlHandleStart'),
-        hEnd = document.getElementById('tlHandleEnd'), range = document.getElementById('tlRange');
+  const track   = document.getElementById('tlTrack');
+  const hStart  = document.getElementById('tlHandleStart');
+  const hEnd    = document.getElementById('tlHandleEnd');
+  const range   = document.getElementById('tlRange');
+
   function setHandles() {
-    hStart.style.left = tlStartPct + '%'; hEnd.style.left = tlEndPct + '%';
-    range.style.left = tlStartPct + '%'; range.style.width = (tlEndPct - tlStartPct) + '%';
+    hStart.style.left = tlStartPct + '%';
+    hEnd.style.left   = tlEndPct   + '%';
+    range.style.left  = tlStartPct + '%';
+    range.style.width = (tlEndPct - tlStartPct) + '%';
     updateTlLabel();
   }
-  setHandles(); window.__tlSetHandles = setHandles;
+  setHandles();
+  window.__tlSetHandles = setHandles;
+
   function onMove(e) {
     if (!dragging) return;
-    const rect = track.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    if (dragging === 'start') tlStartPct = Math.min(pct, tlEndPct - 5);
-    else if (dragging === 'end') tlEndPct = Math.max(pct, tlStartPct + 5);
-    else if (dragging === 'range') {
-      const w = tlEndPct - tlStartPct, delta = pct - dragOrigin.pct;
-      tlStartPct = Math.max(0, Math.min(100 - w, dragOrigin.start + delta));
-      tlEndPct = tlStartPct + w;
+    const rect  = track.getBoundingClientRect();
+    const pct   = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    if (dragging === 'start') {
+      tlStartPct = Math.min(pct, tlEndPct - 5);
+    } else if (dragging === 'end') {
+      tlEndPct = Math.max(pct, tlStartPct + 5);
+    } else if (dragging === 'range') {
+      const w    = tlEndPct - tlStartPct;
+      const orig = dragOrigin;
+      const delta = pct - orig.pct;
+      tlStartPct = Math.max(0, Math.min(100 - w, orig.start + delta));
+      tlEndPct   = tlStartPct + w;
     }
     setHandles();
   }
-  function onUp() { if (!dragging) return; dragging = null; aplicarFiltros(); }
+
+  function onUp() {
+    if (!dragging) return;
+    dragging = null;
+    aplicarFiltros();
+  }
+
   hStart.addEventListener('mousedown', e => { e.preventDefault(); dragging = 'start'; });
-  hEnd.addEventListener('mousedown', e => { e.preventDefault(); dragging = 'end'; });
-  range.addEventListener('mousedown', e => {
+  hEnd.addEventListener('mousedown',   e => { e.preventDefault(); dragging = 'end'; });
+  range.addEventListener('mousedown',  e => {
     e.preventDefault();
-    const rect = track.getBoundingClientRect(), pct = ((e.clientX - rect.left) / rect.width) * 100;
-    dragging = 'range'; dragOrigin = { pct, start: tlStartPct };
+    const rect = track.getBoundingClientRect();
+    const pct  = ((e.clientX - rect.left) / rect.width) * 100;
+    dragging   = 'range';
+    dragOrigin = { pct, start: tlStartPct };
   });
+
   document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
+  document.addEventListener('mouseup',   onUp);
 }
+
 initTimeline();
 
 /* ══════════════════════════════════════════
-  FORMATAÇÃO
+  UTILS DE FORMATAÇÃO
 ══════════════════════════════════════════ */
 function fmtBRL(v)  { return 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtBRLk(v) {
@@ -776,52 +1049,61 @@ function fmtKGk(v) {
   return fmtKG(v);
 }
 function fmtNum(v) { return v.toLocaleString('pt-BR'); }
-function fmtPct(v) { return v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%'; }
 
 function showToast(msg, dur = 3000) {
-  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), dur);
 }
 function mostrarVazio(canvasId, msg = 'Sem dados para o filtro selecionado') {
-  const canvas = document.getElementById(canvasId); if (!canvas) return;
-  const ctx = canvas.getContext('2d'), W = canvas.offsetWidth || 300, H = canvas.offsetHeight || 180;
-  canvas.width = W; canvas.height = H; ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#5E7469'; ctx.font = '13px Manrope, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 300;
+  const H = canvas.offsetHeight || 180;
+  canvas.width  = W;
+  canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#d1d5db';
+  ctx.font = '13px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText('😶 ' + msg, W / 2, H / 2);
 }
-function loading(ids, on) { ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('show', on); }); }
-
-/* ── Contador animado para KPIs ── */
-function animateValue(el, toValue, formatter, duration = 700) {
-  if (!el) return;
-  const fromValue = el.__lastVal || 0;
-  const start = performance.now();
-  function tick(now) {
-    const t = Math.min(1, (now - start) / duration);
-    const eased = 1 - Math.pow(1 - t, 3);
-    const current = fromValue + (toValue - fromValue) * eased;
-    el.textContent = formatter(current);
-    if (t < 1) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-  el.__lastVal = toValue;
-}
-
-/* ── Sparkline ── */
-function drawSparkline(id, data, color) {
-  const c = document.getElementById(id); if (!c || !data.length) return;
-  const ctx = c.getContext('2d'), W = c.width, H = c.height;
-  const mn = Math.min(...data), mx = Math.max(...data), range = mx - mn || 1;
-  const pts = data.map((v, i) => [(i / (data.length - 1 || 1)) * W, H - 2 - ((v - mn) / range) * (H - 4)]);
-  ctx.clearRect(0, 0, W, H); ctx.beginPath();
-  pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
-  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.lineTo(pts[pts.length - 1][0], H); ctx.lineTo(pts[0][0], H); ctx.closePath();
-  ctx.fillStyle = color + '30'; ctx.fill();
+function loading(ids, on) {
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('show', on);
+  });
 }
 
 /* ══════════════════════════════════════════
-  AGRUPAR (soma / média)
+  SPARKLINE
+══════════════════════════════════════════ */
+function drawSparkline(id, data, color) {
+  const c = document.getElementById(id);
+  if (!c || !data.length) return;
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const range = mx - mn || 1;
+  const pts = data.map((v, i) => [
+    (i / (data.length - 1 || 1)) * W,
+    H - 2 - ((v - mn) / range) * (H - 4)
+  ]);
+  ctx.clearRect(0, 0, W, H);
+  ctx.beginPath();
+  pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.lineTo(pts[pts.length - 1][0], H);
+  ctx.lineTo(pts[0][0], H);
+  ctx.closePath();
+  ctx.fillStyle = color + '28'; ctx.fill();
+}
+
+/* ══════════════════════════════════════════
+  AGRUPAR (por chave lógica -> soma de valFieldKey)
 ══════════════════════════════════════════ */
 function agrupar(data, groupKey, valFieldKey, top = null) {
   const map = {};
@@ -833,36 +1115,42 @@ function agrupar(data, groupKey, valFieldKey, top = null) {
   if (top) entries = entries.slice(0, top);
   return { labels: entries.map(x => x[0]), values: entries.map(x => x[1]) };
 }
-function agruparMedia(data, groupKey, valFieldKey, top = null) {
-  const map = {};
-  data.forEach(r => {
-    const k = col(r, groupKey) || '(sem valor)';
-    if (!map[k]) map[k] = { sum: 0, count: 0 };
-    map[k].sum += parseNumBR(col(r, valFieldKey));
-    map[k].count++;
-  });
-  let entries = Object.entries(map).map(([k, v]) => [k, v.count ? v.sum / v.count : 0]).sort((a, b) => b[1] - a[1]);
-  if (top) entries = entries.slice(0, top);
-  return { labels: entries.map(x => x[0]), values: entries.map(x => x[1]) };
-}
 
 /* ══════════════════════════════════════════
   SIDEBAR – CHIPS
 ══════════════════════════════════════════ */
 function buildChips(containerId, items, colKey, badgeTodosId) {
-  const cont = document.getElementById(containerId), first = cont.querySelector('.chip');
-  if (badgeTodosId) { const b = document.getElementById(badgeTodosId); if (b) b.textContent = allData.length; }
-  else { const b = first.querySelector('.badge'); if (b) b.textContent = allData.length; }
+  const cont  = document.getElementById(containerId);
+  const first = cont.querySelector('.chip');
+
+  if (badgeTodosId) {
+    const badgeTodos = document.getElementById(badgeTodosId);
+    if (badgeTodos) badgeTodos.textContent = allData.length;
+  } else {
+    const b = first.querySelector('.badge');
+    if (b) b.textContent = allData.length;
+  }
+
   [...cont.querySelectorAll('.chip')].slice(1).forEach(c => c.remove());
+
   items.forEach(val => {
     const count = allData.filter(r => col(r, colKey) === val).length;
     const d = document.createElement('div');
-    d.className = 'chip'; d.dataset.val = val; d.dataset.col = colKey;
+    d.className = 'chip';
+    d.dataset.val  = val;
+    d.dataset.col  = colKey;
     d.innerHTML = `${val} <span class="badge">${count}</span>`;
-    d.addEventListener('click', () => { cont.querySelectorAll('.chip').forEach(c => c.classList.remove('active')); d.classList.add('active'); });
+    d.addEventListener('click', () => {
+      cont.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      d.classList.add('active');
+    });
     cont.appendChild(d);
   });
-  first.addEventListener('click', () => { cont.querySelectorAll('.chip').forEach(c => c.classList.remove('active')); first.classList.add('active'); });
+
+  first.addEventListener('click', () => {
+    cont.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    first.classList.add('active');
+  });
 }
 
 /* ══════════════════════════════════════════
@@ -870,43 +1158,80 @@ function buildChips(containerId, items, colKey, badgeTodosId) {
 ══════════════════════════════════════════ */
 function exportarCSV() {
   if (!filteredData.length) { showToast('Sem dados para exportar.'); return; }
+
   const cols = Object.keys(filteredData[0]);
   const escape = v => {
     if (v === null || v === undefined) return '';
     const s = String(v);
-    return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
   };
-  const linhas = [cols.join(','), ...filteredData.map(r => cols.map(c => escape(r[c])).join(','))];
+  const linhas = [
+    cols.join(','),
+    ...filteredData.map(r => cols.map(c => escape(r[c])).join(','))
+  ];
+
   const blob = new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob), a = document.createElement('a');
-  const periodoStart = pctToYearMonth(tlStartPct), periodoEnd = pctToYearMonth(tlEndPct);
-  a.href = url; a.download = `pmg_fechamento_mensal_${periodoStart}_${periodoEnd}.csv`; a.click();
-  URL.revokeObjectURL(url); showToast('CSV exportado com sucesso!');
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+
+  const periodoStart = pctToYearMonth(tlStartPct);
+  const periodoEnd   = pctToYearMonth(tlEndPct);
+  a.href     = url;
+  a.download = `pmg_fechamento_mensal_${periodoStart}_${periodoEnd}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exportado com sucesso!');
 }
+
 function exportarPDF() {
   showToast('Gerando PDF…', 5000);
-  const esconder = ['.sidebar', '.timeline-wrap', '.hdr-right', '.portal-aside'];
+
+  const esconder = ['.sidebar', '.timeline-wrap', '.hdr-right'];
   const estilosOriginais = [];
-  esconder.forEach(sel => document.querySelectorAll(sel).forEach(el => { estilosOriginais.push({ el, display: el.style.display }); el.style.display = 'none'; }));
-  const bodyLayout = document.querySelector('.body-layout'), mainEl = document.querySelector('.main');
-  const origGrid = bodyLayout.style.gridTemplateColumns, origOverflow = mainEl.style.overflow;
-  bodyLayout.style.gridTemplateColumns = '1fr'; mainEl.style.overflow = 'visible';
-  document.body.style.marginLeft = '0';
-  const infoBanner = document.createElement('div'); infoBanner.id = 'pdf-banner';
-  infoBanner.style.cssText = `padding:8px 20px;background:#12241D;border-bottom:1px solid #6EE7D8;font-size:12px;color:#EAF4EE;display:flex;justify-content:space-between;`;
-  const periodoStart = pctToYearMonth(tlStartPct), periodoEnd = pctToYearMonth(tlEndPct);
-  infoBanner.innerHTML = `<span><strong>PMG Atacadista</strong> — Evolução do Fechamento Mensal (Faturamento)</span>
+
+  esconder.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      estilosOriginais.push({ el, display: el.style.display });
+      el.style.display = 'none';
+    });
+  });
+
+  const bodyLayout = document.querySelector('.body-layout');
+  const mainEl     = document.querySelector('.main');
+  const origGrid   = bodyLayout.style.gridTemplateColumns;
+  const origOverflow = mainEl.style.overflow;
+  bodyLayout.style.gridTemplateColumns = '1fr';
+  mainEl.style.overflow = 'visible';
+
+  const infoBanner = document.createElement('div');
+  infoBanner.id = 'pdf-banner';
+  infoBanner.style.cssText = `
+    padding: 8px 20px; background: var(--green-pale);
+    border-bottom: 1px solid var(--green-border);
+    font-size: 12px; color: var(--green-dark);
+    display: flex; justify-content: space-between;
+  `;
+  const periodoStart = pctToYearMonth(tlStartPct);
+  const periodoEnd   = pctToYearMonth(tlEndPct);
+  infoBanner.innerHTML = `
+    <span><strong>PMG Atacadista</strong> — Evolução do Fechamento Mensal (Faturamento)</span>
     <span>Período: ${fmtYM(periodoStart)} a ${fmtYM(periodoEnd)}
-    ${filtroSegmento ? ' · Segmento: ' + filtroSegmento : ''}${filtroGrupo ? ' · Grupo: ' + filtroGrupo : ''}
-    ${filtroSubgrupo ? ' · Sub-grupo: ' + filtroSubgrupo : ''}${filtroVendedor ? ' · Vendedor: ' + filtroVendedor : ''}
-    · Gerado em ${new Date().toLocaleDateString('pt-BR')}</span>`;
+    ${filtroSegmento ? ' · Segmento: ' + filtroSegmento : ''}
+    ${filtroGrupo ? ' · Grupo: ' + filtroGrupo : ''}
+    ${filtroSubgrupo ? ' · Sub-grupo: ' + filtroSubgrupo : ''}
+    ${filtroVendedor ? ' · Vendedor: ' + filtroVendedor : ''}
+    · Gerado em ${new Date().toLocaleDateString('pt-BR')}</span>
+  `;
   document.body.insertBefore(infoBanner, document.body.firstChild);
+
   setTimeout(() => {
     window.print();
     setTimeout(() => {
       estilosOriginais.forEach(({ el, display }) => el.style.display = display);
-      bodyLayout.style.gridTemplateColumns = origGrid; mainEl.style.overflow = origOverflow;
-      document.body.style.marginLeft = '';
+      bodyLayout.style.gridTemplateColumns = origGrid;
+      mainEl.style.overflow = origOverflow;
       document.getElementById('pdf-banner')?.remove();
     }, 500);
   }, 300);
@@ -915,77 +1240,88 @@ function exportarPDF() {
 /* ══════════════════════════════════════════
   INICIALIZAR
 ══════════════════════════════════════════ */
-const ALL_LOADERS = ['loadFat','loadVol','loadMoM','loadTicket','loadSeg','loadClientes','loadZona','loadVend','loadGrp','loadMargem','loadSub','loadForn'];
+const ALL_LOAD_IDS = ['loadFat','loadVol','loadSeg','loadGrp','loadSub','loadVen','loadCli','loadFor','loadReg','loadDia','loadMar'];
 
 async function inicializar() {
-  loading(ALL_LOADERS, true);
+  loading(ALL_LOAD_IDS, true);
   try {
-    let allFetched = [], from = 0; const pageSize = 1000;
+    let allFetched = [];
+    let from = 0;
+    const pageSize = 1000;
+
     while (true) {
-      const { data: page, error: pageError } = await db.from(TABLE_NAME).select('*').range(from, from + pageSize - 1);
+      const { data: page, error: pageError } = await db
+        .from(TABLE_NAME)
+        .select('*')
+        .range(from, from + pageSize - 1);
+
       if (pageError) throw pageError;
       if (!page || page.length === 0) break;
+
       allFetched = allFetched.concat(page);
       if (page.length < pageSize) break;
       from += pageSize;
     }
+
     allData = allFetched;
 
+    // Intervalo real dos dados (Data em texto DD/MM/AAAA)
     const yms = allData.map(rowYearMonth).filter(Boolean).sort();
     window.tlDateMin = yms[0] || '2024-01';
     window.tlDateMax = yms[yms.length - 1] || '2026-05';
     buildTlMonthLabels();
     if (window.__tlSetHandles) window.__tlSetHandles();
-    if (yms.length) document.getElementById('periodoLabel').textContent = fmtYM(window.tlDateMin) + ' – ' + fmtYM(window.tlDateMax);
 
+    if (yms.length) {
+      document.getElementById('periodoLabel').textContent = fmtYM(window.tlDateMin) + ' – ' + fmtYM(window.tlDateMax);
+    }
+
+    // Dimensões únicas para os filtros
     const segmentos  = [...new Set(allData.map(r => col(r, 'segmento')))].filter(v => v && String(v).trim()).sort();
     const grupos     = [...new Set(allData.map(r => col(r, 'grupo')))].filter(v => v && String(v).trim()).sort();
     const subgrupos  = [...new Set(allData.map(r => col(r, 'subgrupo')))].filter(v => v && String(v).trim()).sort();
     const vendedores = [...new Set(allData.map(r => col(r, 'vendedor')))].filter(v => v && String(v).trim()).sort();
-    const zonas      = [...new Set(allData.map(r => col(r, 'zona')))].filter(v => v && String(v).trim()).sort();
 
     buildChips('segmentoChips', segmentos, 'segmento', 'badgeTodosSeg');
     buildChips('grupoChips', grupos, 'grupo');
     buildChips('subgrupoChips', subgrupos, 'subgrupo');
     buildChips('vendedorChips', vendedores, 'vendedor');
-    buildChips('zonaChips', zonas, 'zona');
 
     aplicarFiltros();
+
   } catch (err) {
     showToast('Erro ao carregar dados: ' + err.message);
-    loading(ALL_LOADERS, false);
+    loading(['loadFat','loadVol','loadSeg','loadGrp','loadSub'], false);
     console.error(err);
   }
 }
 
 /* ══════════════════════════════════════════
-  FILTROS
+  APLICAR / RESETAR FILTROS
 ══════════════════════════════════════════ */
 function aplicarFiltros() {
   const segChip = document.querySelector('#segmentoChips .chip.active');
   const grpChip = document.querySelector('#grupoChips .chip.active');
   const subChip = document.querySelector('#subgrupoChips .chip.active');
   const venChip = document.querySelector('#vendedorChips .chip.active');
-  const zonChip = document.querySelector('#zonaChips .chip.active');
 
   filtroSegmento = segChip ? segChip.dataset.val : '';
   filtroGrupo    = grpChip ? grpChip.dataset.val : '';
   filtroSubgrupo = subChip ? subChip.dataset.val : '';
   filtroVendedor = venChip ? venChip.dataset.val : '';
-  filtroZona     = zonChip ? zonChip.dataset.val : '';
 
-  const temFiltro = filtroSegmento || filtroGrupo || filtroSubgrupo || filtroVendedor || filtroZona;
+  const temFiltro = filtroSegmento || filtroGrupo || filtroSubgrupo || filtroVendedor;
   const pilFiltro = document.getElementById('filtroAtivo');
   if (pilFiltro) pilFiltro.style.display = temFiltro ? 'inline-flex' : 'none';
 
-  const periodoStart = pctToYearMonth(tlStartPct), periodoEnd = pctToYearMonth(tlEndPct);
+  const periodoStart = pctToYearMonth(tlStartPct);
+  const periodoEnd   = pctToYearMonth(tlEndPct);
 
   filteredData = allData.filter(r => {
     if (filtroSegmento && col(r, 'segmento') !== filtroSegmento) return false;
     if (filtroGrupo && col(r, 'grupo') !== filtroGrupo) return false;
     if (filtroSubgrupo && col(r, 'subgrupo') !== filtroSubgrupo) return false;
     if (filtroVendedor && col(r, 'vendedor') !== filtroVendedor) return false;
-    if (filtroZona && col(r, 'zona') !== filtroZona) return false;
     const mes = rowYearMonth(r);
     if (mes && (mes < periodoStart || mes > periodoEnd)) return false;
     return true;
@@ -993,456 +1329,473 @@ function aplicarFiltros() {
 
   renderDashboard();
 }
+
 function resetarFiltros() {
-  document.querySelectorAll('.chip-group').forEach(grp => grp.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('active', i === 0)));
+  document.querySelectorAll('.chip-group').forEach(grp => {
+    grp.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+  });
   aplicarFiltros();
 }
-function deltaPct(atual, anterior) { if (!anterior) return null; return ((atual - anterior) / anterior) * 100; }
+
+function deltaPct(atual, anterior) {
+  if (!anterior) return null;
+  return ((atual - anterior) / anterior) * 100;
+}
 
 /* ══════════════════════════════════════════
   RENDERIZAR DASHBOARD
 ══════════════════════════════════════════ */
 function renderDashboard() {
-  const periodoStart = pctToYearMonth(tlStartPct), periodoEnd = pctToYearMonth(tlEndPct);
-  const ant = calcularPeriodoAnterior(periodoStart, periodoEnd);
+  const periodoStart = pctToYearMonth(tlStartPct);
+  const periodoEnd   = pctToYearMonth(tlEndPct);
+  const ant          = calcularPeriodoAnterior(periodoStart, periodoEnd);
 
   const dadosBase = allData.filter(r => {
     if (filtroSegmento && col(r, 'segmento') !== filtroSegmento) return false;
     if (filtroGrupo && col(r, 'grupo') !== filtroGrupo) return false;
     if (filtroSubgrupo && col(r, 'subgrupo') !== filtroSubgrupo) return false;
     if (filtroVendedor && col(r, 'vendedor') !== filtroVendedor) return false;
-    if (filtroZona && col(r, 'zona') !== filtroZona) return false;
     return true;
   });
 
-  const kA = agregaKPIs(filteredData, periodoStart, periodoEnd);
-  const kP = agregaKPIs(dadosBase, ant.start, ant.end);
+  const kpiAtual = agregaKPIs(filteredData, periodoStart, periodoEnd);
+  const kpiAnt   = agregaKPIs(dadosBase,    ant.start,    ant.end);
 
-  const precoKgA = kA.volume ? kA.faturamento / kA.volume : 0, precoKgP = kP.volume ? kP.faturamento / kP.volume : 0;
-  const ticketA  = kA.pedidos ? kA.faturamento / kA.pedidos : 0, ticketP  = kP.pedidos ? kP.faturamento / kP.pedidos : 0;
-  const margemA  = kA.margemCount ? kA.margemSum / kA.margemCount : 0, margemP = kP.margemCount ? kP.margemSum / kP.margemCount : 0;
-  const pesoPedA = kA.pedidos ? kA.volume / kA.pedidos : 0, pesoPedP = kP.pedidos ? kP.volume / kP.pedidos : 0;
+  const ticketAtual = kpiAtual.pedidos ? kpiAtual.faturamento / kpiAtual.pedidos : 0;
+  const ticketAnt   = kpiAnt.pedidos   ? kpiAnt.faturamento   / kpiAnt.pedidos   : 0;
 
-  animateValue(document.getElementById('kpiFaturamento'), kA.faturamento, fmtBRLk);
-  animateValue(document.getElementById('kpiVolume'), kA.volume, fmtKGk);
-  animateValue(document.getElementById('kpiPrecoKg'), precoKgA, v => fmtBRL(v) + '/kg');
-  animateValue(document.getElementById('kpiTicket'), ticketA, fmtBRLk);
-  animateValue(document.getElementById('kpiPedidos'), kA.pedidos, fmtNum);
-  animateValue(document.getElementById('kpiClientes'), kA.clientes, fmtNum);
-  animateValue(document.getElementById('kpiMargem'), margemA, fmtPct);
-  animateValue(document.getElementById('kpiPesoPedido'), pesoPedA, v => v.toLocaleString('pt-BR',{maximumFractionDigits:1}) + ' kg');
+  document.getElementById('kpiFaturamento').textContent = fmtBRLk(kpiAtual.faturamento);
+  document.getElementById('kpiVolume').textContent      = fmtKGk(kpiAtual.volume);
+  document.getElementById('kpiPedidos').textContent     = fmtNum(kpiAtual.pedidos);
+  document.getElementById('kpiTicket').textContent      = fmtBRLk(ticketAtual);
 
-  setDelta('kpiFaturamentoDelta', deltaPct(kA.faturamento, kP.faturamento));
-  setDelta('kpiVolumeDelta', deltaPct(kA.volume, kP.volume));
-  setDelta('kpiPrecoKgDelta', deltaPct(precoKgA, precoKgP));
-  setDelta('kpiTicketDelta', deltaPct(ticketA, ticketP));
-  setDelta('kpiPedidosDelta', deltaPct(kA.pedidos, kP.pedidos));
-  setDelta('kpiClientesDelta', deltaPct(kA.clientes, kP.clientes));
-  setDelta('kpiMargemDelta', deltaPct(margemA, margemP));
-  setDelta('kpiPesoPedidoDelta', deltaPct(pesoPedA, pesoPedP));
+  setDelta('kpiFaturamentoDelta', deltaPct(kpiAtual.faturamento, kpiAnt.faturamento));
+  setDelta('kpiVolumeDelta',      deltaPct(kpiAtual.volume, kpiAnt.volume));
+  setDelta('kpiPedidosDelta',     deltaPct(kpiAtual.pedidos, kpiAnt.pedidos));
+  setDelta('kpiTicketDelta',      deltaPct(ticketAtual, ticketAnt));
 
   const labelAnt = `vs ${fmtYM(ant.start)} – ${fmtYM(ant.end)}`;
-  document.querySelectorAll('.kpi-sub').forEach(el => { el.textContent = labelAnt; el.title = `Período anterior: ${fmtYM(ant.start)} a ${fmtYM(ant.end)}`; });
+  document.querySelectorAll('.kpi-sub').forEach(el => {
+    el.textContent = labelAnt;
+    el.title       = `Período anterior: ${fmtYM(ant.start)} a ${fmtYM(ant.end)}`;
+  });
 
   const mesSerie = buildMesSerie(filteredData);
   const meses = Object.keys(mesSerie).sort();
   document.getElementById('tagFat').textContent = meses.length + ' meses';
   document.getElementById('tagVol').textContent = meses.length + ' meses';
 
-  drawSparkline('spark1', meses.map(m => mesSerie[m].faturamento), '#F2A65A');
-  drawSparkline('spark2', meses.map(m => mesSerie[m].volume), '#6EE7D8');
-  drawSparkline('spark3', meses.map(m => mesSerie[m].volume ? mesSerie[m].faturamento / mesSerie[m].volume : 0), '#8FE3A0');
-  drawSparkline('spark4', meses.map(m => mesSerie[m].pedidos ? mesSerie[m].faturamento / mesSerie[m].pedidos : 0), '#F2A65A');
-  drawSparkline('spark5', meses.map(m => mesSerie[m].pedidos), '#6EE7D8');
-  drawSparkline('spark6', meses.map(m => mesSerie[m].clientes), '#8FE3A0');
-  drawSparkline('spark7', meses.map(m => mesSerie[m].margemCount ? mesSerie[m].margemSum / mesSerie[m].margemCount : 0), '#F0755A');
-  drawSparkline('spark8', meses.map(m => mesSerie[m].pedidos ? mesSerie[m].volume / mesSerie[m].pedidos : 0), '#6EE7D8');
+  const valsFat = meses.map(m => mesSerie[m].faturamento);
+  const valsVol = meses.map(m => mesSerie[m].volume);
+  drawSparkline('spark1', valsFat, '#2d7a4f');
+  drawSparkline('spark2', valsVol, '#f59e0b');
+  drawSparkline('spark3', meses.map(m => mesSerie[m].pedidos), '#4caf70');
+  drawSparkline('spark4', meses.map(m => {
+    const s = mesSerie[m];
+    return s.pedidos ? s.faturamento / s.pedidos : 0;
+  }), '#8b5cf6');
 
   renderFaturamento(mesSerie, meses);
   renderVolume(mesSerie, meses);
-  renderMoM(mesSerie, meses);
-  renderTicketMensal(mesSerie, meses);
   renderSegmento();
-  renderClientes(mesSerie, meses);
-  renderZona();
-  renderVendedor();
   renderGrupo();
-  renderMargemGrupo();
   renderSubgrupo();
-  renderFornecedores();
 
-  loading(ALL_LOADERS, false);
+  loading(['loadFat','loadVol','loadSeg','loadGrp','loadSub'], false);
 }
 
 function setDelta(id, pct) {
-  const el = document.getElementById(id); if (!el) return;
-  if (pct === null || isNaN(pct)) { el.textContent = '–'; el.className = 'kpi-delta'; el.style.background = 'var(--surface)'; el.style.color = 'var(--ink-mute)'; return; }
-  el.style.background = ''; el.style.color = '';
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (pct === null || isNaN(pct)) {
+    el.textContent = '–';
+    el.className   = 'kpi-delta';
+    el.style.background = 'var(--gray-1)';
+    el.style.color      = 'var(--gray-text)';
+    return;
+  }
+  el.style.background = '';
+  el.style.color      = '';
   el.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
-  el.className = 'kpi-delta ' + (pct >= 0 ? 'up' : 'down');
+  el.className   = 'kpi-delta ' + (pct >= 0 ? 'up' : 'down');
 }
 
+/* ── Série mensal (Faturamento R$ e Volume KG) ── */
 function buildMesSerie(data) {
   const map = {};
   data.forEach(r => {
     const m = rowYearMonth(r) || 'sem data';
-    if (!map[m]) map[m] = { faturamento: 0, volume: 0, pedidosSet: new Set(), clientesSet: new Set(), margemSum: 0, margemCount: 0 };
+    if (!map[m]) map[m] = { faturamento: 0, volume: 0, pedidosSet: new Set() };
     map[m].faturamento += parseNumBR(col(r, 'valor'));
     map[m].volume       += parseNumBR(col(r, 'qtdeKg'));
-    const pid = col(r, 'pedidoId'); if (pid) map[m].pedidosSet.add(pid);
-    const cid = col(r, 'clienteId'); if (cid) map[m].clientesSet.add(cid);
-    const mg = col(r, 'margemGrupo');
-    if (mg !== undefined && mg !== null && String(mg).trim() !== '') { map[m].margemSum += parseNumBR(mg); map[m].margemCount++; }
+    const pid = col(r, 'pedidoId');
+    if (pid) map[m].pedidosSet.add(pid);
   });
-  Object.values(map).forEach(v => { v.pedidos = v.pedidosSet.size; v.clientes = v.clientesSet.size; delete v.pedidosSet; delete v.clientesSet; });
+  Object.values(map).forEach(v => { v.pedidos = v.pedidosSet.size; delete v.pedidosSet; });
   return map;
 }
+
 function calcularPeriodoAnterior(startYM, endYM) {
-  const [sY, sM] = startYM.split('-').map(Number), [eY, eM] = endYM.split('-').map(Number);
+  const [sY, sM] = startYM.split('-').map(Number);
+  const [eY, eM] = endYM.split('-').map(Number);
   const duracaoMeses = (eY - sY) * 12 + (eM - sM) + 1;
-  let antEndM = sM - 1, antEndY = sY; if (antEndM < 1) { antEndM = 12; antEndY--; }
-  let antStartM = antEndM - duracaoMeses + 1, antStartY = antEndY; while (antStartM < 1) { antStartM += 12; antStartY--; }
-  return { start: `${antStartY}-${String(antStartM).padStart(2, '0')}`, end: `${antEndY}-${String(antEndM).padStart(2, '0')}` };
+
+  let antEndM = sM - 1;
+  let antEndY = sY;
+  if (antEndM < 1) { antEndM = 12; antEndY--; }
+
+  let antStartM = antEndM - duracaoMeses + 1;
+  let antStartY = antEndY;
+  while (antStartM < 1) { antStartM += 12; antStartY--; }
+
+  return {
+    start: `${antStartY}-${String(antStartM).padStart(2, '0')}`,
+    end:   `${antEndY}-${String(antEndM).padStart(2, '0')}`
+  };
 }
+
 function agregaKPIs(data, startYM, endYM) {
-  const sub = data.filter(r => { const mes = rowYearMonth(r); return mes && mes >= startYM && mes <= endYM; });
-  let margemSum = 0, margemCount = 0;
-  sub.forEach(r => { const mg = col(r, 'margemGrupo'); if (mg !== undefined && mg !== null && String(mg).trim() !== '') { margemSum += parseNumBR(mg); margemCount++; } });
+  const sub = data.filter(r => {
+    const mes = rowYearMonth(r);
+    return mes && mes >= startYM && mes <= endYM;
+  });
   return {
     pedidos:     new Set(sub.map(r => col(r, 'pedidoId'))).size,
-    clientes:    new Set(sub.map(r => col(r, 'clienteId'))).size,
     faturamento: sub.reduce((s, r) => s + parseNumBR(col(r, 'valor')), 0),
     volume:      sub.reduce((s, r) => s + parseNumBR(col(r, 'qtdeKg')), 0),
-    margemSum, margemCount
   };
 }
 
 /* ══════════════════════════════════════════
   CHART HELPERS
 ══════════════════════════════════════════ */
-const C_FROST = '#6EE7D8', C_EMBER = '#F2A65A', C_FRESH = '#8FE3A0', C_ALERT = '#F0755A';
-const PALETTE = ['#6EE7D8','#8FE3A0','#F2A65A','#F0755A','#A78BFA','#5FB8D9','#D9C25F','#5F9BD9','#E38FA6','#8FA79B'];
+const C_DARK   = '#1a4d2e';
+const C_MID    = '#2d7a4f';
+const PALETTE  = ['#1a4d2e','#2d7a4f','#4caf70','#80c99a','#b3dfc4','#c8ecd5','#e8f5ed','#f0a500','#e07b00','#9b6b1f'];
 
-Chart.defaults.font.family = "'Manrope', sans-serif";
-Chart.defaults.color = '#8FA79B';
-
-function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
-function tooltipTheme() {
-  return { backgroundColor:'#0F1C16', titleColor:'#EAF4EE', bodyColor:'#EAF4EE', borderColor:'rgba(255,255,255,.12)', borderWidth:1, padding:10, cornerRadius:8, displayColors:false, titleFont:{weight:'700',size:11}, bodyFont:{family:"'IBM Plex Mono', monospace", size:11} };
-}
-function gridTheme() { return { color:'rgba(255,255,255,0.06)' }; }
-
-function makeVerticalGradient(ctx, chartArea, c1, c2) {
-  const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-  g.addColorStop(0, c1); g.addColorStop(1, c2);
-  return g;
+function destroyChart(key) {
+  if (charts[key]) { charts[key].destroy(); delete charts[key]; }
 }
 
-/* ── Faturamento Mensal ── */
+/* ── 1. Faturamento Mensal (R$) ── */
 function renderFaturamento(serie, meses) {
-  destroyChart('fat'); if (!meses.length) { mostrarVazio('graficoFaturamento'); return; }
-  const labels = meses.map(fmtYM), values = meses.map(m => serie[m].faturamento), last = values.length - 1;
+  destroyChart('fat');
+  if (!meses.length) { mostrarVazio('graficoFaturamento'); return; }
+  const labels = meses.map(fmtYM);
+  const values = meses.map(m => serie[m].faturamento);
+  const last   = values.length - 1;
+
   const ctx = document.getElementById('graficoFaturamento').getContext('2d');
   charts['fat'] = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ label:'Faturamento R$', data: values,
-      backgroundColor: (c) => { if (!c.chart.chartArea) return C_EMBER; const g = makeVerticalGradient(c.chart.ctx, c.chart.chartArea, C_EMBER, 'rgba(242,166,90,0.25)'); return g; },
-      borderRadius: 5, borderSkipped: 'bottom',
-      hoverBackgroundColor: C_EMBER }] },
+    data: {
+      labels,
+      datasets: [{
+        label: 'Faturamento R$',
+        data: values,
+        backgroundColor: values.map((_, i) => i === last ? C_DARK : 'rgba(45,122,79,0.5)'),
+        borderRadius: 4,
+        borderSkipped: 'bottom'
+      }]
+    },
     options: {
-      responsive:true, maintainAspectRatio:false, animation:{ duration:750, easing:'easeOutQuart' },
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => fmtBRL(c.raw) } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true, maxTicksLimit:12 } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=>'R$'+(v/1000).toFixed(0)+'k' } }
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => fmtBRL(ctx.raw) }
+      }},
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#9ca3af', maxRotation: 45, autoSkip: true, maxTicksLimit: 12 } },
+        y: { grid: { color: '#f0f0ee' }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af', callback: v => 'R$' + (v / 1000).toFixed(0) + 'k' } }
       }
     }
   });
 }
 
-/* ── Volume Mensal ── */
+/* ── 2. Volume Mensal (KG) ── */
 function renderVolume(serie, meses) {
-  destroyChart('vol'); if (!meses.length) { mostrarVazio('graficoVolume'); return; }
-  const labels = meses.map(fmtYM), values = meses.map(m => serie[m].volume);
+  destroyChart('vol');
+  if (!meses.length) { mostrarVazio('graficoVolume'); return; }
+  const labels = meses.map(fmtYM);
+  const values = meses.map(m => serie[m].volume);
+
   const ctx = document.getElementById('graficoVolume').getContext('2d');
   charts['vol'] = new Chart(ctx, {
     type: 'line',
-    data: { labels, datasets: [{ label:'Volume KG', data: values, borderColor: C_FROST, borderWidth:2.4,
-      backgroundColor: (c) => { if (!c.chart.chartArea) return 'rgba(110,231,216,.15)'; return makeVerticalGradient(c.chart.ctx, c.chart.chartArea, 'rgba(110,231,216,.32)', 'rgba(110,231,216,0)'); },
-      pointRadius:3, pointBackgroundColor:C_FROST, pointBorderColor:'#0A1410', pointBorderWidth:1.5, fill:true, tension:.35 }] },
+    data: {
+      labels,
+      datasets: [{
+        label: 'Volume KG',
+        data: values,
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245,158,11,0.1)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointBackgroundColor: '#f59e0b',
+        fill: true,
+        tension: 0.3
+      }]
+    },
     options: {
-      responsive:true, maintainAspectRatio:false, animation:{ duration:750, easing:'easeOutQuart' },
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => fmtKG(c.raw) } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true, maxTicksLimit:12 } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=>fmtKGk(v) } }
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => fmtKG(ctx.raw) }
+      }},
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#9ca3af', maxRotation: 45, autoSkip: true, maxTicksLimit: 12 } },
+        y: { grid: { color: '#f0f0ee' }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af', callback: v => fmtKGk(v) } }
       }
     }
   });
 }
 
-/* ── MoM Faturamento ── */
-function renderMoM(serie, meses) {
-  destroyChart('mom'); if (meses.length < 2) { mostrarVazio('graficoMoM', 'Selecione ao menos 2 meses'); return; }
-  const values = meses.map((m,i) => { if (i===0) return 0; const ant = serie[meses[i-1]].faturamento||0, atual = serie[m].faturamento||0; return ant ? ((atual-ant)/ant)*100 : 0; }).slice(1);
-  const labels = meses.map(fmtYM).slice(1);
-  const ctx = document.getElementById('graficoMoM').getContext('2d');
-  charts['mom'] = new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [{ label:'Variação %', data: values, backgroundColor: values.map(v => v>=0 ? 'rgba(143,227,160,.65)' : 'rgba(240,117,90,.6)'), borderRadius:4, borderSkipped:'bottom' }] },
-    options: {
-      responsive:true, maintainAspectRatio:false, animation:{ duration:700 },
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => (c.raw>=0?'+':'') + c.raw.toFixed(1)+'%' } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true, maxTicksLimit:12 } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=>v.toFixed(0)+'%' } }
-      }
-    }
-  });
-}
-
-/* ── Ticket Médio Mensal ── */
-function renderTicketMensal(serie, meses) {
-  destroyChart('ticketM'); if (!meses.length) { mostrarVazio('graficoTicket'); return; }
-  const labels = meses.map(fmtYM), values = meses.map(m => serie[m].pedidos ? serie[m].faturamento/serie[m].pedidos : 0);
-  const ctx = document.getElementById('graficoTicket').getContext('2d');
-  charts['ticketM'] = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: [{ label:'Ticket Médio', data: values, borderColor:'#A78BFA', borderWidth:2.2, backgroundColor:'rgba(167,139,250,.12)', pointRadius:3, pointBackgroundColor:'#A78BFA', fill:true, tension:.35 }] },
-    options: {
-      responsive:true, maintainAspectRatio:false, animation:{ duration:750 },
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => fmtBRL(c.raw) } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true, maxTicksLimit:12 } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=>'R$'+v.toFixed(0) } }
-      }
-    }
-  });
-}
-
-/* ── Segmento de Cliente ── */
+/* ── 3. Desempenho por Segmento de Cliente ── */
 function renderSegmento() {
-  const metric = document.getElementById('segMetric').value;
+  const metric = document.getElementById('segMetric').value; // 'valor' | 'qtdeKg'
   const { labels, values } = agrupar(filteredData, 'segmento', metric, 8);
-  destroyChart('seg'); if (!labels.length) { mostrarVazio('graficoSegmento'); return; }
+
+  destroyChart('seg');
+  if (!labels.length) { mostrarVazio('graficoSegmento'); return; }
   const ctx = document.getElementById('graficoSegmento').getContext('2d');
   charts['seg'] = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels, datasets: [{ data: values, backgroundColor: PALETTE.slice(0, labels.length), borderWidth:2, borderColor:'#12241D', hoverOffset:6 }] },
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: PALETTE.slice(0, labels.length),
+        borderWidth: 2, borderColor: '#ffffff'
+      }]
+    },
     options: {
-      responsive:true, maintainAspectRatio:false, cutout:'60%', animation:{ animateRotate:true, duration:800 },
-      plugins:{
-        legend:{ position:'right', labels:{ font:{size:10}, color:'#8FA79B', boxWidth:9, padding:9 } },
-        tooltip:{ ...tooltipTheme(), callbacks:{ label: c => { const v=c.raw, tot=c.dataset.data.reduce((a,b)=>a+b,0), pct= tot?((v/tot)*100).toFixed(1):0; return (metric==='valor'?fmtBRL(v):fmtKG(v))+' ('+pct+'%)'; } } }
+      responsive: true, maintainAspectRatio: false,
+      cutout: '58%',
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { font: { size: 10 }, color: '#374151', boxWidth: 10, padding: 8 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v   = ctx.raw;
+              const tot = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              const pct = tot ? ((v / tot) * 100).toFixed(1) : 0;
+              return (metric === 'valor' ? fmtBRL(v) : fmtKG(v)) + ' (' + pct + '%)';
+            }
+          }
+        }
       }
     }
   });
 }
 
-/* ── Clientes Ativos por Mês ── */
-function renderClientes(serie, meses) {
-  destroyChart('clientes');
-  document.getElementById('tagClientes').textContent = meses.length ? Math.max(...meses.map(m => serie[m].clientes)) + ' máx.' : '–';
-  if (!meses.length) { mostrarVazio('graficoClientes'); return; }
-  const labels = meses.map(fmtYM), values = meses.map(m => serie[m].clientes);
-  const ctx = document.getElementById('graficoClientes').getContext('2d');
-  charts['clientes'] = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets: [{ label:'Clientes ativos', data: values, borderColor: C_FRESH, borderWidth:2.2, backgroundColor:'rgba(143,227,160,.12)', pointRadius:3, pointBackgroundColor:C_FRESH, fill:true, tension:.3 }] },
-    options: {
-      responsive:true, maintainAspectRatio:false, animation:{duration:750},
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => c.raw + ' clientes' } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true, maxTicksLimit:12 } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"} } }
-      }
-    }
-  });
-}
-
-/* ── Faturamento por Zona ── */
-function renderZona() {
-  const metric = document.getElementById('zonaMetric').value;
-  const { labels, values } = agrupar(filteredData, 'zona', metric, 10);
-  destroyChart('zona'); if (!labels.length) { mostrarVazio('graficoZona'); return; }
-  const ctx = document.getElementById('graficoZona').getContext('2d');
-  charts['zona'] = new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [{ label: metric==='valor'?'Venda R$':'Venda KG', data: values, backgroundColor: values.map((_,i)=>`rgba(110,231,216,${1-i*0.07})`), borderRadius:5, borderSkipped:'bottom' }] },
-    options: {
-      responsive:true, maintainAspectRatio:false, animation:{duration:700},
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => metric==='valor'?fmtBRL(c.raw):fmtKG(c.raw) } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=> metric==='valor'?('R$'+(v/1000).toFixed(0)+'k'):fmtKGk(v) } }
-      }
-    }
-  });
-}
-
-/* ── Top Vendedores ── */
-function renderVendedor() {
-  const { labels, values } = agrupar(filteredData, 'vendedor', 'valor', 10);
-  destroyChart('vend'); if (!labels.length) { mostrarVazio('graficoVendedor'); return; }
-  const ctx = document.getElementById('graficoVendedor').getContext('2d');
-  charts['vend'] = new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [{ label:'Venda R$', data: values, backgroundColor: values.map((_,i)=>`rgba(242,166,90,${1-i*0.07})`), borderRadius:5, borderSkipped:'left' }] },
-    options: {
-      indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:{duration:700},
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => fmtBRL(c.raw) } } },
-      scales:{
-        x:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=>'R$'+(v/1000).toFixed(0)+'k' } },
-        y:{ grid:{display:false}, ticks:{ font:{size:10.5} } }
-      }
-    }
-  });
-}
-
-/* ── Performance por Grupo ── */
+/* ── 5. Performance por Grupo ── */
 function renderGrupo() {
   const metric = document.getElementById('grpMetric').value;
   const { labels, values } = agrupar(filteredData, 'grupo', metric, 10);
-  destroyChart('grp'); if (!labels.length) { mostrarVazio('graficoGrupo'); return; }
+
+  destroyChart('grp');
+  if (!labels.length) { mostrarVazio('graficoGrupo'); return; }
   const ctx = document.getElementById('graficoGrupo').getContext('2d');
   charts['grp'] = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ label: metric==='valor'?'Venda R$':'Venda KG', data: values, backgroundColor: values.map((_,i)=>`rgba(110,231,216,${1-i*0.07})`), borderRadius:5, borderSkipped:'left' }] },
+    data: {
+      labels,
+      datasets: [{
+        label: metric === 'valor' ? 'Venda R$' : 'Venda KG',
+        data: values,
+        backgroundColor: values.map((_, i) => `rgba(26,77,46,${1 - i * 0.07})`),
+        borderRadius: 4,
+        borderSkipped: 'left'
+      }]
+    },
     options: {
-      indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:{duration:700},
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => metric==='valor'?fmtBRL(c.raw):fmtKG(c.raw) } } },
-      scales:{
-        x:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=> metric==='valor'?('R$'+(v/1000).toFixed(0)+'k'):fmtKGk(v) } },
-        y:{ grid:{display:false}, ticks:{ font:{size:10.5} } }
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => metric === 'valor' ? fmtBRL(ctx.raw) : fmtKG(ctx.raw) }
+      }},
+      scales: {
+        x: { grid: { color: '#f0f0ee' }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af', callback: v => metric === 'valor' ? ('R$' + (v/1000).toFixed(0) + 'k') : (fmtKGk(v)) } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#374151' } }
       }
     }
   });
 }
 
-/* ── Margem Média por Grupo ── */
-function renderMargemGrupo() {
-  const { labels, values } = agruparMedia(filteredData, 'grupo', 'margemGrupo', 10);
-  destroyChart('margem'); if (!labels.length) { mostrarVazio('graficoMargemGrupo'); return; }
-  const ctx = document.getElementById('graficoMargemGrupo').getContext('2d');
-  charts['margem'] = new Chart(ctx, {
-    type: 'bar',
-    data: { labels, datasets: [{ label:'Margem Média %', data: values, backgroundColor: values.map(v => v>=0 ? 'rgba(143,227,160,.65)' : 'rgba(240,117,90,.6)'), borderRadius:5, borderSkipped:'bottom' }] },
-    options: {
-      responsive:true, maintainAspectRatio:false, animation:{duration:700},
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => fmtPct(c.raw) } } },
-      scales:{
-        x:{ grid:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, maxRotation:45, autoSkip:true } },
-        y:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=>v.toFixed(0)+'%' } }
-      }
-    }
-  });
-}
-
-/* ── Performance por Sub-grupo ── */
+/* ── 4. Performance por Sub-grupo ── */
 function renderSubgrupo() {
   const metric = document.getElementById('subMetric').value;
   const { labels, values } = agrupar(filteredData, 'subgrupo', metric, 15);
-  destroyChart('sub'); if (!labels.length) { mostrarVazio('graficoSubgrupo'); return; }
+
+  destroyChart('sub');
+  if (!labels.length) { mostrarVazio('graficoSubgrupo'); return; }
   const ctx = document.getElementById('graficoSubgrupo').getContext('2d');
   charts['sub'] = new Chart(ctx, {
     type: 'bar',
-    data: { labels, datasets: [{ label: metric==='valor'?'Venda R$':'Venda KG', data: values, backgroundColor: values.map((_,i)=>`rgba(242,166,90,${1-i*0.05})`), borderRadius:5, borderSkipped:'left' }] },
+    data: {
+      labels,
+      datasets: [{
+        label: metric === 'valor' ? 'Venda R$' : 'Venda KG',
+        data: values,
+        backgroundColor: values.map((_, i) => `rgba(45,122,79,${1 - i * 0.05})`),
+        borderRadius: 4,
+        borderSkipped: 'left'
+      }]
+    },
     options: {
-      indexAxis:'y', responsive:true, maintainAspectRatio:false, animation:{duration:750},
-      plugins:{ legend:{display:false}, tooltip:{ ...tooltipTheme(), callbacks:{ label: c => metric==='valor'?fmtBRL(c.raw):fmtKG(c.raw) } } },
-      scales:{
-        x:{ grid:gridTheme(), border:{display:false}, ticks:{ font:{size:9,family:"'IBM Plex Mono', monospace"}, callback:v=> metric==='valor'?('R$'+(v/1000).toFixed(0)+'k'):fmtKGk(v) } },
-        y:{ grid:{display:false}, ticks:{ font:{size:10} } }
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => metric === 'valor' ? fmtBRL(ctx.raw) : fmtKG(ctx.raw) }
+      }},
+      scales: {
+        x: { grid: { color: '#f0f0ee' }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9ca3af', callback: v => metric === 'valor' ? ('R$' + (v/1000).toFixed(0) + 'k') : (fmtKGk(v)) } },
+        y: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#374151' } }
       }
     }
   });
 }
 
-/* ── Top Fornecedores (ranking) ── */
-function renderFornecedores() {
-  const { labels, values } = agrupar(filteredData, 'fornecedor', 'valor', 10);
-  const max = values[0] || 1;
-  const list = document.getElementById('fornecedorList');
-  list.innerHTML = labels.length
-    ? labels.map((nome, i) => `
-      <div class="rank-row">
-        <span class="r-rank">${i+1}</span>
-        <span class="r-name" title="${nome}">${nome}</span>
-        <div class="r-bar-track"><div class="r-bar" style="width:${(values[i]/max*100).toFixed(1)}%"></div></div>
-        <span class="r-val">${fmtBRLk(values[i])}</span>
-      </div>`).join('')
-    : '<div style="text-align:center;padding:24px 0;color:var(--ink-mute);font-size:12px;">😶 Sem fornecedores para o filtro selecionado</div>';
-}
-
 function toggleSbSection(header) {
-  const collapse = header.nextElementSibling, chevron = header.querySelector('.sb-chevron');
+  const collapse = header.nextElementSibling;
+  const chevron  = header.querySelector('.sb-chevron');
   const collapsed = collapse.classList.toggle('collapsed');
   chevron.classList.toggle('collapsed', collapsed);
 }
 
 /* ══════════════════════════════════════════
   IMPORTAR PLANILHA (CSV / XLSX) → SUPABASE
-  As colunas do arquivo devem ter EXATAMENTE os mesmos
-  nomes das colunas na tabela (sem snake_case), ex:
-  "ID Pedido de Venda", "Qtde Kg", "Sub-grupo" etc.
+  As colunas do arquivo devem ter EXATAMENTE os
+  mesmos nomes das colunas na tabela (sem snake_case),
+  ex: "ID Pedido de Venda", "Qtde Kg", "Sub-grupo" etc.
+  Veja/edite o objeto COLS lá em cima se os nomes mudarem.
 ══════════════════════════════════════════ */
 const UPLOAD_BATCH_SIZE = 500;
 const EXPECTED_COLUMNS = Object.values(COLS);
 
-function setUploadStatus(msg, kind) { const el = document.getElementById('uploadStatus'); el.textContent = msg || ''; el.className = 'upload-status' + (kind ? ' ' + kind : ''); }
-function setUploadProgress(pct, show) {
-  const track = document.getElementById('uploadProgressTrack'), bar = document.getElementById('uploadProgressBar');
-  track.classList.toggle('show', !!show); bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+function setUploadStatus(msg, kind) {
+  const el = document.getElementById('uploadStatus');
+  el.textContent = msg || '';
+  el.className = 'upload-status' + (kind ? ' ' + kind : '');
 }
+
+function setUploadProgress(pct, show) {
+  const track = document.getElementById('uploadProgressTrack');
+  const bar   = document.getElementById('uploadProgressBar');
+  track.classList.toggle('show', !!show);
+  bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+}
+
 function handleFileUpload(event) {
-  const file = event.target.files && event.target.files[0]; if (!file) return;
-  const btn = document.getElementById('btnUpload'); btn.disabled = true;
-  setUploadStatus('Lendo arquivo…'); setUploadProgress(5, true);
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const btn = document.getElementById('btnUpload');
+  btn.disabled = true;
+  setUploadStatus('Lendo arquivo…');
+  setUploadProgress(5, true);
+
   const ext = file.name.split('.').pop().toLowerCase();
+
   if (ext === 'csv') {
-    Papa.parse(file, { header:true, skipEmptyLines:true, transformHeader: h => h.trim(),
-      complete: results => processUploadedRows(results.data),
-      error: err => finishUpload(false, 'Erro ao ler CSV: ' + err.message) });
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: h => h.trim(),
+      complete: results => {
+        processUploadedRows(results.data);
+      },
+      error: err => {
+        finishUpload(false, 'Erro ao ler CSV: ' + err.message);
+      }
+    });
   } else if (ext === 'xlsx' || ext === 'xls') {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const wb = XLSX.read(e.target.result, { type:'array', cellDates:false });
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false });
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { raw:false, defval:'' });
-        const trimmed = rows.map(r => { const out = {}; Object.keys(r).forEach(k => out[k.trim()] = r[k]); return out; });
+        // raw:false + defval preserva o texto formatado da célula (ex: "02/01/2026", "196,89")
+        const rows = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: '' });
+        const trimmed = rows.map(r => {
+          const out = {};
+          Object.keys(r).forEach(k => { out[k.trim()] = r[k]; });
+          return out;
+        });
         processUploadedRows(trimmed);
-      } catch (err) { finishUpload(false, 'Erro ao ler XLSX: ' + err.message); }
+      } catch (err) {
+        finishUpload(false, 'Erro ao ler XLSX: ' + err.message);
+      }
     };
     reader.onerror = () => finishUpload(false, 'Não foi possível ler o arquivo.');
     reader.readAsArrayBuffer(file);
-  } else { finishUpload(false, 'Formato não suportado. Use .csv, .xlsx ou .xls'); }
+  } else {
+    finishUpload(false, 'Formato não suportado. Use .csv, .xlsx ou .xls');
+  }
 }
+
 async function processUploadedRows(rows) {
   rows = rows.filter(r => Object.values(r).some(v => String(v).trim() !== ''));
-  if (!rows.length) { finishUpload(false, 'Nenhuma linha válida encontrada no arquivo.'); return; }
+
+  if (!rows.length) {
+    finishUpload(false, 'Nenhuma linha válida encontrada no arquivo.');
+    return;
+  }
+
+  // Valida cabeçalhos contra as colunas esperadas
   const fileCols = Object.keys(rows[0]);
   const faltando = EXPECTED_COLUMNS.filter(c => !fileCols.includes(c));
   const extras   = fileCols.filter(c => !EXPECTED_COLUMNS.includes(c));
-  if (faltando.length) setUploadStatus(`Aviso: colunas ausentes: ${faltando.join(', ')}. ${extras.length ? 'Extras: '+extras.join(', ')+'.' : ''} Enviando mesmo assim…`, 'err');
-  setUploadStatus(`Enviando ${rows.length} linha(s) para o Supabase…`); setUploadProgress(15, true);
-  const batches = []; for (let i=0;i<rows.length;i+=UPLOAD_BATCH_SIZE) batches.push(rows.slice(i,i+UPLOAD_BATCH_SIZE));
-  let enviados = 0, falhou = false, mensagemErro = '';
-  for (let i=0;i<batches.length;i++) {
-    try { const { error } = await db.from(TABLE_NAME).insert(batches[i]); if (error) throw error; enviados += batches[i].length; }
-    catch (err) { falhou = true; mensagemErro = err.message || String(err); break; }
-    setUploadProgress(15 + (85*(i+1))/batches.length, true);
+
+  if (faltando.length) {
+    setUploadStatus(
+      `Aviso: colunas ausentes no arquivo: ${faltando.join(', ')}. ` +
+      (extras.length ? `Colunas extras: ${extras.join(', ')}.` : '') +
+      ' Enviando mesmo assim…',
+      'err'
+    );
+  }
+
+  setUploadStatus(`Enviando ${rows.length} linha(s) para o Supabase…`);
+  setUploadProgress(15, true);
+
+  const batches = [];
+  for (let i = 0; i < rows.length; i += UPLOAD_BATCH_SIZE) {
+    batches.push(rows.slice(i, i + UPLOAD_BATCH_SIZE));
+  }
+
+  let enviados = 0;
+  let falhou = false;
+  let mensagemErro = '';
+
+  for (let i = 0; i < batches.length; i++) {
+    try {
+      const { error } = await db.from(TABLE_NAME).insert(batches[i]);
+      if (error) throw error;
+      enviados += batches[i].length;
+    } catch (err) {
+      falhou = true;
+      mensagemErro = err.message || String(err);
+      break;
+    }
+    setUploadProgress(15 + (85 * (i + 1)) / batches.length, true);
     setUploadStatus(`Enviando… ${enviados}/${rows.length} linha(s)`);
   }
+
   if (falhou) {
-    const dica = /policy|permission|rls/i.test(mensagemErro) ? ' Verifique se há uma policy de INSERT liberada para o papel "anon" na tabela.' : '';
+    const dica = /policy|permission|rls/i.test(mensagemErro)
+      ? ' Verifique se há uma policy de INSERT liberada para o papel "anon" na tabela.'
+      : '';
     finishUpload(false, `Erro ao enviar (${enviados}/${rows.length} enviadas): ${mensagemErro}.${dica}`);
     return;
   }
+
   finishUpload(true, `${enviados} linha(s) importada(s) com sucesso!`);
   showToast('Importação concluída: ' + enviados + ' linha(s).');
   await inicializar();
 }
+
 function finishUpload(ok, msg) {
   document.getElementById('btnUpload').disabled = false;
   document.getElementById('uploadInput').value = '';
