@@ -415,6 +415,30 @@ function normalizeKey(str) {
     .toUpperCase()
     .replace(/\s+/g, ' ');
 }
+let cidadeCanonicaMap = {}; // chave normalizada -> grafia oficial
+
+async function carregarCidadesCanonicas() {
+  const { data, error } = await db.rpc('cidades_existentes');
+  if (error) { console.error(error); return; }
+  cidadeCanonicaMap = {};
+  (data || []).forEach(r => {
+    const uf = String(r.uf || '').trim().toUpperCase();
+    const chave = normalizeKey(r.cidade) + '|' + uf;
+    // só grava se ainda não existe (mantém a primeira ocorrência como padrão)
+    if (!cidadeCanonicaMap[chave]) {
+      cidadeCanonicaMap[chave] = { cidade: r.cidade, uf };
+    }
+  });
+}
+
+function corrigirCidadeUF(cidadeRaw, ufRaw) {
+  const uf = String(ufRaw || '').trim().toUpperCase();
+  const chave = normalizeKey(cidadeRaw) + '|' + uf;
+  const canonico = cidadeCanonicaMap[chave];
+  if (canonico) return { cidade: canonico.cidade, uf: canonico.uf };
+  // se não existe ainda, aplica title case como padrão e usa como novo canônico
+  return { cidade: toTitleCasePtBr(String(cidadeRaw || '').trim()), uf };
+}
 
 function toTitleCasePtBr(str) {
   const minusculas = ['de','da','do','das','dos','e'];
@@ -840,6 +864,14 @@ async function processUploadedRows(rows) {
   if (!rows.length) { statusEl.textContent='Arquivo vazio.'; statusEl.className='upload-status err'; return; }
   if (!db) { statusEl.textContent='Configure SUPABASE_URL / SUPABASE_KEY no código.'; statusEl.className='upload-status err'; return; }
 
+  await carregarCidadesCanonicas(); // busca a lista atualizada antes de cada upload
+
+  // corrige cidade/UF de cada linha antes de inserir
+  rows = rows.map(row => {
+    const corrigido = corrigirCidadeUF(row[COLS.cidade], row[COLS.uf]);
+    return { ...row, [COLS.cidade]: corrigido.cidade, [COLS.uf]: corrigido.uf };
+  });
+
   track.classList.add('show');
   const batchSize = 500;
   const batches = [];
@@ -856,6 +888,7 @@ async function processUploadedRows(rows) {
   showToast('Importação concluída: ' + enviados + ' linha(s).');
   await inicializar();
 }
+
 function finishUpload(ok, msg) {
   const statusEl = document.getElementById('uploadStatus');
   statusEl.textContent = msg; statusEl.className = 'upload-status ' + (ok?'ok':'err');
