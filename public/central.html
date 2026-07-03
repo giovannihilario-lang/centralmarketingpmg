@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Central do Marketing – PMG Atacadista</title>
   <link rel="preload"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
         as="style" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"></noscript>
+        href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"></noscript>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -22,55 +22,127 @@
       --line:#ddeae2;--bg:#f0f5f2;--surface:#fff;
       --radius:10px;--radius-lg:16px;
       --shadow:0 4px 16px rgba(0,0,0,.08);
+      --shadow-lg:0 20px 40px -12px rgba(13,43,26,.18);
       --nav-w:240px;
+      --ease:cubic-bezier(.22,1,.36,1);
+    }
+    @media (prefers-reduced-motion: reduce){
+      *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;}
     }
     body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;}
-    .nav{width:var(--nav-w);min-width:var(--nav-w);background:var(--g800);display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0;z-index:50;overflow-y:auto;}
+    h1,h2,.card-title,.nav-brand-name,.hero-title{font-family:'Sora',sans-serif;}
+
+    /* ---------- NAV ---------- */
+    .nav{width:var(--nav-w);min-width:var(--nav-w);background:var(--g800);display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0;z-index:50;overflow-y:auto;
+         box-shadow:2px 0 24px rgba(0,0,0,.15);}
     .nav-brand{padding:20px 16px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:12px;}
-    .nav-logo{width:36px;height:36px;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;color:var(--g800);}
+    .nav-logo{width:38px;height:38px;border-radius:9px;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+    .nav-logo img{width:100%;height:100%;object-fit:contain;display:block;}
     .nav-brand-name{font-size:13px;font-weight:700;color:#fff;}
     .nav-brand-sub{font-size:9px;color:var(--g300);font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-top:1px;}
     .nav-body{flex:1;padding:12px 8px;}
-    .nav-group{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.25);padding:10px 8px 5px;}
-    .nav-link{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:500;color:rgba(255,255,255,.7);text-decoration:none;transition:all .15s;}
-    .nav-link:hover{background:rgba(255,255,255,.08);color:#fff;}
+    .nav-group{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 8px 5px;}
+    .nav-link{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:500;color:rgba(255,255,255,.7);text-decoration:none;transition:background .18s var(--ease),color .18s var(--ease),transform .18s var(--ease);position:relative;}
+    .nav-link:hover{background:rgba(255,255,255,.08);color:#fff;transform:translateX(2px);}
     .nav-link.active{background:rgba(255,255,255,.14);color:#fff;font-weight:600;}
+    .nav-link.active::before{content:'';position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:3px;height:60%;background:var(--g300);border-radius:0 3px 3px 0;}
     .nav-link svg{width:16px;height:16px;flex-shrink:0;}
     .nav-footer{padding:12px 8px;border-top:1px solid rgba(255,255,255,.08);font-size:10px;color:rgba(255,255,255,.2);text-align:center;}
+
+    /* ---------- MAIN ---------- */
     .main{flex:1;margin-left:var(--nav-w);min-height:100vh;display:flex;flex-direction:column;}
     .header{background:var(--g900);height:60px;padding:0 32px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05);}
     .header h1{color:#fff;font-size:18px;font-weight:600;}
-    .content{flex:1;padding:40px 48px;overflow-y:auto;}
-    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ghost);margin-bottom:24px;display:flex;align-items:center;gap:8px;}
+    .content{flex:1;padding:0 48px 56px;overflow-y:auto;}
+
+    /* ---------- HERO (mascote) ---------- */
+    .hero{
+      margin:32px 0 44px;padding:36px 40px;border-radius:22px;position:relative;overflow:hidden;
+      background:linear-gradient(120deg,var(--g800) 0%,var(--g700) 55%,var(--g600) 100%);
+      display:flex;align-items:center;justify-content:space-between;gap:24px;
+      box-shadow:var(--shadow-lg);
+      opacity:0;transform:translateY(18px);animation:heroIn .7s var(--ease) forwards;
+    }
+    .hero::before{
+      content:'';position:absolute;inset:0;
+      background:radial-gradient(circle at 85% 20%, rgba(255,255,255,.12), transparent 55%);
+      pointer-events:none;
+    }
+    .hero-text{position:relative;z-index:1;max-width:520px;}
+    .hero-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--g300);margin-bottom:10px;}
+    .hero-title{font-size:30px;font-weight:800;color:#fff;line-height:1.15;margin-bottom:12px;}
+    .hero-sub{font-size:14px;color:rgba(255,255,255,.75);line-height:1.6;}
+    .hero-mascot-wrap{position:relative;z-index:1;flex-shrink:0;width:190px;height:190px;display:flex;align-items:center;justify-content:center;}
+    .hero-mascot{
+      width:170px;height:170px;object-fit:contain;
+      animation:floaty 4.5s ease-in-out infinite;
+      filter:drop-shadow(0 16px 24px rgba(0,0,0,.28));
+    }
+    .hero-mascot-ring{
+      position:absolute;inset:0;border-radius:50%;
+      background:radial-gradient(circle, rgba(126,207,152,.35), transparent 70%);
+      animation:pulseRing 3s ease-in-out infinite;
+    }
+    @keyframes heroIn{ to{opacity:1;transform:translateY(0);} }
+    @keyframes floaty{ 0%,100%{transform:translateY(0) rotate(-1.5deg);} 50%{transform:translateY(-14px) rotate(1.5deg);} }
+    @keyframes pulseRing{ 0%,100%{transform:scale(.9);opacity:.6;} 50%{transform:scale(1.08);opacity:.95;} }
+
+    /* ---------- SECTIONS / GRID ---------- */
+    .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ghost);margin-bottom:22px;display:flex;align-items:center;gap:8px;}
     .section-title::after{content:'';flex:1;height:1px;background:var(--line);}
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;}
-    .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:28px 24px;text-decoration:none;color:inherit;transition:transform .15s,box-shadow .15s;}
-    .card:hover{transform:translateY(-4px);box-shadow:var(--shadow);}
-    .card-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:16px;}
+
+    .card{
+      background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);
+      padding:28px 24px;text-decoration:none;color:inherit;
+      transition:transform .28s var(--ease),box-shadow .28s var(--ease),border-color .28s var(--ease);
+      opacity:0;transform:translateY(16px);animation:cardIn .55s var(--ease) forwards;
+      position:relative;
+    }
+    .card:nth-child(1){animation-delay:.05s}
+    .card:nth-child(2){animation-delay:.11s}
+    .card:nth-child(3){animation-delay:.17s}
+    .card:nth-child(4){animation-delay:.23s}
+    @keyframes cardIn{ to{opacity:1;transform:translateY(0);} }
+
+    .card:hover{transform:translateY(-6px) scale(1.015);box-shadow:var(--shadow-lg);border-color:transparent;}
+    .card-icon{
+      width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+      font-size:20px;margin-bottom:16px;transition:transform .3s var(--ease);
+    }
+    .card:hover .card-icon{transform:scale(1.08) rotate(-4deg);}
     .card.green .card-icon{background:var(--g100);color:var(--g700);}
     .card.amber .card-icon{background:#fff7ed;color:#d97706;}
     .card.blue .card-icon{background:#eff6ff;color:#2563eb;}
-    .card.purple .card-icon{background:#f5f3ff;color:#7c3aed;}
+    .card.teal .card-icon{background:#ecfeff;color:#0891b2;}
     .card.red .card-icon{background:#fef2f2;color:#dc2626;}
+    .card-icon svg{width:24px;height:24px;}
     .card-title{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:6px;}
     .card-desc{font-size:13px;color:var(--muted);line-height:1.5;}
-    .card-footer{margin-top:16px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;}
+    .card-footer{margin-top:16px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px;transition:gap .2s var(--ease);}
+    .card:hover .card-footer{gap:10px;}
     .card.green .card-footer{color:var(--g600);}
     .card.amber .card-footer{color:#d97706;}
     .card.blue .card-footer{color:#2563eb;}
-    .card.purple .card-footer{color:#7c3aed;}
+    .card.teal .card-footer{color:#0891b2;}
     .card.red .card-footer{color:#dc2626;}
+    .card.disabled{cursor:default;}
+    .card.disabled:hover{transform:none;box-shadow:none;border-color:var(--line);}
+    .card.disabled .card-icon{background:#fef2f2;color:#dc2626;}
+
     @media (max-width:900px){
       .nav{display:none;}
       .main{margin-left:0;}
-      .content{padding:24px;}
+      .content{padding:0 24px 40px;}
+      .hero{flex-direction:column;text-align:center;padding:28px 24px;}
+      .hero-text{max-width:100%;}
     }
   </style>
 </head>
 <body>
 <nav class="nav" aria-label="Navegação principal">
   <div class="nav-brand">
-    <div class="nav-logo">PMG</div>
+    <div class="nav-logo"><img src="/public/imagenssite/pmglogo.png" alt="Logo PMG Atacadista"></div>
     <div>
       <div class="nav-brand-name">PMG Atacadista</div>
       <div class="nav-brand-sub">Marketing</div>
@@ -91,17 +163,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
       Dashboard de Vendas
     </a>
+    <a href="/dashboard-regional.html" class="nav-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+      Dashboard Regional
+    </a>
     <a href="/ferramentas/catalogo.html" class="nav-link">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       Gerador de Catálogo
-    </a>
-    <a href="/upload.html" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Upload Sell-Out (XLSX)
-    </a>
-    <a href="/upload-sellin.html" class="nav-link">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
-      Upload Sell-In (NFe)
     </a>
     <div class="nav-group">Configurações</div>
     <a href="/public/fornecedores.html" class="nav-link" style="pointer-events:none;opacity:.5" title="Em breve">
@@ -117,6 +185,19 @@
     <h1>Central do Marketing</h1>
   </header>
   <main class="content">
+
+    <section class="hero">
+      <div class="hero-text">
+        <div class="hero-eyebrow">Bem-vindo de volta</div>
+        <div class="hero-title">Tudo o que o time de marketing precisa, num só lugar.</div>
+        <div class="hero-sub">Acompanhe fornecedores, vendas e catálogos com o Pmguinho de olho em cada número.</div>
+      </div>
+      <div class="hero-mascot-wrap">
+        <div class="hero-mascot-ring"></div>
+        <img class="hero-mascot" src="/public/imagenssite/pmguinho.png" alt="Mascote PMG - Pmguinho">
+      </div>
+    </section>
+
     <div class="section-title">Ferramentas Principais</div>
     <div class="grid">
       <a href="/fornecedores.html" class="card green">
@@ -131,8 +212,16 @@
         <div class="card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
         </div>
-        <div class="card-title">Dashboard de Vendas</div>
+        <div class="card-title">Dashboard - Geral PMG</div>
         <div class="card-desc">Visão geral de vendas, tickets, evolução mensal, segmentos, vendedores e produtos.</div>
+        <div class="card-footer">Acessar →</div>
+      </a>
+      <a href="/dashboard-regional.html" class="card teal">
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        </div>
+        <div class="card-title">Dashboard Regional</div>
+        <div class="card-desc">Vendas segmentadas por região, com comparativos e evolução por praça.</div>
         <div class="card-footer">Acessar →</div>
       </a>
       <a href="/ferramentas/catalogo.html" class="card amber">
@@ -143,23 +232,7 @@
         <div class="card-desc">Crie PDFs de catálogo personalizados por fornecedor ou categoria.</div>
         <div class="card-footer">Acessar →</div>
       </a>
-      <a href="/upload.html" class="card purple">
-        <div class="card-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        </div>
-        <div class="card-title">Upload Sell-Out (XLSX)</div>
-        <div class="card-desc">Importe planilhas de pedidos para alimentar os dashboards dos fornecedores.</div>
-        <div class="card-footer">Acessar →</div>
-      </a>
-      <a href="/upload-sellin.html" class="card purple" style="border-top-color:#7c3aed">
-        <div class="card-icon" style="background:#f5f3ff;color:#7c3aed">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/></svg>
-        </div>
-        <div class="card-title">Upload Sell-In (NFe)</div>
-        <div class="card-desc">Importe notas fiscais destinadas para calcular débito de sell-in por fornecedor.</div>
-        <div class="card-footer" style="color:#7c3aed">Acessar →</div>
-      </a>
-      <a href="#" class="card red" onclick="return false;">
+      <a href="#" class="card red disabled" onclick="return false;">
         <div class="card-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </div>
@@ -169,26 +242,6 @@
       </a>
     </div>
 
-    <div class="section-title" style="margin-top:40px">Atalhos Rápidos</div>
-    <div class="grid">
-      <a href="/fornecedores.html" class="card" style="border-top-color:var(--blue)">
-        <div class="card-icon" style="background:#eff6ff;color:#2563eb">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6v6l4 2"/></svg>
-        </div>
-        <div class="card-title">Novo Fornecedor</div>
-        <div>
-        <div class="card-desc">Cadastro rápido de um novo parceiro.</div>
-        <div class="card-footer" style="color:#2563eb">Abrir</div>
-      </a>
-      <a href="/dashboard.html" class="card" style="border-top-color:var(--amber)">
-        <div class="card-icon" style="background:#fff7ed;color:#d97706">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 21 2 12"/></svg>
-        </div>
-        <div class="card-title">Ver KPIs Globais</div>
-        <div class="card-desc">Resumo consolidado de todos os fornecedores.</div>
-        <div class="card-footer" style="color:#d97706">Abrir</div>
-      </a>
-    </div>
   </main>
 </div>
 
