@@ -217,13 +217,14 @@ document.addEventListener('DOMContentLoaded', function() {
 <!-- BODY -->
 <div class="body-layout">
   <!-- SIDEBAR -->
+  <aside class="sidebar">
   <div>
   <div class="sb-section-header" onclick="toggleSbSection(this)">
     <div class="sb-section-title">Tipologia de Cliente</div>
     <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
   </div>
   <div class="sb-collapse">
-    <div class="chip-group" id="tipologiaChips">
+    <div class="chip-group" id="segmentoChips">
       <div class="chip active" data-val="">Todos <span class="badge">–</span></div>
     </div>
   </div>
@@ -235,7 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
   </div>
   <div class="sb-collapse">
-    <div class="chip-group" id="categoriaChips">
+    <div class="chip-group" id="grupoChips">
       <div class="chip active" data-val="">Todos <span class="badge">–</span></div>
     </div>
   </div>
@@ -243,11 +244,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     <div>
       <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">Categoria</div>
+        <div class="sb-section-title">Sub-Categoria</div>
         <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="sb-collapse">
-        <div class="chip-group" id="categoriaChips">
+        <div class="chip-group" id="subgrupoChips">
           <div class="chip active" data-val="">Todos <span class="badge">–</span></div>
         </div>
       </div>
