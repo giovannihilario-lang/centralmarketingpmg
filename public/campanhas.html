@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMG Connect — Campanhas Comerciais</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --green-dark:   #1a4d2e;
+  --green-mid:    #2d7a4f;
+  --green-light:  #4caf70;
+  --green-pale:   #e8f5ed;
+  --green-border: #c3e0cd;
+  --amber:        #f59e0b;
+  --amber-pale:   #fef3d9;
+  --violet:       #8b5cf6;
+  --violet-pale:  #efe9fd;
+  --blue:         #3b82f6;
+  --blue-pale:    #e6f0fe;
+  --red:          #ef4444;
+  --red-pale:     #fef2f0;
+  --white:        #ffffff;
+  --gray-0:       #f4f5f4;
+  --gray-1:       #eceeed;
+  --gray-2:       #d4d6d3;
+  --gray-text:    #6b7280;
+  --text-dark:    #111827;
+  --radius:       10px;
+  --surface: var(--white);
+  --page-bg: var(--gray-0);
+}
+[data-theme="dark"] {
+  --gray-0: #12181a;
+  --gray-1: #1c2426;
+  --gray-2: #2b3538;
+  --gray-text: #9aa5a3;
+  --text-dark: #eef2f0;
+  --surface: #1a2224;
+  --page-bg: #0e1314;
+  --green-pale: #17301f;
+  --green-border: #244a30;
+  --amber-pale: #3a2c0e;
+  --violet-pale: #2a2140;
+  --blue-pale: #16273f;
+  --red-pale: #3a1c18;
+}
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--page-bg); color: var(--text-dark); height: 100vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+@keyframes cardEnter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shimmerMove { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes floatUp { from { opacity:0; transform: translateY(8px) scale(0.96); } to { opacity:1; transform: translateY(0) scale(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes modalIn { from { opacity:0; transform: translateY(14px) scale(.98); } to { opacity:1; transform: translateY(0) scale(1); } }
+
+/* ── Header ── */
+.hdr { background: var(--green-dark); padding: 0 22px; display: flex; align-items: center; justify-content: space-between; height: 54px; flex-shrink: 0; position: relative; overflow: hidden; }
+.hdr::after { content: ''; position: absolute; left:0; right:0; bottom:0; height:2px; background: linear-gradient(90deg, transparent, var(--green-light), transparent); background-size: 200% 100%; animation: shimmerMove 4.5s linear infinite; }
+.hdr-left { display: flex; align-items: center; gap: 12px; }
+.hdr-badge { width: 34px; height: 34px; background: white; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 10.5px; color: var(--green-dark); }
+.hdr h1 { color: white; font-size: 14.5px; font-weight: 500; }
+.hdr-right { display: flex; align-items: center; gap: 8px; }
+.hdr-pill { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.85); font-size: 11px; padding: 3px 11px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); cursor: pointer; }
+.hdr-pill:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Layout ── */
+.body-layout { display: grid; grid-template-columns: 208px 1fr; flex: 1; overflow: hidden; }
+.sidebar { background: var(--surface); border-right: 1px solid var(--gray-1); padding: 14px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; color: var(--text-dark); cursor: pointer; transition: all .14s ease; user-select: none; }
+.nav-item .ic { font-size: 15px; width: 18px; text-align: center; }
+.nav-item:hover { background: var(--green-pale); }
+.nav-item.active { background: var(--green-dark); color: white; font-weight: 500; }
+.nav-sep { height: 1px; background: var(--gray-1); margin: 8px 4px; }
+
+.main { overflow-y: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+.page-hdr { display: flex; align-items: center; justify-content: space-between; }
+.page-title { font-size: 17px; font-weight: 700; }
+.page-sub { font-size: 12px; color: var(--gray-text); margin-top: 2px; }
+
+/* ── Buttons ── */
+.btn { padding: 8px 14px; border-radius: 7px; font-size: 12.5px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all .14s; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: var(--green-dark); color: white; }
+.btn-primary:hover { background: var(--green-mid); }
+.btn-ghost { background: transparent; color: var(--green-dark); border-color: var(--green-border); }
+.btn-ghost:hover { background: var(--green-pale); }
+.btn-danger { background: transparent; color: #9b2c1d; border-color: #f3c9c1; }
+.btn-danger:hover { background: var(--red-pale); }
+.btn-sm { padding: 5px 10px; font-size: 11.5px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── KPI cards ── */
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 10px; }
+.kpi-card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 13px 14px 13px 17px; position: relative; overflow: hidden; animation: cardEnter .5s cubic-bezier(.2,.7,.3,1) both; transition: transform .2s ease, box-shadow .2s ease; }
+.kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 26px -14px rgba(26,77,46,.28); }
+.kpi-card::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--accent-color, var(--green-dark)); }
+.kpi-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-text); margin-bottom: 5px; font-weight: 600; }
+.kpi-value { font-size: 19px; font-weight: 700; line-height: 1; background: linear-gradient(90deg, var(--accent-color, var(--green-dark)), var(--accent-color2, var(--green-mid))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kpi-icon { position:absolute; top:12px; right:12px; width:24px; height:24px; border-radius:8px; background: var(--accent-soft, var(--green-pale)); display:flex; align-items:center; justify-content:center; font-size: 12px; }
+
+/* ── Chart / generic box ── */
+.box { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 16px; position: relative; animation: cardEnter .5s cubic-bezier(.2,.7,.3,1) both; }
+.box-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.box-title { font-size: 12.5px; font-weight: 600; }
+.tag { font-size: 10px; background: var(--green-pale); color: var(--green-dark); padding: 2px 9px; border-radius: 12px; border: 1px solid var(--green-border); }
+.row-2 { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+.row-2-even { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+/* ── Campaign cards ── */
+.campanha-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 14px; }
+.campanha-card { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--gray-1); background: var(--surface); cursor: pointer; transition: transform .18s, box-shadow .18s; animation: cardEnter .5s both; }
+.campanha-card:hover { transform: translateY(-3px); box-shadow: 0 14px 28px -16px rgba(0,0,0,.25); }
+.campanha-banner { height: 74px; display:flex; align-items:flex-end; padding: 10px 14px; color: white; font-weight: 700; font-size: 14px; background-size: cover; background-position: center; }
+.campanha-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.campanha-meta { font-size: 11px; color: var(--gray-text); display: flex; justify-content: space-between; }
+.status-pill { font-size: 9.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; text-transform: uppercase; letter-spacing: .3px; }
+.status-pill.ativa { background: var(--green-pale); color: var(--green-dark); }
+.status-pill.encerrada { background: var(--gray-1); color: var(--gray-text); }
+
+/* ── Tables ── */
+.table-wrap { overflow-x: auto; }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.data-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--gray-text); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--gray-1); white-space: nowrap; }
+table.data-table td { padding: 7px 10px; border-bottom: 1px solid var(--gray-1); white-space: nowrap; }
+table.data-table tr:hover td { background: var(--green-pale); }
+.rank-pos { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:6px; background: var(--green-dark); color:white; font-size:10.5px; font-weight:700; }
+.badge-eleg { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+.badge-eleg.sim { background: var(--green-pale); color: var(--green-dark); }
+.badge-eleg.nao { background: var(--red-pale); color: #9b2c1d; }
+
+/* ── Forms ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.full { grid-column: 1 / -1; }
+.field label { font-size: 11px; font-weight: 600; color: var(--gray-text); }
+.field input, .field select, .field textarea {
+  padding: 8px 10px; border: 1px solid var(--gray-1); border-radius: 7px; background: var(--page-bg);
+  font-size: 12.5px; color: var(--text-dark); outline: none; font-family: inherit;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--green-mid); background: var(--surface); }
+.field textarea { resize: vertical; min-height: 56px; }
+.search-input { padding: 8px 12px; border: 1px solid var(--gray-1); border-radius: 7px; background: var(--surface); font-size: 12.5px; min-width: 220px; }
+
+/* ── Modal ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 680px; max-height: 88vh; overflow-y: auto; animation: modalIn .18s ease both; }
+.modal.wide { max-width: 900px; }
+.modal-hdr { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--gray-1); position: sticky; top:0; background: var(--surface); z-index: 2; }
+.modal-hdr h3 { font-size: 14.5px; }
+.modal-close { cursor: pointer; font-size: 18px; color: var(--gray-text); background:none; border:none; }
+.modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-foot { padding: 14px 20px; border-top: 1px solid var(--gray-1); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ── Rule builder ── */
+.rule-row { display: grid; grid-template-columns: 1.3fr .8fr .5fr .7fr .05fr 1fr .7fr auto; gap: 6px; align-items: center; background: var(--page-bg); border: 1px solid var(--gray-1); border-radius: 8px; padding: 8px; font-size: 11.5px; }
+.rule-row select, .rule-row input { padding: 6px 7px; font-size: 11.5px; border: 1px solid var(--gray-1); border-radius: 6px; background: var(--surface); width: 100%; }
+.rule-arrow { text-align: center; font-weight: 700; color: var(--green-mid); }
+.rule-remove { background: none; border: none; color: #9b2c1d; cursor: pointer; font-size: 14px; }
+.rule-toggle { width: 15px; height: 15px; }
+.section-title { font-size: 12px; font-weight: 700; color: var(--green-dark); display: flex; align-items: center; justify-content: space-between; }
+
+/* ── Wizard (importação) ── */
+.wizard-steps { display: flex; gap: 6px; margin-bottom: 4px; }
+.wizard-step { flex: 1; text-align: center; font-size: 11px; padding: 8px 4px; border-radius: 7px; background: var(--gray-1); color: var(--gray-text); font-weight: 600; }
+.wizard-step.active { background: var(--green-dark); color: white; }
+.wizard-step.done { background: var(--green-pale); color: var(--green-dark); }
+.map-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--gray-1); font-size: 12.5px; }
+
+/* ── Chips (rankings/filters) ── */
+.chip-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-btn { font-size: 11.5px; padding: 6px 12px; border-radius: 20px; border: 1px solid var(--gray-1); background: var(--surface); cursor: pointer; font-weight: 500; transition: all .14s; }
+.chip-btn:hover { border-color: var(--green-mid); }
+.chip-btn.active { background: var(--green-dark); color: white; border-color: var(--green-dark); }
+
+/* ── Empty state ── */
+.empty-state { text-align: center; padding: 40px 20px; color: var(--gray-text); font-size: 12.5px; }
+.empty-state .ic { font-size: 30px; margin-bottom: 8px; }
+
+/* ── Toast ── */
+.toast { position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; padding: 10px 18px; border-radius: 8px; font-size: 12px; z-index: 300; display: none; }
+.toast.show { display: block; animation: floatUp .2s; }
+.toast.err { background: #7f1d1d; }
+
+/* ── Drag handle (desempate) ── */
+.desempate-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--gray-1); border-radius: 8px; background: var(--page-bg); font-size: 12.5px; cursor: grab; }
+.desempate-item .handle { color: var(--gray-text); }
+
+@media print {
+  .sidebar, .hdr, .btn, .page-hdr .btn, .no-print { display: none !important; }
+  .main { overflow: visible !important; }
+  body { overflow: visible !important; height: auto !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kpi-card, .box, .hdr::after, .campanha-card { animation: none !important; }
+  * { transition-duration: .01ms !important; }
+}
+
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-badge">PMG</div>
+    <h1>Gestão de Campanhas Comerciais</h1>
+  </div>
+  <div class="hdr-right">
+    <span class="hdr-pill" id="hdrCampanhaAtiva">nenhuma campanha ativa</span>
+    <span class="hdr-pill" id="themeToggle" style="cursor:pointer;">🌙 Tema</span>
+  </div>
+</div>
+
+<div class="body-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" id="pageRoot"></main>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBox">
+    <div class="modal-hdr">
+      <h3 id="modalTitle">Título</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+
+
+/* ===== db.js ===== */
+/* ══════════════════ SERVIÇO DE PERSISTÊNCIA (IndexedDB) ══════════════════ */
+const DB_NAME = 'pmg_campanhas_db';
+const DB_VERSION = 1;
+const STORES = ['campanhas', 'produtos', 'representantes', 'vendas', 'regras', 'regrasProduto', 'mapeamentos', 'apuracoes', 'config'];
+
+let _db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      STORES.forEach(name => {
+        if (!db.objectStoreNames.contains(name)) {
+          db.createObjectStore(name, { keyPath: 'id' });
+        }
+      });
+    };
+    req.onsuccess = (e) => { _db = e.target.result; resolve(_db); };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function tx(store, mode = 'readonly') {
+  return _db.transaction(store, mode).objectStore(store);
+}
+
+function uid() {
+  return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+}
+
+const DB = {
+  uid,
+  async init() { if (!_db) await openDB(); return _db; },
+
+  async getAll(store) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const req = tx(store).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async get(store, id) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const req = tx(store).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async put(store, obj) {
+    await this.init();
+    if (!obj.id) obj.id = uid();
+    return new Promise((resolve, reject) => {
+      const req = tx(store, 'readwrite').put(obj);
+      req.onsuccess = () => resolve(obj);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async putMany(store, list) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const s = tx(store, 'readwrite');
+      list.forEach(obj => { if (!obj.id) obj.id = uid(); s.put(obj); });
+      s.transaction.oncomplete = () => resolve(list);
+      s.transaction.onerror = () => reject(s.transaction.error);
+    });
+  },
+
+  async remove(store, id) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const req = tx(store, 'readwrite').delete(id);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async clearStore(store) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const req = tx(store, 'readwrite').clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async clearAll() {
+    for (const s of STORES) await this.clearStore(s);
+  },
+
+  async getConfig(key, def = null) {
+    const row = await this.get('config', key);
+    return row ? row.value : def;
+  },
+
+  async setConfig(key, value) {
+    return this.put('config', { id: key, value });
+  }
+};
+
+
+/* ===== utils.js ===== */
+/* ══════════════════ UTILITÁRIOS ══════════════════ */
+function fmtMoney(n) { n = Number(n) || 0; return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+function fmtKg(n) { n = Number(n) || 0; return n.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kg'; }
+function fmtNum(n) { return (Number(n) || 0).toLocaleString('pt-BR'); }
+function fmtPct(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('pt-BR'); }
+
+function parseNumBR(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function normalizeKey(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+function toTitleCasePtBr(str) {
+  const minusculas = ['de', 'da', 'do', 'das', 'dos', 'e'];
+  return String(str || '').toLowerCase().split(' ').map((w, i) => {
+    if (i > 0 && minusculas.includes(w)) return w;
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
+}
+
+// similaridade simples entre strings (para sugerir mapeamento de colunas sem depender do nome exato)
+function similarity(a, b) {
+  a = normalizeKey(a); b = normalizeKey(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.75;
+  const setA = new Set(a.split(''));
+  const setB = new Set(b.split(''));
+  const inter = [...setA].filter(c => setB.has(c)).length;
+  return inter / Math.max(setA.size, setB.size);
+}
+
+function suggestColumn(headers, aliases) {
+  let best = { header: '', score: 0 };
+  headers.forEach(h => {
+    aliases.forEach(alias => {
+      const score = similarity(h, alias);
+      if (score > best.score) best = { header: h, score };
+    });
+  });
+  return best.score >= 0.55 ? best.header : '';
+}
+
+function genId() { return DB.uid(); }
+
+function showToast(msg, isErr = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function downloadCSV(filename, rows) {
+  if (!rows.length) { showToast('Nada para exportar.', true); return; }
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(';')].concat(
+    rows.map(r => headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(';'))
+  ).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  saveAs(blob, filename);
+}
+
+function el(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html.trim();
+  return div.firstElementChild;
+}
+
+const PALETTE = ['#1a4d2e', '#4caf70', '#f59e0b', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6', '#ef4444', '#a855f7', '#84cc16'];
+
+
+/* ===== rules-engine.js ===== */
+/* ══════════════════ MOTOR DE REGRAS ══════════════════
+   Cada regra: { id, nome, campo, operador, valor, acao, acaoValor, obrigatoria, ativa }
+   campo         -> chave dentro do objeto de métricas do representante (ex: crescimento, clientesCampanha, kgCampanha...)
+   operador      -> '>=' '<=' '>' '<' '==' '!='
+   acao          -> 'elegivel' | 'desclassificar' | 'pontos' | 'multiplicador' | 'bonus_percentual' | 'penalidade'
+   acaoValor     -> número usado pela ação (pontos a somar, % do multiplicador/bônus, etc.)
+   obrigatoria   -> se true e a condição falhar, representante é desclassificado
+════════════════════════════════════════════════════════ */
+
+const OPERADORES = {
+  '>=': (a, b) => a >= b,
+  '<=': (a, b) => a <= b,
+  '>':  (a, b) => a > b,
+  '<':  (a, b) => a < b,
+  '==': (a, b) => a === b,
+  '!=': (a, b) => a !== b,
+};
+
+const CAMPOS_METRICA = [
+  { valor: 'kgCampanha', label: 'KG (campanha)' },
+  { valor: 'kgAnterior', label: 'KG (período anterior)' },
+  { valor: 'faturamentoCampanha', label: 'Faturamento (campanha)' },
+  { valor: 'faturamentoAnterior', label: 'Faturamento (período anterior)' },
+  { valor: 'clientesCampanha', label: 'Nº de clientes (campanha)' },
+  { valor: 'clientesAnterior', label: 'Nº de clientes (anterior)' },
+  { valor: 'pedidos', label: 'Nº de pedidos' },
+  { valor: 'produtosDistintos', label: 'Produtos distintos vendidos' },
+  { valor: 'mix', label: 'Mix (%)' },
+  { valor: 'positivacao', label: 'Positivação (%)' },
+  { valor: 'crescimentoKg', label: 'Crescimento de KG (%)' },
+  { valor: 'crescimentoFaturamento', label: 'Crescimento de faturamento (%)' },
+  { valor: 'pontosProdutos', label: 'Pontos de produtos (acumulado)' },
+];
+
+const ACOES = [
+  { valor: 'elegivel', label: 'Marcar como elegível' },
+  { valor: 'desclassificar', label: 'Desclassificar' },
+  { valor: 'pontos', label: 'Somar pontos fixos' },
+  { valor: 'multiplicador', label: 'Multiplicar pontuação total (x)' },
+  { valor: 'bonus_percentual', label: 'Adicionar bônus (% sobre pontuação)' },
+  { valor: 'penalidade', label: 'Subtrair pontos (penalidade)' },
+];
+
+/**
+ * Aplica o conjunto de regras de uma campanha sobre as métricas de um representante.
+ * Retorna { pontosFinal, elegivel, desclassificado, log[] }
+ */
+function aplicarRegras(regras, metricas, pontosBase) {
+  let pontos = pontosBase || 0;
+  let elegivel = true;
+  let desclassificado = false;
+  let multiplicadorAcumulado = 1;
+  const log = [];
+
+  (regras || []).filter(r => r.ativa !== false).forEach(r => {
+    const campoVal = Number(metricas[r.campo]) || 0;
+    const alvo = Number(r.valor) || 0;
+    const passou = OPERADORES[r.operador] ? OPERADORES[r.operador](campoVal, alvo) : false;
+
+    if (!passou) {
+      if (r.obrigatoria) { desclassificado = true; elegivel = false; }
+      log.push({ regra: r.nome, resultado: 'não atendida', obrigatoria: !!r.obrigatoria });
+      return;
+    }
+
+    log.push({ regra: r.nome, resultado: 'atendida' });
+    switch (r.acao) {
+      case 'elegivel': break; // já considerado elegível por padrão
+      case 'desclassificar': desclassificado = true; elegivel = false; break;
+      case 'pontos': pontos += Number(r.acaoValor) || 0; break;
+      case 'multiplicador': multiplicadorAcumulado *= (Number(r.acaoValor) || 1); break;
+      case 'bonus_percentual': pontos += pontos * ((Number(r.acaoValor) || 0) / 100); break;
+      case 'penalidade': pontos -= Number(r.acaoValor) || 0; break;
+    }
+  });
+
+  pontos = pontos * multiplicadorAcumulado;
+  if (desclassificado) { pontos = 0; elegivel = false; }
+
+  return { pontosFinal: Math.max(0, Math.round(pontos * 100) / 100), elegivel, desclassificado, log };
+}
+
+/**
+ * Calcula pontos de produto para uma lista de linhas de venda de um representante,
+ * de acordo com as regras de pontuação por produto/categoria/marca da campanha.
+ */
+function calcularPontosProdutos(vendasRepresentante, regrasProduto) {
+  let total = 0;
+  vendasRepresentante.forEach(v => {
+    let melhorRegra = null;
+    (regrasProduto || []).forEach(rp => {
+      if (!rp.ativa && rp.ativa !== undefined) return;
+      const alvo = normalizeKey(rp.valor);
+      let bate = false;
+      if (rp.escopo === 'produto') bate = normalizeKey(v.codigo) === alvo || normalizeKey(v.produto) === alvo;
+      if (rp.escopo === 'categoria') bate = normalizeKey(v.categoria) === alvo;
+      if (rp.escopo === 'marca') bate = normalizeKey(v.marca) === alvo;
+      if (bate) melhorRegra = rp; // última regra que bater prevalece (permite regras mais específicas por último)
+    });
+    if (melhorRegra) {
+      const pontosPorKg = Number(melhorRegra.pontosPorKg) || 0;
+      const pontosFixos = Number(melhorRegra.pontosFixos) || 0;
+      const mult = Number(melhorRegra.multiplicador) || 1;
+      total += (pontosPorKg * (Number(v.kg) || 0) + pontosFixos) * mult;
+    }
+  });
+  return Math.round(total * 100) / 100;
+}
+
+const DESEMPATE_CAMPOS = [
+  { valor: 'kgCampanha', label: 'Maior KG' },
+  { valor: 'faturamentoCampanha', label: 'Maior faturamento' },
+  { valor: 'crescimentoKg', label: 'Maior crescimento' },
+  { valor: 'positivacao', label: 'Maior positivação' },
+  { valor: 'clientesCampanha', label: 'Mais clientes' },
+];
+
+function ordenarComDesempate(lista, ordemDesempate) {
+  const ordem = (ordemDesempate && ordemDesempate.length) ? ordemDesempate : DESEMPATE_CAMPOS.map(d => d.valor);
+  return [...lista].sort((a, b) => {
+    if (b.pontosFinal !== a.pontosFinal) return b.pontosFinal - a.pontosFinal;
+    for (const campo of ordem) {
+      const diff = (Number(b[campo]) || 0) - (Number(a[campo]) || 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  });
+}
+
+
+/* ===== app.js ===== */
+/* ══════════════════ ESTADO GLOBAL ══════════════════ */
+const STATE = {
+  route: 'dashboard',
+  campanhaSelecionada: null, // id da campanha em foco (apuração/rankings/importação)
+};
+
+const NAV = [
+  { key: 'dashboard',      icon: '🏠', label: 'Dashboard' },
+  { key: 'campanhas',      icon: '📢', label: 'Campanhas' },
+  { key: 'produtos',       icon: '📦', label: 'Produtos' },
+  { key: 'representantes', icon: '👤', label: 'Representantes' },
+  { sep: true },
+  { key: 'importacao',     icon: '📂', label: 'Importação' },
+  { key: 'apuracao',       icon: '📊', label: 'Apuração' },
+  { key: 'rankings',       icon: '🏆', label: 'Rankings' },
+  { sep: true },
+  { key: 'configuracoes',  icon: '⚙', label: 'Configurações' },
+];
+
+const ROUTES = {
+  dashboard: () => renderDashboard(),
+  campanhas: () => renderCampanhas(),
+  produtos: () => renderProdutos(),
+  representantes: () => renderRepresentantes(),
+  importacao: () => renderImportacao(),
+  apuracao: () => renderApuracao(),
+  rankings: () => renderRankings(),
+  configuracoes: () => renderConfiguracoes(),
+};
+
+/* ══════════════════ ROTEAMENTO ══════════════════ */
+function navigate(route) {
+  STATE.route = route;
+  renderSidebar();
+  const root = document.getElementById('pageRoot');
+  root.innerHTML = '';
+  (ROUTES[route] || ROUTES.dashboard)();
+}
+
+function renderSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.innerHTML = NAV.map(item => {
+    if (item.sep) return '<div class="nav-sep"></div>';
+    const active = STATE.route === item.key ? ' active' : '';
+    return `<div class="nav-item${active}" onclick="navigate('${item.key}')">
+      <span class="ic">${item.icon}</span><span>${item.label}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════════ HELPERS DE PÁGINA ══════════════════ */
+function pageHeader(title, sub, actionsHtml = '') {
+  return `<div class="page-hdr">
+    <div>
+      <div class="page-title">${title}</div>
+      ${sub ? `<div class="page-sub">${sub}</div>` : ''}
+    </div>
+    <div style="display:flex; gap:8px;">${actionsHtml}</div>
+  </div>`;
+}
+
+function emptyState(icon, msg, actionHtml = '') {
+  return `<div class="empty-state"><div class="ic">${icon}</div><div>${msg}</div>${actionHtml ? `<div style="margin-top:12px;">${actionHtml}</div>` : ''}</div>`;
+}
+
+/* ══════════════════ MODAL GENÉRICO ══════════════════ */
+function openModal(title, bodyHtml, footHtml, wide = false) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalFoot').innerHTML = footHtml;
+  document.getElementById('modalBox').classList.toggle('wide', wide);
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.getElementById && document.addEventListener('DOMContentLoaded', () => {
+  const overlay = document.getElementById('modalOverlay');
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+});
+
+/* ══════════════════ TEMA ══════════════════ */
+async function initTheme() {
+  const tema = await DB.getConfig('tema', 'light');
+  document.documentElement.setAttribute('data-theme', tema);
+  document.getElementById('themeToggle').textContent = tema === 'dark' ? '☀ Tema' : '🌙 Tema';
+}
+async function toggleTheme() {
+  const atual = document.documentElement.getAttribute('data-theme') || 'light';
+  const novo = atual === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', novo);
+  document.getElementById('themeToggle').textContent = novo === 'dark' ? '☀ Tema' : '🌙 Tema';
+  await DB.setConfig('tema', novo);
+}
+
+/* ══════════════════ HEADER — CAMPANHA ATIVA ══════════════════ */
+async function atualizarHdrCampanha() {
+  const campanhas = await DB.getAll('campanhas');
+  const ativas = campanhas.filter(c => c.ativa);
+  const el = document.getElementById('hdrCampanhaAtiva');
+  el.textContent = ativas.length ? `${ativas.length} campanha(s) ativa(s)` : 'nenhuma campanha ativa';
+}
+
+/* ══════════════════ INICIALIZAÇÃO ══════════════════ */
+async function inicializar() {
+  await DB.init();
+  await initTheme();
+  document.getElementById('themeToggle').onclick = toggleTheme;
+  renderSidebar();
+  navigate('dashboard');
+  atualizarHdrCampanha();
+}
+
+window.addEventListener('DOMContentLoaded', inicializar);
+
+
+/* ===== pages.js ===== */
+/* ═══════════════════════════════════════════════════════════════
+   PÁGINAS DO SISTEMA
+   ═══════════════════════════════════════════════════════════════ */
+const root = () => document.getElementById('pageRoot');
+
+/* ══════════════════ DASHBOARD ══════════════════ */
+async function renderDashboard() {
+  root().innerHTML = pageHeader('Dashboard', 'Visão geral de todas as campanhas PMG') +
+    `<div class="kpi-row" id="dashKpis"></div>
+     <div class="row-2">
+       <div class="box">
+         <div class="box-hdr"><div class="box-title">Campanhas Ativas</div><span class="tag" id="dashCampCount">0</span></div>
+         <div class="campanha-grid" id="dashCampGrid"></div>
+       </div>
+       <div class="box">
+         <div class="box-hdr"><div class="box-title">Produtos por Categoria</div><span class="tag">Distribuição</span></div>
+         <canvas id="chartCategorias" height="220"></canvas>
+       </div>
+     </div>`;
+
+  const [campanhas, produtos, representantes, vendas] = await Promise.all([
+    DB.getAll('campanhas'), DB.getAll('produtos'), DB.getAll('representantes'), DB.getAll('vendas')
+  ]);
+  const ativas = campanhas.filter(c => c.ativa);
+
+  document.getElementById('dashKpis').innerHTML = [
+    { label: 'Campanhas', value: fmtNum(campanhas.length), icon: '📢', color: '--green-dark', soft: '--green-pale' },
+    { label: 'Campanhas Ativas', value: fmtNum(ativas.length), icon: '🟢', color: '--green-mid', soft: '--green-pale' },
+    { label: 'Produtos', value: fmtNum(produtos.length), icon: '📦', color: '--blue', soft: '--blue-pale' },
+    { label: 'Representantes', value: fmtNum(representantes.length), icon: '👤', color: '--violet', soft: '--violet-pale' },
+    { label: 'Registros de Venda', value: fmtNum(vendas.length), icon: '🧾', color: '--amber', soft: '--amber-pale' },
+  ].map(k => `
+    <div class="kpi-card" style="--accent-color:var(${k.color}); --accent-soft:var(${k.soft});">
+      <div class="kpi-icon">${k.icon}</div>
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${k.value}</div>
+    </div>`).join('');
+
+  document.getElementById('dashCampCount').textContent = ativas.length + ' ativa(s)';
+  document.getElementById('dashCampGrid').innerHTML = ativas.length ? ativas.map(campanhaCardHtml).join('') :
+    emptyState('📢', 'Nenhuma campanha ativa no momento.', `<button class="btn btn-primary btn-sm" onclick="navigate('campanhas')">Ir para Campanhas</button>`);
+  ativas.forEach(c => { const el = document.getElementById('card-' + c.id); if (el) el.onclick = () => navigate('campanhas'); });
+
+  const porCategoria = {};
+  produtos.forEach(p => { const cat = p.categoria || 'Sem categoria'; porCategoria[cat] = (porCategoria[cat] || 0) + 1; });
+  const labels = Object.keys(porCategoria);
+  new Chart(document.getElementById('chartCategorias'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: labels.map(l => porCategoria[l]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff' }] },
+    options: { responsive: true, plugins: { legend: { position: 'right', labels: { boxWidth: 9, font: { size: 10 } } } } }
+  });
+}
+
+function campanhaCardHtml(c) {
+  const bg = c.bannerUrl ? `background-image:url('${c.bannerUrl}');` : `background: linear-gradient(135deg, ${c.cor || '#1a4d2e'}, #00000030);`;
+  return `<div class="campanha-card" id="card-${c.id}">
+    <div class="campanha-banner" style="${bg}">${c.nome}</div>
+    <div class="campanha-body">
+      <div class="campanha-meta"><span>${c.fornecedor || '—'}</span><span class="status-pill ${c.ativa ? 'ativa' : 'encerrada'}">${c.ativa ? 'Ativa' : 'Encerrada'}</span></div>
+      <div class="campanha-meta"><span>${fmtDate(c.dataInicio)} → ${fmtDate(c.dataFim)}</span></div>
+    </div>
+  </div>`;
+}
+
+/* ══════════════════ CAMPANHAS ══════════════════ */
+async function renderCampanhas() {
+  root().innerHTML = pageHeader('Campanhas', 'Crie e gerencie campanhas comerciais totalmente configuráveis',
+    `<button class="btn btn-primary" onclick="openCampanhaModal(null)">+ Nova Campanha</button>`) +
+    `<div class="campanha-grid" id="campanhasGrid"></div>`;
+
+  const campanhas = await DB.getAll('campanhas');
+  const grid = document.getElementById('campanhasGrid');
+  grid.innerHTML = campanhas.length ? campanhas.map(c => `
+    <div class="campanha-card">
+      <div class="campanha-banner" style="${c.bannerUrl ? `background-image:url('${c.bannerUrl}');` : `background: linear-gradient(135deg, ${c.cor || '#1a4d2e'}, #00000030);`}">${c.nome}</div>
+      <div class="campanha-body">
+        <div class="campanha-meta"><span>${c.fornecedor || '—'}</span><span class="status-pill ${c.ativa ? 'ativa' : 'encerrada'}">${c.ativa ? 'Ativa' : 'Encerrada'}</span></div>
+        <div class="campanha-meta"><span>${fmtDate(c.dataInicio)} → ${fmtDate(c.dataFim)}</span></div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="openCampanhaModal('${c.id}')" style="flex:1;">Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="excluirCampanha('${c.id}')">Excluir</button>
+        </div>
+      </div>
+    </div>`).join('') : emptyState('📢', 'Nenhuma campanha cadastrada ainda.', `<button class="btn btn-primary btn-sm" onclick="openCampanhaModal(null)">Criar primeira campanha</button>`);
+}
+
+async function excluirCampanha(id) {
+  if (!confirm('Excluir esta campanha e todas as suas regras associadas?')) return;
+  await DB.remove('campanhas', id);
+  const [regras, regrasProduto] = await Promise.all([DB.getAll('regras'), DB.getAll('regrasProduto')]);
+  for (const r of regras.filter(r => r.campanhaId === id)) await DB.remove('regras', r.id);
+  for (const r of regrasProduto.filter(r => r.campanhaId === id)) await DB.remove('regrasProduto', r.id);
+  showToast('Campanha excluída.');
+  renderCampanhas();
+}
+
+const TIPOS_RANKING = ['KG', 'Faturamento', 'Pontos', 'Margem', 'Clientes', 'Positivação', 'Mix de produtos', 'Crescimento', 'Combinado'];
+let _campanhaModalState = null;
+
+async function openCampanhaModal(id) {
+  let campanha = id ? await DB.get('campanhas', id) : {
+    id: null, nome: '', fornecedor: '', dataInicio: '', dataFim: '', periodoAnteriorInicio: '', periodoAnteriorFim: '',
+    descricao: '', ativa: true, bannerUrl: '', cor: '#1a4d2e', premiacoes: '', tipos: [], desempate: DESEMPATE_CAMPOS.map(d => d.valor)
+  };
+  const regras = id ? (await DB.getAll('regras')).filter(r => r.campanhaId === id) : [];
+  const regrasProduto = id ? (await DB.getAll('regrasProduto')).filter(r => r.campanhaId === id) : [];
+  _campanhaModalState = { campanha, regras, regrasProduto };
+
+  const body = `
+    <div class="wizard-steps" id="campTabs">
+      ${['Informações', 'Regras', 'Regras de Produto', 'Desempate'].map((t, i) => `<div class="wizard-step ${i === 0 ? 'active' : ''}" data-tab="${i}" onclick="switchCampTab(${i})">${t}</div>`).join('')}
+    </div>
+    <div id="campTab0">${campTabInfoHtml(campanha)}</div>
+    <div id="campTab1" style="display:none;">${campTabRegrasHtml(regras)}</div>
+    <div id="campTab2" style="display:none;">${campTabRegrasProdutoHtml(regrasProduto)}</div>
+    <div id="campTab3" style="display:none;">${campTabDesempateHtml(campanha.desempate)}</div>
+  `;
+  openModal(id ? 'Editar Campanha' : 'Nova Campanha', body,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="salvarCampanha()">Salvar Campanha</button>`, true);
+
+  const desempList = document.getElementById('desempateList');
+  if (desempList && window.Sortable) Sortable.create(desempList, { handle: '.handle', animation: 150 });
+}
+
+function switchCampTab(i) {
+  for (let n = 0; n < 4; n++) document.getElementById('campTab' + n).style.display = n === i ? '' : 'none';
+  document.querySelectorAll('#campTabs .wizard-step').forEach((el, n) => el.classList.toggle('active', n === i));
+}
+
+function campTabInfoHtml(c) {
+  return `<div class="form-grid">
+    <div class="field"><label>Nome da campanha *</label><input id="cf_nome" value="${c.nome || ''}" placeholder="Ex: Campanha Frimesa Q3"></div>
+    <div class="field"><label>Fornecedor *</label><input id="cf_fornecedor" value="${c.fornecedor || ''}" placeholder="Ex: Frimesa"></div>
+    <div class="field"><label>Data inicial</label><input id="cf_dataInicio" type="date" value="${c.dataInicio || ''}"></div>
+    <div class="field"><label>Data final</label><input id="cf_dataFim" type="date" value="${c.dataFim || ''}"></div>
+    <div class="field"><label>Período anterior — início</label><input id="cf_perAntInicio" type="date" value="${c.periodoAnteriorInicio || ''}"></div>
+    <div class="field"><label>Período anterior — fim</label><input id="cf_perAntFim" type="date" value="${c.periodoAnteriorFim || ''}"></div>
+    <div class="field"><label>Cor da campanha</label><input id="cf_cor" type="color" value="${c.cor || '#1a4d2e'}"></div>
+    <div class="field"><label>Imagem/Banner (URL)</label><input id="cf_banner" value="${c.bannerUrl || ''}" placeholder="https://..."></div>
+    <div class="field full"><label>Descrição</label><textarea id="cf_descricao" placeholder="Detalhes da campanha...">${c.descricao || ''}</textarea></div>
+    <div class="field full"><label>Premiações</label><textarea id="cf_premiacoes" placeholder="Ex: 1º lugar - Viagem para Cancún...">${c.premiacoes || ''}</textarea></div>
+    <div class="field full">
+      <label>Tipos de ranking suportados</label>
+      <div class="chip-bar">${TIPOS_RANKING.map(t => `<div class="chip-btn ${((c.tipos || []).includes(t)) ? 'active' : ''}" onclick="this.classList.toggle('active')" data-tipo="${t}">${t}</div>`).join('')}</div>
+    </div>
+    <div class="field"><label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="cf_ativa" ${c.ativa ? 'checked' : ''} style="width:16px;height:16px;"> Campanha ativa</label></div>
+  </div>`;
+}
+
+function regraRowHtml(r = {}) {
+  return `<div class="rule-row" data-row>
+    <input placeholder="Nome da regra" value="${r.nome || ''}" data-f="nome">
+    <select data-f="campo">${CAMPOS_METRICA.map(c => `<option value="${c.valor}" ${r.campo === c.valor ? 'selected' : ''}>${c.label}</option>`).join('')}</select>
+    <select data-f="operador">${Object.keys(OPERADORES).map(op => `<option value="${op}" ${r.operador === op ? 'selected' : ''}>${op}</option>`).join('')}</select>
+    <input placeholder="Valor" value="${r.valor ?? ''}" data-f="valor">
+    <input type="checkbox" class="rule-toggle" title="Obrigatória (desclassifica se falhar)" data-f="obrigatoria" ${r.obrigatoria ? 'checked' : ''}>
+    <select data-f="acao">${ACOES.map(a => `<option value="${a.valor}" ${r.acao === a.valor ? 'selected' : ''}>${a.label}</option>`).join('')}</select>
+    <input placeholder="Valor da ação" value="${r.acaoValor ?? ''}" data-f="acaoValor">
+    <button class="rule-remove" onclick="this.closest('[data-row]').remove()">✕</button>
+  </div>`;
+}
+
+function campTabRegrasHtml(regras) {
+  return `<div class="section-title">Regras da campanha <button class="btn btn-ghost btn-sm" onclick="document.getElementById('regrasList').insertAdjacentHTML('beforeend', regraRowHtml())">+ Adicionar regra</button></div>
+  <div style="font-size:11px; color:var(--gray-text); margin:-6px 0 4px;">SE campo/operador/valor → ENTÃO ação. Marque "obrigatória" para desclassificar o representante quando a condição falhar.</div>
+  <div id="regrasList" style="display:flex; flex-direction:column; gap:6px;">${regras.map(regraRowHtml).join('') || regraRowHtml()}</div>`;
+}
+
+function regraProdutoRowHtml(r = {}) {
+  return `<div class="rule-row" style="grid-template-columns: .8fr 1.3fr .8fr .8fr .7fr .05fr auto;" data-rowp>
+    <select data-f="escopo">
+      <option value="produto" ${r.escopo === 'produto' ? 'selected' : ''}>Produto (código)</option>
+      <option value="categoria" ${r.escopo === 'categoria' ? 'selected' : ''}>Categoria</option>
+      <option value="marca" ${r.escopo === 'marca' ? 'selected' : ''}>Marca</option>
+    </select>
+    <input placeholder="Ex: Bacon / FRI-001 / Frimesa" value="${r.valor || ''}" data-f="valor">
+    <input placeholder="Pontos/Kg" value="${r.pontosPorKg ?? ''}" data-f="pontosPorKg">
+    <input placeholder="Pontos fixos" value="${r.pontosFixos ?? ''}" data-f="pontosFixos">
+    <input placeholder="Multiplicador" value="${r.multiplicador ?? 1}" data-f="multiplicador">
+    <input type="checkbox" class="rule-toggle" title="Ativa" data-f="ativa" ${r.ativa !== false ? 'checked' : ''}>
+    <button class="rule-remove" onclick="this.closest('[data-rowp]').remove()">✕</button>
+  </div>`;
+}
+
+function campTabRegrasProdutoHtml(regrasProduto) {
+  return `<div class="section-title">Pontuação por produto <button class="btn btn-ghost btn-sm" onclick="document.getElementById('regrasProdutoList').insertAdjacentHTML('beforeend', regraProdutoRowHtml())">+ Adicionar regra</button></div>
+  <div style="font-size:11px; color:var(--gray-text); margin:-6px 0 4px;">Defina pontos por kg e/ou pontos fixos para produtos, categorias ou marcas específicas. A última regra que bater prevalece.</div>
+  <div id="regrasProdutoList" style="display:flex; flex-direction:column; gap:6px;">${regrasProduto.map(regraProdutoRowHtml).join('') || regraProdutoRowHtml()}</div>`;
+}
+
+function campTabDesempateHtml(ordem) {
+  const lista = (ordem && ordem.length) ? ordem : DESEMPATE_CAMPOS.map(d => d.valor);
+  return `<div class="section-title">Ordem de desempate</div>
+  <div style="font-size:11px; color:var(--gray-text); margin:-6px 0 4px;">Arraste para reordenar. Em caso de empate de pontos, o critério do topo é aplicado primeiro.</div>
+  <div id="desempateList" style="display:flex; flex-direction:column; gap:6px;">
+    ${lista.map(v => {
+      const d = DESEMPATE_CAMPOS.find(x => x.valor === v) || { valor: v, label: v };
+      return `<div class="desempate-item" data-val="${d.valor}"><span class="handle">⠿⠿</span> ${d.label}</div>`;
+    }).join('')}
+  </div>`;
+}
+
+function collectRows(containerId, selector) {
+  return Array.from(document.querySelectorAll(`#${containerId} ${selector}`)).map(row => {
+    const obj = {};
+    row.querySelectorAll('[data-f]').forEach(inp => {
+      const f = inp.dataset.f;
+      obj[f] = inp.type === 'checkbox' ? inp.checked : inp.value;
+    });
+    return obj;
+  });
+}
+
+async function salvarCampanha() {
+  const nome = document.getElementById('cf_nome').value.trim();
+  const fornecedor = document.getElementById('cf_fornecedor').value.trim();
+  if (!nome || !fornecedor) { showToast('Preencha nome e fornecedor.', true); return; }
+
+  const tipos = Array.from(document.querySelectorAll('[data-tipo].active')).map(el => el.dataset.tipo);
+  const desempate = Array.from(document.querySelectorAll('#desempateList .desempate-item')).map(el => el.dataset.val);
+
+  const campanha = {
+    id: _campanhaModalState.campanha.id || undefined,
+    nome, fornecedor,
+    dataInicio: document.getElementById('cf_dataInicio').value,
+    dataFim: document.getElementById('cf_dataFim').value,
+    periodoAnteriorInicio: document.getElementById('cf_perAntInicio').value,
+    periodoAnteriorFim: document.getElementById('cf_perAntFim').value,
+    cor: document.getElementById('cf_cor').value,
+    bannerUrl: document.getElementById('cf_banner').value.trim(),
+    descricao: document.getElementById('cf_descricao').value,
+    premiacoes: document.getElementById('cf_premiacoes').value,
+    ativa: document.getElementById('cf_ativa').checked,
+    tipos, desempate
+  };
+  const saved = await DB.put('campanhas', campanha);
+
+  const regrasRows = collectRows('regrasList', '[data-row]').filter(r => r.nome);
+  const oldRegras = (await DB.getAll('regras')).filter(r => r.campanhaId === saved.id);
+  for (const r of oldRegras) await DB.remove('regras', r.id);
+  for (const r of regrasRows) await DB.put('regras', { ...r, campanhaId: saved.id });
+
+  const regrasProdRows = collectRows('regrasProdutoList', '[data-rowp]').filter(r => r.valor);
+  const oldRP = (await DB.getAll('regrasProduto')).filter(r => r.campanhaId === saved.id);
+  for (const r of oldRP) await DB.remove('regrasProduto', r.id);
+  for (const r of regrasProdRows) await DB.put('regrasProduto', { ...r, campanhaId: saved.id });
+
+  showToast('Campanha salva com sucesso!');
+  closeModal();
+  renderCampanhas();
+  atualizarHdrCampanha();
+}
+
+/* ══════════════════ PRODUTOS ══════════════════ */
+async function renderProdutos() {
+  root().innerHTML = pageHeader('Produtos', 'Catálogo de produtos usado nas regras de pontuação',
+    `<input class="search-input" id="prodSearch" placeholder="Buscar produto..." oninput="filtrarProdutos()">
+     <button class="btn btn-primary" onclick="openProdutoModal(null)">+ Novo Produto</button>`) +
+    `<div class="box"><div class="table-wrap"><table class="data-table" id="prodTable">
+      <thead><tr><th>Código</th><th>Nome</th><th>Fornecedor</th><th>Categoria</th><th>Marca</th><th>Valor</th><th>Pontos</th><th>Mult.</th><th>Status</th><th></th></tr></thead>
+      <tbody id="prodTbody"></tbody>
+    </table></div></div>`;
+  await carregarProdutos();
+}
+let _produtosCache = [];
+async function carregarProdutos() {
+  _produtosCache = await DB.getAll('produtos');
+  desenharProdutos(_produtosCache);
+}
+function desenharProdutos(lista) {
+  const tbody = document.getElementById('prodTbody');
+  tbody.innerHTML = lista.length ? lista.map(p => `
+    <tr>
+      <td>${p.codigo || '—'}</td><td>${p.nome}</td><td>${p.fornecedor || '—'}</td><td>${p.categoria || '—'}</td><td>${p.marca || '—'}</td>
+      <td>${fmtMoney(p.valor)}</td><td>${fmtNum(p.pontos)}</td><td>${p.multiplicador || 1}x</td>
+      <td><span class="badge-eleg ${p.ativo !== false ? 'sim' : 'nao'}">${p.ativo !== false ? 'Ativo' : 'Inativo'}</span></td>
+      <td style="display:flex; gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openProdutoModal('${p.id}')">Editar</button><button class="btn btn-danger btn-sm" onclick="excluirProduto('${p.id}')">✕</button></td>
+    </tr>`).join('') : `<tr><td colspan="10"><div class="empty-state">📦 Nenhum produto encontrado.</div></td></tr>`;
+}
+function filtrarProdutos() {
+  const t = normalizeKey(document.getElementById('prodSearch').value);
+  desenharProdutos(!t ? _produtosCache : _produtosCache.filter(p => normalizeKey(p.nome + ' ' + p.codigo + ' ' + p.categoria + ' ' + p.marca).includes(t)));
+}
+async function excluirProduto(id) { if (!confirm('Excluir este produto?')) return; await DB.remove('produtos', id); showToast('Produto excluído.'); carregarProdutos(); }
+
+async function openProdutoModal(id) {
+  const p = id ? await DB.get('produtos', id) : { id: null, codigo: '', nome: '', fornecedor: '', categoria: '', subcategoria: '', marca: '', peso: '', unidade: 'kg', valor: '', pontos: '', multiplicador: 1, ativo: true };
+  const body = `<div class="form-grid">
+    <div class="field"><label>Código</label><input id="pf_codigo" value="${p.codigo || ''}"></div>
+    <div class="field"><label>Nome *</label><input id="pf_nome" value="${p.nome || ''}"></div>
+    <div class="field"><label>Fornecedor</label><input id="pf_fornecedor" value="${p.fornecedor || ''}"></div>
+    <div class="field"><label>Categoria</label><input id="pf_categoria" value="${p.categoria || ''}"></div>
+    <div class="field"><label>Subcategoria</label><input id="pf_subcategoria" value="${p.subcategoria || ''}"></div>
+    <div class="field"><label>Marca</label><input id="pf_marca" value="${p.marca || ''}"></div>
+    <div class="field"><label>Peso</label><input id="pf_peso" value="${p.peso || ''}"></div>
+    <div class="field"><label>Unidade</label><select id="pf_unidade"><option ${p.unidade === 'kg' ? 'selected' : ''}>kg</option><option ${p.unidade === 'un' ? 'selected' : ''}>un</option><option ${p.unidade === 'cx' ? 'selected' : ''}>cx</option></select></div>
+    <div class="field"><label>Valor (R$)</label><input id="pf_valor" value="${p.valor || ''}"></div>
+    <div class="field"><label>Pontos</label><input id="pf_pontos" value="${p.pontos || ''}"></div>
+    <div class="field"><label>Multiplicador</label><input id="pf_multiplicador" value="${p.multiplicador || 1}"></div>
+    <div class="field"><label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="pf_ativo" ${p.ativo !== false ? 'checked' : ''} style="width:16px;height:16px;"> Ativo</label></div>
+  </div>`;
+  openModal(id ? 'Editar Produto' : 'Novo Produto', body,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="salvarProduto('${p.id || ''}')">Salvar</button>`);
+}
+async function salvarProduto(id) {
+  const nome = document.getElementById('pf_nome').value.trim();
+  if (!nome) { showToast('Informe o nome do produto.', true); return; }
+  await DB.put('produtos', {
+    id: id || undefined,
+    codigo: document.getElementById('pf_codigo').value.trim(),
+    nome, fornecedor: document.getElementById('pf_fornecedor').value.trim(),
+    categoria: document.getElementById('pf_categoria').value.trim(),
+    subcategoria: document.getElementById('pf_subcategoria').value.trim(),
+    marca: document.getElementById('pf_marca').value.trim(),
+    peso: parseNumBR(document.getElementById('pf_peso').value),
+    unidade: document.getElementById('pf_unidade').value,
+    valor: parseNumBR(document.getElementById('pf_valor').value),
+    pontos: parseNumBR(document.getElementById('pf_pontos').value),
+    multiplicador: parseNumBR(document.getElementById('pf_multiplicador').value) || 1,
+    ativo: document.getElementById('pf_ativo').checked
+  });
+  showToast('Produto salvo!'); closeModal(); carregarProdutos();
+}
+
+/* ══════════════════ REPRESENTANTES ══════════════════ */
+async function renderRepresentantes() {
+  root().innerHTML = pageHeader('Representantes', 'Cadastro de representantes de vendas',
+    `<button class="btn btn-primary" onclick="openRepModal(null)">+ Novo Representante</button>`) +
+    `<div class="box"><div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Nome</th><th>Código</th><th>Região</th><th>Supervisor</th><th>Status</th><th></th></tr></thead>
+      <tbody id="repTbody"></tbody>
+    </table></div></div>`;
+  await carregarReps();
+}
+async function carregarReps() {
+  const reps = await DB.getAll('representantes');
+  document.getElementById('repTbody').innerHTML = reps.length ? reps.map(r => `
+    <tr><td>${r.nome}</td><td>${r.codigo || '—'}</td><td>${r.regiao || '—'}</td><td>${r.supervisor || '—'}</td>
+    <td><span class="badge-eleg ${r.ativo !== false ? 'sim' : 'nao'}">${r.ativo !== false ? 'Ativo' : 'Inativo'}</span></td>
+    <td style="display:flex; gap:4px;"><button class="btn btn-ghost btn-sm" onclick="openRepModal('${r.id}')">Editar</button><button class="btn btn-danger btn-sm" onclick="excluirRep('${r.id}')">✕</button></td></tr>
+  `).join('') : `<tr><td colspan="6"><div class="empty-state">👤 Nenhum representante cadastrado.</div></td></tr>`;
+}
+async function excluirRep(id) { if (!confirm('Excluir este representante?')) return; await DB.remove('representantes', id); showToast('Representante excluído.'); carregarReps(); }
+async function openRepModal(id) {
+  const r = id ? await DB.get('representantes', id) : { id: null, nome: '', codigo: '', regiao: '', supervisor: '', ativo: true };
+  const body = `<div class="form-grid">
+    <div class="field"><label>Nome *</label><input id="rf_nome" value="${r.nome || ''}"></div>
+    <div class="field"><label>Código</label><input id="rf_codigo" value="${r.codigo || ''}"></div>
+    <div class="field"><label>Região</label><input id="rf_regiao" value="${r.regiao || ''}"></div>
+    <div class="field"><label>Supervisor</label><input id="rf_supervisor" value="${r.supervisor || ''}"></div>
+    <div class="field"><label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="rf_ativo" ${r.ativo !== false ? 'checked' : ''} style="width:16px;height:16px;"> Ativo</label></div>
+  </div>`;
+  openModal(id ? 'Editar Representante' : 'Novo Representante', body,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="salvarRep('${r.id || ''}')">Salvar</button>`);
+}
+async function salvarRep(id) {
+  const nome = document.getElementById('rf_nome').value.trim();
+  if (!nome) { showToast('Informe o nome do representante.', true); return; }
+  await DB.put('representantes', {
+    id: id || undefined, nome,
+    codigo: document.getElementById('rf_codigo').value.trim(),
+    regiao: document.getElementById('rf_regiao').value.trim(),
+    supervisor: document.getElementById('rf_supervisor').value.trim(),
+    ativo: document.getElementById('rf_ativo').checked
+  });
+  showToast('Representante salvo!'); closeModal(); carregarReps();
+}
+
+/* ══════════════════ IMPORTAÇÃO (WIZARD) ══════════════════ */
+const CAMPOS_ALVO = [
+  { chave: 'representante', label: 'Representante', aliases: ['representante', 'vendedor', 'rca', 'consultor'] },
+  { chave: 'cliente', label: 'Cliente', aliases: ['cliente', 'razao social', 'nome fantasia', 'razao'] },
+  { chave: 'codigo', label: 'Código do Produto', aliases: ['codigo', 'cod produto', 'sku', 'cod'] },
+  { chave: 'produto', label: 'Nome do Produto', aliases: ['produto', 'descricao', 'descricao produto'] },
+  { chave: 'categoria', label: 'Categoria', aliases: ['categoria'] },
+  { chave: 'marca', label: 'Marca', aliases: ['marca'] },
+  { chave: 'kg', label: 'Quantidade (Kg)', aliases: ['kg', 'quantidade', 'qtde', 'peso'] },
+  { chave: 'valor', label: 'Valor', aliases: ['valor', 'faturamento', 'total'] },
+  { chave: 'data', label: 'Data', aliases: ['data', 'data venda', 'emissao'] },
+  { chave: 'pedido', label: 'Pedido', aliases: ['pedido', 'numero pedido', 'nf', 'nota fiscal'] },
+  { chave: 'cidade', label: 'Cidade', aliases: ['cidade'] },
+  { chave: 'estado', label: 'Estado (UF)', aliases: ['uf', 'estado'] },
+];
+let IMP = { step: 1, campanhaId: '', periodo: 'campanha', headers: [], rows: [], mapping: {} };
+
+async function renderImportacao() {
+  IMP = { step: 1, campanhaId: '', periodo: 'campanha', headers: [], rows: [], mapping: {} };
+  const campanhas = await DB.getAll('campanhas');
+  root().innerHTML = pageHeader('Importação', 'Assistente de importação de planilhas — não depende do nome das colunas') +
+    `<div class="box">
+      <div class="wizard-steps">
+        <div class="wizard-step active" id="wstep1">1. Arquivo</div>
+        <div class="wizard-step" id="wstep2">2. Mapear Colunas</div>
+        <div class="wizard-step" id="wstep3">3. Confirmar</div>
+      </div>
+      <div id="wizardBody"></div>
+    </div>`;
+  if (!campanhas.length) {
+    document.getElementById('wizardBody').innerHTML = emptyState('📂', 'Cadastre uma campanha antes de importar dados.', `<button class="btn btn-primary btn-sm" onclick="navigate('campanhas')">Ir para Campanhas</button>`);
+    return;
+  }
+  renderWizardStep1(campanhas);
+}
+
+function renderWizardStep1(campanhas) {
+  document.getElementById('wizardBody').innerHTML = `
+    <div class="form-grid">
+      <div class="field"><label>Campanha *</label><select id="wf_campanha">${campanhas.map(c => `<option value="${c.id}">${c.nome} — ${c.fornecedor}</option>`).join('')}</select></div>
+      <div class="field"><label>Período dos dados *</label><select id="wf_periodo"><option value="campanha">Período da campanha</option><option value="anterior">Período anterior (comparação)</option></select></div>
+      <div class="field full"><label>Arquivo (CSV ou Excel)</label><input type="file" id="wf_file" accept=".csv,.xlsx,.xls"></div>
+    </div>
+    <div style="display:flex; justify-content:flex-end; margin-top:12px;"><button class="btn btn-primary" onclick="wizardAvancarStep1()">Avançar →</button></div>
+  `;
+}
+
+function wizardAvancarStep1() {
+  const file = document.getElementById('wf_file').files[0];
+  if (!file) { showToast('Selecione um arquivo.', true); return; }
+  IMP.campanhaId = document.getElementById('wf_campanha').value;
+  IMP.periodo = document.getElementById('wf_periodo').value;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'csv') {
+    Papa.parse(file, { header: true, skipEmptyLines: true, complete: res => { IMP.rows = res.data; IMP.headers = res.meta.fields || Object.keys(res.data[0] || {}); avancarParaStep2(); } });
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type: 'binary' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      IMP.rows = rows; IMP.headers = rows.length ? Object.keys(rows[0]) : [];
+      avancarParaStep2();
+    };
+    reader.readAsBinaryString(file);
+  }
+}
+
+function avancarParaStep2() {
+  if (!IMP.rows.length) { showToast('Arquivo vazio ou inválido.', true); return; }
+  document.getElementById('wstep1').classList.add('done'); document.getElementById('wstep1').classList.remove('active');
+  document.getElementById('wstep2').classList.add('active');
+  CAMPOS_ALVO.forEach(c => { IMP.mapping[c.chave] = suggestColumn(IMP.headers, c.aliases); });
+  document.getElementById('wizardBody').innerHTML = `
+    <div style="font-size:11.5px; color:var(--gray-text); margin-bottom:8px;">${IMP.rows.length} linha(s) detectada(s). Confirme a coluna correspondente a cada campo (sugestão automática já aplicada).</div>
+    ${CAMPOS_ALVO.map(c => `
+      <div class="map-row">
+        <span>${c.label}</span><span>→</span>
+        <select data-map="${c.chave}">
+          <option value="">— não mapear —</option>
+          ${IMP.headers.map(h => `<option value="${h}" ${IMP.mapping[c.chave] === h ? 'selected' : ''}>${h}</option>`).join('')}
+        </select>
+      </div>`).join('')}
+    <div style="display:flex; justify-content:space-between; margin-top:12px;">
+      <button class="btn btn-ghost" onclick="renderImportacao()">← Voltar</button>
+      <button class="btn btn-primary" onclick="wizardAvancarStep2()">Avançar →</button>
+    </div>
+  `;
+}
+
+function wizardAvancarStep2() {
+  document.querySelectorAll('[data-map]').forEach(sel => { IMP.mapping[sel.dataset.map] = sel.value; });
+  if (!IMP.mapping.representante || !IMP.mapping.kg && !IMP.mapping.valor) {
+    showToast('Mapeie ao menos Representante e Kg/Valor.', true); return;
+  }
+  document.getElementById('wstep2').classList.add('done'); document.getElementById('wstep2').classList.remove('active');
+  document.getElementById('wstep3').classList.add('active');
+  const preview = IMP.rows.slice(0, 5).map(r => mapRow(r));
+  document.getElementById('wizardBody').innerHTML = `
+    <div style="font-size:11.5px; color:var(--gray-text); margin-bottom:8px;">Prévia das primeiras 5 linhas mapeadas — confirme antes de importar ${IMP.rows.length} registro(s).</div>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr>${CAMPOS_ALVO.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
+      <tbody>${preview.map(r => `<tr>${CAMPOS_ALVO.map(c => `<td>${r[c.chave] ?? ''}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>
+    <div style="display:flex; justify-content:space-between; margin-top:12px;">
+      <button class="btn btn-ghost" onclick="avancarParaStep2()">← Voltar</button>
+      <button class="btn btn-primary" onclick="wizardConfirmarImportacao()">Confirmar Importação</button>
+    </div>
+  `;
+}
+
+function mapRow(r) {
+  const out = {};
+  CAMPOS_ALVO.forEach(c => { out[c.chave] = IMP.mapping[c.chave] ? r[IMP.mapping[c.chave]] : ''; });
+  return out;
+}
+
+async function wizardConfirmarImportacao() {
+  const representantesExistentes = await DB.getAll('representantes');
+  const repPorNome = new Map(representantesExistentes.map(r => [normalizeKey(r.nome), r]));
+  const novosReps = [];
+  const vendas = IMP.rows.map(r => {
+    const m = mapRow(r);
+    const nomeRep = String(m.representante || '').trim();
+    const chave = normalizeKey(nomeRep);
+    let rep = repPorNome.get(chave);
+    if (!rep && nomeRep) {
+      rep = { id: DB.uid(), nome: toTitleCasePtBr(nomeRep), codigo: '', regiao: '', supervisor: '', ativo: true };
+      repPorNome.set(chave, rep);
+      novosReps.push(rep);
+    }
+    return {
+      id: DB.uid(),
+      campanhaId: IMP.campanhaId,
+      periodo: IMP.periodo,
+      representanteId: rep ? rep.id : null,
+      representanteNome: rep ? rep.nome : nomeRep,
+      cliente: String(m.cliente || '').trim(),
+      codigo: String(m.codigo || '').trim(),
+      produto: String(m.produto || '').trim(),
+      categoria: String(m.categoria || '').trim(),
+      marca: String(m.marca || '').trim(),
+      kg: parseNumBR(m.kg),
+      valor: parseNumBR(m.valor),
+      data: m.data || '',
+      pedido: String(m.pedido || '').trim(),
+      cidade: String(m.cidade || '').trim(),
+      uf: String(m.estado || '').trim().toUpperCase()
+    };
+  });
+  if (novosReps.length) await DB.putMany('representantes', novosReps);
+  await DB.putMany('vendas', vendas);
+  await DB.put('mapeamentos', { id: 'map_' + IMP.campanhaId + '_' + IMP.periodo, campanhaId: IMP.campanhaId, periodo: IMP.periodo, mapping: IMP.mapping });
+  showToast(`Importação concluída: ${vendas.length} registro(s), ${novosReps.length} representante(s) novo(s).`);
+  document.getElementById('wstep3').classList.add('done');
+  document.getElementById('wizardBody').innerHTML = emptyState('✅', `${vendas.length} registros importados com sucesso.`, `<button class="btn btn-primary btn-sm" onclick="renderImportacao()">Nova Importação</button> <button class="btn btn-ghost btn-sm" onclick="navigate('apuracao')">Ir para Apuração</button>`);
+}
+
+/* ══════════════════ APURAÇÃO ══════════════════ */
+async function renderApuracao() {
+  const campanhas = await DB.getAll('campanhas');
+  root().innerHTML = pageHeader('Apuração', 'Calcule pontuação, elegibilidade e crescimento por representante') +
+    `<div class="box">
+      <div class="form-grid" style="margin-bottom:6px;">
+        <div class="field"><label>Campanha</label><select id="ap_campanha" onchange="STATE.campanhaSelecionada=this.value">
+          ${campanhas.length ? campanhas.map(c => `<option value="${c.id}">${c.nome} — ${c.fornecedor}</option>`).join('') : '<option value="">Nenhuma campanha</option>'}
+        </select></div>
+        <div class="field" style="align-self:flex-end;"><button class="btn btn-primary" onclick="calcularApuracao()">⚙ Calcular Apuração</button></div>
+      </div>
+      <div id="apuracaoResultado"></div>
+    </div>`;
+  if (campanhas.length) { STATE.campanhaSelecionada = campanhas[0].id; carregarApuracaoExistente(campanhas[0].id); }
+}
+
+async function carregarApuracaoExistente(campanhaId) {
+  const apuracoes = (await DB.getAll('apuracoes')).filter(a => a.campanhaId === campanhaId);
+  if (apuracoes.length) desenharApuracao(apuracoes[apuracoes.length - 1]);
+  else document.getElementById('apuracaoResultado').innerHTML = emptyState('📊', 'Nenhuma apuração calculada ainda para esta campanha.');
+}
+
+async function calcularApuracao() {
+  const campanhaId = document.getElementById('ap_campanha').value;
+  if (!campanhaId) { showToast('Selecione uma campanha.', true); return; }
+  const [campanha, regras, regrasProduto, vendas, representantes, produtos] = await Promise.all([
+    DB.get('campanhas', campanhaId), DB.getAll('regras'), DB.getAll('regrasProduto'),
+    DB.getAll('vendas'), DB.getAll('representantes'), DB.getAll('produtos')
+  ]);
+  const regrasCamp = regras.filter(r => r.campanhaId === campanhaId);
+  const regrasProdCamp = regrasProduto.filter(r => r.campanhaId === campanhaId);
+  const vendasCamp = vendas.filter(v => v.campanhaId === campanhaId);
+  if (!vendasCamp.length) { showToast('Nenhuma venda importada para esta campanha.', true); return; }
+
+  const repIds = [...new Set(vendasCamp.map(v => v.representanteId).filter(Boolean))];
+  const totalProdutosAtivos = Math.max(1, produtos.filter(p => p.ativo !== false).length);
+  const resultados = repIds.map(repId => {
+    const rep = representantes.find(r => r.id === repId) || { nome: '—' };
+    const vCamp = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'campanha');
+    const vAnt = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'anterior');
+
+    const kgCampanha = vCamp.reduce((s, v) => s + v.kg, 0);
+    const kgAnterior = vAnt.reduce((s, v) => s + v.kg, 0);
+    const faturamentoCampanha = vCamp.reduce((s, v) => s + v.valor, 0);
+    const faturamentoAnterior = vAnt.reduce((s, v) => s + v.valor, 0);
+    const clientesCampanha = new Set(vCamp.map(v => normalizeKey(v.cliente))).size;
+    const clientesAnterior = new Set(vAnt.map(v => normalizeKey(v.cliente))).size;
+    const pedidos = new Set(vCamp.map(v => v.pedido)).size;
+    const produtosDistintos = new Set(vCamp.map(v => v.codigo || v.produto)).size;
+    const mix = Math.min(100, (produtosDistintos / totalProdutosAtivos) * 100);
+    const positivacao = clientesAnterior > 0 ? (clientesCampanha / clientesAnterior) * 100 : (clientesCampanha > 0 ? 100 : 0);
+    const crescimentoKg = kgAnterior > 0 ? ((kgCampanha - kgAnterior) / kgAnterior) * 100 : (kgCampanha > 0 ? 100 : 0);
+    const crescimentoFaturamento = faturamentoAnterior > 0 ? ((faturamentoCampanha - faturamentoAnterior) / faturamentoAnterior) * 100 : (faturamentoCampanha > 0 ? 100 : 0);
+
+    const pontosProdutos = calcularPontosProdutos(vCamp, regrasProdCamp);
+    const metricas = { kgCampanha, kgAnterior, faturamentoCampanha, faturamentoAnterior, clientesCampanha, clientesAnterior, pedidos, produtosDistintos, mix, positivacao, crescimentoKg, crescimentoFaturamento, pontosProdutos };
+    const resultado = aplicarRegras(regrasCamp, metricas, pontosProdutos);
+
+    return { representanteId: repId, nome: rep.nome, regiao: rep.regiao || '—', ...metricas, ...resultado };
+  });
+
+  const existentes = (await DB.getAll('apuracoes')).filter(a => a.campanhaId === campanhaId);
+  for (const a of existentes) await DB.remove('apuracoes', a.id);
+  const apuracao = { id: 'ap_' + campanhaId, campanhaId, geradoEm: new Date().toISOString(), resultados };
+  await DB.put('apuracoes', apuracao);
+  showToast(`Apuração calculada para ${resultados.length} representante(s).`);
+  desenharApuracao(apuracao);
+}
+
+function desenharApuracao(apuracao) {
+  const ordenados = ordenarComDesempate(apuracao.resultados, null);
+  document.getElementById('apuracaoResultado').innerHTML = `
+    <div style="font-size:11px; color:var(--gray-text); margin-bottom:8px;">Gerada em ${new Date(apuracao.geradoEm).toLocaleString('pt-BR')}</div>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>#</th><th>Representante</th><th>Kg (campanha)</th><th>Faturamento</th><th>Crescimento Kg</th><th>Clientes</th><th>Pontos</th><th>Elegível</th></tr></thead>
+      <tbody>${ordenados.map((r, i) => `
+        <tr>
+          <td><span class="rank-pos">${i + 1}</span></td><td>${r.nome}</td>
+          <td>${fmtKg(r.kgCampanha)}</td><td>${fmtMoney(r.faturamentoCampanha)}</td><td>${fmtPct(r.crescimentoKg)}</td>
+          <td>${fmtNum(r.clientesCampanha)}</td><td>${fmtNum(r.pontosFinal)}</td>
+          <td><span class="badge-eleg ${r.elegivel ? 'sim' : 'nao'}">${r.elegivel ? 'Sim' : 'Não'}</span></td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+/* ══════════════════ RANKINGS ══════════════════ */
+const RANKING_TIPOS = [
+  { valor: 'pontosFinal', label: 'Geral (Pontos)' },
+  { valor: 'kgCampanha', label: 'Por KG' },
+  { valor: 'faturamentoCampanha', label: 'Por Faturamento' },
+  { valor: 'crescimentoKg', label: 'Por Crescimento (Kg)' },
+  { valor: 'positivacao', label: 'Por Positivação' },
+  { valor: 'mix', label: 'Por Mix de Produtos' },
+  { valor: 'clientesCampanha', label: 'Por Clientes' },
+];
+
+async function renderRankings() {
+  const campanhas = await DB.getAll('campanhas');
+  root().innerHTML = pageHeader('Rankings', 'Classificação de representantes por diferentes critérios',
+    `<button class="btn btn-ghost btn-sm" onclick="exportarRankingCSV()">↓ CSV</button><button class="btn btn-ghost btn-sm" onclick="exportarRankingPDF()">↓ PDF</button>`) +
+    `<div class="box">
+      <div class="form-grid" style="margin-bottom:6px;">
+        <div class="field"><label>Campanha</label><select id="rk_campanha" onchange="carregarRanking()">${campanhas.map(c => `<option value="${c.id}">${c.nome} — ${c.fornecedor}</option>`).join('') || '<option value="">Nenhuma</option>'}</select></div>
+        <div class="field"><label>Tipo de ranking</label><select id="rk_tipo" onchange="carregarRanking()">${RANKING_TIPOS.map(t => `<option value="${t.valor}">${t.label}</option>`).join('')}</select></div>
+      </div>
+      <div id="rankingResultado"></div>
+    </div>`;
+  if (campanhas.length) carregarRanking();
+}
+
+let _rankingAtual = [];
+async function carregarRanking() {
+  const campanhaId = document.getElementById('rk_campanha').value;
+  const tipo = document.getElementById('rk_tipo').value;
+  if (!campanhaId) { document.getElementById('rankingResultado').innerHTML = emptyState('🏆', 'Nenhuma campanha selecionada.'); return; }
+  const [campanha, apuracoes] = await Promise.all([DB.get('campanhas', campanhaId), DB.getAll('apuracoes')]);
+  const apuracao = apuracoes.find(a => a.campanhaId === campanhaId);
+  if (!apuracao) { document.getElementById('rankingResultado').innerHTML = emptyState('📊', 'Calcule a apuração desta campanha primeiro.', `<button class="btn btn-primary btn-sm" onclick="navigate('apuracao')">Ir para Apuração</button>`); return; }
+
+  const elegiveis = apuracao.resultados.filter(r => r.elegivel);
+  const ordenados = tipo === 'pontosFinal' ? ordenarComDesempate(elegiveis, campanha.desempate) : [...elegiveis].sort((a, b) => (b[tipo] || 0) - (a[tipo] || 0));
+  _rankingAtual = ordenados;
+  const isPct = tipo === 'crescimentoKg' || tipo === 'positivacao' || tipo === 'mix';
+  const isMoney = tipo === 'faturamentoCampanha';
+  const isKg = tipo === 'kgCampanha';
+
+  document.getElementById('rankingResultado').innerHTML = `
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>#</th><th>Representante</th><th>Região</th><th>${RANKING_TIPOS.find(t => t.valor === tipo).label}</th><th>Pontos</th><th>Elegível</th></tr></thead>
+      <tbody>${ordenados.map((r, i) => `
+        <tr>
+          <td><span class="rank-pos">${i + 1}</span></td><td>${r.nome}</td><td>${r.regiao}</td>
+          <td>${isPct ? fmtPct(r[tipo]) : isMoney ? fmtMoney(r[tipo]) : isKg ? fmtKg(r[tipo]) : fmtNum(r[tipo])}</td>
+          <td>${fmtNum(r.pontosFinal)}</td>
+          <td><span class="badge-eleg sim">Sim</span></td>
+        </tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">Nenhum representante elegível.</div></td></tr>'}</tbody>
+    </table></div>`;
+}
+function exportarRankingCSV() {
+  if (!_rankingAtual.length) { showToast('Nada para exportar.', true); return; }
+  downloadCSV('ranking.csv', _rankingAtual.map((r, i) => ({ posicao: i + 1, representante: r.nome, regiao: r.regiao, pontos: r.pontosFinal, kg: r.kgCampanha, faturamento: r.faturamentoCampanha })));
+}
+function exportarRankingPDF() {
+  if (!_rankingAtual.length) { showToast('Nada para exportar.', true); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.text('Ranking de Representantes', 14, 14);
+  doc.autoTable({ startY: 20, head: [['#', 'Representante', 'Região', 'Pontos', 'Kg', 'Faturamento']], body: _rankingAtual.map((r, i) => [i + 1, r.nome, r.regiao, fmtNum(r.pontosFinal), fmtKg(r.kgCampanha), fmtMoney(r.faturamentoCampanha)]) });
+  doc.save('ranking.pdf');
+}
+
+/* ══════════════════ CONFIGURAÇÕES ══════════════════ */
+async function renderConfiguracoes() {
+  const counts = {};
+  for (const s of ['campanhas', 'produtos', 'representantes', 'vendas', 'regras', 'regrasProduto', 'mapeamentos', 'apuracoes']) counts[s] = (await DB.getAll(s)).length;
+  root().innerHTML = pageHeader('Configurações', 'Preferências do sistema e gerenciamento de dados') +
+    `<div class="row-2">
+      <div class="box">
+        <div class="box-title" style="margin-bottom:10px;">Aparência</div>
+        <button class="btn btn-ghost" onclick="toggleTheme()">🌓 Alternar tema claro/escuro</button>
+      </div>
+      <div class="box">
+        <div class="box-title" style="margin-bottom:10px;">Dados armazenados (IndexedDB)</div>
+        <div class="table-wrap"><table class="data-table"><tbody>
+          ${Object.entries(counts).map(([k, v]) => `<tr><td>${k}</td><td>${fmtNum(v)}</td></tr>`).join('')}
+        </tbody></table></div>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn btn-ghost btn-sm" onclick="exportarBackup()">↓ Exportar backup (JSON)</button>
+          <button class="btn btn-danger btn-sm" onclick="limparTudo()">🗑 Limpar todos os dados</button>
+        </div>
+      </div>
+    </div>`;
+}
+async function exportarBackup() {
+  const backup = {};
+  for (const s of ['campanhas', 'produtos', 'representantes', 'vendas', 'regras', 'regrasProduto', 'mapeamentos', 'apuracoes', 'config']) backup[s] = await DB.getAll(s);
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  saveAs(blob, 'pmg-campanhas-backup.json');
+  showToast('Backup exportado.');
+}
+async function limparTudo() {
+  if (!confirm('Isso apagará TODOS os dados do sistema (campanhas, produtos, vendas, etc). Deseja continuar?')) return;
+  await DB.clearAll();
+  showToast('Todos os dados foram apagados.');
+  navigate('dashboard'); atualizarHdrCampanha();
+}
+
+</script>
+</body>
+</html>
