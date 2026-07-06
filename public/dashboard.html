@@ -1197,6 +1197,34 @@ function toggleSbSection(header) {
 const UPLOAD_BATCH_SIZE = 500;
 const EXPECTED_COLUMNS = Object.values(COLS);
 
+// Normaliza um nome de coluna para comparação: remove espaços nas pontas,
+// baixa a caixa e tira acentos. Assim "Sub-grupo", "SUB-GRUPO" ou "sub-Grupo "
+// no arquivo do usuário casam com a coluna real "Sub-Grupo" do Supabase,
+// evitando o erro "Could not find the 'X' column ... in the schema cache".
+function normalizeHeader(h) {
+  return String(h).trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+// Mapa: nome normalizado -> nome EXATO esperado pela tabela no Supabase.
+const EXPECTED_LOOKUP = {};
+EXPECTED_COLUMNS.forEach(c => { EXPECTED_LOOKUP[normalizeHeader(c)] = c; });
+
+// Reescreve as chaves de cada linha para o nome exato de coluna do banco
+// (via correspondência normalizada) e descarta colunas que não existem na
+// tabela, já que enviá-las causaria erro de "schema cache" no insert.
+function remapRowColumns(rows) {
+  return rows.map(r => {
+    const out = {};
+    Object.keys(r).forEach(k => {
+      const canonical = EXPECTED_LOOKUP[normalizeHeader(k)];
+      if (canonical) out[canonical] = r[k];
+    });
+    return out;
+  });
+}
+
 function setUploadStatus(msg, kind) {
   const el = document.getElementById('uploadStatus');
   el.textContent = msg || '';
@@ -1261,18 +1289,23 @@ async function processUploadedRows(rows) {
     return;
   }
 
-  const fileCols = Object.keys(rows[0]);
-  const faltando = EXPECTED_COLUMNS.filter(c => !fileCols.includes(c));
-  const extras   = fileCols.filter(c => !EXPECTED_COLUMNS.includes(c));
+  const fileCols          = Object.keys(rows[0]);
+  const fileColsCanonical = fileCols.map(c => EXPECTED_LOOKUP[normalizeHeader(c)]).filter(Boolean);
+  const faltando = EXPECTED_COLUMNS.filter(c => !fileColsCanonical.includes(c));
+  const extras   = fileCols.filter(c => !EXPECTED_LOOKUP[normalizeHeader(c)]);
 
   if (faltando.length) {
     setUploadStatus(
       `Aviso: colunas ausentes no arquivo: ${faltando.join(', ')}. ` +
-      (extras.length ? `Colunas extras: ${extras.join(', ')}.` : '') +
+      (extras.length ? `Colunas não reconhecidas (serão ignoradas): ${extras.join(', ')}.` : '') +
       ' Enviando mesmo assim…',
       'err'
     );
   }
+
+  // Renomeia as colunas do arquivo para o nome exato usado na tabela do
+  // Supabase (ex.: "Sub-grupo" -> "Sub-Grupo") e remove colunas desconhecidas.
+  rows = remapRowColumns(rows);
 
   setUploadStatus(`Enviando ${rows.length} linha(s) para o Supabase…`);
   setUploadProgress(15, true);
