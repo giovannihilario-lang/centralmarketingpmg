@@ -567,7 +567,14 @@ function resetarFiltros() {
 /* ══════════════════ KPIs ══════════════════ */
 async function renderKPIs() {
   const { data, error } = await db.rpc('kpis_agregados', getFiltrosParams());
-  if (error) { console.error(error); showToast('Erro ao carregar KPIs: ' + error.message); return; }
+  if (error) {
+    console.error(error);
+    document.getElementById('kpiRow').innerHTML =
+      `<div style="grid-column:1/-1;font-size:12px;color:#9b2c1d;background:#fef2f0;padding:12px;border-radius:8px;">
+        Erro ao carregar KPIs: ${error.message}${error.hint ? ' — ' + error.hint : ''}
+      </div>`;
+    showToast('Erro ao carregar KPIs: ' + error.message);
+    return;
   const k = (data && data[0]) || {};
   const totalValor = Number(k.total_valor) || 0;
   const totalKg = Number(k.total_kg) || 0;
@@ -600,12 +607,31 @@ async function renderKPIs() {
 async function fetchCidades() {
   const { data, error } = await db.rpc('agregado_cidades', getFiltrosParams());
   if (error) { console.error(error); showToast('Erro ao carregar cidades: ' + error.message); cidadesCache = []; return; }
-  cidadesCache = (data||[]).map(r => ({
-    cidade: toTitleCasePtBr(String(r.cidade||'').trim()),
-    uf: String(r.uf||'').trim().toUpperCase(),
-    valor: Number(r.valor) || 0,
-    kg: Number(r.kg) || 0
-  }));
+
+  const merged = new Map();
+  (data || []).forEach(r => {
+    const ufRaw = String(r.uf || '').trim().toUpperCase();
+    const cidadeRaw = String(r.cidade || '').trim();
+
+    // usa a grafia oficial já conhecida (com acento), se existir
+    const canonico = cidadeCanonicaMap[normalizeKey(cidadeRaw) + '|' + ufRaw];
+    const cidade = canonico ? canonico.cidade : toTitleCasePtBr(cidadeRaw);
+    const uf = canonico ? canonico.uf : ufRaw;
+
+    const key = normalizeKey(cidade) + '|' + uf; // chave sem acento/maiúsculas
+    const valor = Number(r.valor) || 0;
+    const kg = Number(r.kg) || 0;
+
+    if (merged.has(key)) {
+      const existing = merged.get(key);
+      existing.valor += valor;
+      existing.kg += kg;
+    } else {
+      merged.set(key, { cidade, uf, valor, kg });
+    }
+  });
+
+  cidadesCache = Array.from(merged.values());
 }
 
 /* ══════════════════ MAPA ══════════════════ */
@@ -907,6 +933,7 @@ function exportarPDF() {
 async function inicializar() {
   if (!db) { showToast('Configure as credenciais do Supabase no topo do arquivo.'); return; }
   document.getElementById('hdrPeriodo').textContent = 'Todo o histórico';
+  await carregarCidadesCanonicas(); // <-- adicionar aqui
   await Promise.all([
     buildChipsRPC('regiaoChips', 'Regiao'),
     buildChipsRPC('ufChips', 'UF'),
