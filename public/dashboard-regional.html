@@ -574,7 +574,7 @@ async function renderKPIs() {
         Erro ao carregar KPIs: ${error.message}${error.hint ? ' — ' + error.hint : ''}
       </div>`;
     showToast('Erro ao carregar KPIs: ' + error.message);
-    return;
+    return; }
   const k = (data && data[0]) || {};
   const totalValor = Number(k.total_valor) || 0;
   const totalKg = Number(k.total_kg) || 0;
