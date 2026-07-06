@@ -197,6 +197,28 @@ table.data-table tr:hover td { background: var(--green-pale); }
 .desempate-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--gray-1); border-radius: 8px; background: var(--page-bg); font-size: 12.5px; cursor: grab; }
 .desempate-item .handle { color: var(--gray-text); }
 
+/* ── Módulo Períodos ── */
+.periodo-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px; }
+.timeline-wrap { display: flex; flex-direction: column; gap: 8px; }
+.timeline-week { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--gray-1); border-radius: 8px; background: var(--page-bg); font-size: 12px; }
+.timeline-week .tw-icon { font-size: 16px; width: 22px; text-align:center; }
+.timeline-week .tw-label { font-weight: 600; width: 78px; }
+.timeline-week .tw-range { color: var(--gray-text); flex: 1; }
+.timeline-week.done { border-color: var(--green-border); background: var(--green-pale); }
+.timeline-week.current { border-color: var(--amber); background: var(--amber-pale); }
+.timeline-week.pending { opacity: .7; }
+.period-status-badge { font-size: 9.5px; font-weight: 700; padding: 2px 9px; border-radius: 12px; text-transform: uppercase; letter-spacing: .3px; }
+.period-status-badge.concluida { background: var(--green-pale); color: var(--green-dark); }
+.period-status-badge.andamento { background: var(--amber-pale); color: #92610a; }
+.period-status-badge.pendente { background: var(--gray-1); color: var(--gray-text); }
+.periodo-compare-box { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+.periodo-compare-col { border: 1px solid var(--gray-1); border-radius: 8px; padding: 12px; background: var(--page-bg); }
+.periodo-compare-col h4 { font-size: 11.5px; color: var(--gray-text); text-transform: uppercase; margin-bottom: 6px; }
+.periodo-compare-col .range { font-size: 14px; font-weight: 700; color: var(--green-dark); }
+.periodo-compare-arrow { font-size: 18px; color: var(--gray-text); }
+.radio-line { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; padding: 6px 0; }
+.radio-line input { width: 15px; height: 15px; }
+
 @media print {
   .sidebar, .hdr, .btn, .page-hdr .btn, .no-print { display: none !important; }
   .main { overflow: visible !important; }
@@ -358,6 +380,7 @@ function fmtKg(n) { n = Number(n) || 0; return n.toLocaleString('pt-BR', { maxim
 function fmtNum(n) { return (Number(n) || 0).toLocaleString('pt-BR'); }
 function fmtPct(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
 function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('pt-BR'); }
+function fmtDataBR(d) { if (!d) return '—'; return d.toLocaleDateString('pt-BR'); }
 
 function parseNumBR(v) {
   if (v === null || v === undefined || v === '') return 0;
@@ -429,6 +452,178 @@ function el(html) {
 }
 
 const PALETTE = ['#1a4d2e', '#4caf70', '#f59e0b', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6', '#ef4444', '#a855f7', '#84cc16'];
+
+
+/* ===== periodos.js ══════════════════════════════════════════════
+   NÚCLEO DE CÁLCULO DE PERÍODOS / SEMANAS COMERCIAIS
+   Semana comercial: segunda-feira (00:00) até domingo (23:59).
+   Toda campanha começa numa segunda e termina numa segunda
+   (data de fechamento), formando N semanas completas.
+   ═══════════════════════════════════════════════════════════════ */
+
+// Cria um Date "seguro" (meio-dia UTC-local, evita bugs de fuso/DST) a partir de string ISO yyyy-mm-dd
+function parseISODate(iso) {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function toISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function addDays(d, n) {
+  const nd = new Date(d);
+  nd.setDate(nd.getDate() + n);
+  return nd;
+}
+
+function isMonday(d) { return d.getDay() === 1; }
+
+// Retorna a segunda-feira da semana em que 'd' cai
+function segundaDaSemana(d) {
+  const dow = d.getDay(); // 0=domingo, 1=segunda...
+  const diff = dow === 0 ? -6 : 1 - dow;
+  return addDays(d, diff);
+}
+
+/**
+ * Calcula tudo que o módulo Períodos precisa a partir de dataInicio/dataFim (strings ISO).
+ * Convenção adotada: dataInicio e dataFim são ambas segundas-feiras; dataFim é a segunda
+ * de FECHAMENTO (ou seja, o período efetivo de vendas vai até o domingo anterior a dataFim,
+ * mas para fins de contagem de semanas e exibição, tratamos [dataInicio, dataFim) como
+ * a campanha, com semanas de 7 dias cada.
+ *
+ * Retorna null se as datas forem inválidas ou dataFim <= dataInicio.
+ */
+function calcularPeriodos(dataInicioISO, dataFimISO) {
+  const ini = parseISODate(dataInicioISO);
+  const fim = parseISODate(dataFimISO);
+  if (!ini || !fim || fim <= ini) return null;
+
+  const diffMs = fim - ini;
+  const diffDias = Math.round(diffMs / 86400000);
+  const numSemanas = Math.round(diffDias / 7);
+  if (numSemanas < 1) return null;
+
+  // segundas-feiras contadas: da inicial até a final, inclusive (numSemanas + 1)
+  const numSegundas = numSemanas + 1;
+
+  const avisoNaoSegunda = !isMonday(ini) || !isMonday(fim);
+
+  // Período anterior: contíguo, mesma quantidade de semanas, terminando exatamente onde a campanha começa
+  const periodoAnteriorFim = new Date(ini); // fim do anterior = início da campanha (exclusive/fechamento)
+  const periodoAnteriorInicio = addDays(periodoAnteriorFim, -7 * numSemanas);
+
+  // Monta o cronograma semanal (semana 1..N), cada uma seg→dom
+  const semanas = [];
+  for (let i = 0; i < numSemanas; i++) {
+    const semanaInicio = addDays(ini, i * 7);
+    const semanaFim = addDays(semanaInicio, 6); // domingo
+    semanas.push({
+      numero: i + 1,
+      inicio: semanaInicio,
+      fim: semanaFim,
+      inicioISO: toISODate(semanaInicio),
+      fimISO: toISODate(semanaFim),
+    });
+  }
+
+  return {
+    ini, fim, numSemanas, numSegundas, avisoNaoSegunda,
+    periodoAnteriorInicio, periodoAnteriorFim,
+    periodoAnteriorInicioISO: toISODate(periodoAnteriorInicio),
+    periodoAnteriorFimISO: toISODate(periodoAnteriorFim),
+    semanas
+  };
+}
+
+/**
+ * Dado o cronograma de semanas e uma data de referência (default: hoje),
+ * retorna o array de semanas com status calculado: 'concluida' | 'andamento' | 'pendente'.
+ */
+function calcularStatusSemanas(semanas, dataRef = new Date()) {
+  const hoje = new Date(dataRef.getFullYear(), dataRef.getMonth(), dataRef.getDate());
+  return semanas.map(s => {
+    let status;
+    if (hoje > s.fim) status = 'concluida';
+    else if (hoje >= s.inicio && hoje <= s.fim) status = 'andamento';
+    else status = 'pendente';
+    return { ...s, status };
+  });
+}
+
+/**
+ * Retorna o índice (1-based) da última semana fechada (concluída) até a data de referência.
+ * Se nenhuma semana estiver concluída ainda, retorna 0.
+ */
+function ultimaSemanaFechada(semanasComStatus) {
+  let ultima = 0;
+  semanasComStatus.forEach(s => { if (s.status === 'concluida') ultima = s.numero; });
+  return ultima;
+}
+
+/**
+ * Dado o resultado de calcularPeriodos() e um número de semanas (corte parcial),
+ * retorna o intervalo [inicio, fim) da campanha e do período anterior, limitados
+ * a exatamente 'ateSemana' semanas — nunca comparando quantidades diferentes.
+ */
+function limitarPeriodoParcial(periodosCalc, ateSemana) {
+  const n = Math.max(1, Math.min(ateSemana, periodosCalc.numSemanas));
+  const campanhaFimParcial = addDays(periodosCalc.ini, n * 7); // exclusive (segunda seguinte ao fim da semana n)
+  const anteriorFimParcial = addDays(periodosCalc.periodoAnteriorInicio, n * 7);
+  return {
+    numSemanas: n,
+    campanhaInicioISO: toISODate(periodosCalc.ini),
+    campanhaFimISO: toISODate(campanhaFimParcial),
+    anteriorInicioISO: toISODate(periodosCalc.periodoAnteriorInicio),
+    anteriorFimISO: toISODate(anteriorFimParcial),
+  };
+}
+
+/**
+ * Info de "hoje" relativa a uma campanha: semana atual, dias decorridos/restantes,
+ * próximo fechamento (segunda-feira seguinte).
+ */
+function infoHojeCampanha(periodosCalc, dataRef = new Date()) {
+  const hoje = new Date(dataRef.getFullYear(), dataRef.getMonth(), dataRef.getDate());
+  const semanasComStatus = calcularStatusSemanas(periodosCalc.semanas, hoje);
+  const semanaAtualObj = semanasComStatus.find(s => s.status === 'andamento');
+  const totalSemanas = periodosCalc.numSemanas;
+
+  let semanaAtualNum;
+  if (hoje < periodosCalc.ini) semanaAtualNum = 0;
+  else if (hoje >= periodosCalc.fim) semanaAtualNum = totalSemanas;
+  else semanaAtualNum = semanaAtualObj ? semanaAtualObj.numero : ultimaSemanaFechada(semanasComStatus);
+
+  const diasDecorridos = hoje <= periodosCalc.ini ? 0 : Math.min(
+    Math.round((hoje - periodosCalc.ini) / 86400000),
+    totalSemanas * 7
+  );
+  const diasRestantes = Math.max(0, Math.round((periodosCalc.fim - hoje) / 86400000));
+
+  // próximo fechamento: próxima segunda-feira a partir de hoje (inclusive se hoje for segunda e ainda dentro da campanha)
+  let proximoFechamento = segundaDaSemana(hoje);
+  if (proximoFechamento <= hoje) proximoFechamento = addDays(proximoFechamento, 7);
+
+  const ultimaFechada = ultimaSemanaFechada(semanasComStatus);
+
+  return {
+    semanasComStatus,
+    semanaAtualNum,
+    totalSemanas,
+    diasDecorridos,
+    diasRestantes,
+    proximoFechamento,
+    proximoFechamentoISO: toISODate(proximoFechamento),
+    ultimaSemanaFechada: ultimaFechada,
+    campanhaEncerrada: hoje >= periodosCalc.fim
+  };
+}
 
 
 /* ===== rules-engine.js ===== */
@@ -572,6 +767,7 @@ const STATE = {
 const NAV = [
   { key: 'dashboard',      icon: '🏠', label: 'Dashboard' },
   { key: 'campanhas',      icon: '📢', label: 'Campanhas' },
+  { key: 'periodos',       icon: '🗓️', label: 'Períodos' },
   { key: 'produtos',       icon: '📦', label: 'Produtos' },
   { key: 'representantes', icon: '👤', label: 'Representantes' },
   { sep: true },
@@ -585,6 +781,7 @@ const NAV = [
 const ROUTES = {
   dashboard: () => renderDashboard(),
   campanhas: () => renderCampanhas(),
+  periodos: () => renderPeriodos(),
   produtos: () => renderProdutos(),
   representantes: () => renderRepresentantes(),
   importacao: () => renderImportacao(),
@@ -594,12 +791,12 @@ const ROUTES = {
 };
 
 /* ══════════════════ ROTEAMENTO ══════════════════ */
-function navigate(route) {
+async function navigate(route) {
   STATE.route = route;
   renderSidebar();
   const root = document.getElementById('pageRoot');
   root.innerHTML = '';
-  (ROUTES[route] || ROUTES.dashboard)();
+  await (ROUTES[route] || ROUTES.dashboard)();
 }
 
 function renderSidebar() {
@@ -699,7 +896,8 @@ async function renderDashboard() {
          <div class="box-hdr"><div class="box-title">Produtos por Categoria</div><span class="tag">Distribuição</span></div>
          <canvas id="chartCategorias" height="220"></canvas>
        </div>
-     </div>`;
+     </div>
+     <div class="box" id="dashPeriodoBox" style="display:none;"></div>`;
 
   const [campanhas, produtos, representantes, vendas] = await Promise.all([
     DB.getAll('campanhas'), DB.getAll('produtos'), DB.getAll('representantes'), DB.getAll('vendas')
@@ -732,6 +930,50 @@ async function renderDashboard() {
     data: { labels, datasets: [{ data: labels.map(l => porCategoria[l]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff' }] },
     options: { responsive: true, plugins: { legend: { position: 'right', labels: { boxWidth: 9, font: { size: 10 } } } } }
   });
+
+  /* ── Bloco de Períodos no Dashboard (para a 1ª campanha ativa com datas válidas) ── */
+  const campAtiva = ativas.find(c => c.dataInicio && c.dataFim);
+  const box = document.getElementById('dashPeriodoBox');
+  if (campAtiva) {
+    const pc = calcularPeriodos(campAtiva.dataInicio, campAtiva.dataFim);
+    if (pc) {
+      const info = infoHojeCampanha(pc);
+      box.style.display = '';
+      box.innerHTML = `
+        <div class="box-hdr">
+          <div class="box-title">Período da campanha — ${campAtiva.nome}</div>
+          <span class="tag">${info.campanhaEncerrada ? 'Encerrada' : 'Em andamento'}</span>
+        </div>
+        <div class="periodo-kpi-row" style="margin-bottom:12px;">
+          <div class="kpi-card" style="--accent-color:var(--green-dark); --accent-soft:var(--green-pale);">
+            <div class="kpi-icon">🗓️</div><div class="kpi-label">Semana Atual</div>
+            <div class="kpi-value">${info.semanaAtualNum}/${info.totalSemanas}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--blue); --accent-soft:var(--blue-pale);">
+            <div class="kpi-icon">📆</div><div class="kpi-label">Total de Semanas</div>
+            <div class="kpi-value">${info.totalSemanas}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--amber); --accent-soft:var(--amber-pale);">
+            <div class="kpi-icon">⏱️</div><div class="kpi-label">Dias Decorridos</div>
+            <div class="kpi-value">${info.diasDecorridos}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--violet); --accent-soft:var(--violet-pale);">
+            <div class="kpi-icon">⏳</div><div class="kpi-label">Dias Restantes</div>
+            <div class="kpi-value">${info.diasRestantes}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--green-mid); --accent-soft:var(--green-pale);">
+            <div class="kpi-icon">🔒</div><div class="kpi-label">Próximo Fechamento</div>
+            <div class="kpi-value" style="font-size:14px;">${fmtDataBR(info.proximoFechamento)}</div>
+          </div>
+        </div>
+        ${info.ultimaSemanaFechada > 0 ? `
+          <button class="btn btn-primary btn-sm" onclick="irParaApuracaoParcial('${campAtiva.id}', ${info.ultimaSemanaFechada})">
+            📊 Gerar apuração parcial até a última semana fechada (Semana ${info.ultimaSemanaFechada})
+          </button>` : ''
+        }
+      `;
+    } else { box.style.display = 'none'; }
+  } else { box.style.display = 'none'; }
 }
 
 function campanhaCardHtml(c) {
@@ -759,8 +1001,10 @@ async function renderCampanhas() {
       <div class="campanha-body">
         <div class="campanha-meta"><span>${c.fornecedor || '—'}</span><span class="status-pill ${c.ativa ? 'ativa' : 'encerrada'}">${c.ativa ? 'Ativa' : 'Encerrada'}</span></div>
         <div class="campanha-meta"><span>${fmtDate(c.dataInicio)} → ${fmtDate(c.dataFim)}</span></div>
+        ${c.numSemanas ? `<div class="campanha-meta"><span>${c.numSemanas} semana(s)</span><span>Anterior: ${fmtDate(c.periodoAnteriorInicio)} → ${fmtDate(c.periodoAnteriorFim)}</span></div>` : ''}
         <div style="display:flex; gap:6px; margin-top:6px;">
           <button class="btn btn-ghost btn-sm" onclick="openCampanhaModal('${c.id}')" style="flex:1;">Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="navigate('periodos'); setTimeout(()=>selecionarCampanhaPeriodos('${c.id}'), 60)">🗓️</button>
           <button class="btn btn-danger btn-sm" onclick="excluirCampanha('${c.id}')">Excluir</button>
         </div>
       </div>
@@ -804,6 +1048,29 @@ async function openCampanhaModal(id) {
 
   const desempList = document.getElementById('desempateList');
   if (desempList && window.Sortable) Sortable.create(desempList, { handle: '.handle', animation: 150 });
+  atualizarPreviewPeriodo();
+}
+
+/* ── Preview automático de semanas/período anterior (módulo Períodos) ── */
+function atualizarPreviewPeriodo() {
+  const iniEl = document.getElementById('cf_dataInicio'), fimEl = document.getElementById('cf_dataFim');
+  const box = document.getElementById('periodoPreviewBox');
+  if (!iniEl || !fimEl || !box) return;
+  const p = calcularPeriodos(iniEl.value, fimEl.value);
+  if (!p) {
+    box.innerHTML = '<div style="font-size:11.5px; color:var(--gray-text);">Informe data inicial e final para calcular semanas e período anterior automaticamente.</div>';
+    document.getElementById('cf_perAntInicio').value = '';
+    document.getElementById('cf_perAntFim').value = '';
+    return;
+  }
+  document.getElementById('cf_perAntInicio').value = p.periodoAnteriorInicioISO;
+  document.getElementById('cf_perAntFim').value = p.periodoAnteriorFimISO;
+  box.innerHTML = `<div style="background:var(--green-pale); border:1px solid var(--green-border); border-radius:8px; padding:10px 12px; display:flex; flex-wrap:wrap; gap:14px; font-size:11.5px;">
+    <div><b>${p.numSemanas}</b> semana(s)</div>
+    <div><b>${p.numSegundas}</b> segunda(s)-feira</div>
+    <div>Período anterior calculado: <b>${fmtDataBR(p.periodoAnteriorInicio)} → ${fmtDataBR(p.periodoAnteriorFim)}</b></div>
+    ${p.avisoNaoSegunda ? '<div style="color:#9b2c1d;">⚠ Data inicial ou final não é uma segunda-feira</div>' : ''}
+  </div>`;
 }
 
 function switchCampTab(i) {
@@ -815,10 +1082,11 @@ function campTabInfoHtml(c) {
   return `<div class="form-grid">
     <div class="field"><label>Nome da campanha *</label><input id="cf_nome" value="${c.nome || ''}" placeholder="Ex: Campanha Frimesa Q3"></div>
     <div class="field"><label>Fornecedor *</label><input id="cf_fornecedor" value="${c.fornecedor || ''}" placeholder="Ex: Frimesa"></div>
-    <div class="field"><label>Data inicial</label><input id="cf_dataInicio" type="date" value="${c.dataInicio || ''}"></div>
-    <div class="field"><label>Data final</label><input id="cf_dataFim" type="date" value="${c.dataFim || ''}"></div>
-    <div class="field"><label>Período anterior — início</label><input id="cf_perAntInicio" type="date" value="${c.periodoAnteriorInicio || ''}"></div>
-    <div class="field"><label>Período anterior — fim</label><input id="cf_perAntFim" type="date" value="${c.periodoAnteriorFim || ''}"></div>
+    <div class="field"><label>Data inicial (segunda-feira) *</label><input id="cf_dataInicio" type="date" value="${c.dataInicio || ''}" oninput="atualizarPreviewPeriodo()"></div>
+    <div class="field"><label>Data final (fechamento, segunda-feira) *</label><input id="cf_dataFim" type="date" value="${c.dataFim || ''}" oninput="atualizarPreviewPeriodo()"></div>
+    <div class="field full" id="periodoPreviewBox"></div>
+    <input type="hidden" id="cf_perAntInicio" value="${c.periodoAnteriorInicio || ''}">
+    <input type="hidden" id="cf_perAntFim" value="${c.periodoAnteriorFim || ''}">
     <div class="field"><label>Cor da campanha</label><input id="cf_cor" type="color" value="${c.cor || '#1a4d2e'}"></div>
     <div class="field"><label>Imagem/Banner (URL)</label><input id="cf_banner" value="${c.bannerUrl || ''}" placeholder="https://..."></div>
     <div class="field full"><label>Descrição</label><textarea id="cf_descricao" placeholder="Detalhes da campanha...">${c.descricao || ''}</textarea></div>
@@ -917,6 +1185,15 @@ async function salvarCampanha() {
     ativa: document.getElementById('cf_ativa').checked,
     tipos, desempate
   };
+
+  const periodosCalc = calcularPeriodos(campanha.dataInicio, campanha.dataFim);
+  if (!periodosCalc) { showToast('Datas inválidas: verifique data inicial e final.', true); return; }
+  campanha.numSemanas = periodosCalc.numSemanas;
+  campanha.numSegundas = periodosCalc.numSegundas;
+  campanha.periodoAnteriorInicio = periodosCalc.periodoAnteriorInicioISO;
+  campanha.periodoAnteriorFim = periodosCalc.periodoAnteriorFimISO;
+  if (periodosCalc.avisoNaoSegunda) showToast('Campanha salva, mas alguma das datas não é uma segunda-feira.', true);
+
   const saved = await DB.put('campanhas', campanha);
 
   const regrasRows = collectRows('regrasList', '[data-row]').filter(r => r.nome);
@@ -1048,6 +1325,160 @@ async function salvarRep(id) {
     ativo: document.getElementById('rf_ativo').checked
   });
   showToast('Representante salvo!'); closeModal(); carregarReps();
+}
+
+/* ══════════════════ PERÍODOS ══════════════════ */
+let _periodosCampanhaId = null;
+
+async function renderPeriodos() {
+  const campanhas = await DB.getAll('campanhas');
+  root().innerHTML = pageHeader('Períodos', 'Semanas comerciais, período anterior equivalente e cronograma da campanha') +
+    `<div class="box">
+      <div class="form-grid" style="margin-bottom:0;">
+        <div class="field full"><label>Campanha</label>
+          <select id="pz_campanha" onchange="selecionarCampanhaPeriodos(this.value)">
+            ${campanhas.length ? campanhas.map(c => `<option value="${c.id}">${c.nome} — ${c.fornecedor}</option>`).join('') : '<option value="">Nenhuma campanha cadastrada</option>'}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div id="periodosConteudo"></div>`;
+
+  if (!campanhas.length) {
+    document.getElementById('periodosConteudo').innerHTML = emptyState('🗓️', 'Cadastre uma campanha para ver os cálculos de período.', `<button class="btn btn-primary btn-sm" onclick="navigate('campanhas')">Ir para Campanhas</button>`);
+    return;
+  }
+  const alvo = (_periodosCampanhaId && campanhas.some(c => c.id === _periodosCampanhaId)) ? _periodosCampanhaId : campanhas[0].id;
+  document.getElementById('pz_campanha').value = alvo;
+  await desenharPeriodos(alvo);
+}
+
+function selecionarCampanhaPeriodos(campanhaId) {
+  _periodosCampanhaId = campanhaId;
+  desenharPeriodos(campanhaId);
+}
+
+async function desenharPeriodos(campanhaId) {
+  _periodosCampanhaId = campanhaId;
+  const conteudo = document.getElementById('periodosConteudo');
+  const campanha = await DB.get('campanhas', campanhaId);
+  if (!campanha) { conteudo.innerHTML = emptyState('🗓️', 'Campanha não encontrada.'); return; }
+
+  const pc = calcularPeriodos(campanha.dataInicio, campanha.dataFim);
+  if (!pc) {
+    conteudo.innerHTML = emptyState('⚠️', 'Esta campanha ainda não tem data inicial/final válidas. Edite a campanha para definir o período.',
+      `<button class="btn btn-primary btn-sm" onclick="openCampanhaModal('${campanhaId}')">Editar Campanha</button>`);
+    return;
+  }
+
+  const info = infoHojeCampanha(pc);
+  const semanas = info.semanasComStatus;
+  const statusLabel = { concluida: 'Concluída', andamento: 'Em andamento', pendente: 'Pendente' };
+  const statusIcon = { concluida: '✅', andamento: '🔄', pendente: '⏳' };
+  const statusClass = { concluida: 'concluida', andamento: 'andamento', pendente: 'pendente' };
+
+  conteudo.innerHTML = `
+    <div class="row-2-even">
+      <div class="box">
+        <div class="box-hdr"><div class="box-title">Campanha</div><span class="tag">${campanha.nome}</span></div>
+        <div class="periodo-kpi-row">
+          <div class="kpi-card" style="--accent-color:var(--green-dark); --accent-soft:var(--green-pale);">
+            <div class="kpi-label">Data Inicial</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(pc.ini)}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--green-dark); --accent-soft:var(--green-pale);">
+            <div class="kpi-label">Data Final</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(pc.fim)}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--blue); --accent-soft:var(--blue-pale);">
+            <div class="kpi-label">Nº de Semanas</div><div class="kpi-value">${pc.numSemanas}</div>
+          </div>
+          <div class="kpi-card" style="--accent-color:var(--blue); --accent-soft:var(--blue-pale);">
+            <div class="kpi-label">Nº de Segundas-feiras</div><div class="kpi-value">${pc.numSegundas}</div>
+          </div>
+        </div>
+        ${pc.avisoNaoSegunda ? '<div style="margin-top:10px; font-size:11.5px; color:#9b2c1d;">⚠ A data inicial ou final desta campanha não cai numa segunda-feira.</div>' : ''}
+      </div>
+      <div class="box">
+        <div class="box-hdr"><div class="box-title">Período Anterior (equivalente)</div><span class="tag">${pc.numSemanas} semana(s)</span></div>
+        <div class="periodo-compare-box">
+          <div class="periodo-compare-col">
+            <h4>Início</h4><div class="range">${fmtDataBR(pc.periodoAnteriorInicio)}</div>
+          </div>
+          <div class="periodo-compare-arrow">→</div>
+          <div class="periodo-compare-col">
+            <h4>Fim</h4><div class="range">${fmtDataBR(pc.periodoAnteriorFim)}</div>
+          </div>
+        </div>
+        <div style="font-size:11px; color:var(--gray-text); margin-top:10px;">Calculado automaticamente: mesmo número de semanas da campanha, terminando exatamente onde ela começa.</div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="box-hdr"><div class="box-title">Painel de Hoje</div><span class="tag">${info.campanhaEncerrada ? 'Campanha encerrada' : 'Campanha em andamento'}</span></div>
+      <div class="periodo-kpi-row">
+        <div class="kpi-card" style="--accent-color:var(--green-dark); --accent-soft:var(--green-pale);">
+          <div class="kpi-icon">🗓️</div><div class="kpi-label">Semana Atual</div><div class="kpi-value">${info.semanaAtualNum}/${info.totalSemanas}</div>
+        </div>
+        <div class="kpi-card" style="--accent-color:var(--blue); --accent-soft:var(--blue-pale);">
+          <div class="kpi-icon">📆</div><div class="kpi-label">Total de Semanas</div><div class="kpi-value">${info.totalSemanas}</div>
+        </div>
+        <div class="kpi-card" style="--accent-color:var(--amber); --accent-soft:var(--amber-pale);">
+          <div class="kpi-icon">⏱️</div><div class="kpi-label">Dias Decorridos</div><div class="kpi-value">${info.diasDecorridos}</div>
+        </div>
+        <div class="kpi-card" style="--accent-color:var(--violet); --accent-soft:var(--violet-pale);">
+          <div class="kpi-icon">⏳</div><div class="kpi-label">Dias Restantes</div><div class="kpi-value">${info.diasRestantes}</div>
+        </div>
+        <div class="kpi-card" style="--accent-color:var(--green-mid); --accent-soft:var(--green-pale);">
+          <div class="kpi-icon">🔒</div><div class="kpi-label">Próximo Fechamento</div><div class="kpi-value" style="font-size:14px;">${fmtDataBR(info.proximoFechamento)}</div>
+        </div>
+      </div>
+      ${info.ultimaSemanaFechada > 0 ? `
+        <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="irParaApuracaoParcial('${campanha.id}', ${info.ultimaSemanaFechada})">
+          📊 Gerar apuração parcial até a última semana fechada (Semana ${info.ultimaSemanaFechada})
+        </button>` : ''}
+    </div>
+
+    <div class="row-2">
+      <div class="box">
+        <div class="box-hdr"><div class="box-title">Cronograma Semanal</div><span class="tag">${pc.numSemanas} semana(s)</span></div>
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Semana</th><th>Início</th><th>Fim</th><th>Status</th></tr></thead>
+          <tbody>${semanas.map(s => `
+            <tr>
+              <td><span class="rank-pos">${s.numero}</span></td>
+              <td>${fmtDataBR(s.inicio)}</td>
+              <td>${fmtDataBR(s.fim)}</td>
+              <td><span class="period-status-badge ${statusClass[s.status]}">${statusLabel[s.status]}</span></td>
+            </tr>`).join('')}</tbody>
+        </table></div>
+      </div>
+      <div class="box">
+        <div class="box-hdr"><div class="box-title">Linha do Tempo</div><span class="tag">Visual</span></div>
+        <div class="timeline-wrap">
+          ${semanas.map(s => `
+            <div class="timeline-week ${s.status}">
+              <span class="tw-icon">${statusIcon[s.status]}</span>
+              <span class="tw-label">Semana ${s.numero}</span>
+              <span class="tw-range">${fmtDataBR(s.inicio)} → ${fmtDataBR(s.fim)}</span>
+              <span class="period-status-badge ${statusClass[s.status]}">${statusLabel[s.status]}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* Atalho: navega para Apuração já configurada em modo parcial até a última semana fechada */
+async function irParaApuracaoParcial(campanhaId, ateSemana) {
+  await navigate('apuracao');
+  const selCamp = document.getElementById('ap_campanha');
+  if (selCamp) selCamp.value = campanhaId;
+  STATE.campanhaSelecionada = campanhaId;
+  const radioParcial = document.getElementById('ap_modo_parcial');
+  if (radioParcial) radioParcial.checked = true;
+  atualizarModoApuracao();
+  const selSemana = document.getElementById('ap_semana');
+  if (selSemana) selSemana.value = String(ateSemana);
+  await calcularApuracao();
 }
 
 /* ══════════════════ IMPORTAÇÃO (WIZARD) ══════════════════ */
@@ -1213,14 +1644,58 @@ async function renderApuracao() {
   root().innerHTML = pageHeader('Apuração', 'Calcule pontuação, elegibilidade e crescimento por representante') +
     `<div class="box">
       <div class="form-grid" style="margin-bottom:6px;">
-        <div class="field"><label>Campanha</label><select id="ap_campanha" onchange="STATE.campanhaSelecionada=this.value">
+        <div class="field"><label>Campanha</label><select id="ap_campanha" onchange="STATE.campanhaSelecionada=this.value; atualizarModoApuracao();">
           ${campanhas.length ? campanhas.map(c => `<option value="${c.id}">${c.nome} — ${c.fornecedor}</option>`).join('') : '<option value="">Nenhuma campanha</option>'}
         </select></div>
+        <div class="field full">
+          <label>Modo de apuração</label>
+          <div style="display:flex; gap:20px;">
+            <label class="radio-line"><input type="radio" name="ap_modo" id="ap_modo_completa" checked onchange="atualizarModoApuracao()"> Campanha completa</label>
+            <label class="radio-line"><input type="radio" name="ap_modo" id="ap_modo_parcial" onchange="atualizarModoApuracao()"> Apuração parcial</label>
+          </div>
+        </div>
+        <div class="field" id="ap_semana_wrap" style="display:none;">
+          <label>Até a semana</label>
+          <select id="ap_semana"></select>
+        </div>
         <div class="field" style="align-self:flex-end;"><button class="btn btn-primary" onclick="calcularApuracao()">⚙ Calcular Apuração</button></div>
       </div>
+      <div id="apuracaoInfoPeriodo" style="font-size:11px; color:var(--gray-text); margin-bottom:6px;"></div>
       <div id="apuracaoResultado"></div>
     </div>`;
-  if (campanhas.length) { STATE.campanhaSelecionada = campanhas[0].id; carregarApuracaoExistente(campanhas[0].id); }
+  if (campanhas.length) {
+    STATE.campanhaSelecionada = campanhas[0].id;
+    await atualizarModoApuracao();
+    carregarApuracaoExistente(campanhas[0].id);
+  }
+}
+
+async function atualizarModoApuracao() {
+  const campanhaId = document.getElementById('ap_campanha') ? document.getElementById('ap_campanha').value : STATE.campanhaSelecionada;
+  const isParcial = document.getElementById('ap_modo_parcial') ? document.getElementById('ap_modo_parcial').checked : false;
+  const wrap = document.getElementById('ap_semana_wrap');
+  const infoBox = document.getElementById('apuracaoInfoPeriodo');
+  if (!campanhaId) { if (wrap) wrap.style.display = 'none'; return; }
+
+  const campanha = await DB.get('campanhas', campanhaId);
+  const pc = campanha ? calcularPeriodos(campanha.dataInicio, campanha.dataFim) : null;
+
+  if (wrap) wrap.style.display = isParcial ? '' : 'none';
+  if (pc && isParcial) {
+    const semSel = document.getElementById('ap_semana');
+    if (semSel) {
+      semSel.innerHTML = pc.semanas.map(s => `<option value="${s.numero}">Semana ${s.numero} (até ${fmtDataBR(s.fim)})</option>`).join('');
+      semSel.onchange = () => atualizarInfoPeriodoApuracao();
+    }
+  }
+  atualizarInfoPeriodoApuracao();
+}
+
+function atualizarInfoPeriodoApuracao() {
+  const infoBox = document.getElementById('apuracaoInfoPeriodo');
+  if (!infoBox) return;
+  infoBox.textContent = '';
+  // O texto detalhado do intervalo é montado dentro de calcularApuracao/desenharApuracao, aqui é só um placeholder reativo.
 }
 
 async function carregarApuracaoExistente(campanhaId) {
@@ -1229,17 +1704,54 @@ async function carregarApuracaoExistente(campanhaId) {
   else document.getElementById('apuracaoResultado').innerHTML = emptyState('📊', 'Nenhuma apuração calculada ainda para esta campanha.');
 }
 
+/* Filtra vendas de um período (campanha ou anterior) por um intervalo de datas [inicioISO, fimISO) */
+function filtrarVendasPorIntervalo(vendas, inicioISO, fimISO) {
+  const ini = parseISODate(inicioISO), fim = parseISODate(fimISO);
+  return vendas.filter(v => {
+    if (!v.data) return true; // sem data mapeada: inclui (não há como filtrar por semana)
+    const d = parseISODate(String(v.data).slice(0, 10)) || (() => {
+      // tenta formatos alternativos dd/mm/yyyy
+      const partes = String(v.data).split(/[\/\-]/);
+      if (partes.length === 3 && partes[2].length === 4) return new Date(+partes[2], +partes[1] - 1, +partes[0]);
+      return null;
+    })();
+    if (!d) return true;
+    return d >= ini && d < fim;
+  });
+}
+
 async function calcularApuracao() {
   const campanhaId = document.getElementById('ap_campanha').value;
   if (!campanhaId) { showToast('Selecione uma campanha.', true); return; }
+  const isParcial = document.getElementById('ap_modo_parcial') && document.getElementById('ap_modo_parcial').checked;
+  const semanaAte = isParcial ? Number(document.getElementById('ap_semana').value || 0) : null;
+
   const [campanha, regras, regrasProduto, vendas, representantes, produtos] = await Promise.all([
     DB.get('campanhas', campanhaId), DB.getAll('regras'), DB.getAll('regrasProduto'),
     DB.getAll('vendas'), DB.getAll('representantes'), DB.getAll('produtos')
   ]);
   const regrasCamp = regras.filter(r => r.campanhaId === campanhaId);
   const regrasProdCamp = regrasProduto.filter(r => r.campanhaId === campanhaId);
-  const vendasCamp = vendas.filter(v => v.campanhaId === campanhaId);
+  let vendasCamp = vendas.filter(v => v.campanhaId === campanhaId);
   if (!vendasCamp.length) { showToast('Nenhuma venda importada para esta campanha.', true); return; }
+
+  let corteInfo = null;
+  if (isParcial) {
+    const pc = calcularPeriodos(campanha.dataInicio, campanha.dataFim);
+    if (!pc) { showToast('Campanha sem período válido para apuração parcial.', true); return; }
+    if (!semanaAte || semanaAte < 1) { showToast('Selecione até qual semana apurar.', true); return; }
+    corteInfo = limitarPeriodoParcial(pc, semanaAte);
+
+    const vCampFiltradas = filtrarVendasPorIntervalo(vendasCamp.filter(v => v.periodo === 'campanha'), corteInfo.campanhaInicioISO, corteInfo.campanhaFimISO);
+    const vAntFiltradas = filtrarVendasPorIntervalo(vendasCamp.filter(v => v.periodo === 'anterior'), corteInfo.anteriorInicioISO, corteInfo.anteriorFimISO);
+    vendasCamp = [...vCampFiltradas, ...vAntFiltradas];
+
+    const infoBox = document.getElementById('apuracaoInfoPeriodo');
+    if (infoBox) infoBox.innerHTML = `Apuração parcial até a <b>Semana ${corteInfo.numSemanas}</b> — Campanha: ${fmtDataBR(parseISODate(corteInfo.campanhaInicioISO))} → ${fmtDataBR(addDays(parseISODate(corteInfo.campanhaFimISO), -1))} · Período anterior (mesmo nº de semanas): ${fmtDataBR(parseISODate(corteInfo.anteriorInicioISO))} → ${fmtDataBR(addDays(parseISODate(corteInfo.anteriorFimISO), -1))}`;
+  } else {
+    const infoBox = document.getElementById('apuracaoInfoPeriodo');
+    if (infoBox) infoBox.innerHTML = campanha.numSemanas ? `Apuração da campanha completa — ${campanha.numSemanas} semana(s): ${fmtDate(campanha.dataInicio)} → ${fmtDate(campanha.dataFim)}` : '';
+  }
 
   const repIds = [...new Set(vendasCamp.map(v => v.representanteId).filter(Boolean))];
   const totalProdutosAtivos = Math.max(1, produtos.filter(p => p.ativo !== false).length);
@@ -1268,18 +1780,29 @@ async function calcularApuracao() {
     return { representanteId: repId, nome: rep.nome, regiao: rep.regiao || '—', ...metricas, ...resultado };
   });
 
-  const existentes = (await DB.getAll('apuracoes')).filter(a => a.campanhaId === campanhaId);
+  const apuracaoId = isParcial ? ('ap_' + campanhaId + '_parcial_s' + corteInfo.numSemanas) : ('ap_' + campanhaId);
+  // Remove apurações anteriores do MESMO tipo (completa ou parcial daquela semana) para não acumular lixo, mas preserva outras parciais
+  const existentes = (await DB.getAll('apuracoes')).filter(a => a.id === apuracaoId);
   for (const a of existentes) await DB.remove('apuracoes', a.id);
-  const apuracao = { id: 'ap_' + campanhaId, campanhaId, geradoEm: new Date().toISOString(), resultados };
+
+  const apuracao = {
+    id: apuracaoId, campanhaId, geradoEm: new Date().toISOString(), resultados,
+    parcial: isParcial, ateSemana: isParcial ? corteInfo.numSemanas : null,
+    intervaloCampanha: isParcial ? { inicio: corteInfo.campanhaInicioISO, fim: corteInfo.campanhaFimISO } : { inicio: campanha.dataInicio, fim: campanha.dataFim },
+    intervaloAnterior: isParcial ? { inicio: corteInfo.anteriorInicioISO, fim: corteInfo.anteriorFimISO } : { inicio: campanha.periodoAnteriorInicio, fim: campanha.periodoAnteriorFim }
+  };
   await DB.put('apuracoes', apuracao);
-  showToast(`Apuração calculada para ${resultados.length} representante(s).`);
+  showToast(`Apuração ${isParcial ? 'parcial ' : ''}calculada para ${resultados.length} representante(s).`);
   desenharApuracao(apuracao);
 }
 
 function desenharApuracao(apuracao) {
   const ordenados = ordenarComDesempate(apuracao.resultados, null);
   document.getElementById('apuracaoResultado').innerHTML = `
-    <div style="font-size:11px; color:var(--gray-text); margin-bottom:8px;">Gerada em ${new Date(apuracao.geradoEm).toLocaleString('pt-BR')}</div>
+    <div style="font-size:11px; color:var(--gray-text); margin-bottom:8px;">
+      Gerada em ${new Date(apuracao.geradoEm).toLocaleString('pt-BR')}
+      ${apuracao.parcial ? ` · <span class="period-status-badge andamento">Parcial — até Semana ${apuracao.ateSemana}</span>` : ' · <span class="period-status-badge concluida">Campanha completa</span>'}
+    </div>
     <div class="table-wrap"><table class="data-table">
       <thead><tr><th>#</th><th>Representante</th><th>Kg (campanha)</th><th>Faturamento</th><th>Crescimento Kg</th><th>Clientes</th><th>Pontos</th><th>Elegível</th></tr></thead>
       <tbody>${ordenados.map((r, i) => `
@@ -1323,7 +1846,9 @@ async function carregarRanking() {
   const tipo = document.getElementById('rk_tipo').value;
   if (!campanhaId) { document.getElementById('rankingResultado').innerHTML = emptyState('🏆', 'Nenhuma campanha selecionada.'); return; }
   const [campanha, apuracoes] = await Promise.all([DB.get('campanhas', campanhaId), DB.getAll('apuracoes')]);
-  const apuracao = apuracoes.find(a => a.campanhaId === campanhaId);
+  const candidatas = apuracoes.filter(a => a.campanhaId === campanhaId);
+  // prioriza a apuração completa mais recente; se só houver parcial, usa a última
+  const apuracao = candidatas.find(a => !a.parcial) || candidatas.sort((a, b) => new Date(b.geradoEm) - new Date(a.geradoEm))[0];
   if (!apuracao) { document.getElementById('rankingResultado').innerHTML = emptyState('📊', 'Calcule a apuração desta campanha primeiro.', `<button class="btn btn-primary btn-sm" onclick="navigate('apuracao')">Ir para Apuração</button>`); return; }
 
   const elegiveis = apuracao.resultados.filter(r => r.elegivel);
@@ -1334,6 +1859,7 @@ async function carregarRanking() {
   const isKg = tipo === 'kgCampanha';
 
   document.getElementById('rankingResultado').innerHTML = `
+    ${apuracao.parcial ? `<div style="margin-bottom:8px;"><span class="period-status-badge andamento">Baseado em apuração parcial — até Semana ${apuracao.ateSemana}</span></div>` : ''}
     <div class="table-wrap"><table class="data-table">
       <thead><tr><th>#</th><th>Representante</th><th>Região</th><th>${RANKING_TIPOS.find(t => t.valor === tipo).label}</th><th>Pontos</th><th>Elegível</th></tr></thead>
       <tbody>${ordenados.map((r, i) => `
