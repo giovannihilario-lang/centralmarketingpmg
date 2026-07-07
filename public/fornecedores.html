@@ -1103,12 +1103,14 @@ async function enviarDados() {
       return m;
     });
 
+    setProgress(15, 'Limpando pedidos anteriores…');
+    await db.from('pedidos_fornecedor').delete().eq('fornecedor_id', uploadFornecedorId);
+
     const BATCH = 500;
 let inserted = 0;
 for (let i = 0; i < rows.length; i += BATCH) {
   const batch = rows.slice(i, i + BATCH);
-  const { error: insErr } = await db.from('pedidos_fornecedor')
-    .upsert(batch, { onConflict: 'fornecedor_id,id_pedido_venda,id_produto' });
+  const { error: insErr } = await db.from('pedidos_fornecedor').insert(batch);
   if (insErr) throw insErr;
   inserted += batch.length;
   const pct = Math.round(20 + (inserted / rows.length) * 70);
