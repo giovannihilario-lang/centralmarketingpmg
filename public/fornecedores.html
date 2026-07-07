@@ -1032,33 +1032,30 @@ function normalizarData(dataStr) {
   }
   return null;
 }
- 
+
 const COL_MAP = {
-  'id_pedido_venda':   ['ID Pedido de Venda','id_pedido_venda','ID PEDIDO DE VENDA','Pedido','Pedido de Venda'],
+  'id_pedido_venda':   ['ID Pedido de Venda','id_pedido_venda','ID PEDIDO DE VENDA','Pedido'],
   'vendedor':          ['Vendedor','vendedor','VENDEDOR'],
   'tipo':              ['Tipo','tipo','TIPO'],
-  'cliente_raw':       ['ID - Nome do Cliente'],      // vem combinado, ex: "230297 - ZADAM GASTROBAR"
+  'id_cliente':        ['ID Cliente','id_cliente','ID CLIENTE'],
+  'cliente':           ['Cliente','cliente','CLIENTE'],
   'bairro':            ['Bairro','bairro','BAIRRO'],
   'cidade':            ['Cidade','cidade','CIDADE'],
   'uf':                ['UF','uf'],
   'zona':              ['Zona','zona','ZONA'],
   'segmento':          ['Segmento','segmento','SEGMENTO'],
-  'data':              ['Data','data','DATA','Data de Emissão do Pedido'],
-  'data_faturamento':  ['Data de Faturamento'],
-  'data_entrega':      ['Data de Entrega'],
+  'data':              ['Data','data','DATA','Data Entrega','data_entrega'],
   'dia':               ['Dia','dia','DIA'],
-  'mes':               ['Mês','mes','MES','mês'],
+  'mes':               ['Mês','mes','MES','Mês','mês'],
   'ano':               ['Ano','ano','ANO'],
   'dia_semana':        ['Dia da Semana','dia_semana','DIA DA SEMANA'],
-  'produto_raw':       ['ID - Descricao Produto'],    // vem combinado, ex: "8556 - MUÇARELA COBERTURA..."
+  'id_produto':        ['ID Produto','id_produto','ID PRODUTO'],
   'grupo':             ['Grupo','grupo','GRUPO'],
   'sub_grupo':         ['Sub-grupo','sub_grupo','SUB-GRUPO','Subgrupo'],
-  'qtde_pc':           ['Qtde PC','qtde_pc','QTDE PC','Qtde. PC','Qtde'],
-  'unidade':           ['Unidade','unidade'],
-  'qtde_kg':           ['Qtde Kg','qtde_kg','QTDE KG','Qtde. Kg','Qtde_Kg','Peso Kg'],
-  'valor_unitario':    ['Unitário de Venda R$'],
-  'valor':             ['Valor','valor','VALOR','Total de Venda R$'],
-  'valor_pedido':      ['Total Pedido de Venda R$'],
+  'produto':           ['Produto','produto','PRODUTO'],
+  'qtde_pc':           ['Qtde PC','qtde_pc','QTDE PC','Qtde. PC'],
+  'qtde_kg':           ['Qtde Kg','qtde_kg','QTDE KG','Qtde. Kg','Qtde_Kg'],
+  'valor':             ['Valor','valor','VALOR'],
   'margem':            ['Margem','margem','MARGEM'],
   'digitador':         ['Digitador','digitador','DIGITADOR'],
   'validade':          ['Validade','validade','VALIDADE'],
@@ -1066,43 +1063,18 @@ const COL_MAP = {
   'regiao':            ['Regiao','regiao','REGIAO','Região','região'],
 };
 
-// separa "230297 - ZADAM GASTROBAR" em id_cliente="230297" e cliente="ZADAM GASTROBAR"
-function separarIdNome(texto) {
-  if (!texto) return { id: '', nome: '' };
-  const m = String(texto).match(/^([^-]+?)\s*-\s*(.+)$/);
-  if (m) return { id: m[1].trim(), nome: m[2].trim() };
-  return { id: '', nome: String(texto).trim() };
-}
-
 function mapearColunas(row) {
   const mapped = {};
   for (const [campo, aliases] of Object.entries(COL_MAP)) {
     for (const alias of aliases) {
       if (row[alias] !== undefined) {
         let valor = row[alias];
-        if (['data','data_faturamento','data_entrega'].includes(campo) && valor) valor = normalizarData(valor);
+        if (campo === 'data' && valor) valor = normalizarData(valor);
         mapped[campo] = valor;
         break;
       }
     }
   }
-
-  // separa "230297 - ZADAM GASTROBAR" em id_cliente + cliente
-  if (mapped.cliente_raw) {
-    const { id, nome } = separarIdNome(mapped.cliente_raw);
-    mapped.id_cliente = id;
-    mapped.cliente = nome;
-  }
-  delete mapped.cliente_raw;
-
-  // separa "8556 - MUÇARELA COBERTURA..." em id_produto + produto
-  if (mapped.produto_raw) {
-    const { id, nome } = separarIdNome(mapped.produto_raw);
-    mapped.id_produto = id;
-    mapped.produto = nome;
-  }
-  delete mapped.produto_raw;
-
   return mapped;
 }
 
