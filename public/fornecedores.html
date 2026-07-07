@@ -1087,21 +1087,21 @@ function mapearColunas(row) {
     }
   }
 
-  // separa cliente
+  // separa "230297 - ZADAM GASTROBAR" em id_cliente + cliente
   if (mapped.cliente_raw) {
     const { id, nome } = separarIdNome(mapped.cliente_raw);
     mapped.id_cliente = id;
     mapped.cliente = nome;
-    delete mapped.cliente_raw;
   }
+  delete mapped.cliente_raw;
 
-  // separa produto
+  // separa "8556 - MUÇARELA COBERTURA..." em id_produto + produto
   if (mapped.produto_raw) {
     const { id, nome } = separarIdNome(mapped.produto_raw);
     mapped.id_produto = id;
     mapped.produto = nome;
-    delete mapped.produto_raw;
   }
+  delete mapped.produto_raw;
 
   return mapped;
 }
