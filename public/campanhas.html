@@ -1207,10 +1207,10 @@ function campTabInfoHtml(c) {
     </div>
     <div class="field"><label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="cf_ativa" ${c.ativa ? 'checked' : ''} style="width:16px;height:16px;"> Campanha ativa</label></div>
     <div class="field"><label>Meta coletiva (%)</label><input id="cf_metaColetivaPct" type="number" step="0.1" value="${c.metaColetivaPct ?? ''}" placeholder="Ex: 12"></div>
-    <div class="field"><label>Meta coletiva — métrica</label>
+    <div class="field"><label>Meta coletiva — o que aparece no banner?</label>
       <select id="cf_metaColetivaCampo">
-        <option value="kgCampanha" ${c.metaColetivaCampo === 'kgCampanha' || !c.metaColetivaCampo ? 'selected' : ''}>Crescimento de KG</option>
-        <option value="faturamentoCampanha" ${c.metaColetivaCampo === 'faturamentoCampanha' ? 'selected' : ''}>Crescimento de Faturamento</option>
+        <option value="kg" ${c.metaColetivaCampo === 'kg' || !c.metaColetivaCampo ? 'selected' : ''}>Volume (Kg)</option>
+        <option value="valor" ${c.metaColetivaCampo === 'valor' ? 'selected' : ''}>Faturamento (R$)</option>
       </select>
     </div>
     <div class="field"><label>Requisito mínimo do bônus (clientes)</label><input id="cf_minClientesBonus" type="number" value="${c.minClientesBonus ?? ''}" placeholder="Ex: 5"></div>
@@ -1933,6 +1933,23 @@ function filtrarVendasPorIntervalo(vendas, inicioISO, fimISO) {
     return d >= ini && d < fim;
   });
 }
+/**
+ * Calcula o % de crescimento coletivo da campanha comparando o total
+ * (kg ou faturamento, conforme configurado na campanha) do período atual
+ * contra o período anterior — somando TODAS as vendas, sem filtrar por
+ * elegibilidade individual (a meta coletiva é da unidade, não do representante).
+ */
+function calcularMetaColetiva(vendasCamp, campoValor) {
+  // campoValor: 'kg' (volume) ou 'valor' (faturamento em R$)
+  const vAtual = vendasCamp.filter(v => v.periodo === 'campanha');
+  const vAnterior = vendasCamp.filter(v => v.periodo === 'anterior');
+  const totalAtual = vAtual.reduce((s, v) => s + (Number(v[campoValor]) || 0), 0);
+  const totalAnterior = vAnterior.reduce((s, v) => s + (Number(v[campoValor]) || 0), 0);
+  const crescimentoPct = totalAnterior > 0
+    ? ((totalAtual - totalAnterior) / totalAnterior) * 100
+    : (totalAtual > 0 ? 100 : 0);
+  return { totalAtual, totalAnterior, crescimentoPct: Math.round(crescimentoPct * 100) / 100 };
+}
 
 async function calcularApuracao() {
   const campanhaId = document.getElementById('ap_campanha').value;
@@ -2002,22 +2019,25 @@ async function calcularApuracao() {
   const existentes = (await DB.getAll('apuracoes')).filter(a => a.id === apuracaoId);
   for (const a of existentes) await DB.remove('apuracoes', a.id);
 
-  // Meta coletiva: soma o campo escolhido (kg ou faturamento) de TODOS os representantes elegíveis
-  // no período da campanha vs. o mesmo total no período anterior.
-  const campoColetivo = campanha.metaColetivaCampo === 'faturamentoCampanha' ? 'faturamentoCampanha' : 'kgCampanha';
-  const campoColetivoAnterior = campoColetivo === 'faturamentoCampanha' ? 'faturamentoAnterior' : 'kgAnterior';
-  const elegiveisColetivo = resultados.filter(r => r.elegivel);
-  const totalAtual = elegiveisColetivo.reduce((s, r) => s + (r[campoColetivo] || 0), 0);
-  const totalAnterior = elegiveisColetivo.reduce((s, r) => s + (r[campoColetivoAnterior] || 0), 0);
-  const crescimentoColetivo = totalAnterior > 0 ? ((totalAtual - totalAnterior) / totalAnterior) * 100 : (totalAtual > 0 ? 100 : 0);
-  const metaColetivaBatida = campanha.metaColetivaPct != null ? crescimentoColetivo >= campanha.metaColetivaPct : null;
+const campoColetivo = campanha.metaColetivaCampo === 'valor' ? 'valor' : 'kg';
+  const metaColetiva = calcularMetaColetiva(vendasCamp, campoColetivo);
+  const metaColetivaBatida = campanha.metaColetivaPct != null
+    ? metaColetiva.crescimentoPct >= campanha.metaColetivaPct
+    : null;
 
   const apuracao = {
     id: apuracaoId, campanhaId, geradoEm: new Date().toISOString(), resultados,
     parcial: isParcial, ateSemana: isParcial ? corteInfo.numSemanas : null,
     intervaloCampanha: isParcial ? { inicio: corteInfo.campanhaInicioISO, fim: corteInfo.campanhaFimISO } : { inicio: campanha.dataInicio, fim: campanha.dataFim },
     intervaloAnterior: isParcial ? { inicio: corteInfo.anteriorInicioISO, fim: corteInfo.anteriorFimISO } : { inicio: campanha.periodoAnteriorInicio, fim: campanha.periodoAnteriorFim },
-    metaColetiva: { campo: campoColetivo, pctExigido: campanha.metaColetivaPct, pctAtingido: Math.round(crescimentoColetivo * 100) / 100, batida: metaColetivaBatida }
+    metaColetiva: {
+      campo: campoColetivo,
+      totalAtual: metaColetiva.totalAtual,
+      totalAnterior: metaColetiva.totalAnterior,
+      pctAtingido: metaColetiva.crescimentoPct,
+      pctExigido: campanha.metaColetivaPct,
+      batida: metaColetivaBatida
+    }
   };
   await DB.put('apuracoes', apuracao);
   showToast(`Apuração ${isParcial ? 'parcial ' : ''}calculada para ${resultados.length} representante(s).`);
@@ -2031,9 +2051,9 @@ function desenharApuracao(apuracao) {
       Gerada em ${new Date(apuracao.geradoEm).toLocaleString('pt-BR')}
       ${apuracao.parcial ? ` · <span class="period-status-badge andamento">Parcial — até Semana ${apuracao.ateSemana}</span>` : ' · <span class="period-status-badge concluida">Campanha completa</span>'}
       ${apuracao.metaColetiva && apuracao.metaColetiva.pctExigido != null ? `
-        · Meta coletiva (${apuracao.metaColetiva.campo === 'faturamentoCampanha' ? 'Faturamento' : 'Kg'}): 
+        · Meta coletiva (${apuracao.metaColetiva.campo === 'valor' ? 'Faturamento' : 'Kg'}):
         <span class="period-status-badge ${apuracao.metaColetiva.batida ? 'concluida' : 'andamento'}">
-          ${apuracao.metaColetiva.pctAtingido}% de ${apuracao.metaColetiva.pctExigido}% exigido — ${apuracao.metaColetiva.batida ? 'Batida ✅' : 'Não batida ❌'}
+          ${apuracao.metaColetiva.pctAtingido >= 0 ? '+' : ''}${apuracao.metaColetiva.pctAtingido}% de ${apuracao.metaColetiva.pctExigido}% exigido — ${apuracao.metaColetiva.batida ? 'Batida ✅' : 'Não batida ❌'}
         </span>` : ''}
     </div>
     <div class="table-wrap"><table class="data-table">
