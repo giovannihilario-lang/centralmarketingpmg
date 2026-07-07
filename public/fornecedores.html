@@ -874,6 +874,70 @@ function ev(e, tipo) {
   else if (tipo === 'drop') { zone.classList.remove('drag'); if (e.dataTransfer.files[0]) onFileSelect(e.dataTransfer.files[0]); }
 }
 
+function normalizarCabecalho(txt) {
+  return String(txt)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .toLowerCase()
+    .replace(/:\s*$/, '') // remove ":" no final (linhas tipo "Vendedor:")
+    .trim();
+}
+
+function detectarHeaderRow(matriz, colMap) {
+  // Monta um conjunto de "dicas" de cabeçalho a partir do COL_MAP
+  const hints = new Set();
+  Object.entries(colMap).forEach(([campo, aliases]) => {
+    hints.add(normalizarCabecalho(campo.replace(/_/g, ' ')));
+    aliases.forEach(a => hints.add(normalizarCabecalho(a)));
+  });
+  const hintsArr = Array.from(hints).filter(Boolean);
+
+  function pontuarLinha(linha) {
+    let score = 0;
+    let preenchidas = 0;
+    let comDoisPontos = 0;
+    linha.forEach(c => {
+      const raw = String(c).trim();
+      if (!raw) return;
+      preenchidas++;
+      if (raw.endsWith(':')) comDoisPontos++;
+      const norm = normalizarCabecalho(raw);
+      if (!norm) return;
+      if (hints.has(norm)) { score += 2; return; }
+      const palavrasCelula = norm.split(/[^a-z0-9]+/).filter(Boolean);
+      for (const hint of hintsArr) {
+        const palavrasHint = hint.split(/[^a-z0-9]+/).filter(Boolean);
+        if (palavrasHint.length && palavrasHint.every(p => palavrasCelula.includes(p))) {
+          score += 1;
+          break;
+        }
+      }
+    });
+    // Penaliza linhas de filtro/metadados (padrão "Rótulo: Valor")
+    if (preenchidas > 0 && (comDoisPontos / preenchidas) > 0.3) score -= 3;
+    return { score, preenchidas };
+  }
+
+  let headerRow = -1;
+  let melhorScore = -Infinity;
+  matriz.forEach((linha, idx) => {
+    const { score, preenchidas } = pontuarLinha(linha);
+    if (preenchidas < 2) return;
+    if (score > melhorScore) {
+      melhorScore = score;
+      headerRow = idx;
+    }
+  });
+
+  if (headerRow < 0 || melhorScore <= 0) {
+    // Fallback: primeira linha com >=3 células preenchidas
+    const fallback = matriz.findIndex(linha =>
+      linha.filter(c => String(c).trim() !== '').length >= 3
+    );
+    headerRow = fallback >= 0 ? fallback : 0;
+  }
+  return headerRow;
+}
+
 function onFileSelect(file) {
   if (!file) return;
   selectedFile = file;
@@ -892,12 +956,8 @@ function onFileSelect(file) {
         defval: ""
     });
 
-    // Procura a primeira linha com conteúdo (pula títulos/linhas em branco)
-    let headerRow = matriz.findIndex(linha =>
-        linha.filter(c => String(c).trim() !== "").length >= 3
-    );
-
-    if (headerRow < 0) headerRow = 0;
+    // Detecta a linha de cabeçalho real, ignorando linhas de filtro/título
+    const headerRow = detectarHeaderRow(matriz, COL_MAP);
 
     // Usa essa linha como cabeçalho para os dados que serão importados
     const raw = XLSX.utils.sheet_to_json(ws, {
