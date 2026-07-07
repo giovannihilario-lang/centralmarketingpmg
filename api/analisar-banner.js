@@ -37,7 +37,7 @@ Regras importantes:
 - Responda SOMENTE o JSON, nada mais.
 `.trim();
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ erro: "Método não permitido" });
   }
@@ -103,4 +103,4 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ erro: err.message });
   }
-};
+}
