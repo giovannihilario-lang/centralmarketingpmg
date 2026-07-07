@@ -1406,9 +1406,9 @@ async function renderProdutos() {
   root().innerHTML = pageHeader('Produtos', 'Catálogo de produtos usado nas regras de pontuação',
     `<input class="search-input" id="prodSearch" placeholder="Buscar produto..." oninput="filtrarProdutos()">
      <select id="prodCatFiltro" onchange="filtrarProdutos()"></select>
-     <button class="btn btn-ghost" onclick="atualizarCatalogoProdutos()">🔄 Sincronizar API</button>` ) +
+     <button class="btn btn-ghost" onclick="sincronizarProdutosAPI()">🔄 Sincronizar API</button>` ) +
     `<div class="box"><div class="table-wrap"><table class="data-table" id="prodTable">
-      <thead><tr><th>Imagem</th><th>ID Produto</th><th>Nome Produto</th><th>Categoria</th><th>Marca</th><th>Valor</th></tr></thead>
+      <thead><tr><th>Ativo</th><th>Imagem</th><th>ID Produto</th><th>Nome Produto</th><th>Categoria</th><th>Marca</th><th>Valor</th></tr></thead>
       <tbody id="prodTbody"></tbody>
     </table></div></div>`;
   await carregarProdutos();
@@ -1436,7 +1436,7 @@ async function sincronizarProdutosAPI() {
       codigo,
       nome: (item.nome || '').trim(),
       fornecedor: existente?.fornecedor || '',
-      categoria: categoriaPorIdAPI(item.id_categoria),
+      categoria: categoriaPorId(item.id_categoria),
       subcategoria: existente?.subcategoria || '',
       marca: existente?.marca || '',
       peso: existente?.peso || '',
@@ -1450,30 +1450,41 @@ async function sincronizarProdutosAPI() {
 
   await DB.putMany('produtos', lista);
   showToast(`${lista.length} produtos sincronizados!`);
-  carregarProdutos();
+  await carregarProdutos();
 }
 let _produtosCache = [];
-async function carregarProdutos(forcar = false) {
-  _produtosCache = await CATALOGO.carregar(forcar);
+async function carregarProdutos() {
+  const salvos = await DB.getAll('produtos');
+  if (!salvos.length) { showToast('Nenhum produto salvo ainda. Clique em "Sincronizar API".'); }
+  _produtosCache = salvos.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   const catSel = document.getElementById('prodCatFiltro');
   if (catSel) {
-    const categorias = [...new Set(_produtosCache.map(p => p.categoria))].sort();
+    const categorias = [...new Set(_produtosCache.map(p => p.categoria))].filter(Boolean).sort();
     catSel.innerHTML = '<option value="">Todas as categorias</option>' + categorias.map(c => `<option value="${c}">${c}</option>`).join('');
   }
   desenharProdutos(_produtosCache);
 }
-async function atualizarCatalogoProdutos() { await carregarProdutos(true); showToast('Catálogo atualizado.'); }
+async function toggleProdutoAtivo(id, ativo) {
+  const p = await DB.get('produtos', id);
+  if (!p) return;
+  p.ativo = ativo;
+  await DB.put('produtos', p);
+  const item = _produtosCache.find(x => x.id === id);
+  if (item) item.ativo = ativo;
+  showToast(ativo ? 'Produto ativado (entra nas contas/regras).' : 'Produto desativado (some das contas/regras).');
+}
 function desenharProdutos(lista) {
   const tbody = document.getElementById('prodTbody');
   tbody.innerHTML = lista.length ? lista.map(p => `
-    <tr>
+    <tr style="opacity:${p.ativo === false ? .45 : 1}">
+      <td><input type="checkbox" ${p.ativo !== false ? 'checked' : ''} onchange="toggleProdutoAtivo('${p.id}', this.checked)"></td>
       <td>${p.imagem ? `<img src="${p.imagem}" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:6px;">` : '—'}</td>
       <td>${p.codigo}</td>
       <td>${p.nome}</td>
-      <td>${p.categoria}</td>
+      <td>${p.categoria || '—'}</td>
       <td>${p.marca || p.fornecedor || ''}</td>
-      <td>${fmtMoney(p.precoEntrega || p.precoRetira)}</td>
-    </tr>`).join('') : `<tr><td colspan="6"><div class="empty-state">📦 Nenhum produto encontrado.</div></td></tr>`;
+      <td>${fmtMoney(p.valor)}</td>
+    </tr>`).join('') : `<tr><td colspan="7"><div class="empty-state">📦 Nenhum produto encontrado. Clique em "Sincronizar API".</div></td></tr>`;
 }
 function filtrarProdutos() {
   const t = normalizeKey(document.getElementById('prodSearch').value);
