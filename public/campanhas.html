@@ -471,6 +471,12 @@ function toTitleCasePtBr(str) {
 }
 
 // similaridade simples entre strings (para sugerir mapeamento de colunas sem depender do nome exato)
+// separa uma string em tokens/palavras normalizadas (sem acento, maiúsculas, sem pontuação)
+function tokenize(str) {
+  return normalizeKey(str).split(/[^A-Z0-9]+/).filter(Boolean);
+}
+
+// similaridade simples entre strings (para sugerir mapeamento de colunas sem depender do nome exato)
 function similarity(a, b) {
   const ta = tokenize(a), tb = tokenize(b);
   if (!ta.length || !tb.length) return 0;
