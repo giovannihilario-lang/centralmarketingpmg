@@ -884,29 +884,26 @@ function onFileSelect(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const wb = XLSX.read(e.target.result, { type: "array" });
-const ws = wb.Sheets[wb.SheetNames[0]];
+    const ws = wb.Sheets[wb.SheetNames[0]];
 
-// Lê todas as linhas
-const matriz = XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    defval: ""
-});
+    // Lê todas as linhas para localizar o cabeçalho real
+    const matriz = XLSX.utils.sheet_to_json(ws, {
+        header: 1,
+        defval: ""
+    });
 
-// Procura a primeira linha com conteúdo
-let headerRow = matriz.findIndex(linha =>
-    linha.filter(c => String(c).trim() !== "").length >= 3
-);
+    // Procura a primeira linha com conteúdo (pula títulos/linhas em branco)
+    let headerRow = matriz.findIndex(linha =>
+        linha.filter(c => String(c).trim() !== "").length >= 3
+    );
 
-if (headerRow < 0) headerRow = 0;
+    if (headerRow < 0) headerRow = 0;
 
-// Agora usa essa linha como cabeçalho
-nfeParsedRows = XLSX.utils.sheet_to_json(ws, {
-    range: headerRow,
-    defval: ""
-});
-
-console.log(Object.keys(nfeParsedRows[0] || {}));
-    const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    // Usa essa linha como cabeçalho para os dados que serão importados
+    const raw = XLSX.utils.sheet_to_json(ws, {
+        range: headerRow,
+        defval: ''
+    });
     parsedRows = raw;
     if (raw.length > 0) {
       const cols = Object.keys(raw[0]);
