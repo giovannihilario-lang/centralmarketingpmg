@@ -1772,7 +1772,6 @@ async function wizardConfirmarImportacao() {
   const novosReps = [];
   const vendas = IMP.rows.map(r => {
     const m = mapRow(r);
-    unidades: parseNumBR(m.unidades),
     const nomeRep = String(m.representante || '').trim();
     const chave = normalizeKey(nomeRep);
     let rep = repPorNome.get(chave);
@@ -1792,6 +1791,7 @@ async function wizardConfirmarImportacao() {
       produto: String(m.produto || '').trim(),
       categoria: String(m.categoria || '').trim(),
       marca: String(m.marca || '').trim(),
+      unidades: parseNumBR(m.unidades),
       kg: parseNumBR(m.kg),
       valor: parseNumBR(m.valor),
       data: m.data || '',

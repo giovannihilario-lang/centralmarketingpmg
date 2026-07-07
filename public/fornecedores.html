@@ -883,8 +883,29 @@ function onFileSelect(file) {
   document.getElementById('btnEnviar').disabled = false;
   const reader = new FileReader();
   reader.onload = (e) => {
-    const wb = XLSX.read(e.target.result, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    const wb = XLSX.read(e.target.result, { type: "array" });
+const ws = wb.Sheets[wb.SheetNames[0]];
+
+// Lê todas as linhas
+const matriz = XLSX.utils.sheet_to_json(ws, {
+    header: 1,
+    defval: ""
+});
+
+// Procura a primeira linha com conteúdo
+let headerRow = matriz.findIndex(linha =>
+    linha.filter(c => String(c).trim() !== "").length >= 3
+);
+
+if (headerRow < 0) headerRow = 0;
+
+// Agora usa essa linha como cabeçalho
+nfeParsedRows = XLSX.utils.sheet_to_json(ws, {
+    range: headerRow,
+    defval: ""
+});
+
+console.log(Object.keys(nfeParsedRows[0] || {}));
     const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
     parsedRows = raw;
     if (raw.length > 0) {
