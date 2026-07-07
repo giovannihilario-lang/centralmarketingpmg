@@ -734,7 +734,8 @@ const CAMPOS_METRICA = [
   { valor: 'pedidos', label: 'Nº de pedidos' },
   { valor: 'produtosDistintos', label: 'Produtos distintos vendidos' },
   { valor: 'mix', label: 'Mix (%)' },
-  { valor: 'positivacao', label: 'Positivação (%)' },
+  { valor: 'positivacao', label: 'Positivação (nº de clientes)' },
+  { valor: 'crescimentoClientes', label: 'Crescimento de clientes (%)' },
   { valor: 'crescimentoKg', label: 'Crescimento de KG (%)' },
   { valor: 'crescimentoFaturamento', label: 'Crescimento de faturamento (%)' },
   { valor: 'pontosProdutos', label: 'Pontos de produtos (acumulado)' },
@@ -755,7 +756,8 @@ const ACOES = [
  */
 function aplicarRegras(regras, metricas, pontosBase) {
   let pontos = pontosBase || 0;
-  let elegivel = true;
+  let elegivel = true;       // elegibilidade do ranking PRINCIPAL
+  let elegivelBonus = true;  // elegibilidade de rankings de BÔNUS (ex: positivação, com requisito próprio)
   let desclassificado = false;
   let multiplicadorAcumulado = 1;
   const log = [];
@@ -764,17 +766,25 @@ function aplicarRegras(regras, metricas, pontosBase) {
     const campoVal = Number(metricas[r.campo]) || 0;
     const alvo = Number(r.valor) || 0;
     const passou = OPERADORES[r.operador] ? OPERADORES[r.operador](campoVal, alvo) : false;
+    // escopo: 'geral' (padrão, afeta principal + bônus) | 'principal' | 'bonus'
+    const escopo = r.escopo || 'geral';
 
     if (!passou) {
-      if (r.obrigatoria) { desclassificado = true; elegivel = false; }
-      log.push({ regra: r.nome, resultado: 'não atendida', obrigatoria: !!r.obrigatoria });
+      if (r.obrigatoria) {
+        if (escopo === 'geral' || escopo === 'principal') { desclassificado = true; elegivel = false; }
+        if (escopo === 'geral' || escopo === 'bonus') { elegivelBonus = false; }
+      }
+      log.push({ regra: r.nome, resultado: 'não atendida', obrigatoria: !!r.obrigatoria, escopo });
       return;
     }
 
-    log.push({ regra: r.nome, resultado: 'atendida' });
+    log.push({ regra: r.nome, resultado: 'atendida', escopo });
     switch (r.acao) {
       case 'elegivel': break; // já considerado elegível por padrão
-      case 'desclassificar': desclassificado = true; elegivel = false; break;
+      case 'desclassificar':
+        if (escopo === 'geral' || escopo === 'principal') { desclassificado = true; elegivel = false; }
+        if (escopo === 'geral' || escopo === 'bonus') { elegivelBonus = false; }
+        break;
       case 'pontos': pontos += Number(r.acaoValor) || 0; break;
       case 'multiplicador': multiplicadorAcumulado *= (Number(r.acaoValor) || 1); break;
       case 'bonus_percentual': pontos += pontos * ((Number(r.acaoValor) || 0) / 100); break;
@@ -785,7 +795,7 @@ function aplicarRegras(regras, metricas, pontosBase) {
   pontos = pontos * multiplicadorAcumulado;
   if (desclassificado) { pontos = 0; elegivel = false; }
 
-  return { pontosFinal: Math.max(0, Math.round(pontos * 100) / 100), elegivel, desclassificado, log };
+  return { pontosFinal: Math.max(0, Math.round(pontos * 100) / 100), elegivel, elegivelBonus, desclassificado, log };
 }
 
 /**
@@ -1190,6 +1200,14 @@ function campTabInfoHtml(c) {
       <div class="chip-bar">${TIPOS_RANKING.map(t => `<div class="chip-btn ${((c.tipos || []).includes(t)) ? 'active' : ''}" onclick="this.classList.toggle('active')" data-tipo="${t}">${t}</div>`).join('')}</div>
     </div>
     <div class="field"><label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="cf_ativa" ${c.ativa ? 'checked' : ''} style="width:16px;height:16px;"> Campanha ativa</label></div>
+    <div class="field"><label>Meta coletiva (%)</label><input id="cf_metaColetivaPct" type="number" step="0.1" value="${c.metaColetivaPct ?? ''}" placeholder="Ex: 12"></div>
+    <div class="field"><label>Meta coletiva — métrica</label>
+      <select id="cf_metaColetivaCampo">
+        <option value="kgCampanha" ${c.metaColetivaCampo === 'kgCampanha' || !c.metaColetivaCampo ? 'selected' : ''}>Crescimento de KG</option>
+        <option value="faturamentoCampanha" ${c.metaColetivaCampo === 'faturamentoCampanha' ? 'selected' : ''}>Crescimento de Faturamento</option>
+      </select>
+    </div>
+    <div class="field"><label>Requisito mínimo do bônus (clientes)</label><input id="cf_minClientesBonus" type="number" value="${c.minClientesBonus ?? ''}" placeholder="Ex: 5"></div>
   </div>`;
 }
 
@@ -1237,8 +1255,9 @@ async function analisarBannerComIA(inputEl) {
           escopo: r.escopo || 'marca',
           valor: r.valor || '',
           pontosPorKg: r.pontosPorKg || '',
+          pontosPorUnidade: r.pontosPorUnidade || '',
           pontosFixos: r.pontosFixos || '',
-          multiplicador: 1,
+          multiplicador: r.multiplicador || 1,
           ativa: true
         })).join('');
       }
@@ -1256,8 +1275,13 @@ async function analisarBannerComIA(inputEl) {
 function regraRowHtml(r = {}) {
   return `<div class="rule-row" data-row>
     <input placeholder="Nome da regra" value="${r.nome || ''}" data-f="nome">
-    <select data-f="campo">${CAMPOS_METRICA.map(c => `<option value="${c.valor}" ${r.campo === c.valor ? 'selected' : ''}>${c.label}</option>`).join('')}</select>
-    <select data-f="operador">${Object.keys(OPERADORES).map(op => `<option value="${op}" ${r.operador === op ? 'selected' : ''}>${op}</option>`).join('')}</select>
+<select data-f="campo">${CAMPOS_METRICA.map(c => `<option value="${c.valor}" ${r.campo === c.valor ? 'selected' : ''}>${c.label}</option>`).join('')}</select>
+    <select data-f="escopo" title="Em quais rankings essa regra vale">
+      <option value="geral" ${(!r.escopo || r.escopo === 'geral') ? 'selected' : ''}>Geral</option>
+      <option value="principal" ${r.escopo === 'principal' ? 'selected' : ''}>Só ranking principal</option>
+      <option value="bonus" ${r.escopo === 'bonus' ? 'selected' : ''}>Só bônus</option>
+    </select>
+        <select data-f="operador">${Object.keys(OPERADORES).map(op => `<option value="${op}" ${r.operador === op ? 'selected' : ''}>${op}</option>`).join('')}</select>
     <input placeholder="Valor" value="${r.valor ?? ''}" data-f="valor">
     <input type="checkbox" class="rule-toggle" title="Obrigatória (desclassifica se falhar)" data-f="obrigatoria" ${r.obrigatoria ? 'checked' : ''}>
     <select data-f="acao">${ACOES.map(a => `<option value="${a.valor}" ${r.acao === a.valor ? 'selected' : ''}>${a.label}</option>`).join('')}</select>
@@ -1339,6 +1363,9 @@ async function salvarCampanha() {
     descricao: document.getElementById('cf_descricao').value,
     premiacoes: document.getElementById('cf_premiacoes').value,
     ativa: document.getElementById('cf_ativa').checked,
+    metaColetivaPct: Number(document.getElementById('cf_metaColetivaPct').value) || null,
+    metaColetivaCampo: document.getElementById('cf_metaColetivaCampo').value,
+    minClientesBonus: Number(document.getElementById('cf_minClientesBonus').value) || null,
     tipos, desempate
   };
 
@@ -1924,7 +1951,7 @@ async function calcularApuracao() {
   }
 
   const repIds = [...new Set(vendasCamp.map(v => v.representanteId).filter(Boolean))];
-  const totalProdutosAtivos = Math.max(1, produtos.filter(p => p.ativo !== false).length);
+  const totalProdutosAtivos = Math.max(1, produtos.filter(p => p.ativo !== false && (!campanha.fornecedor || p.fornecedor === campanha.fornecedor)).length);
   const resultados = repIds.map(repId => {
     const rep = representantes.find(r => r.id === repId) || { nome: '—' };
     const vCamp = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'campanha');
@@ -1939,12 +1966,15 @@ async function calcularApuracao() {
     const pedidos = new Set(vCamp.map(v => v.pedido)).size;
     const produtosDistintos = new Set(vCamp.map(v => v.codigo || v.produto)).size;
     const mix = Math.min(100, (produtosDistintos / totalProdutosAtivos) * 100);
-    const positivacao = clientesAnterior > 0 ? (clientesCampanha / clientesAnterior) * 100 : (clientesCampanha > 0 ? 100 : 0);
+    // "positivação" = contagem de clientes ativados no período (não crescimento).
+    // Mantido crescimentoClientes separado, caso alguma campanha queira usar % de crescimento de carteira.
+    const positivacao = clientesCampanha;
+    const crescimentoClientes = clientesAnterior > 0 ? ((clientesCampanha - clientesAnterior) / clientesAnterior) * 100 : (clientesCampanha > 0 ? 100 : 0);
     const crescimentoKg = kgAnterior > 0 ? ((kgCampanha - kgAnterior) / kgAnterior) * 100 : (kgCampanha > 0 ? 100 : 0);
     const crescimentoFaturamento = faturamentoAnterior > 0 ? ((faturamentoCampanha - faturamentoAnterior) / faturamentoAnterior) * 100 : (faturamentoCampanha > 0 ? 100 : 0);
 
     const pontosProdutos = calcularPontosProdutos(vCamp, regrasProdCamp);
-    const metricas = { kgCampanha, kgAnterior, faturamentoCampanha, faturamentoAnterior, clientesCampanha, clientesAnterior, pedidos, produtosDistintos, mix, positivacao, crescimentoKg, crescimentoFaturamento, pontosProdutos };
+    const metricas = { kgCampanha, kgAnterior, faturamentoCampanha, faturamentoAnterior, clientesCampanha, clientesAnterior, pedidos, produtosDistintos, mix, positivacao, crescimentoClientes, crescimentoKg, crescimentoFaturamento, pontosProdutos };
     const resultado = aplicarRegras(regrasCamp, metricas, pontosProdutos);
 
     return { representanteId: repId, nome: rep.nome, regiao: rep.regiao || '—', ...metricas, ...resultado };
@@ -1955,11 +1985,22 @@ async function calcularApuracao() {
   const existentes = (await DB.getAll('apuracoes')).filter(a => a.id === apuracaoId);
   for (const a of existentes) await DB.remove('apuracoes', a.id);
 
+  // Meta coletiva: soma o campo escolhido (kg ou faturamento) de TODOS os representantes elegíveis
+  // no período da campanha vs. o mesmo total no período anterior.
+  const campoColetivo = campanha.metaColetivaCampo === 'faturamentoCampanha' ? 'faturamentoCampanha' : 'kgCampanha';
+  const campoColetivoAnterior = campoColetivo === 'faturamentoCampanha' ? 'faturamentoAnterior' : 'kgAnterior';
+  const elegiveisColetivo = resultados.filter(r => r.elegivel);
+  const totalAtual = elegiveisColetivo.reduce((s, r) => s + (r[campoColetivo] || 0), 0);
+  const totalAnterior = elegiveisColetivo.reduce((s, r) => s + (r[campoColetivoAnterior] || 0), 0);
+  const crescimentoColetivo = totalAnterior > 0 ? ((totalAtual - totalAnterior) / totalAnterior) * 100 : (totalAtual > 0 ? 100 : 0);
+  const metaColetivaBatida = campanha.metaColetivaPct != null ? crescimentoColetivo >= campanha.metaColetivaPct : null;
+
   const apuracao = {
     id: apuracaoId, campanhaId, geradoEm: new Date().toISOString(), resultados,
     parcial: isParcial, ateSemana: isParcial ? corteInfo.numSemanas : null,
     intervaloCampanha: isParcial ? { inicio: corteInfo.campanhaInicioISO, fim: corteInfo.campanhaFimISO } : { inicio: campanha.dataInicio, fim: campanha.dataFim },
-    intervaloAnterior: isParcial ? { inicio: corteInfo.anteriorInicioISO, fim: corteInfo.anteriorFimISO } : { inicio: campanha.periodoAnteriorInicio, fim: campanha.periodoAnteriorFim }
+    intervaloAnterior: isParcial ? { inicio: corteInfo.anteriorInicioISO, fim: corteInfo.anteriorFimISO } : { inicio: campanha.periodoAnteriorInicio, fim: campanha.periodoAnteriorFim },
+    metaColetiva: { campo: campoColetivo, pctExigido: campanha.metaColetivaPct, pctAtingido: Math.round(crescimentoColetivo * 100) / 100, batida: metaColetivaBatida }
   };
   await DB.put('apuracoes', apuracao);
   showToast(`Apuração ${isParcial ? 'parcial ' : ''}calculada para ${resultados.length} representante(s).`);
@@ -1972,6 +2013,11 @@ function desenharApuracao(apuracao) {
     <div style="font-size:11px; color:var(--gray-text); margin-bottom:8px;">
       Gerada em ${new Date(apuracao.geradoEm).toLocaleString('pt-BR')}
       ${apuracao.parcial ? ` · <span class="period-status-badge andamento">Parcial — até Semana ${apuracao.ateSemana}</span>` : ' · <span class="period-status-badge concluida">Campanha completa</span>'}
+      ${apuracao.metaColetiva && apuracao.metaColetiva.pctExigido != null ? `
+        · Meta coletiva (${apuracao.metaColetiva.campo === 'faturamentoCampanha' ? 'Faturamento' : 'Kg'}): 
+        <span class="period-status-badge ${apuracao.metaColetiva.batida ? 'concluida' : 'andamento'}">
+          ${apuracao.metaColetiva.pctAtingido}% de ${apuracao.metaColetiva.pctExigido}% exigido — ${apuracao.metaColetiva.batida ? 'Batida ✅' : 'Não batida ❌'}
+        </span>` : ''}
     </div>
     <div class="table-wrap"><table class="data-table">
       <thead><tr><th>#</th><th>Representante</th><th>Kg (campanha)</th><th>Faturamento</th><th>Crescimento Kg</th><th>Clientes</th><th>Pontos</th><th>Elegível</th></tr></thead>
@@ -2021,10 +2067,10 @@ async function carregarRanking() {
   const apuracao = candidatas.find(a => !a.parcial) || candidatas.sort((a, b) => new Date(b.geradoEm) - new Date(a.geradoEm))[0];
   if (!apuracao) { document.getElementById('rankingResultado').innerHTML = emptyState('📊', 'Calcule a apuração desta campanha primeiro.', `<button class="btn btn-primary btn-sm" onclick="navigate('apuracao')">Ir para Apuração</button>`); return; }
 
-  const elegiveis = apuracao.resultados.filter(r => r.elegivel);
+  const elegiveis = apuracao.resultados.filter(r => tipo === 'positivacao' ? r.elegivelBonus : r.elegivel);
   const ordenados = tipo === 'pontosFinal' ? ordenarComDesempate(elegiveis, campanha.desempate) : [...elegiveis].sort((a, b) => (b[tipo] || 0) - (a[tipo] || 0));
   _rankingAtual = ordenados;
-  const isPct = tipo === 'crescimentoKg' || tipo === 'positivacao' || tipo === 'mix';
+  const isPct = tipo === 'crescimentoKg' || tipo === 'crescimentoClientes' || tipo === 'mix';
   const isMoney = tipo === 'faturamentoCampanha';
   const isKg = tipo === 'kgCampanha';
 
