@@ -280,6 +280,10 @@ const MAPA_CATEGORIAS_API = {
 function categoriaPorIdAPI(idCategoria) {
   return MAPA_CATEGORIAS_API[String(idCategoria)] || '';
 }
+// 'produtos' (cache do catálogo) e 'config' (preferência de tema) continuam
+// no navegador: são dados pessoais, não precisam ser vistos pela equipe toda.
+const STORES_LOCAIS = ['produtos', 'config'];
+
 let _db = null;
 
 function openDB() {
@@ -306,10 +310,9 @@ function uid() {
   return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
 }
 
-const DB = {
-  uid,
+/* ---- camada local (IndexedDB) — usada só por 'produtos' e 'config' ---- */
+const DBLocal = {
   async init() { if (!_db) await openDB(); return _db; },
-
   async getAll(store) {
     await this.init();
     return new Promise((resolve, reject) => {
@@ -318,7 +321,6 @@ const DB = {
       req.onerror = () => reject(req.error);
     });
   },
-
   async get(store, id) {
     await this.init();
     return new Promise((resolve, reject) => {
@@ -327,7 +329,6 @@ const DB = {
       req.onerror = () => reject(req.error);
     });
   },
-
   async put(store, obj) {
     await this.init();
     if (!obj.id) obj.id = uid();
@@ -337,7 +338,6 @@ const DB = {
       req.onerror = () => reject(req.error);
     });
   },
-
   async putMany(store, list) {
     await this.init();
     return new Promise((resolve, reject) => {
@@ -347,7 +347,6 @@ const DB = {
       s.transaction.onerror = () => reject(s.transaction.error);
     });
   },
-
   async remove(store, id) {
     await this.init();
     return new Promise((resolve, reject) => {
@@ -356,7 +355,6 @@ const DB = {
       req.onerror = () => reject(req.error);
     });
   },
-
   async clearStore(store) {
     await this.init();
     return new Promise((resolve, reject) => {
@@ -365,18 +363,75 @@ const DB = {
       req.onerror = () => reject(req.error);
     });
   },
+};
 
-  async clearAll() {
-    for (const s of STORES) await this.clearStore(s);
+/* ---- camada remota (Supabase, via rotas serverless) — usada pelos demais stores ---- */
+const ENDPOINT_POR_STORE = {
+  campanhas: '/api/campanhas',
+  representantes: '/api/campanhas-representantes',
+  vendas: '/api/campanhas-vendas',
+  regras: '/api/campanhas-regras',
+  regrasProduto: '/api/campanhas-regras-produto',
+  mapeamentos: '/api/campanhas-mapeamentos',
+  apuracoes: '/api/campanhas-apuracoes',
+};
+
+async function apiCall(method, store, params, body) {
+  const url = ENDPOINT_POR_STORE[store];
+  if (!url) throw new Error('Store sem rota de API: ' + store);
+  const qs = params ? new URLSearchParams(params).toString() : '';
+  const resp = await fetch(url + (qs ? '?' + qs : ''), {
+    method,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined
+  });
+  if (!resp.ok) {
+    let msg = `Erro ao acessar ${store} (${resp.status})`;
+    try { const j = await resp.json(); if (j.erro) msg = j.erro; } catch (e) {}
+    throw new Error(msg);
+  }
+  return resp.status === 204 ? null : resp.json();
+}
+
+const DBRemote = {
+  async getAll(store) { return await apiCall('GET', store); },
+  async get(store, id) {
+    const lista = await apiCall('GET', store, { id });
+    return (lista && lista[0]) || null;
   },
+  async put(store, obj) {
+    if (!obj.id) obj.id = uid();
+    await apiCall('POST', store, null, obj);
+    return obj;
+  },
+  async putMany(store, list) {
+    list.forEach(obj => { if (!obj.id) obj.id = uid(); });
+    if (list.length) await apiCall('POST', store, null, list);
+    return list;
+  },
+  async remove(store, id) { await apiCall('DELETE', store, { id }); return true; },
+  async clearStore(store) { await apiCall('DELETE', store, { all: 1 }); return true; },
+};
+
+/* ---- fachada única: mesma interface de sempre, roteando por store ---- */
+const DB = {
+  uid,
+  _camada(store) { return STORES_LOCAIS.includes(store) ? DBLocal : DBRemote; },
+  async init() { return DBLocal.init(); },
+  async getAll(store) { return this._camada(store).getAll(store); },
+  async get(store, id) { return this._camada(store).get(store, id); },
+  async put(store, obj) { return this._camada(store).put(store, obj); },
+  async putMany(store, list) { return this._camada(store).putMany(store, list); },
+  async remove(store, id) { return this._camada(store).remove(store, id); },
+  async clearStore(store) { return this._camada(store).clearStore(store); },
+  async clearAll() { for (const s of STORES) await this.clearStore(s); },
 
   async getConfig(key, def = null) {
-    const row = await this.get('config', key);
+    const row = await DBLocal.get('config', key);
     return row ? row.value : def;
   },
-
   async setConfig(key, value) {
-    return this.put('config', { id: key, value });
+    return DBLocal.put('config', { id: key, value });
   }
 };
 
@@ -446,7 +501,7 @@ const CATALOGO = {
 function fmtMoney(n) { n = Number(n) || 0; return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
 function fmtKg(n) { n = Number(n) || 0; return n.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kg'; }
 function fmtNum(n) { return (Number(n) || 0).toLocaleString('pt-BR'); }
-function fmtPct(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + n.toFixed(1) + '%'; }
+function fmtSaldo(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + fmtNum(n); }
 function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('pt-BR'); }
 function fmtDataBR(d) { if (!d) return '—'; return d.toLocaleDateString('pt-BR'); }
 
@@ -976,6 +1031,13 @@ async function inicializar() {
 }
 
 window.addEventListener('DOMContentLoaded', inicializar);
+
+// Agora que campanhas/representantes/vendas/regras/apurações vivem no Supabase,
+// falhas de rede ou da API viram um toast em vez de travar silenciosamente.
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = (e.reason && e.reason.message) ? e.reason.message : 'Erro ao comunicar com o banco de dados.';
+  showToast(msg, true);
+});
 
 
 /* ===== pages.js ===== */
@@ -1695,20 +1757,20 @@ async function irParaApuracaoParcial(campanhaId, ateSemana) {
 
 /* ══════════════════ IMPORTAÇÃO (WIZARD) ══════════════════ */
 const CAMPOS_ALVO = [
-  { chave: 'representante', label: 'Representante', aliases: ['representante', 'vendedor', 'rca', 'consultor'] },
-  { chave: 'cliente', label: 'Cliente', aliases: ['cliente', 'nome do cliente', 'razao social', 'nome fantasia'] },
-  { chave: 'codigo', label: 'Código do Produto', aliases: ['codigo', 'cod produto', 'sku', 'id produto'] },
-  { chave: 'produto', label: 'Nome do Produto', aliases: ['produto', 'descricao', 'descricao produto'] },
-  { chave: 'categoria', label: 'Categoria', aliases: ['categoria'] },
+  { chave: 'representante', label: 'Vendedor (Nome-Código)', aliases: ['vendedor', 'representante', 'rca'] },
+  { chave: 'clienteBruto', label: 'Cliente (Código - Nome)', aliases: ['cliente', 'id - nome do cliente', 'nome do cliente'] },
+  { chave: 'produtoBruto', label: 'Produto (Código - Descrição)', aliases: ['produto', 'id - descricao produto', 'descricao produto'] },
+  { chave: 'categoria', label: 'Categoria/Segmento', aliases: ['categoria', 'segmento'] },
   { chave: 'marca', label: 'Marca', aliases: ['marca'] },
-  { chave: 'kg', label: 'Quantidade (Kg)', aliases: ['kg', 'quantidade', 'qtde', 'peso'] },
-  { chave: 'valor', label: 'Valor', aliases: ['valor', 'faturamento', 'total'] },
-  { chave: 'data', label: 'Data', aliases: ['data', 'data venda', 'emissao'] },
-  { chave: 'pedido', label: 'Pedido', aliases: ['pedido', 'numero pedido', 'nf', 'nota fiscal'] },
+  { chave: 'kg', label: 'Peso (Kg)', aliases: ['peso kg', 'kg', 'peso'] },
+  { chave: 'unidades', label: 'Qtde (unidade de venda)', aliases: ['qtde', 'quantidade'] },
+  { chave: 'valor', label: 'Valor', aliases: ['total de venda', 'valor', 'faturamento'] },
+  { chave: 'data', label: 'Data', aliases: ['data de emissao do pedido', 'data', 'emissao'] },
+  { chave: 'pedido', label: 'Pedido', aliases: ['pedido de venda', 'pedido', 'nf'] },
   { chave: 'cidade', label: 'Cidade', aliases: ['cidade'] },
   { chave: 'estado', label: 'Estado (UF)', aliases: ['uf', 'estado'] },
-  { chave: 'unidades', label: 'Quantidade (Unidades)', aliases: ['qtde', 'quantidade', 'unidades', 'un'] },
 ];
+
 let IMP = { step: 1, campanhaId: '', periodo: 'campanha', headers: [], rows: [], mapping: {} };
 
 async function renderImportacao() {
@@ -1809,41 +1871,54 @@ function mapRow(r) {
   CAMPOS_ALVO.forEach(c => { out[c.chave] = IMP.mapping[c.chave] ? r[IMP.mapping[c.chave]] : ''; });
   return out;
 }
-
+function splitCodigoNome(bruto) {
+  const s = String(bruto || '').trim();
+  const m = s.match(/^(\S+)\s*-\s*(.+)$/);
+  return m ? { codigo: m[1].trim(), nome: m[2].trim() } : { codigo: '', nome: s };
+}
+function splitVendedor(bruto) {
+  const s = String(bruto || '').trim();
+  const m = s.match(/^(.*)-(\d+)$/); // nome termina, código numérico no final
+  return m ? { nome: m[1].trim(), codigoRep: m[2].trim() } : { nome: s, codigoRep: '' };
+}
 async function wizardConfirmarImportacao() {
   const representantesExistentes = await DB.getAll('representantes');
   const repPorNome = new Map(representantesExistentes.map(r => [normalizeKey(r.nome), r]));
   const novosReps = [];
   const vendas = IMP.rows.map(r => {
-    const m = mapRow(r);
-    const nomeRep = String(m.representante || '').trim();
-    const chave = normalizeKey(nomeRep);
-    let rep = repPorNome.get(chave);
-    if (!rep && nomeRep) {
-      rep = { id: DB.uid(), nome: toTitleCasePtBr(nomeRep), codigo: '', regiao: '', supervisor: '', ativo: true };
-      repPorNome.set(chave, rep);
-      novosReps.push(rep);
-    }
-    return {
-      id: DB.uid(),
-      campanhaId: IMP.campanhaId,
-      periodo: IMP.periodo,
-      representanteId: rep ? rep.id : null,
-      representanteNome: rep ? rep.nome : nomeRep,
-      cliente: String(m.cliente || '').trim(),
-      codigo: String(m.codigo || '').trim(),
-      produto: String(m.produto || '').trim(),
-      categoria: String(m.categoria || '').trim(),
-      marca: String(m.marca || '').trim(),
-      unidades: parseNumBR(m.unidades),
-      kg: parseNumBR(m.kg),
-      valor: parseNumBR(m.valor),
-      data: m.data || '',
-      pedido: String(m.pedido || '').trim(),
-      cidade: String(m.cidade || '').trim(),
-      uf: String(m.estado || '').trim().toUpperCase()
-    };
-  });
+  const m = mapRow(r);
+  const vend = splitVendedor(m.representante);
+  const nomeRep = vend.nome;
+  const chave = normalizeKey(nomeRep);
+  let rep = repPorNome.get(chave);
+  if (!rep && nomeRep) {
+    rep = { id: DB.uid(), nome: toTitleCasePtBr(nomeRep), codigo: vend.codigoRep, regiao: '', supervisor: '', ativo: true };
+    repPorNome.set(chave, rep);
+    novosReps.push(rep);
+  }
+  const cli = splitCodigoNome(m.clienteBruto);
+  const prod = splitCodigoNome(m.produtoBruto);
+  return {
+    id: DB.uid(),
+    campanhaId: IMP.campanhaId,
+    periodo: IMP.periodo,
+    representanteId: rep ? rep.id : null,
+    representanteNome: rep ? rep.nome : nomeRep,
+    cliente: cli.nome,
+    clienteCodigo: cli.codigo,
+    codigo: prod.codigo,
+    produto: prod.nome,
+    categoria: String(m.categoria || '').trim(),
+    marca: String(m.marca || '').trim(),
+    unidades: parseNumBR(m.unidades),
+    kg: parseNumBR(m.kg),
+    valor: parseNumBR(m.valor),
+    data: m.data || '',
+    pedido: String(m.pedido || '').trim(),
+    cidade: String(m.cidade || '').trim(),
+    uf: String(m.estado || '').trim().toUpperCase()
+  };
+});
   if (novosReps.length) await DB.putMany('representantes', novosReps);
   await DB.putMany('vendas', vendas);
   await DB.put('mapeamentos', { id: 'map_' + IMP.campanhaId + '_' + IMP.periodo, campanhaId: IMP.campanhaId, periodo: IMP.periodo, mapping: IMP.mapping });
@@ -1995,14 +2070,14 @@ async function calcularApuracao() {
     const kgAnterior = vAnt.reduce((s, v) => s + v.kg, 0);
     const faturamentoCampanha = vCamp.reduce((s, v) => s + v.valor, 0);
     const faturamentoAnterior = vAnt.reduce((s, v) => s + v.valor, 0);
-    const clientesCampanha = new Set(vCamp.map(v => normalizeKey(v.cliente))).size;
-    const clientesAnterior = new Set(vAnt.map(v => normalizeKey(v.cliente))).size;
+    const clientesCampanha = new Set(vCamp.map(v => v.clienteCodigo || normalizeKey(v.cliente))).size;
+    const clientesAnterior = new Set(vAnt.map(v => v.clienteCodigo || normalizeKey(v.cliente))).size;
     const pedidos = new Set(vCamp.map(v => v.pedido)).size;
     const produtosDistintos = new Set(vCamp.map(v => v.codigo || v.produto)).size;
     const mix = Math.min(100, (produtosDistintos / totalProdutosAtivos) * 100);
     // "positivação" = contagem de clientes ativados no período (não crescimento).
     // Mantido crescimentoClientes separado, caso alguma campanha queira usar % de crescimento de carteira.
-    const positivacao = clientesCampanha;
+    const positivacao = clientesCampanha - clientesAnterior; // saldo de clientes (pode ser negativo)
     const crescimentoClientes = clientesAnterior > 0 ? ((clientesCampanha - clientesAnterior) / clientesAnterior) * 100 : (clientesCampanha > 0 ? 100 : 0);
     const crescimentoKg = kgAnterior > 0 ? ((kgCampanha - kgAnterior) / kgAnterior) * 100 : (kgCampanha > 0 ? 100 : 0);
     const crescimentoFaturamento = faturamentoAnterior > 0 ? ((faturamentoCampanha - faturamentoAnterior) / faturamentoAnterior) * 100 : (faturamentoCampanha > 0 ? 100 : 0);
@@ -2107,9 +2182,10 @@ async function carregarRanking() {
   const elegiveis = apuracao.resultados.filter(r => tipo === 'positivacao' ? r.elegivelBonus : r.elegivel);
   const ordenados = tipo === 'pontosFinal' ? ordenarComDesempate(elegiveis, campanha.desempate) : [...elegiveis].sort((a, b) => (b[tipo] || 0) - (a[tipo] || 0));
   _rankingAtual = ordenados;
-  const isPct = tipo === 'crescimentoKg' || tipo === 'crescimentoClientes' || tipo === 'mix';
-  const isMoney = tipo === 'faturamentoCampanha';
-  const isKg = tipo === 'kgCampanha';
+const isPct = tipo === 'crescimentoKg' || tipo === 'crescimentoClientes' || tipo === 'mix';
+const isSaldo = tipo === 'positivacao';
+const isMoney = tipo === 'faturamentoCampanha';
+const isKg = tipo === 'kgCampanha';
 
   document.getElementById('rankingResultado').innerHTML = `
     ${apuracao.parcial ? `<div style="margin-bottom:8px;"><span class="period-status-badge andamento">Baseado em apuração parcial — até Semana ${apuracao.ateSemana}</span></div>` : ''}
@@ -2118,7 +2194,7 @@ async function carregarRanking() {
       <tbody>${ordenados.map((r, i) => `
         <tr>
           <td><span class="rank-pos">${i + 1}</span></td><td>${r.nome}</td><td>${r.regiao}</td>
-          <td>${isPct ? fmtPct(r[tipo]) : isMoney ? fmtMoney(r[tipo]) : isKg ? fmtKg(r[tipo]) : fmtNum(r[tipo])}</td>
+          ${isPct ? fmtPct(r[tipo]) : isSaldo ? fmtSaldo(r[tipo]) : isMoney ? fmtMoney(r[tipo]) : isKg ? fmtKg(r[tipo]) : fmtNum(r[tipo])}
           <td>${fmtNum(r.pontosFinal)}</td>
           <td><span class="badge-eleg sim">Sim</span></td>
         </tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">Nenhum representante elegível.</div></td></tr>'}</tbody>
