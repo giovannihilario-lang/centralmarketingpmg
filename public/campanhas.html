@@ -366,21 +366,21 @@ const DBLocal = {
 };
 
 /* ---- camada remota (Supabase, via rotas serverless) — usada pelos demais stores ---- */
-const ENDPOINT_POR_STORE = {
-  campanhas: '/api/campanhas',
-  representantes: '/api/campanhas-representantes',
-  vendas: '/api/campanhas-vendas',
-  regras: '/api/campanhas-regras',
-  regrasProduto: '/api/campanhas-regras-produto',
-  mapeamentos: '/api/campanhas-mapeamentos',
-  apuracoes: '/api/campanhas-apuracoes',
+const TABELA_POR_STORE = {
+  campanhas: 'campanhas',
+  representantes: 'campanhas_representantes',
+  vendas: 'campanhas_vendas',
+  regras: 'campanhas_regras',
+  regrasProduto: 'campanhas_regras_produto',
+  mapeamentos: 'campanhas_mapeamentos',
+  apuracoes: 'campanhas_apuracoes',
 };
 
 async function apiCall(method, store, params, body) {
-  const url = ENDPOINT_POR_STORE[store];
-  if (!url) throw new Error('Store sem rota de API: ' + store);
-  const qs = params ? new URLSearchParams(params).toString() : '';
-  const resp = await fetch(url + (qs ? '?' + qs : ''), {
+  const tabela = TABELA_POR_STORE[store];
+  if (!tabela) throw new Error('Store sem tabela mapeada: ' + store);
+  const qs = new URLSearchParams({ ...(params || {}), tabela }).toString();
+  const resp = await fetch('/api/campanhas-data?' + qs, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined
@@ -502,6 +502,10 @@ function fmtMoney(n) { n = Number(n) || 0; return 'R$ ' + n.toLocaleString('pt-B
 function fmtKg(n) { n = Number(n) || 0; return n.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kg'; }
 function fmtNum(n) { return (Number(n) || 0).toLocaleString('pt-BR'); }
 function fmtSaldo(n) { n = Number(n) || 0; return (n >= 0 ? '+' : '') + fmtNum(n); }
+function fmtPct(n) {
+  n = Number(n) || 0;
+  return (n >= 0 ? '+' : '') + n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+}
 function fmtDate(iso) { if (!iso) return '—'; const d = new Date(iso + 'T00:00:00'); return d.toLocaleDateString('pt-BR'); }
 function fmtDataBR(d) { if (!d) return '—'; return d.toLocaleDateString('pt-BR'); }
 
@@ -2247,8 +2251,8 @@ const isKg = tipo === 'kgCampanha';
       <tbody>${ordenados.map((r, i) => `
         <tr>
           <td><span class="rank-pos">${i + 1}</span></td><td>${r.nome}</td><td>${r.regiao}</td>
-          ${isPct ? fmtPct(r[tipo]) : isSaldo ? fmtSaldo(r[tipo]) : isMoney ? fmtMoney(r[tipo]) : isKg ? fmtKg(r[tipo]) : fmtNum(r[tipo])}
-          <td>${fmtNum(r.pontosFinal)}</td>
+<td>${isPct ? fmtPct(r[tipo]) : isSaldo ? fmtSaldo(r[tipo]) : isMoney ? fmtMoney(r[tipo]) : isKg ? fmtKg(r[tipo]) : fmtNum(r[tipo])}</td>
+<td>${fmtNum(r.pontosFinal)}</td>
           <td><span class="badge-eleg sim">Sim</span></td>
         </tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">Nenhum representante elegível.</div></td></tr>'}</tbody>
     </table></div>`;
