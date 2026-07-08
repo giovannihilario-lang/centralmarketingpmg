@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comparativo de Vendas — Anaconda vs Concorrência | PMG Connect</title>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"></noscript>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --g900:#0d2b1a;--g800:#1a4d2e;--g700:#1f6235;--g600:#2d7a4f;
+  --g500:#3d9463;--g400:#4caf70;--g300:#7ecf98;--g200:#b8e8c7;
+  --g100:#e4f5eb;--g50:#f2faf5;
+  --amber:#f59e0b;--red:#ef4444;--blue:#3b82f6;--purple:#7c3aed;--teal:#0891b2;
+  --ink:#0f1f14;--text:#1c3327;--muted:#5a7366;--ghost:#8fa89d;
+  --line:#ddeae2;--bg:#f0f5f2;--surface:#fff;
+  --radius:10px;--radius-lg:16px;
+  --shadow:0 4px 16px rgba(0,0,0,.08);
+  --shadow-lg:0 20px 40px -12px rgba(13,43,26,.18);
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+h1,h2,.card-title,.hero-title,.section-title,.brand-name{font-family:'Sora',sans-serif;}
+
+.header{background:var(--g900);padding:0 32px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 2px 20px rgba(0,0,0,.15);}
+.header-brand{display:flex;align-items:center;gap:12px;}
+.header-logo{width:34px;height:34px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.header-logo img{width:100%;height:100%;object-fit:contain;}
+.header-titles{display:flex;flex-direction:column;line-height:1.2;}
+.header-titles b{color:#fff;font-size:13px;font-weight:700;}
+.header-titles span{color:var(--g300);font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;}
+.header-tag{color:rgba(255,255,255,.5);font-size:11px;font-weight:500;}
+
+.content{max-width:1180px;margin:0 auto;padding:0 32px 64px;}
+
+.hero{
+  margin:32px 0 40px;padding:36px 40px;border-radius:22px;position:relative;overflow:hidden;
+  background:linear-gradient(120deg,var(--g800) 0%,var(--g700) 55%,var(--g600) 100%);
+  box-shadow:var(--shadow-lg);
+  opacity:0;transform:translateY(18px);animation:heroIn .7s var(--ease) forwards;
+}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 85% 20%, rgba(255,255,255,.12), transparent 55%);pointer-events:none;}
+.hero-eyebrow{position:relative;z-index:1;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--g300);margin-bottom:10px;}
+.hero-title{position:relative;z-index:1;font-size:28px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:14px;max-width:720px;}
+.hero-title b{color:var(--g200);}
+.hero-sub{position:relative;z-index:1;font-size:14px;color:rgba(255,255,255,.75);line-height:1.6;max-width:680px;}
+.hero-stats{position:relative;z-index:1;display:flex;gap:32px;margin-top:24px;flex-wrap:wrap;}
+.hero-stat b{display:block;font-size:26px;font-weight:800;color:#fff;}
+.hero-stat span{font-size:11px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.6px;font-weight:600;}
+@keyframes heroIn{to{opacity:1;transform:translateY(0);}}
+
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ghost);margin:44px 0 20px;display:flex;align-items:center;gap:8px;}
+.section-title::after{content:'';flex:1;height:1px;background:var(--line);}
+.section-sub{font-size:13px;color:var(--muted);margin:-14px 0 20px;max-width:640px;line-height:1.5;}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:20px 22px;
+  opacity:0;transform:translateY(14px);animation:cardIn .55s var(--ease) forwards;}
+.kpi:nth-child(1){animation-delay:.04s}.kpi:nth-child(2){animation-delay:.09s}.kpi:nth-child(3){animation-delay:.14s}
+.kpi:nth-child(4){animation-delay:.19s}.kpi:nth-child(5){animation-delay:.24s}
+@keyframes cardIn{to{opacity:1;transform:translateY(0);}}
+.kpi-label{font-size:11px;font-weight:600;color:var(--ghost);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.kpi-value{font-size:24px;font-weight:800;color:var(--ink);font-family:'Sora',sans-serif;}
+.kpi-var{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;margin-top:8px;padding:3px 8px;border-radius:6px;}
+.kpi-var.down{color:#b91c1c;background:#fef2f2;}
+.kpi-var.up{color:#15803d;background:var(--g100);}
+
+.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:20px;}
+.grid2 .panel{min-width:0;}
+@media (max-width:860px){.grid2{grid-template-columns:1fr;}}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow);}
+.panel-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;font-family:'Sora',sans-serif;}
+.panel-sub{font-size:12px;color:var(--muted);margin-bottom:16px;}
+.chart-wrap{position:relative;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--ghost);padding:0 12px 10px;border-bottom:2px solid var(--line);}
+td{padding:12px 12px;border-bottom:1px solid var(--line);color:var(--text);}
+tr:last-child td{border-bottom:none;}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+.brand-cell{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--ink);}
+.dot{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+.pill{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:11.5px;font-weight:700;}
+.pill.up{color:#15803d;background:var(--g100);}
+.pill.down{color:#b91c1c;background:#fef2f2;}
+.pill.neutral{color:var(--muted);background:var(--bg);}
+.row-anaconda{background:var(--g50);}
+.row-anaconda td{font-weight:700;}
+
+.two-col-tables{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;}
+@media (max-width:860px){.two-col-tables{grid-template-columns:1fr;}}
+
+.footnote{margin-top:44px;padding:18px 22px;background:var(--g50);border:1px dashed var(--g300);border-radius:var(--radius);font-size:12px;color:var(--muted);line-height:1.6;}
+.footnote b{color:var(--g700);}
+.footer{text-align:center;padding:28px 0 10px;font-size:11px;color:var(--ghost);}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <div class="header-logo"><img src="assets/pmglogo.png" alt="Logo PMG Atacadista"></div>
+    <div class="header-titles">
+      <b>PMG Connect</b>
+      <span>PMG Atacadista</span>
+    </div>
+  </div>
+  <div class="header-tag">Comparativo de Vendas · Farinhas</div>
+</div>
+
+<div class="content">
+
+  <section class="hero">
+    <div class="hero-eyebrow">Comparativo de Vendas — Jan a Jun (YTD)</div>
+    <div class="hero-title">Anaconda segue líder de mercado, mas perdeu <b>7,75 p.p.</b> de participação para a concorrência entre 2025 e 2026.</div>
+    <div class="hero-sub">Enquanto o mercado de farinhas acompanhado cresceu 2,4% em receita e 12,2% em volume, a Anaconda recuou em quase todos os indicadores — o espaço foi ocupado principalmente por Buquê e Maria Inês.</div>
+    <div class="hero-stats">
+      <div class="hero-stat"><b>59,3%</b><span>Market share 2026</span></div>
+      <div class="hero-stat"><b>-9,46%</b><span>Receita YTD</span></div>
+      <div class="hero-stat"><b>-3,85%</b><span>Volume (ton)</span></div>
+      <div class="hero-stat"><b>-6,64%</b><span>Clientes ativos</span></div>
+    </div>
+  </section>
+
+  <div class="section-title">Indicadores Anaconda — YTD (Jan–Jun)</div>
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">Receita 2026</div>
+      <div class="kpi-value">R$ 14,24 mi</div>
+      <div class="kpi-var down">▼ 9,46% vs 2025</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Pedidos</div>
+      <div class="kpi-value">43.353</div>
+      <div class="kpi-var down">▼ 3,41% vs 2025</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Ticket Médio</div>
+      <div class="kpi-value">R$ 328,57</div>
+      <div class="kpi-var down">▼ 6,27% vs 2025</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Volume</div>
+      <div class="kpi-value">4.114,6 ton</div>
+      <div class="kpi-var down">▼ 3,85% vs 2025</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Clientes Ativos</div>
+      <div class="kpi-value">4.431</div>
+      <div class="kpi-var down">▼ 6,64% vs 2025</div>
+    </div>
+  </div>
+
+  <div class="section-title">Market Share — Anaconda vs Concorrência</div>
+  <div class="section-sub">Participação em receita, considerando Anaconda e as marcas concorrentes com dados disponíveis (101, Buquê, J.Macêdo/Dona Benta, Maria Inês, Reisa). Base: Jan–Jun de cada ano.</div>
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">Receita por marca — 2025 vs 2026</div>
+      <div class="panel-sub">Valores em R$, YTD Jan–Jun</div>
+      <div class="chart-wrap" style="height:300px;"><canvas id="chartRevenueBrand"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Participação de mercado (receita)</div>
+      <div class="panel-sub">2025 → 2026</div>
+      <div class="chart-wrap" style="height:300px;display:flex;gap:8px;">
+        <canvas id="chartShare2025"></canvas>
+        <canvas id="chartShare2026"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:20px;">
+    <div class="panel-title">Comparativo detalhado por marca</div>
+    <div class="panel-sub">Receita, volume e evolução de participação — YTD Jan–Jun</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="num">Receita 2025</th>
+          <th class="num">Receita 2026</th>
+          <th class="num">Var. Receita</th>
+          <th class="num">Share 2025</th>
+          <th class="num">Share 2026</th>
+          <th class="num">Δ Share</th>
+          <th class="num">Var. Volume (kg)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="row-anaconda">
+          <td><div class="brand-cell"><span class="dot" style="background:#2d7a4f"></span>Anaconda</div></td>
+          <td class="num">R$ 15.732.717,86</td>
+          <td class="num">R$ 14.244.448,43</td>
+          <td class="num"><span class="pill down">▼ 9,46%</span></td>
+          <td class="num">67,07%</td>
+          <td class="num">59,32%</td>
+          <td class="num"><span class="pill down">-7,75 p.p.</span></td>
+          <td class="num"><span class="pill down">▼ 3,85%</span></td>
+        </tr>
+        <tr>
+          <td><div class="brand-cell"><span class="dot" style="background:#f59e0b"></span>Farinhas 101</div></td>
+          <td class="num">R$ 3.732.046,26</td>
+          <td class="num">R$ 3.014.791,80</td>
+          <td class="num"><span class="pill down">▼ 19,22%</span></td>
+          <td class="num">15,91%</td>
+          <td class="num">12,55%</td>
+          <td class="num"><span class="pill down">-3,36 p.p.</span></td>
+          <td class="num"><span class="pill down">▼ 17,31%</span></td>
+        </tr>
+        <tr>
+          <td><div class="brand-cell"><span class="dot" style="background:#3b82f6"></span>Farinhas Buquê</div></td>
+          <td class="num">R$ 1.101.769,43</td>
+          <td class="num">R$ 2.108.780,22</td>
+          <td class="num"><span class="pill up">▲ 91,40%</span></td>
+          <td class="num">4,70%</td>
+          <td class="num">8,78%</td>
+          <td class="num"><span class="pill up">+4,08 p.p.</span></td>
+          <td class="num"><span class="pill up">▲ 122,31%</span></td>
+        </tr>
+        <tr>
+          <td><div class="brand-cell"><span class="dot" style="background:#7c3aed"></span>J.Macêdo (Dona Benta)</div></td>
+          <td class="num">R$ 1.273.909,64</td>
+          <td class="num">R$ 1.306.382,58</td>
+          <td class="num"><span class="pill up">▲ 2,55%</span></td>
+          <td class="num">5,43%</td>
+          <td class="num">5,44%</td>
+          <td class="num"><span class="pill neutral">+0,01 p.p.</span></td>
+          <td class="num"><span class="pill up">▲ 17,79%</span></td>
+        </tr>
+        <tr>
+          <td><div class="brand-cell"><span class="dot" style="background:#ef4444"></span>Maria Inês</div></td>
+          <td class="num">R$ 1.617.243,07</td>
+          <td class="num">R$ 2.703.677,66</td>
+          <td class="num"><span class="pill up">▲ 67,18%</span></td>
+          <td class="num">6,89%</td>
+          <td class="num">11,26%</td>
+          <td class="num"><span class="pill up">+4,36 p.p.</span></td>
+          <td class="num"><span class="pill up">▲ 77,77%</span></td>
+        </tr>
+        <tr>
+          <td><div class="brand-cell"><span class="dot" style="background:#0891b2"></span>Reisa</div></td>
+          <td class="num">R$ 0,00</td>
+          <td class="num">R$ 635.755,27</td>
+          <td class="num"><span class="pill up">Novo entrante</span></td>
+          <td class="num">0,00%</td>
+          <td class="num">2,65%</td>
+          <td class="num"><span class="pill up">+2,65 p.p.</span></td>
+          <td class="num"><span class="pill up">Novo entrante</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Evolução Mensal — Anaconda</div>
+  <div class="section-sub">Receita mensal Jan–Jun, comparando 2024, 2025 e 2026.</div>
+  <div class="panel">
+    <div class="chart-wrap" style="height:320px;"><canvas id="chartMonthly"></canvas></div>
+  </div>
+
+  <div class="two-col-tables">
+    <div class="panel">
+      <div class="panel-title">Segmentos — Anaconda</div>
+      <div class="panel-sub">Receita por segmento, 2025 vs 2026</div>
+      <table>
+        <thead><tr><th>Segmento</th><th class="num">2025</th><th class="num">2026</th><th class="num">Var.</th></tr></thead>
+        <tbody>
+          <tr><td>Pizzaria</td><td class="num">R$ 10,14 mi</td><td class="num">R$ 9,32 mi</td><td class="num"><span class="pill down">▼ 8,01%</span></td></tr>
+          <tr><td>Restaurante / Cantina</td><td class="num">R$ 1,46 mi</td><td class="num">R$ 1,27 mi</td><td class="num"><span class="pill down">▼ 13,04%</span></td></tr>
+          <tr><td>Pastelaria</td><td class="num">R$ 503,6 mil</td><td class="num">R$ 660,0 mil</td><td class="num"><span class="pill up">▲ 31,07%</span></td></tr>
+          <tr><td>Pessoa Física</td><td class="num">R$ 526,0 mil</td><td class="num">R$ 383,3 mil</td><td class="num"><span class="pill down">▼ 27,14%</span></td></tr>
+          <tr><td>Lanchonete / Cafeteria</td><td class="num">R$ 469,3 mil</td><td class="num">R$ 208,7 mil</td><td class="num"><span class="pill down">▼ 55,53%</span></td></tr>
+          <tr><td>Outros</td><td class="num">R$ 708,0 mil</td><td class="num">R$ 242,6 mil</td><td class="num"><span class="pill down">▼ 65,73%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Produtos Anaconda — % do total (2024–2026)</div>
+      <div class="panel-sub">Participação acumulada por SKU</div>
+      <table>
+        <thead><tr><th>Produto</th><th class="num">% Total</th></tr></thead>
+        <tbody>
+          <tr><td>Farinha Pizza 5kg</td><td class="num">65,07%</td></tr>
+          <tr><td>Farinha Premium 5kg</td><td class="num">10,16%</td></tr>
+          <tr><td>Farinha Pastel 5kg</td><td class="num">7,80%</td></tr>
+          <tr><td>Farinha Tipo 1 5kg</td><td class="num">6,99%</td></tr>
+          <tr><td>Farinha Longa Ferm. Pizza 5kg</td><td class="num">3,90%</td></tr>
+          <tr><td>Farinha Pequena Premium 1kg</td><td class="num">3,07%</td></tr>
+          <tr><td>Farinha Pequena Tipo 1 1kg</td><td class="num">2,56%</td></tr>
+          <tr><td>Farinha Pequena Integral 1kg</td><td class="num">0,44%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footnote">
+    <b>Nota metodológica:</b> todos os comparativos usam a janela Jan–Jun (YTD) para garantir base comparável entre os anos, já que 2026 está parcial. Os dados de concorrência cobrem as marcas 101, Buquê, J.Macêdo (Dona Benta), Maria Inês e Reisa, extraídas da aba "Consulta" e filtradas para o mesmo período. O market share considera apenas o conjunto de marcas com dados disponíveis nesta base — não representa o mercado total de farinhas.
+  </div>
+
+  <div class="footer">PMG Atacadista © 2026 · Comparativo gerado a partir de anaconda.xlsx e anaconda_e_outras_marcas.xlsx</div>
+
+</div>
+
+<script>
+Chart.defaults.font.family = "'Inter',sans-serif";
+Chart.defaults.color = '#5a7366';
+
+const brandColors = {
+  Anaconda: '#2d7a4f',
+  'Farinhas 101': '#f59e0b',
+  'Farinhas Buquê': '#3b82f6',
+  'J.Macêdo (Dona Benta)': '#7c3aed',
+  'Maria Inês': '#ef4444',
+  Reisa: '#0891b2'
+};
+const brands = Object.keys(brandColors);
+const rev2025 = [15732717.86, 3732046.26, 1101769.43, 1273909.64, 1617243.07, 0];
+const rev2026 = [14244448.43, 3014791.80, 2108780.22, 1306382.58, 2703677.66, 635755.27];
+
+new Chart(document.getElementById('chartRevenueBrand'), {
+  type: 'bar',
+  data: {
+    labels: brands,
+    datasets: [
+      { label: '2025', data: rev2025, backgroundColor: '#b8e8c7', borderRadius: 6 },
+      { label: '2026', data: rev2026, backgroundColor: '#2d7a4f', borderRadius: 6 }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      y: { ticks: { callback: v => 'R$ ' + (v/1e6).toFixed(1) + 'mi' }, grid:{color:'#ddeae2'} },
+      x: { ticks: { autoSkip:false, maxRotation:20, minRotation:0, font:{size:10.5} }, grid:{display:false} }
+    },
+    plugins: { legend: { position:'top', labels:{boxWidth:12, font:{size:11}} } }
+  }
+});
+
+const share2025 = { labels: brands, data: [67.07, 15.91, 4.70, 5.43, 6.89, 0.00] };
+const share2026 = { labels: brands, data: [59.32, 12.55, 8.78, 5.44, 11.26, 2.65] };
+const donutOpts = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{display:false}, title:{display:true, font:{size:11, weight:'700'}, color:'#8fa89d'} }
+};
+new Chart(document.getElementById('chartShare2025'), {
+  type:'doughnut',
+  data:{ labels:share2025.labels, datasets:[{ data:share2025.data, backgroundColor:brands.map(b=>brandColors[b]), borderWidth:2, borderColor:'#fff' }] },
+  options:{ ...donutOpts, plugins:{...donutOpts.plugins, title:{...donutOpts.plugins.title, text:'2025'}} }
+});
+new Chart(document.getElementById('chartShare2026'), {
+  type:'doughnut',
+  data:{ labels:share2026.labels, datasets:[{ data:share2026.data, backgroundColor:brands.map(b=>brandColors[b]), borderWidth:2, borderColor:'#fff' }] },
+  options:{ ...donutOpts, plugins:{...donutOpts.plugins, title:{...donutOpts.plugins.title, text:'2026'}} }
+});
+
+new Chart(document.getElementById('chartMonthly'), {
+  type: 'line',
+  data: {
+    labels: ['Jan','Fev','Mar','Abr','Mai','Jun'],
+    datasets: [
+      { label:'2024', data:[2744842.17,2212866.44,2502650.18,2885588.42,2662141.44,2714810.07], borderColor:'#b8e8c7', backgroundColor:'transparent', tension:.35, borderWidth:2 },
+      { label:'2025', data:[2645006.84,2261542.75,2698563.23,2642152.33,2496916.20,2988536.51], borderColor:'#4caf70', backgroundColor:'transparent', tension:.35, borderWidth:2 },
+      { label:'2026', data:[2259568.46,2184761.38,2536945.72,2338686.78,2304555.42,2619930.67], borderColor:'#1a4d2e', backgroundColor:'transparent', tension:.35, borderWidth:3 }
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    scales: { y:{ ticks:{ callback:v=>'R$ '+(v/1e6).toFixed(1)+'mi' }, grid:{color:'#ddeae2'} }, x:{ grid:{display:false} } },
+    plugins:{ legend:{ position:'top', labels:{boxWidth:12, font:{size:11}} } }
+  }
+});
+</script>
+</body>
+</html>
