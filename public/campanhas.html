@@ -1212,6 +1212,7 @@ async function openCampanhaModal(id) {
   const desempList = document.getElementById('desempateList');
   if (desempList && window.Sortable) Sortable.create(desempList, { handle: '.handle', animation: 150 });
   atualizarPreviewPeriodo();
+  abrirDndProdutos();
 }
 
 /* ── Preview automático de semanas/período anterior (módulo Períodos) ── */
@@ -1364,29 +1365,75 @@ function campTabRegrasHtml(regras) {
   <div id="regrasList" style="display:flex; flex-direction:column; gap:6px;">${regras.map(regraRowHtml).join('') || regraRowHtml()}</div>`;
 }
 
-function regraProdutoRowHtml(r = {}) {
-  return `<div class="rule-row" style="grid-template-columns: .8fr 1.3fr .7fr .7fr .8fr .7fr .05fr auto;" data-rowp>
-    <select data-f="escopo">
-      <option value="produto" ${r.escopo === 'produto' ? 'selected' : ''}>Produto (código)</option>
-      <option value="categoria" ${r.escopo === 'categoria' ? 'selected' : ''}>Categoria</option>
-      <option value="marca" ${r.escopo === 'marca' ? 'selected' : ''}>Marca</option>
-      <option value="todos" ${r.escopo === 'todos' ? 'selected' : ''}>Demais produtos (padrão)</option>
-    </select>
-    <input placeholder="Ex: Bacon / FRI-001 / Frimesa (vazio se 'Demais')" value="${r.valor || ''}" data-f="valor" ${r.escopo === 'todos' ? 'disabled' : ''}>
-    <input placeholder="Pontos/Kg" value="${r.pontosPorKg ?? ''}" data-f="pontosPorKg">
-    <input placeholder="Pontos/Unidade" value="${r.pontosPorUnidade ?? ''}" data-f="pontosPorUnidade">
-    <input placeholder="Pontos fixos" value="${r.pontosFixos ?? ''}" data-f="pontosFixos">
-    <input placeholder="Multiplicador" value="${r.multiplicador ?? 1}" data-f="multiplicador">
-    <input type="checkbox" class="rule-toggle" title="Ativa" data-f="ativa" ${r.ativa !== false ? 'checked' : ''}>
-    <button class="rule-remove" onclick="this.closest('[data-rowp]').remove()">✕</button>
+function campTabRegrasProdutoHtml(regrasProduto) {
+  return `
+    <div class="section-title">Pontuação por produto</div>
+    <div style="font-size:11px; color:var(--gray-text); margin:-6px 0 8px;">
+      Busque o produto no catálogo à esquerda e arraste pra lista à direita. O sistema casa a venda pelo código (os dígitos à esquerda do nome do produto no relatório).
+    </div>
+    <div class="row-2" style="align-items:flex-start;">
+      <div class="box" style="padding:10px;">
+        <input class="search-input" id="dndBusca" placeholder="Buscar produto no catálogo..." style="width:100%; margin-bottom:8px;" oninput="filtrarDndCatalogo()">
+        <div id="dndCatalogoLista" style="max-height:320px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+      </div>
+      <div class="box" style="padding:10px;">
+        <div style="font-size:11.5px; font-weight:600; margin-bottom:8px;">Produtos na campanha (arraste aqui)</div>
+        <div id="dndSelecionados" style="min-height:320px; display:flex; flex-direction:column; gap:6px; border:1.5px dashed var(--gray-1); border-radius:8px; padding:6px;">
+          ${regrasProduto.filter(r => r.escopo === 'produto').map(dndItemHtml).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function dndItemHtml(r) {
+  const pontos = r.pontosPorUnidade ?? r.pontosPorKg ?? 0;
+  return `<div class="desempate-item" data-codigo="${r.valor}" style="cursor:default;">
+    <span class="handle">⠿⠿</span>
+    <span style="flex:1;">${(r.nomeProduto || r.valor).replace(/"/g,'&quot;')}</span>
+    <input type="number" value="${pontos}" data-f="pontos" style="width:70px; padding:4px 6px; border:1px solid var(--gray-1); border-radius:6px;">
+    <button class="rule-remove" onclick="this.closest('[data-codigo]').remove()">✕</button>
   </div>`;
 }
 
-function campTabRegrasProdutoHtml(regrasProduto) {
-  return `<div class="section-title">Pontuação por produto <button class="btn btn-ghost btn-sm" onclick="document.getElementById('regrasProdutoList').insertAdjacentHTML('beforeend', regraProdutoRowHtml())">+ Adicionar regra</button></div>
-  <div style="font-size:11px; color:var(--gray-text); margin:-6px 0 4px;">Defina pontos por kg e/ou pontos fixos para produtos, categorias ou marcas específicas. A última regra que bater prevalece.</div>
-  <div id="regrasProdutoList" style="display:flex; flex-direction:column; gap:6px;">${regrasProduto.map(regraProdutoRowHtml).join('') || regraProdutoRowHtml()}</div>`;
+let _catalogoProdutos = null;
+async function carregarCatalogoProdutos() {
+  if (_catalogoProdutos) return _catalogoProdutos;
+  const produtos = await DB.getAll('produtos');
+  _catalogoProdutos = produtos.map(p => ({ id: p.codigo, nome: p.nome }));
+  return _catalogoProdutos;
 }
+
+async function abrirDndProdutos() {
+  await carregarCatalogoProdutos();
+  filtrarDndCatalogo();
+  const lista = document.getElementById('dndSelecionados');
+  if (window.Sortable && lista) Sortable.create(lista, { handle: '.handle', animation: 150 });
+}
+
+function filtrarDndCatalogo() {
+  const termo = normalizeKey(document.getElementById('dndBusca')?.value || '');
+  const cat = _catalogoProdutos || [];
+  const filtrados = termo ? cat.filter(p => normalizeKey(p.nome + ' ' + p.id).includes(termo)) : cat.slice(0, 50);
+  const lista = document.getElementById('dndCatalogoLista');
+  if (!lista) return;
+  lista.innerHTML = filtrados.map(p => `
+    <div class="desempate-item" draggable="true" data-codigo="${p.id}" data-nome="${(p.nome||'').replace(/"/g,'&quot;')}"
+         ondragstart="event.dataTransfer.setData('text/plain', JSON.stringify({codigo:'${p.id}', nome: this.dataset.nome}))">
+      <span class="handle">⠿⠿</span><span>${p.nome}</span>
+    </div>`).join('') || '<div class="empty-state" style="padding:14px;">Nenhum produto encontrado.</div>';
+}
+
+document.addEventListener('dragover', e => { if (e.target.closest('#dndSelecionados')) e.preventDefault(); });
+document.addEventListener('drop', e => {
+  const alvo = e.target.closest('#dndSelecionados');
+  if (!alvo) return;
+  e.preventDefault();
+  let dados;
+  try { dados = JSON.parse(e.dataTransfer.getData('text/plain') || '{}'); } catch { return; }
+  if (!dados.codigo || alvo.querySelector(`[data-codigo="${dados.codigo}"]`)) return;
+  alvo.insertAdjacentHTML('beforeend', dndItemHtml({ valor: dados.codigo, nomeProduto: dados.nome, pontosPorUnidade: 0 }));
+});
 
 function campTabDesempateHtml(ordem) {
   const lista = (ordem && ordem.length) ? ordem : DESEMPATE_CAMPOS.map(d => d.valor);
@@ -1452,7 +1499,13 @@ async function salvarCampanha() {
   for (const r of oldRegras) await DB.remove('regras', r.id);
   for (const r of regrasRows) await DB.put('regras', { ...r, campanhaId: saved.id });
 
-  const regrasProdRows = collectRows('regrasProdutoList', '[data-rowp]').filter(r => r.valor);
+const regrasProdRows = Array.from(document.querySelectorAll('#dndSelecionados [data-codigo]')).map(el => ({
+  escopo: 'produto',
+  valor: el.dataset.codigo,
+  nomeProduto: el.querySelector('span:nth-child(2)')?.textContent || '',
+  pontosPorUnidade: Number(el.querySelector('[data-f="pontos"]').value) || 0,
+  ativa: true,
+}));
   const oldRP = (await DB.getAll('regrasProduto')).filter(r => r.campanhaId === saved.id);
   for (const r of oldRP) await DB.remove('regrasProduto', r.id);
   for (const r of regrasProdRows) await DB.put('regrasProduto', { ...r, campanhaId: saved.id });
