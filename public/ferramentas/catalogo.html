@@ -44,6 +44,10 @@
   .btn-sm.danger:hover { background: #FFEBEE; border-color: #EF9A9A; color: #C62828; }
   .page-products { padding: 10px 12px; display: none; flex-direction: column; gap: 5px; }
   .page-item.open .page-products { display: flex; }
+  .page-color-strip { width: 8px; height: 20px; border-radius: 4px; margin-right: 8px; cursor: pointer; border: 1.5px solid rgba(0,0,0,.15); flex-shrink: 0; position: relative; }
+.page-color-strip input[type=color] { position: absolute; inset: -4px; opacity: 0; cursor: pointer; width: calc(100% + 8px); height: calc(100% + 8px); }
+.page-color-reset { font-size: 9px; color: #BDBDBD; background: none; border: none; cursor: pointer; margin-left: 2px; padding: 0 3px; }
+.page-color-reset:hover { color: #E53935; }
   .product-tag { display: flex; align-items: center; justify-content: space-between; background: #F8F8F8; border: 1px solid #EBEBEB; border-radius: 5px; padding: 5px 8px; font-size: 10.5px; color: #333; cursor: grab; transition: background .1s; }
   .product-tag:hover { background: #F0F0F0; }
   .product-tag span { flex: 1; }
@@ -213,7 +217,7 @@ const COLOR_LABELS = {
 };
 
 function buildPagesFromCategorias() {
-  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', produtos: [] }));
+  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', produtos: [], cor: null }));
 }
 let pages      = buildPagesFromCategorias();
 let nextPageId = CATEGORIAS.length + 1;
@@ -235,8 +239,8 @@ function garantirCategoria(cat) {
   if (!CATEGORIAS.includes(cat)) {
     CATEGORIAS.push(cat);
     CATEGORIAS.sort();
-    pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', produtos: [] });
-  }
+// dentro de garantirCategoria()
+pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', produtos: [], cor: null });  }
 }
 function extrairUnidade(nome) {
   const m = nome.match(/\(([^)]+)\)\s*$/);
@@ -255,6 +259,37 @@ function applyColors() {
   r.setProperty('--verde-claro',  colors_state.verdeClaro);
   r.setProperty('--verde-suave',  colors_state.verdeSuave);
   r.setProperty('--accent',       colors_state.accent);
+}
+function hexToRgb(hex) {
+  const h = hex.replace('#','');
+  return { r: parseInt(h.substr(0,2),16), g: parseInt(h.substr(2,2),16), b: parseInt(h.substr(4,2),16) };
+}
+function rgbToHex(r,g,b) {
+  return '#' + [r,g,b].map(x => Math.max(0,Math.min(255,Math.round(x))).toString(16).padStart(2,'0')).join('');
+}
+function shade(hex, percent) {
+  const { r, g, b } = hexToRgb(hex);
+  const alvo = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent) / 100;
+  return rgbToHex(r + (alvo - r) * p, g + (alvo - g) * p, b + (alvo - b) * p);
+}
+function paletaDaPagina(pg) {
+  if (!pg.cor) return colors_state;
+  return {
+    verdeEscuro: shade(pg.cor, -15),
+    verdeMed:    pg.cor,
+    verdeClaro:  shade(pg.cor, 55),
+    verdeSuave:  shade(pg.cor, 80),
+    accent:      shade(pg.cor, 25),
+  };
+}
+function updatePageCor(pid, val) {
+  const pg = pages.find(p => p.id === pid);
+  if (pg) { pg.cor = val; renderPanel(); renderPreview(); salvarDebounce(); }
+}
+function resetPageCor(pid) {
+  const pg = pages.find(p => p.id === pid);
+  if (pg) { pg.cor = null; renderPanel(); renderPreview(); salvarDebounce(); }
 }
 function assignedPages() {
   const set = new Set();
@@ -406,7 +441,7 @@ function renderCadList() {
 
 // ── PÁGINAS ──
 function addPage() {
-  pages.push({ id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [] });
+  pages.push({ id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [], cor: null });
   renderPanel(); renderPreview();
 }
 function updatePageTitulo(pid, val) {
@@ -560,6 +595,18 @@ function renderPanel() {
         <div class="page-actions" onclick="event.stopPropagation()">
           <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
         </div>
+        <div class="page-header" onclick="togglePage(${pg.id})">
+  <span class="page-drag-handle">⠿</span>
+  <span class="page-color-strip" style="background:${pg.cor || colors_state.verdeEscuro}" onclick="event.stopPropagation()">
+    <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
+  </span>
+  <span class="page-title">${pg.titulo}</span>
+  <span class="page-count">${prods.length} prod.</span>
+  <div class="page-actions" onclick="event.stopPropagation()">
+    ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
+    <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
+  </div>
+</div>
       </div>
       <div class="page-edit-fields">
         <label>Título</label>
