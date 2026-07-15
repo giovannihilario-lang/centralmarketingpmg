@@ -24,9 +24,14 @@ const TABELAS_VALIDAS = new Set([
   "campanhas_apuracoes",
 ]);
 
+// Tabelas cujas linhas NÃO pertencem a uma campanha específica
+// (não têm coluna campanha_id): a própria "campanhas" e "representantes"
+// (cadastro global de representantes, reaproveitado entre campanhas).
+const TABELAS_SEM_CAMPANHA_ID = new Set(["campanhas", "campanhas_representantes"]);
+
 export default async function handler(req, res) {
   const { id, campanhaId, all, tabela } = req.query;
-  const comCampanhaId = tabela !== "campanhas";
+  const comCampanhaId = !TABELAS_SEM_CAMPANHA_ID.has(tabela);
 
   if (!tabela || !TABELAS_VALIDAS.has(tabela)) {
     return res.status(400).json({ erro: "Parâmetro 'tabela' ausente ou inválido" });
@@ -49,6 +54,7 @@ export default async function handler(req, res) {
       const linhas = itens.map(obj => ({
         id: String(obj.id),
         ...(comCampanhaId ? { campanha_id: obj.campanhaId || null } : {}),
+        ...(tabela === "campanhas" ? { nome: obj.nome || "" } : {}),
         data: obj,
         updated_at: new Date().toISOString(),
       }));
