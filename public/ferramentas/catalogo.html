@@ -590,23 +590,16 @@ function renderPanel() {
     div.innerHTML = `
       <div class="page-header" onclick="togglePage(${pg.id})">
         <span class="page-drag-handle">⠿</span>
+        <span class="page-color-strip" style="background:${pg.cor || colors_state.verdeEscuro}" onclick="event.stopPropagation()">
+          <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
+        </span>
         <span class="page-title">${pg.titulo}</span>
         <span class="page-count">${prods.length} prod.</span>
         <div class="page-actions" onclick="event.stopPropagation()">
+          ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
           <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
         </div>
-        <div class="page-header" onclick="togglePage(${pg.id})">
-  <span class="page-drag-handle">⠿</span>
-  <span class="page-color-strip" style="background:${pg.cor || colors_state.verdeEscuro}" onclick="event.stopPropagation()">
-    <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
-  </span>
-  <span class="page-title">${pg.titulo}</span>
-  <span class="page-count">${prods.length} prod.</span>
-  <div class="page-actions" onclick="event.stopPropagation()">
-    ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
-    <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
-  </div>
-</div>
+      </div>
       </div>
       <div class="page-edit-fields">
         <label>Título</label>
@@ -686,6 +679,12 @@ function renderPreview() {
             <div class="a4-subs">${pg.subtitulo||''}</div>
           </div>
         </div>`;
+        const pal = paletaDaPagina(pg);
+a4.style.setProperty('--verde-escuro', pal.verdeEscuro);
+a4.style.setProperty('--verde-med',    pal.verdeMed);
+a4.style.setProperty('--verde-claro',  pal.verdeClaro);
+a4.style.setProperty('--verde-suave',  pal.verdeSuave);
+a4.style.setProperty('--accent',       pal.accent);
 
       const grid = document.createElement('div'); grid.className = 'a4-grid';
 
@@ -875,11 +874,9 @@ const STORAGE_KEY = 'catalogoPMG_estado';
 function salvarEstado() {
   const estado = {
     pages: pages.map(pg => ({
-      id: pg.id,
-      titulo: pg.titulo,
-      subtitulo: pg.subtitulo,
-      produtos: pg.produtos
-    })),
+  id: pg.id, titulo: pg.titulo, subtitulo: pg.subtitulo,
+  produtos: pg.produtos, cor: pg.cor || null
+})),
     nextPageId,
     openPage,
     colors_state,
