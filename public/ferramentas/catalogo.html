@@ -864,7 +864,11 @@ function carregarEstado() {
     return false;
   }
 }
-
+let _salvarTimeout = null;
+function salvarDebounce() {
+  clearTimeout(_salvarTimeout);
+  _salvarTimeout = setTimeout(salvarEstado, 400);
+}
 // ── SINCRONIZAR API ──
 async function sincronizarAPI() {
   const btn    = document.getElementById('btnSincAPI');
@@ -929,8 +933,8 @@ renderPanel();
 renderPreview();
 
 window.addEventListener('load', async () => {
-  await sincronizarAPI();            // 1. carrega produtos da API
-  const tinha = await carregarEstado(); // 2. restaura páginas/ordem salvas
+  await sincronizarAPI();
+  const tinha = carregarEstado();   // sem await
   if (tinha) {
     renderLogoPreview();
     buildColorGrid();
