@@ -822,7 +822,10 @@ function exportPDF() {
   });
 }
 
-async function salvarEstado() {
+// ── SALVAR/CARREGAR NO PRÓPRIO NAVEGADOR (localStorage) ──
+const STORAGE_KEY = 'catalogoPMG_estado';
+
+function salvarEstado() {
   const estado = {
     pages: pages.map(pg => ({
       id: pg.id,
@@ -836,21 +839,18 @@ async function salvarEstado() {
     logoDataUrl,
   };
   try {
-    await fetch('/api/catalogo-estado', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(estado)
-    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(estado));
   } catch (err) {
-    console.error('Erro ao salvar estado:', err);
+    console.error('Erro ao salvar estado (localStorage cheio?):', err);
+    showToast('Não foi possível salvar — armazenamento local cheio.');
   }
 }
 
-async function carregarEstado() {
+function carregarEstado() {
   try {
-    const resp = await fetch('/api/catalogo-estado');
-    if (!resp.ok) return false;
-    const estado = await resp.json();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const estado = JSON.parse(raw);
     if (!estado || !estado.pages || estado.pages.length === 0) return false;
     pages        = estado.pages;
     nextPageId   = estado.nextPageId || pages.length + 1;
