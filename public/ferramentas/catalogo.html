@@ -534,7 +534,23 @@ function adicionarTodosFiltrados() {
   renderPanel(); renderPreview(); salvarDebounce();
   showToast(`${adicionados} produto${adicionados !== 1 ? 's' : ''} adicionado${adicionados !== 1 ? 's' : ''}!`);
 }
+function distribuirTodosPorCategoria() {
+  let distribuidos = 0, semPagina = 0;
+  const semPaginaCats = new Set();
 
+  TODOS_PRODUTOS.forEach(p => {
+    const pg = pages.find(pg2 => pg2.titulo === p.categoria);
+    if (!pg) { semPagina++; semPaginaCats.add(p.categoria); return; }
+    // tira o produto de qualquer página que ele esteja
+    pages.forEach(pg2 => { pg2.produtos = pg2.produtos.filter(id => id !== p.id); });
+    pg.produtos.push(p.id);
+    distribuidos++;
+  });
+
+  renderPanel(); renderPreview(); salvarDebounce();
+  showToast(`${distribuidos} produto${distribuidos !== 1 ? 's' : ''} distribuído${distribuidos !== 1 ? 's' : ''} por categoria` + (semPagina ? ` · ${semPagina} sem página correspondente` : ''));
+  if (semPaginaCats.size) console.warn('Categorias sem página correspondente:', Array.from(semPaginaCats));
+}
 // ── DRAG PRODUTOS ENTRE PÁGINAS ──
 function onDragStart(e, pid, prodId) { dragProdId = prodId; dragFromPage = pid; e.dataTransfer.effectAllowed = 'move'; }
 function onDragOverZone(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
@@ -779,6 +795,8 @@ function buildPanel() {
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:12px">Páginas do Catálogo</div>
       <div class="pages-list" id="pagesList"></div>
       <button class="btn-add-page" onclick="addPage()" style="margin-top:10px">+ Nova Página</button>
+      <button class="btn-add-page" onclick="addPage()" style="margin-top:10px">+ Nova Página</button>
+<button class="btn-add-page" onclick="distribuirTodosPorCategoria()" style="margin-top:6px">↺ Distribuir tudo por categoria</button>
       <div style="margin-top:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:8px">Produtos Disponíveis</div>
       <select id="poolCatFilter" class="pool-cat-filter" onchange="renderPool()">
         <option value="">Todas as categorias</option>
