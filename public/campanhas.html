@@ -231,6 +231,7 @@ table.data-table tr:hover td { background: var(--green-pale); }
 }
 
 </style>
+<link rel="stylesheet" href="/assets/campaign-builder-v2.css">
 </head>
 <body>
 
@@ -1503,13 +1504,15 @@ async function salvarCampanha() {
   for (const r of oldRegras) await DB.remove('regras', r.id);
   for (const r of regrasRows) await DB.put('regras', { ...r, campanhaId: saved.id });
 
-const regrasProdRows = Array.from(document.querySelectorAll('#dndSelecionados [data-codigo]')).map(el => ({
-  escopo: 'produto',
-  valor: el.dataset.codigo,
-  nomeProduto: el.querySelector('span:nth-child(2)')?.textContent || '',
-  pontosPorUnidade: Number(el.querySelector('[data-f="pontos"]').value) || 0,
-  ativa: true,
-}));
+const regrasProdRows = typeof coletarRegrasProdutoBuilder === 'function'
+  ? coletarRegrasProdutoBuilder()
+  : Array.from(document.querySelectorAll('#dndSelecionados [data-codigo]')).map(el => ({
+      escopo: 'produto',
+      valor: el.dataset.codigo,
+      nomeProduto: el.querySelector('span:nth-child(2)')?.textContent || '',
+      pontosPorUnidade: Number(el.querySelector('[data-f="pontos"]').value) || 0,
+      ativa: true,
+    }));
   const oldRP = (await DB.getAll('regrasProduto')).filter(r => r.campanhaId === saved.id);
   for (const r of oldRP) await DB.remove('regrasProduto', r.id);
   for (const r of regrasProdRows) await DB.put('regrasProduto', { ...r, campanhaId: saved.id });
@@ -2117,11 +2120,24 @@ async function calcularApuracao() {
   }
 
   const repIds = [...new Set(vendasCamp.map(v => v.representanteId).filter(Boolean))];
-  const totalProdutosAtivos = Math.max(1, produtos.filter(p => p.ativo !== false && (!campanha.fornecedor || p.fornecedor === campanha.fornecedor)).length);
+  const produtosEscopo = new Set(
+    regrasProdCamp
+      .filter(r => r.escopo === 'produto' && r.ativa !== false)
+      .map(r => String(r.valor))
+  );
+  const totalProdutosAtivos = Math.max(
+    1,
+    produtosEscopo.size || produtos.filter(p => p.ativo !== false && (!campanha.fornecedor || p.fornecedor === campanha.fornecedor)).length
+  );
   const resultados = repIds.map(repId => {
     const rep = representantes.find(r => r.id === repId) || { nome: '—' };
-    const vCamp = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'campanha');
-    const vAnt = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'anterior');
+    let vCamp = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'campanha');
+    let vAnt = vendasCamp.filter(v => v.representanteId === repId && v.periodo === 'anterior');
+    if (produtosEscopo.size) {
+      const pertenceAoEscopo = v => produtosEscopo.has(String(v.codigo ?? v.produtoId ?? ''));
+      vCamp = vCamp.filter(pertenceAoEscopo);
+      vAnt = vAnt.filter(pertenceAoEscopo);
+    }
 
     const kgCampanha = vCamp.reduce((s, v) => s + v.kg, 0);
     const kgAnterior = vAnt.reduce((s, v) => s + v.kg, 0);
@@ -2132,15 +2148,16 @@ async function calcularApuracao() {
     const pedidos = new Set(vCamp.map(v => v.pedido)).size;
     const produtosDistintos = new Set(vCamp.map(v => v.codigo || v.produto)).size;
     const mix = Math.min(100, (produtosDistintos / totalProdutosAtivos) * 100);
-    // "positivação" = contagem de clientes ativados no período (não crescimento).
-    // Mantido crescimentoClientes separado, caso alguma campanha queira usar % de crescimento de carteira.
-    const positivacao = clientesCampanha - clientesAnterior; // saldo de clientes (pode ser negativo)
+    // Positivação = clientes únicos que compraram ao menos um produto participante no período.
+    // O saldo compara a quantidade atual com o período anterior e permanece disponível como regra separada.
+    const positivacao = clientesCampanha;
+    const saldoClientes = clientesCampanha - clientesAnterior;
     const crescimentoClientes = clientesAnterior > 0 ? ((clientesCampanha - clientesAnterior) / clientesAnterior) * 100 : (clientesCampanha > 0 ? 100 : 0);
     const crescimentoKg = kgAnterior > 0 ? ((kgCampanha - kgAnterior) / kgAnterior) * 100 : (kgCampanha > 0 ? 100 : 0);
     const crescimentoFaturamento = faturamentoAnterior > 0 ? ((faturamentoCampanha - faturamentoAnterior) / faturamentoAnterior) * 100 : (faturamentoCampanha > 0 ? 100 : 0);
 
     const pontosProdutos = calcularPontosProdutos(vCamp, regrasProdCamp);
-    const metricas = { kgCampanha, kgAnterior, faturamentoCampanha, faturamentoAnterior, clientesCampanha, clientesAnterior, pedidos, produtosDistintos, mix, positivacao, crescimentoClientes, crescimentoKg, crescimentoFaturamento, pontosProdutos };
+    const metricas = { kgCampanha, kgAnterior, faturamentoCampanha, faturamentoAnterior, clientesCampanha, clientesAnterior, pedidos, produtosDistintos, mix, positivacao, saldoClientes, crescimentoClientes, crescimentoKg, crescimentoFaturamento, pontosProdutos };
     const resultado = aplicarRegras(regrasCamp, metricas, pontosProdutos);
 
     return { representanteId: repId, nome: rep.nome, regiao: rep.regiao || '—', ...metricas, ...resultado };
@@ -2240,7 +2257,7 @@ async function carregarRanking() {
   const ordenados = tipo === 'pontosFinal' ? ordenarComDesempate(elegiveis, campanha.desempate) : [...elegiveis].sort((a, b) => (b[tipo] || 0) - (a[tipo] || 0));
   _rankingAtual = ordenados;
 const isPct = tipo === 'crescimentoKg' || tipo === 'crescimentoClientes' || tipo === 'mix';
-const isSaldo = tipo === 'positivacao';
+const isSaldo = tipo === 'saldoClientes';
 const isMoney = tipo === 'faturamentoCampanha';
 const isKg = tipo === 'kgCampanha';
 
@@ -2307,5 +2324,6 @@ async function limparTudo() {
 }
 
 </script>
+<script src="/assets/campaign-builder-v2.js"></script>
 </body>
 </html>
