@@ -71,7 +71,8 @@ const state = {
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
   comments: [], taskActivities: [], realtime: null, loading: 0, quickType: 'demanda',
   quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
-  selectedDate: dateKey(new Date()), pushSubscription: null
+  selectedDate: dateKey(new Date()), pushSubscription: null,
+  teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: []
 };
 
 const $ = id => document.getElementById(id);
@@ -413,27 +414,242 @@ function bindTaskDrag() {
   });
 }
 
-function renderEquipe() {
-  const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const totalHours = active.reduce((sum, task) => sum + sizeWeight(task), 0); const overdue = active.filter(isOverdue).length;
-  const busyPeople = state.collaborators.filter(person => active.filter(task => task.responsavel_id === person.id).reduce((sum, task) => sum + sizeWeight(task), 0) >= 18).length;
-  const unassigned = active.filter(task => !task.responsavel_id).length;
-  const cards = [
-    ['users', state.collaborators.length, 'Pessoas ativas'], ['clock-4', `${Math.round(totalHours)}h`, 'Carga estimada'],
-    ['triangle-alert', overdue, 'Demandas atrasadas'], ['user-round-x', unassigned, 'Sem responsável']
-  ];
-  $('teamSummary').innerHTML = cards.map(([icon, value, label]) => `<div class="team-summary-card"><span class="team-summary-icon"><i data-lucide="${icon}"></i></span><div><strong>${value}</strong><span>${label}</span></div></div>`).join('');
-  $('teamGrid').innerHTML = state.collaborators.map(person => personCardHTML(person, active, busyPeople)).join('');
+const TEAM_CAPACITY_HOURS = 24;
+const TEAM_RISK = {
+  critical: { label: 'Crítico', icon: 'siren', score: 4 },
+  attention: { label: 'Atenção', icon: 'triangle-alert', score: 3 },
+  busy: { label: 'Carga alta', icon: 'gauge', score: 2 },
+  balanced: { label: 'Equilibrado', icon: 'circle-check', score: 1 },
+  available: { label: 'Disponível', icon: 'sparkles', score: 0 }
+};
+
+function isWithinDays(value, days) {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time >= Date.now() - days * 86400000;
 }
-function personCardHTML(person, activeTasks) {
-  const tasks = activeTasks.filter(task => task.responsavel_id === person.id); const overdue = tasks.filter(isOverdue).length;
-  const weekEnd = addDays(new Date(), 7); const week = tasks.filter(task => { const due = taskDue(task); return due && new Date(due) <= weekEnd; }).length;
-  const hours = tasks.reduce((sum, task) => sum + sizeWeight(task), 0); const percentage = Math.min(100, Math.round((hours / 24) * 100));
-  const next = [...tasks].filter(task => taskDue(task)).sort((a, b) => new Date(taskDue(a)) - new Date(taskDue(b)))[0];
-  return `<article class="person-card"><div class="person-head">${avatarHTML(person, 'md')}<div class="person-copy"><strong>${escapeHtml(person.nome)}</strong><span>${escapeHtml(person.cargo || 'Marketing')}</span></div>${person.role === 'gestor' ? '<span class="role-chip">Gestor</span>' : ''}</div>
-    <div class="person-metrics"><div class="person-metric"><strong>${tasks.length}</strong><span>Em aberto</span></div><div class="person-metric"><strong>${overdue}</strong><span>Atrasadas</span></div><div class="person-metric"><strong>${week}</strong><span>Esta semana</span></div></div>
-    <div class="workload-label"><span>Carga estimada</span><span>${Math.round(hours)}h · ${percentage}%</span></div><div class="workload-track"><i class="${percentage >= 80 ? 'high' : ''}" style="width:${percentage}%"></i></div>
-    <div class="person-next"><span>Próxima entrega</span><strong>${next ? `${escapeHtml(next.titulo)} · ${escapeHtml(dueLabel(next))}` : 'Nenhuma entrega com prazo'}</strong></div></article>`;
+function taskSortByAttention(a, b) {
+  const overdueDiff = Number(isOverdue(b)) - Number(isOverdue(a));
+  if (overdueDiff) return overdueDiff;
+  const priorityDiff = (PRIORITY_ORDER[a.prioridade] ?? 9) - (PRIORITY_ORDER[b.prioridade] ?? 9);
+  if (priorityDiff) return priorityDiff;
+  return new Date(taskDue(a) || '9999-12-31').getTime() - new Date(taskDue(b) || '9999-12-31').getTime();
+}
+function teamPersonStats(person) {
+  const assigned = state.tasks.filter(task => !task.arquivada_em && task.responsavel_id === person.id);
+  const active = assigned.filter(task => task.status !== 'concluida');
+  const completed30 = assigned.filter(task => task.status === 'concluida' && isWithinDays(task.concluida_em || task.atualizado_em, 30));
+  const completed7 = completed30.filter(task => isWithinDays(task.concluida_em || task.atualizado_em, 7));
+  const overdue = active.filter(isOverdue);
+  const dueToday = active.filter(task => taskDueKey(task) === todayKey());
+  const weekEnd = addDays(new Date(), 7);
+  const dueWeek = active.filter(task => {
+    const due = taskDue(task);
+    return due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
+  });
+  const urgent = active.filter(task => task.prioridade === 'urgente');
+  const hours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
+  const utilization = Math.min(140, Math.round((hours / TEAM_CAPACITY_HOURS) * 100));
+  const deadlineCompleted = completed30.filter(task => taskDue(task) && task.concluida_em);
+  const onTime = deadlineCompleted.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
+  const onTimeRate = deadlineCompleted.length ? Math.round((onTime / deadlineCompleted.length) * 100) : null;
+  const cycles = completed30.filter(task => task.criado_em && task.concluida_em).map(task => Math.max(0, (new Date(task.concluida_em) - new Date(task.criado_em)) / 86400000));
+  const avgCycle = cycles.length ? cycles.reduce((sum, value) => sum + value, 0) / cycles.length : null;
+  const activities = state.activities.filter(activity => activity.ator_id === person.id);
+  const activities7 = activities.filter(activity => isWithinDays(activity.criado_em, 7));
+  const lastActivity = activities[0]?.criado_em || person.criado_em;
+  const nextTasks = [...active].sort(taskSortByAttention);
+  const statusCounts = Object.fromEntries(Object.keys(STATUS).map(status => [status, assigned.filter(task => task.status === status).length]));
+
+  let risk = 'available';
+  if (overdue.length >= 2 || hours >= 28 || (overdue.length && urgent.length)) risk = 'critical';
+  else if (overdue.length || hours >= 20 || dueToday.length >= 3) risk = 'attention';
+  else if (hours >= 14 || dueWeek.length >= 5) risk = 'busy';
+  else if (hours >= 5 || active.length >= 2) risk = 'balanced';
+
+  return { person, assigned, active, completed30, completed7, overdue, dueToday, dueWeek, urgent, hours, utilization, onTimeRate, avgCycle, activities, activities7, lastActivity, nextTasks, statusCounts, risk };
+}
+function teamRiskLabel(stats) { return TEAM_RISK[stats.risk] || TEAM_RISK.balanced; }
+function teamSummaryCard(icon, value, label, tone = '') {
+  return `<div class="team-summary-card ${tone}"><span class="team-summary-icon"><i data-lucide="${icon}"></i></span><div><strong>${value}</strong><span>${label}</span></div></div>`;
+}
+function renderEquipe() {
+  const manager = isManager();
+  const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
+  const completed30 = state.tasks.filter(task => !task.arquivada_em && task.status === 'concluida' && isWithinDays(task.concluida_em || task.atualizado_em, 30));
+  const totalHours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
+  const overdue = active.filter(isOverdue);
+  const weekEnd = addDays(new Date(), 7);
+  const dueWeek = active.filter(task => { const due = taskDue(task); return due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
+  const unassigned = active.filter(task => !task.responsavel_id);
+  let stats = state.collaborators.map(teamPersonStats);
+
+  $('teamPageEyebrow').textContent = manager ? 'Painel gerencial' : 'Colaboração do setor';
+  $('teamPageDescription').textContent = manager
+    ? 'Acompanhe carga, prioridades, entregas e movimentações de cada pessoa.'
+    : 'Veja a disponibilidade estimada do setor e quem está cuidando de cada frente.';
+  $('teamUpdatedAt').textContent = `Atualizado ${relativeTime(new Date().toISOString())}`;
+
+  $('teamSummary').innerHTML = manager
+    ? [
+        teamSummaryCard('users-round', state.collaborators.length, 'Pessoas ativas'),
+        teamSummaryCard('clipboard-list', active.length, 'Demandas em aberto'),
+        teamSummaryCard('clock-4', `${Math.round(totalHours)}h`, 'Carga estimada'),
+        teamSummaryCard('triangle-alert', overdue.length, 'Demandas atrasadas', overdue.length ? 'danger' : ''),
+        teamSummaryCard('calendar-range', dueWeek.length, 'Vencem em 7 dias'),
+        teamSummaryCard('badge-check', completed30.length, 'Concluídas em 30 dias')
+      ].join('')
+    : [
+        teamSummaryCard('users-round', state.collaborators.length, 'Pessoas no setor'),
+        teamSummaryCard('clipboard-list', active.length, 'Demandas em andamento'),
+        teamSummaryCard('calendar-range', dueWeek.length, 'Entregas da semana'),
+        teamSummaryCard('badge-check', completed30.length, 'Concluídas em 30 dias')
+      ].join('');
+
+  if (manager) renderTeamInsights(stats, active, unassigned);
+
+  if (manager) {
+    const search = (state.teamSearch || '').trim().toLowerCase();
+    if (search) stats = stats.filter(item => [item.person.nome, item.person.cargo, item.person.role].join(' ').toLowerCase().includes(search));
+    if (state.teamRiskOnly) stats = stats.filter(item => ['critical', 'attention'].includes(item.risk));
+    stats.sort((a, b) => {
+      if (state.teamSort === 'name') return a.person.nome.localeCompare(b.person.nome, 'pt-BR');
+      if (state.teamSort === 'workload') return b.hours - a.hours || b.active.length - a.active.length;
+      if (state.teamSort === 'overdue') return b.overdue.length - a.overdue.length || b.hours - a.hours;
+      if (state.teamSort === 'completed') return b.completed30.length - a.completed30.length || a.person.nome.localeCompare(b.person.nome, 'pt-BR');
+      return TEAM_RISK[b.risk].score - TEAM_RISK[a.risk].score || b.overdue.length - a.overdue.length || b.hours - a.hours;
+    });
+  }
+
+  $('teamGrid').innerHTML = stats.length
+    ? stats.map(item => personCardHTML(item, manager)).join('')
+    : `<div class="team-empty"><i data-lucide="users-round"></i><strong>Ninguém encontrado</strong><span>Ajuste a busca ou remova o filtro de atenção.</span></div>`;
+  refreshIcons();
+}
+function renderTeamInsights(stats, active, unassigned) {
+  const attention = stats.filter(item => ['critical', 'attention'].includes(item.risk));
+  const overloaded = [...stats].sort((a, b) => b.hours - a.hours)[0];
+  const next48h = active.filter(task => {
+    const due = taskDue(task); if (!due) return false;
+    const diff = new Date(due) - new Date(); return diff >= 0 && diff <= 48 * 3600000;
+  }).sort(taskSortByAttention);
+  const idleWithWork = stats.filter(item => item.active.length && item.lastActivity && !isWithinDays(item.lastActivity, 7));
+  const alerts = [
+    ...attention.slice(0, 3).map(item => ({ icon: TEAM_RISK[item.risk].icon, title: item.person.nome, text: `${item.overdue.length} atrasada(s) · ${Math.round(item.hours)}h em aberto`, personId: item.person.id, tone: item.risk })),
+    ...unassigned.slice(0, 2).map(task => ({ icon: 'user-round-x', title: task.titulo, text: 'Demanda sem responsável', taskId: task.id, tone: 'attention' }))
+  ].slice(0, 5);
+  const statusTotals = Object.keys(STATUS).map(status => ({ status, count: state.tasks.filter(task => !task.arquivada_em && task.status === status).length }));
+  const totalStatus = Math.max(1, statusTotals.reduce((sum, item) => sum + item.count, 0));
+
+  $('teamInsights').innerHTML = `<article class="team-insight-card team-alert-card">
+      <div class="team-insight-head"><div><span class="eyebrow">Atenção agora</span><h3>Riscos e gargalos</h3></div><span class="insight-count">${alerts.length}</span></div>
+      <div class="team-alert-list">${alerts.length ? alerts.map(item => `<button class="team-alert-item ${item.tone}" ${item.personId ? `data-open-person="${item.personId}"` : `data-open-task="${item.taskId}"`}><span><i data-lucide="${item.icon}"></i></span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div><i data-lucide="chevron-right"></i></button>`).join('') : `<div class="team-insight-empty"><i data-lucide="shield-check"></i><span>Nenhum gargalo crítico neste momento.</span></div>`}</div>
+    </article>
+    <article class="team-insight-card">
+      <div class="team-insight-head"><div><span class="eyebrow">Fluxo do setor</span><h3>Distribuição das demandas</h3></div><span class="insight-count neutral">${active.length}</span></div>
+      <div class="team-status-overview">${statusTotals.map(item => `<div><div class="team-status-row"><span><i class="status-mark ${item.status === 'nova' ? 'blue' : item.status === 'andamento' ? 'amber' : item.status === 'revisao' ? 'purple' : 'green'}"></i>${STATUS[item.status].label}</span><strong>${item.count}</strong></div><div class="team-mini-track"><i style="width:${Math.round((item.count / totalStatus) * 100)}%"></i></div></div>`).join('')}</div>
+    </article>
+    <article class="team-insight-card team-pulse-card">
+      <div class="team-insight-head"><div><span class="eyebrow">Pulso da semana</span><h3>Leitura rápida</h3></div><i data-lucide="activity"></i></div>
+      <div class="team-pulse-grid">
+        <div><strong>${next48h.length}</strong><span>prazos em 48h</span></div>
+        <div><strong>${attention.length}</strong><span>pessoas em atenção</span></div>
+        <div><strong>${idleWithWork.length}</strong><span>sem movimento há 7 dias</span></div>
+        <div><strong>${overloaded ? Math.round(overloaded.hours) + 'h' : '0h'}</strong><span>maior carga · ${escapeHtml(overloaded?.person.nome || '—')}</span></div>
+      </div>
+    </article>`;
+}
+function personCardHTML(stats, manager) {
+  const { person, active, overdue, dueToday, dueWeek, completed30, hours, utilization, nextTasks, lastActivity, risk, statusCounts } = stats;
+  const riskMeta = teamRiskLabel(stats);
+  const totalPipeline = Math.max(1, Object.values(statusCounts).reduce((sum, value) => sum + value, 0));
+  const cardAttrs = manager ? `data-open-person="${person.id}" role="button" tabindex="0"` : '';
+  const preview = nextTasks.slice(0, 3);
+  return `<article class="person-card team-person-card risk-${risk} ${manager ? 'clickable' : 'readonly'}" ${cardAttrs}>
+    <div class="person-card-accent"></div>
+    <div class="person-head">${avatarHTML(person, 'md')}<div class="person-copy"><strong>${escapeHtml(person.nome)}</strong><span>${escapeHtml(person.cargo || 'Marketing')}</span></div>${person.role === 'gestor' ? '<span class="role-chip">Gestor</span>' : ''}</div>
+    <div class="person-state-line"><span class="person-risk ${risk}"><i data-lucide="${riskMeta.icon}"></i>${riskMeta.label}</span><span>${lastActivity ? `Movimento ${relativeTime(lastActivity)}` : 'Sem atividade registrada'}</span></div>
+    <div class="person-metrics manager-metrics">
+      <div class="person-metric"><strong>${active.length}</strong><span>Em aberto</span></div>
+      ${manager ? `<div class="person-metric ${overdue.length ? 'danger' : ''}"><strong>${overdue.length}</strong><span>Atrasadas</span></div>` : ''}
+      <div class="person-metric"><strong>${dueWeek.length}</strong><span>Esta semana</span></div>
+      ${manager ? `<div class="person-metric"><strong>${completed30.length}</strong><span>Concluídas 30d</span></div>` : ''}
+    </div>
+    <div class="workload-block"><div class="workload-label"><span>Carga estimada</span><span>${Math.round(hours)}h · ${utilization}%</span></div><div class="workload-track"><i class="${utilization >= 85 ? 'high' : utilization >= 60 ? 'medium' : ''}" style="width:${Math.min(100, utilization)}%"></i></div><div class="workload-scale"><span>Disponível</span><span>24h de referência</span></div></div>
+    <div class="person-pipeline" aria-label="Distribuição por status">${Object.keys(STATUS).map(status => `<i class="${status}" title="${STATUS[status].label}: ${statusCounts[status]}" style="width:${Math.max(statusCounts[status] ? 5 : 0, (statusCounts[status] / totalPipeline) * 100)}%"></i>`).join('')}</div>
+    <div class="person-task-preview"><div class="person-preview-head"><span>Próximas prioridades</span>${dueToday.length ? `<b>${dueToday.length} hoje</b>` : ''}</div>${preview.length ? preview.map(task => `<div class="person-preview-task"><i class="focus-priority ${task.prioridade}"></i><span>${escapeHtml(task.titulo)}</span><small class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</small></div>`).join('') : `<div class="person-preview-empty">Nenhuma demanda pendente.</div>`}</div>
+    <div class="person-card-footer"><span>${manager ? 'Clique para abrir a visão completa' : 'Disponibilidade calculada pelas demandas'}</span>${manager ? '<i data-lucide="arrow-up-right"></i>' : ''}</div>
+  </article>`;
+}
+function completionTrendHTML(stats) {
+  const days = Array.from({ length: 7 }, (_, index) => addDays(new Date(), index - 6));
+  const values = days.map(day => stats.completed30.filter(task => dateKey(task.concluida_em || task.atualizado_em) === dateKey(day)).length);
+  const max = Math.max(1, ...values);
+  return `<div class="completion-trend">${days.map((day, index) => `<div class="trend-day"><div class="trend-bar-wrap"><i style="height:${Math.max(values[index] ? 12 : 3, (values[index] / max) * 100)}%"></i></div><strong>${values[index]}</strong><span>${new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(day).replace('.', '')}</span></div>`).join('')}</div>`;
+}
+async function openPerson(personId) {
+  if (!isManager()) return;
+  const person = collaborator(personId); if (!person) return;
+  state.selectedPersonId = personId; state.personActivities = state.activities.filter(activity => activity.ator_id === personId);
+  $('personDrawerKicker').textContent = 'Visão gerencial'; $('personDrawerTitle').textContent = person.nome;
+  $('personDrawerContent').innerHTML = `<div class="drawer-loading"><div class="loading-orbit"><span></span><span></span><span></span></div><strong>Organizando os dados...</strong></div>`;
+  openDrawer('personDrawer');
+  try {
+    const { data, error } = await db.from('atividades_tarefa')
+      .select('*, tarefa:tarefas!atividades_tarefa_tarefa_id_fkey(id,titulo,status,prioridade,prazo_em,responsavel_id)')
+      .eq('ator_id', personId).order('criado_em', { ascending: false }).limit(40);
+    if (!error) state.personActivities = data || [];
+  } catch (error) { console.warn('[equipe] Não foi possível ampliar o histórico:', error); }
+  renderPersonDrawer(person);
+}
+function renderPersonDrawer(person) {
+  const stats = teamPersonStats(person); const riskMeta = teamRiskLabel(stats);
+  const active = [...stats.active].sort(taskSortByAttention);
+  const completed = [...stats.completed30].sort((a, b) => new Date(b.concluida_em || b.atualizado_em) - new Date(a.concluida_em || a.atualizado_em));
+  const activities = state.personActivities || [];
+  $('personDrawerContent').innerHTML = `<div class="person-hero risk-${stats.risk}">
+      <div class="person-hero-profile">${avatarHTML(person, 'xl')}<div><span class="person-risk ${stats.risk}"><i data-lucide="${riskMeta.icon}"></i>${riskMeta.label}</span><h3>${escapeHtml(person.nome)}</h3><p>${escapeHtml(person.cargo || 'Marketing')} · ${person.role === 'gestor' ? 'Gestor' : 'Colaborador'}</p></div></div>
+      <div class="person-hero-copy"><i data-lucide="sparkles"></i><span>${teamManagerNarrative(stats)}</span></div>
+    </div>
+    <div class="person-drawer-metrics">
+      <div><span>Em aberto</span><strong>${stats.active.length}</strong></div><div class="${stats.overdue.length ? 'danger' : ''}"><span>Atrasadas</span><strong>${stats.overdue.length}</strong></div>
+      <div><span>Vencem hoje</span><strong>${stats.dueToday.length}</strong></div><div><span>Concluídas 30d</span><strong>${stats.completed30.length}</strong></div>
+      <div><span>No prazo</span><strong>${stats.onTimeRate === null ? '—' : stats.onTimeRate + '%'}</strong></div><div><span>Ciclo médio</span><strong>${stats.avgCycle === null ? '—' : stats.avgCycle.toFixed(1) + 'd'}</strong></div>
+    </div>
+    <section class="person-drawer-section">
+      <div class="person-section-head"><div><span class="eyebrow">Capacidade</span><h3>Carga atual</h3></div><strong>${Math.round(stats.hours)}h <small>de ${TEAM_CAPACITY_HOURS}h</small></strong></div>
+      <div class="drawer-workload-track"><i class="${stats.utilization >= 85 ? 'high' : stats.utilization >= 60 ? 'medium' : ''}" style="width:${Math.min(100, stats.utilization)}%"></i></div>
+      <div class="drawer-status-grid">${Object.keys(STATUS).map(status => `<div><i class="status-mark ${status === 'nova' ? 'blue' : status === 'andamento' ? 'amber' : status === 'revisao' ? 'purple' : 'green'}"></i><span>${STATUS[status].label}</span><strong>${stats.statusCounts[status]}</strong></div>`).join('')}</div>
+    </section>
+    <section class="person-drawer-section">
+      <div class="person-section-head"><div><span class="eyebrow">Últimos 7 dias</span><h3>Ritmo de conclusão</h3></div><strong>${stats.completed7.length}<small> entregas</small></strong></div>
+      ${completionTrendHTML(stats)}
+    </section>
+    <section class="person-drawer-section">
+      <div class="person-section-head"><div><span class="eyebrow">Fila atual</span><h3>Demandas em andamento</h3></div><span>${active.length} itens</span></div>
+      <div class="person-drawer-task-list">${active.length ? active.slice(0, 10).map(task => `<button class="person-drawer-task" data-open-task="${task.id}"><i class="focus-priority ${task.prioridade}"></i><div><strong>${escapeHtml(task.titulo)}</strong><span>${STATUS[task.status].label} · ${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</span></div><small class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</small><i data-lucide="chevron-right"></i></button>`).join('') : `<div class="drawer-empty-row"><i data-lucide="circle-check-big"></i><span>Nenhuma demanda pendente.</span></div>`}</div>
+    </section>
+    <section class="person-drawer-section">
+      <div class="person-section-head"><div><span class="eyebrow">Histórico</span><h3>Atividade recente</h3></div><span>${activities.length} ações</span></div>
+      <div class="person-activity-list">${activities.length ? activities.slice(0, 12).map(activity => `<button class="person-activity-row" data-open-task="${activity.tarefa_id}"><span class="person-activity-icon"><i data-lucide="${activityIcon(activity.tipo)}"></i></span><div><p><strong>${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou')}</strong> ${escapeHtml(activity.tarefa?.titulo || 'uma demanda')}</p><span>${formatDateTime(activity.criado_em)}</span></div></button>`).join('') : `<div class="drawer-empty-row"><i data-lucide="activity"></i><span>Nenhuma atividade recente registrada.</span></div>`}</div>
+    </section>
+    ${completed.length ? `<section class="person-drawer-section"><div class="person-section-head"><div><span class="eyebrow">Entregas</span><h3>Concluídas recentemente</h3></div></div><div class="recent-completed-list">${completed.slice(0, 5).map(task => `<button data-open-task="${task.id}"><i data-lucide="circle-check-big"></i><span><strong>${escapeHtml(task.titulo)}</strong><small>${formatDate(task.concluida_em || task.atualizado_em, { year: true })}</small></span></button>`).join('')}</div></section>` : ''}
+    <div class="person-drawer-actions"><button class="btn secondary" data-person-show-tasks="${person.id}"><i data-lucide="list-filter"></i>Ver todas as demandas</button><button class="btn primary" data-person-create-task="${person.id}"><i data-lucide="clipboard-plus"></i>Delegar demanda</button></div>`;
+  refreshIcons();
+}
+function teamManagerNarrative(stats) {
+  if (stats.risk === 'critical') return `${stats.person.nome} precisa de atenção: há ${stats.overdue.length} demanda(s) atrasada(s) e ${Math.round(stats.hours)}h estimadas em aberto.`;
+  if (stats.risk === 'attention') return `Há pressão de prazo ou carga elevada. Vale revisar prioridades antes de delegar algo novo.`;
+  if (stats.risk === 'busy') return `A agenda está ocupada, mas ainda sem sinal crítico. As próximas entregas concentram-se nesta semana.`;
+  if (stats.risk === 'available') return `A carga registrada está baixa. Pode haver espaço para apoiar outra frente ou receber uma nova demanda.`;
+  return `A carga está equilibrada entre volume, esforço estimado e prazos registrados.`;
+}
+function activityIcon(type) {
+  return ({ criada: 'plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog', comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore' })[type] || 'activity';
+}
+function showPersonTasks(personId) {
+  closeDrawer('personDrawer'); state.smartFilter = ''; switchView('demandas'); populateAssigneeSelects();
+  $('taskAssigneeFilter').value = personId; renderDemandas(); refreshIcons();
 }
 
 function renderNotifications() {
@@ -464,6 +680,7 @@ function openQuickAdd(type = 'demanda', preset = {}) {
   $('reminderDate').value = today; $('reminderTime').value = preset.time || '09:00';
   $('meetingEndDate').value = today; $('meetingEndTime').value = preset.endTime || '10:00';
   $('reminderVisibility').value = isManager() ? (preset.visibility || 'pessoal') : 'pessoal';
+  if (type === 'demanda') { populateAssigneeSelects(); $('itemAssignee').value = preset.assigneeId || ''; }
   if (preset.reminder) fillReminderForm(preset.reminder);
   $('quickAddModal').classList.remove('hidden'); setTimeout(() => $('itemTitle').focus(), 60); refreshIcons();
 }
@@ -762,12 +979,16 @@ function bindEvents() {
   $('quickAddForm').addEventListener('submit', saveQuickItem); $('editTaskForm').addEventListener('submit', saveEditedTask); $('profileForm').addEventListener('submit', saveProfile);
   $$('[data-close-modal]').forEach(button => button.addEventListener('click', () => { const modal = $(button.dataset.closeModal); if (modal.id === 'profileModal' && modal.dataset.required === '1') return; closeModal(modal.id); }));
   $$('[data-close-drawer]').forEach(button => button.addEventListener('click', () => closeDrawer(button.dataset.closeDrawer)));
-  $('drawerBackdrop').addEventListener('click', () => { closeDrawer('taskDrawer'); closeDrawer('notificationDrawer'); });
+  $('drawerBackdrop').addEventListener('click', () => { closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); });
   $('notificationBtn').addEventListener('click', () => openDrawer('notificationDrawer')); $('markAllReadBtn').addEventListener('click', markAllRead);
   $('notificationSettingsBtn').addEventListener('click', () => { closeDrawer('notificationDrawer'); $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
   $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
   $('enablePushBtn').addEventListener('click', enablePush); $('disablePushBtn').addEventListener('click', disablePush); $('testPushBtn').addEventListener('click', testPush);
   $('profileBtn').addEventListener('click', () => openProfile(false));
+  $('teamNewDemandBtn')?.addEventListener('click', () => openQuickAdd('demanda'));
+  $('teamSearch')?.addEventListener('input', debounce(event => { state.teamSearch = event.target.value; renderEquipe(); }, 120));
+  $('teamSort')?.addEventListener('change', event => { state.teamSort = event.target.value; renderEquipe(); });
+  $('teamRiskOnly')?.addEventListener('click', event => { state.teamRiskOnly = !state.teamRiskOnly; event.currentTarget.classList.toggle('active', state.teamRiskOnly); event.currentTarget.setAttribute('aria-pressed', String(state.teamRiskOnly)); renderEquipe(); });
   $('refreshBtn').addEventListener('click', async () => { $('refreshBtn').classList.add('spinning'); setLoading(true); try { await refreshData(); toast('Dados atualizados.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); $('refreshBtn').classList.remove('spinning'); } });
   $('globalSearchBtn').addEventListener('click', openSearch); $('globalSearchInput').addEventListener('input', debounce(renderGlobalSearch, 100));
   $('searchModal').addEventListener('click', event => { if (event.target === $('searchModal')) closeSearch(); });
@@ -783,7 +1004,10 @@ function bindEvents() {
   $('addOnSelectedDay').addEventListener('click', () => openQuickAdd('lembrete', { date: state.selectedDate }));
   $('openSidebarBtn').addEventListener('click', openMobileSidebar); $('closeSidebarBtn').addEventListener('click', closeMobileSidebar); $('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
   document.addEventListener('click', event => {
-    const task = event.target.closest('[data-open-task]'); if (task) openTask(task.dataset.openTask);
+    const person = event.target.closest('[data-open-person]'); if (person) openPerson(person.dataset.openPerson);
+    const showTasks = event.target.closest('[data-person-show-tasks]'); if (showTasks) showPersonTasks(showTasks.dataset.personShowTasks);
+    const createFor = event.target.closest('[data-person-create-task]'); if (createFor) { const personId = createFor.dataset.personCreateTask; closeDrawer('personDrawer'); openQuickAdd('demanda', { assigneeId: personId }); }
+    const task = event.target.closest('[data-open-task]'); if (task) { if (!$('personDrawer').classList.contains('hidden')) closeDrawer('personDrawer'); openTask(task.dataset.openTask); }
     const reminder = event.target.closest('[data-open-reminder]'); if (reminder) openReminder(reminder.dataset.openReminder);
     const date = event.target.closest('[data-calendar-date]'); if (date) { state.selectedDate = date.dataset.calendarDate; renderAgenda(); refreshIcons(); }
     const notification = event.target.closest('[data-notification-id]'); if (notification) { markNotificationAndOpen(notification); }
@@ -797,7 +1021,8 @@ function bindEvents() {
   });
   document.addEventListener('keydown', event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); }
-    if (event.key === 'Escape') { closeSearch(); $$('.modal-layer:not(.hidden)').forEach(modal => { if (modal.id !== 'profileModal' || modal.dataset.required !== '1') closeModal(modal.id); }); closeDrawer('taskDrawer'); closeDrawer('notificationDrawer'); }
+    if ((event.key === 'Enter' || event.key === ' ') && document.activeElement?.matches?.('[data-open-person]')) { event.preventDefault(); openPerson(document.activeElement.dataset.openPerson); }
+    if (event.key === 'Escape') { closeSearch(); $$('.modal-layer:not(.hidden)').forEach(modal => { if (modal.id !== 'profileModal' || modal.dataset.required !== '1') closeModal(modal.id); }); closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); }
   });
 }
 async function markNotificationAndOpen(element) {

@@ -212,10 +212,38 @@
         </section>
 
         <section id="viewEquipe" class="view" data-page="equipe">
-          <div class="page-toolbar">
-            <div class="toolbar-title"><span class="eyebrow">Capacidade do setor</span><h2>Equipe</h2><p>Uma leitura simples de carga, atrasos e entregas da semana.</p></div>
+          <div class="page-toolbar team-page-toolbar">
+            <div class="toolbar-title">
+              <span id="teamPageEyebrow" class="eyebrow">Capacidade do setor</span>
+              <h2>Equipe</h2>
+              <p id="teamPageDescription">Acompanhe carga, prioridades, entregas e movimentações de cada pessoa.</p>
+            </div>
+            <div class="toolbar-actions manager-only">
+              <button id="teamNewDemandBtn" class="btn primary"><i data-lucide="clipboard-plus"></i><span>Nova demanda</span></button>
+            </div>
           </div>
+
+          <div id="teamManagerBanner" class="team-manager-banner manager-only">
+            <div class="team-manager-banner-icon"><i data-lucide="scan-search"></i></div>
+            <div><span class="eyebrow light">Visão gerencial</span><strong>O setor inteiro, sem precisar caçar atualização em conversa.</strong><p>Os indicadores abaixo são calculados com base nas demandas, prazos, estimativas e atividades registradas no Connect.</p></div>
+            <span id="teamUpdatedAt" class="team-updated-at">Atualizado agora</span>
+          </div>
+
           <div id="teamSummary" class="team-summary"></div>
+          <div id="teamInsights" class="team-insights manager-only"></div>
+
+          <div class="team-controls manager-only">
+            <div class="team-search-field"><i data-lucide="search"></i><input id="teamSearch" type="search" placeholder="Buscar colaborador ou cargo..."></div>
+            <select id="teamSort" aria-label="Ordenar equipe">
+              <option value="risk">Maior atenção</option>
+              <option value="workload">Maior carga</option>
+              <option value="overdue">Mais atrasos</option>
+              <option value="completed">Mais conclusões</option>
+              <option value="name">Nome</option>
+            </select>
+            <button id="teamRiskOnly" class="team-filter-toggle" type="button" aria-pressed="false"><i data-lucide="triangle-alert"></i>Somente atenção</button>
+          </div>
+
           <div id="teamGrid" class="team-grid"></div>
         </section>
       </div>
@@ -228,6 +256,11 @@
     <div class="drawer-top"><div><span class="eyebrow">Central</span><h2>Notificações</h2></div><button class="icon-btn subtle" data-close-drawer="notificationDrawer"><i data-lucide="x"></i></button></div>
     <div class="drawer-actions"><button id="markAllReadBtn" class="text-action">Marcar todas como lidas</button><button id="notificationSettingsBtn" class="text-action"><i data-lucide="settings-2"></i>Configurar</button></div>
     <div id="notificationList" class="notification-list"></div>
+  </aside>
+
+  <aside id="personDrawer" class="right-drawer person-detail-drawer hidden" aria-label="Visão gerencial do colaborador">
+    <div class="drawer-top person-drawer-top"><div><span id="personDrawerKicker" class="eyebrow">Visão gerencial</span><h2 id="personDrawerTitle">Colaborador</h2></div><button class="icon-btn subtle" data-close-drawer="personDrawer"><i data-lucide="x"></i></button></div>
+    <div id="personDrawerContent" class="person-drawer-content"></div>
   </aside>
 
   <aside id="taskDrawer" class="right-drawer task-detail-drawer hidden" aria-label="Detalhes da demanda">
