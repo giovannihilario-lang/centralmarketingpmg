@@ -449,8 +449,10 @@ $$;
 -- RPCs DE TAREFAS
 -- ============================================================
 
--- Remove assinaturas antigas que aceitavam identidade enviada pelo frontend.
+-- Remove assinaturas antigas e a versão atual antes de recriar.
+-- Isso evita o erro 42P13 quando uma execução anterior criou parâmetros com DEFAULT.
 drop function if exists public.criar_tarefa(text, text, public.prioridade_tarefa, uuid, uuid, date, text[]);
+drop function if exists public.criar_tarefa(text, text, public.prioridade_tarefa, uuid, date, text[]);
 drop function if exists public.adicionar_comentario(uuid, uuid, text);
 
 create or replace function public.criar_tarefa(
