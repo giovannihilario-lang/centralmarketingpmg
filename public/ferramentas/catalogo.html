@@ -44,6 +44,10 @@
   .btn-sm.danger:hover { background: #FFEBEE; border-color: #EF9A9A; color: #C62828; }
   .page-products { padding: 10px 12px; display: none; flex-direction: column; gap: 5px; }
   .page-item.open .page-products { display: flex; }
+  .page-color-strip { width: 8px; height: 20px; border-radius: 4px; margin-right: 8px; cursor: pointer; border: 1.5px solid rgba(0,0,0,.15); flex-shrink: 0; position: relative; }
+.page-color-strip input[type=color] { position: absolute; inset: -4px; opacity: 0; cursor: pointer; width: calc(100% + 8px); height: calc(100% + 8px); }
+.page-color-reset { font-size: 9px; color: #BDBDBD; background: none; border: none; cursor: pointer; margin-left: 2px; padding: 0 3px; }
+.page-color-reset:hover { color: #E53935; }
   .product-tag { display: flex; align-items: center; justify-content: space-between; background: #F8F8F8; border: 1px solid #EBEBEB; border-radius: 5px; padding: 5px 8px; font-size: 10.5px; color: #333; cursor: grab; transition: background .1s; }
   .product-tag:hover { background: #F0F0F0; }
   .product-tag span { flex: 1; }
@@ -213,7 +217,7 @@ const COLOR_LABELS = {
 };
 
 function buildPagesFromCategorias() {
-  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', produtos: [] }));
+  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', produtos: [], cor: null }));
 }
 let pages      = buildPagesFromCategorias();
 let nextPageId = CATEGORIAS.length + 1;
@@ -235,8 +239,8 @@ function garantirCategoria(cat) {
   if (!CATEGORIAS.includes(cat)) {
     CATEGORIAS.push(cat);
     CATEGORIAS.sort();
-    pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', produtos: [] });
-  }
+// dentro de garantirCategoria()
+pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', produtos: [], cor: null });  }
 }
 function extrairUnidade(nome) {
   const m = nome.match(/\(([^)]+)\)\s*$/);
@@ -255,6 +259,37 @@ function applyColors() {
   r.setProperty('--verde-claro',  colors_state.verdeClaro);
   r.setProperty('--verde-suave',  colors_state.verdeSuave);
   r.setProperty('--accent',       colors_state.accent);
+}
+function hexToRgb(hex) {
+  const h = hex.replace('#','');
+  return { r: parseInt(h.substr(0,2),16), g: parseInt(h.substr(2,2),16), b: parseInt(h.substr(4,2),16) };
+}
+function rgbToHex(r,g,b) {
+  return '#' + [r,g,b].map(x => Math.max(0,Math.min(255,Math.round(x))).toString(16).padStart(2,'0')).join('');
+}
+function shade(hex, percent) {
+  const { r, g, b } = hexToRgb(hex);
+  const alvo = percent < 0 ? 0 : 255;
+  const p = Math.abs(percent) / 100;
+  return rgbToHex(r + (alvo - r) * p, g + (alvo - g) * p, b + (alvo - b) * p);
+}
+function paletaDaPagina(pg) {
+  if (!pg.cor) return colors_state;
+  return {
+    verdeEscuro: shade(pg.cor, -15),
+    verdeMed:    pg.cor,
+    verdeClaro:  shade(pg.cor, 55),
+    verdeSuave:  shade(pg.cor, 80),
+    accent:      shade(pg.cor, 25),
+  };
+}
+function updatePageCor(pid, val) {
+  const pg = pages.find(p => p.id === pid);
+  if (pg) { pg.cor = val; renderPanel(); renderPreview(); salvarDebounce(); }
+}
+function resetPageCor(pid) {
+  const pg = pages.find(p => p.id === pid);
+  if (pg) { pg.cor = null; renderPanel(); renderPreview(); salvarDebounce(); }
 }
 function assignedPages() {
   const set = new Set();
@@ -406,7 +441,7 @@ function renderCadList() {
 
 // ── PÁGINAS ──
 function addPage() {
-  pages.push({ id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [] });
+  pages.push({ id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [], cor: null });
   renderPanel(); renderPreview();
 }
 function updatePageTitulo(pid, val) {
@@ -499,7 +534,23 @@ function adicionarTodosFiltrados() {
   renderPanel(); renderPreview(); salvarDebounce();
   showToast(`${adicionados} produto${adicionados !== 1 ? 's' : ''} adicionado${adicionados !== 1 ? 's' : ''}!`);
 }
+function distribuirTodosPorCategoria() {
+  let distribuidos = 0, semPagina = 0;
+  const semPaginaCats = new Set();
 
+  TODOS_PRODUTOS.forEach(p => {
+    const pg = pages.find(pg2 => pg2.titulo === p.categoria);
+    if (!pg) { semPagina++; semPaginaCats.add(p.categoria); return; }
+    // tira o produto de qualquer página que ele esteja
+    pages.forEach(pg2 => { pg2.produtos = pg2.produtos.filter(id => id !== p.id); });
+    pg.produtos.push(p.id);
+    distribuidos++;
+  });
+
+  renderPanel(); renderPreview(); salvarDebounce();
+  showToast(`${distribuidos} produto${distribuidos !== 1 ? 's' : ''} distribuído${distribuidos !== 1 ? 's' : ''} por categoria` + (semPagina ? ` · ${semPagina} sem página correspondente` : ''));
+  if (semPaginaCats.size) console.warn('Categorias sem página correspondente:', Array.from(semPaginaCats));
+}
 // ── DRAG PRODUTOS ENTRE PÁGINAS ──
 function onDragStart(e, pid, prodId) { dragProdId = prodId; dragFromPage = pid; e.dataTransfer.effectAllowed = 'move'; }
 function onDragOverZone(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
@@ -555,11 +606,16 @@ function renderPanel() {
     div.innerHTML = `
       <div class="page-header" onclick="togglePage(${pg.id})">
         <span class="page-drag-handle">⠿</span>
+        <span class="page-color-strip" style="background:${pg.cor || colors_state.verdeEscuro}" onclick="event.stopPropagation()">
+          <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
+        </span>
         <span class="page-title">${pg.titulo}</span>
         <span class="page-count">${prods.length} prod.</span>
         <div class="page-actions" onclick="event.stopPropagation()">
+          ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
           <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
         </div>
+      </div>
       </div>
       <div class="page-edit-fields">
         <label>Título</label>
@@ -639,6 +695,12 @@ function renderPreview() {
             <div class="a4-subs">${pg.subtitulo||''}</div>
           </div>
         </div>`;
+        const pal = paletaDaPagina(pg);
+a4.style.setProperty('--verde-escuro', pal.verdeEscuro);
+a4.style.setProperty('--verde-med',    pal.verdeMed);
+a4.style.setProperty('--verde-claro',  pal.verdeClaro);
+a4.style.setProperty('--verde-suave',  pal.verdeSuave);
+a4.style.setProperty('--accent',       pal.accent);
 
       const grid = document.createElement('div'); grid.className = 'a4-grid';
 
@@ -733,6 +795,8 @@ function buildPanel() {
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:12px">Páginas do Catálogo</div>
       <div class="pages-list" id="pagesList"></div>
       <button class="btn-add-page" onclick="addPage()" style="margin-top:10px">+ Nova Página</button>
+      <button class="btn-add-page" onclick="addPage()" style="margin-top:10px">+ Nova Página</button>
+<button class="btn-add-page" onclick="distribuirTodosPorCategoria()" style="margin-top:6px">↺ Distribuir tudo por categoria</button>
       <div style="margin-top:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:8px">Produtos Disponíveis</div>
       <select id="poolCatFilter" class="pool-cat-filter" onchange="renderPool()">
         <option value="">Todas as categorias</option>
@@ -822,35 +886,33 @@ function exportPDF() {
   });
 }
 
-async function salvarEstado() {
+// ── SALVAR/CARREGAR NO PRÓPRIO NAVEGADOR (localStorage) ──
+const STORAGE_KEY = 'catalogoPMG_estado';
+
+function salvarEstado() {
   const estado = {
     pages: pages.map(pg => ({
-      id: pg.id,
-      titulo: pg.titulo,
-      subtitulo: pg.subtitulo,
-      produtos: pg.produtos
-    })),
+  id: pg.id, titulo: pg.titulo, subtitulo: pg.subtitulo,
+  produtos: pg.produtos, cor: pg.cor || null
+})),
     nextPageId,
     openPage,
     colors_state,
     logoDataUrl,
   };
   try {
-    await fetch('/api/catalogo-estado', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(estado)
-    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(estado));
   } catch (err) {
-    console.error('Erro ao salvar estado:', err);
+    console.error('Erro ao salvar estado (localStorage cheio?):', err);
+    showToast('Não foi possível salvar — armazenamento local cheio.');
   }
 }
 
-async function carregarEstado() {
+function carregarEstado() {
   try {
-    const resp = await fetch('/api/catalogo-estado');
-    if (!resp.ok) return false;
-    const estado = await resp.json();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const estado = JSON.parse(raw);
     if (!estado || !estado.pages || estado.pages.length === 0) return false;
     pages        = estado.pages;
     nextPageId   = estado.nextPageId || pages.length + 1;
@@ -864,7 +926,11 @@ async function carregarEstado() {
     return false;
   }
 }
-
+let _salvarTimeout = null;
+function salvarDebounce() {
+  clearTimeout(_salvarTimeout);
+  _salvarTimeout = setTimeout(salvarEstado, 400);
+}
 // ── SINCRONIZAR API ──
 async function sincronizarAPI() {
   const btn    = document.getElementById('btnSincAPI');
@@ -929,8 +995,8 @@ renderPanel();
 renderPreview();
 
 window.addEventListener('load', async () => {
-  await sincronizarAPI();            // 1. carrega produtos da API
-  const tinha = await carregarEstado(); // 2. restaura páginas/ordem salvas
+  await sincronizarAPI();
+  const tinha = carregarEstado();   // sem await
   if (tinha) {
     renderLogoPreview();
     buildColorGrid();

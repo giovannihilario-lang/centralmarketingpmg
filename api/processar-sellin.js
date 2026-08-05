@@ -1,10 +1,6 @@
 import * as XLSX from 'xlsx';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+import { getPool, sql } from '../src/lib/db.js';
+import { TABELAS } from '../src/lib/tabelas.js';
 
 function paraISODate(valor) {
   if (!valor) return null;
@@ -62,6 +58,11 @@ function paraNumero(valor) {
 }
 
 export default async function handler(req, res) {
+  if (!TABELAS.notas_fiscais) {
+    return res.status(501).json({
+      erro: 'Upload de sell-in ainda não migrado: falta definir a tabela de notas fiscais no SQL Server (veja src/lib/tabelas.js).',
+    });
+  }
   if (req.method !== 'POST') return res.status(405).end();
 
   let rows = null;
@@ -129,21 +130,35 @@ export default async function handler(req, res) {
       return res.status(200).json({ mensagem: "Nenhuma nota restou após os filtros estritos." });
     }
 
-    // 1. Limpa registros anteriores deste fornecedor
-    const { error: delErr } = await supabase
-      .from('notas_fiscais')
-      .delete()
-      .eq('fornecedor_id', fornecedorId);
-    if (delErr) throw delErr;
+    const pool = await getPool();
 
-    // 2. Insere os lotes
-    const LOTE = 500;
+    // 1. Limpa registros anteriores deste fornecedor
+    const delRequest = pool.request();
+    delRequest.input('fornecedorId', sql.Int, fornecedorId);
+    await delRequest.query(`DELETE FROM ${TABELAS.notas_fiscais} WHERE fornecedor_id = @fornecedorId`);
+
+    // 2. Insere as notas (uma a uma, via parâmetros — evita SQL injection)
     let totalInseridos = 0;
-    for (let i = 0; i < notas.length; i += LOTE) {
-      const lote = notas.slice(i, i + LOTE);
-      const { error: erroInsert } = await supabase.from('notas_fiscais').insert(lote);
-      if (erroInsert) throw erroInsert;
-      totalInseridos += lote.length;
+    for (const n of notas) {
+      const request = pool.request();
+      request.input('fornecedorId', sql.Int, n.fornecedor_id);
+      request.input('nfeId', sql.BigInt, n.nfe_id);
+      request.input('numero', sql.NVarChar, n.numero);
+      request.input('emissao', sql.DateTime2, n.emissao ? new Date(n.emissao) : null);
+      request.input('cnpjEmitente', sql.NVarChar, n.cnpj_emitente);
+      request.input('emitente', sql.NVarChar, n.emitente);
+      request.input('valor', sql.Decimal(18, 2), n.valor);
+      request.input('situacao', sql.NVarChar, n.situacao);
+      request.input('compraId', sql.NVarChar, n.compra_id);
+      request.input('naturezaOperacao', sql.NVarChar, n.natureza_operacao);
+
+      await request.query(`
+        INSERT INTO ${TABELAS.notas_fiscais}
+          (fornecedor_id, nfe_id, numero, emissao, cnpj_emitente, emitente, valor, situacao, compra_id, natureza_operacao)
+        VALUES
+          (@fornecedorId, @nfeId, @numero, @emissao, @cnpjEmitente, @emitente, @valor, @situacao, @compraId, @naturezaOperacao)
+      `);
+      totalInseridos++;
     }
 
     res.status(200).json({

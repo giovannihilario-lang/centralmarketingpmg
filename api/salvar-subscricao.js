@@ -1,17 +1,27 @@
-import { createClient } from '@supabase/supabase-js';
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+import { getPool, sql } from '../src/lib/db.js';
+import { TABELAS } from '../src/lib/tabelas.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   const sub = req.body;
   if (!sub?.endpoint) return res.status(400).json({ erro: 'Subscription inválida.' });
 
-  const { error } = await supabase.from('push_subscriptions').upsert({
-    endpoint: sub.endpoint,
-    p256dh: sub.keys.p256dh,
-    auth: sub.keys.auth,
-  }, { onConflict: 'endpoint' });
+  try {
+    const pool = await getPool();
+    const request = pool.request();
+    request.input('endpoint', sql.NVarChar(450), sub.endpoint);
+    request.input('p256dh', sql.NVarChar(200), sub.keys.p256dh);
+    request.input('auth', sql.NVarChar(200), sub.keys.auth);
 
-  if (error) return res.status(500).json({ erro: error.message });
-  res.status(200).json({ ok: true });
+    await request.query(`
+      MERGE ${TABELAS.push_subscriptions} AS destino
+      USING (SELECT @endpoint AS endpoint) AS origem ON destino.endpoint = origem.endpoint
+      WHEN MATCHED THEN UPDATE SET p256dh = @p256dh, auth = @auth
+      WHEN NOT MATCHED THEN INSERT (endpoint, p256dh, auth) VALUES (@endpoint, @p256dh, @auth);
+    `);
+
+    return res.status(200).json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ erro: err.message });
+  }
 }

@@ -1291,19 +1291,25 @@ function renderTopList(elId, map, n) {
 ══════════════════════════════════════════════ */
 function getBairroCoords(bairro) {
   if (!bairro) return null;
-  const key = bairro.toLowerCase().trim()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const key = bairro.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+
   // Busca exata
   for (const [k, v] of Object.entries(BAIRRO_COORDS)) {
     const kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     if (kn === key) return v;
   }
-  // Busca parcial
+
+  // Busca por palavra inteira (evita "se" bater em qualquer string que contenha "se")
+  const keyWords = key.split(/[^a-z0-9]+/).filter(Boolean);
   for (const [k, v] of Object.entries(BAIRRO_COORDS)) {
     const kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if (key.includes(kn) || kn.includes(key)) return v;
+    if (kn.length < 4) continue; // ignora chaves curtas demais para busca parcial (ex: "se")
+    const knWords = kn.split(/[^a-z0-9]+/).filter(Boolean);
+    // só considera match se TODAS as palavras da chave do dicionário aparecerem nas palavras do bairro buscado
+    if (knWords.every(w => keyWords.includes(w))) return v;
   }
-  return null;
+
+  return null; // não encontrou — melhor não plotar do que plotar errado
 }
 
 function buildBairroData() {

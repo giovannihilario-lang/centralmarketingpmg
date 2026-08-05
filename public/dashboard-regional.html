@@ -4,11 +4,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mapa Regional de Vendas PMG Connect</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -29,122 +32,275 @@
     --gray-2:       #d4d6d3;
     --gray-text:    #6b7280;
     --text-dark:    #111827;
-    --radius:       10px;
+    --radius:       14px;
+    --ease-out:     cubic-bezier(.16,.84,.32,1);
+    --ease-spring:  cubic-bezier(.34,1.56,.64,1);
+    --font-display: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --surface:      rgba(255,255,255,.86);
+    --surface-solid: #ffffff;
+    --glass-border: rgba(255,255,255,.9);
+    --shadow-sm:    0 1px 2px rgba(17,24,39,.04), 0 1px 1px rgba(17,24,39,.03);
+    --shadow-card:  0 1px 2px rgba(17,24,39,.04), 0 10px 24px -16px rgba(26,77,46,.16);
+    --shadow-hover: 0 22px 40px -20px rgba(26,77,46,.34), 0 4px 10px -4px rgba(26,77,46,.12);
   }
+  html { scroll-behavior: smooth; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--gray-0); color: var(--text-dark); height: 100vh;
+    font-family: var(--font-body);
+    background:
+      radial-gradient(1100px 520px at 14% -8%, #eaf6ee 0%, transparent 60%),
+      radial-gradient(900px 480px at 100% 0%, #fef8ea 0%, transparent 55%),
+      var(--gray-0);
+    color: var(--text-dark); height: 100vh;
     display: flex; flex-direction: column; overflow: hidden;
+    font-variant-numeric: tabular-nums;
 }
-  @keyframes cardEnter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  ::selection { background: var(--green-light); color: white; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--gray-2); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--green-light); }
+  h1, .kpi-value, .chart-title, .rank-value, .kpi-label, .chart-title-lg { font-family: var(--font-display); }
+
+  @keyframes cardEnter { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes sidebarEnter { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes headerEnter { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes shimmerMove { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
   @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(76,175,112,0.4); } 50% { box-shadow: 0 0 0 8px rgba(76,175,112,0); } }
   @keyframes floatUp { from { opacity:0; transform: translateY(8px) scale(0.9); } to { opacity:1; transform: translateY(0) scale(1); } }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes countUp { from { opacity: 0.4; } to { opacity: 1; } }
+  @keyframes markerPop { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
+  @keyframes logoDrift { 0%,100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-1.5px) rotate(-3deg); } }
+  @keyframes toastIn { from { opacity:0; transform: translateY(10px) scale(.94); } to { opacity:1; transform: translateY(0) scale(1); } }
+  @keyframes dotBounce { 0%,80%,100% { transform: scale(.6); opacity:.4; } 40% { transform: scale(1); opacity:1; } }
+  @keyframes ringSpin { to { transform: rotate(360deg); } }
+  @keyframes auroraDrift { 0%,100% { transform: translate(0,0) rotate(0deg); } 33% { transform: translate(2%,3%) rotate(4deg); } 66% { transform: translate(-2%,-2%) rotate(-3deg); } }
+  @keyframes revealUp { from { opacity:0; transform: translateY(22px); filter: blur(6px); } to { opacity:1; transform: translateY(0); filter: blur(0); } }
+  @keyframes pillIn { from { opacity:0; transform: scale(.7) translateY(4px); } to { opacity:1; transform: scale(1) translateY(0); } }
+  @keyframes valueSweep { 0% { background-position: -150% 0; } 100% { background-position: 250% 0; } }
+  @keyframes tabPop { 0% { transform: scale(.94); } 60% { transform: scale(1.015); } 100% { transform: scale(1); } }
 
-  .hdr { background: var(--green-dark); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; height: 54px; flex-shrink: 0; position: relative; overflow: hidden; }
+  .hdr { background: linear-gradient(135deg, var(--green-dark), #123d24); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; height: 56px; flex-shrink: 0; position: relative; overflow: hidden; animation: headerEnter .5s var(--ease-out) both; z-index: 10; }
+  .hdr::before { content:''; position:absolute; inset:-40%; background:
+      radial-gradient(38% 60% at 12% 30%, rgba(76,175,112,.55), transparent 70%),
+      radial-gradient(30% 55% at 70% 75%, rgba(245,158,11,.28), transparent 70%),
+      radial-gradient(26% 50% at 92% 10%, rgba(139,92,246,.22), transparent 70%);
+    filter: blur(18px); animation: auroraDrift 14s ease-in-out infinite; pointer-events:none; }
   .hdr::after { content: ''; position: absolute; left:0; right:0; bottom:0; height:2px; background: linear-gradient(90deg, transparent, var(--green-light), transparent); background-size: 200% 100%; animation: shimmerMove 4.5s linear infinite; }
-  .hdr-left { display: flex; align-items: center; gap: 12px; }
-  .hdr-badge { width: 36px; height: 36px; background: white; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; color: var(--green-dark); }
-  .hdr h1 { color: white; font-size: 15px; font-weight: 500; }
-  .hdr-right { display: flex; align-items: center; gap: 8px; }
-  .hdr-pill { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.82); font-size: 11px; padding: 3px 11px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); }
+  .hdr-left { display: flex; align-items: center; gap: 12px; position:relative; z-index:1; }
+  .hdr-badge { width: 36px; height: 36px; background: white; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--green-dark); box-shadow: 0 2px 10px rgba(0,0,0,.18); animation: logoDrift 5s ease-in-out infinite; }
+  .hdr-badge svg { width: 20px; height: 20px; }
+  .hdr h1 { color: white; font-size: 15px; font-weight: 600; letter-spacing: -.1px; font-family: var(--font-display); }
+  .hdr-right { display: flex; align-items: center; gap: 8px; position:relative; z-index:1; }
+  .hdr-pill { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.82); font-size: 11px; padding: 3px 11px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); display: inline-flex; align-items: center; gap: 5px; transition: background .2s ease, border-color .2s ease, transform .18s var(--ease-spring); backdrop-filter: blur(6px); }
+  .hdr-pill:hover { transform: translateY(-1px); }
+  .hdr-pill svg { width: 11px; height: 11px; opacity: .85; }
   .hdr-pill.active { background: rgba(76,175,112,0.3); border-color: rgba(76,175,112,0.5); color: #b3f0cc; }
   .hdr-pill#filtroAtivo { animation: pulseGlow 2.2s ease-in-out infinite; background:rgba(240,165,0,0.25); border-color:rgba(240,165,0,0.5); color:#fde68a; }
+  #modoDiretoriaBtn { cursor:pointer; }
+  #modoDiretoriaBtn.active { animation: pulseGlow 2.2s ease-in-out infinite; background:rgba(240,165,0,0.25); border-color:rgba(240,165,0,0.5); color:#fde68a; }
+  #refreshBtn { cursor: pointer; }
+  #refreshBtn svg { transition: transform .2s ease; }
+  #refreshBtn.spinning svg { animation: spin .8s linear infinite; }
+  #refreshBtn:disabled { cursor: default; opacity: .6; }
+  .export-wrap { position: relative; }
+  #exportBtn { cursor: pointer; }
+  .export-menu { display:none; position:absolute; top:calc(100% + 8px); right:0; background:#fff; border:1px solid #e3e6e4; border-radius:10px; box-shadow:0 12px 28px -8px rgba(17,24,39,.22); overflow:hidden; min-width:168px; z-index:50; }
+  .export-menu.open { display:block; }
+  .export-menu button { width:100%; display:flex; align-items:center; gap:8px; padding:9px 12px; background:none; border:none; text-align:left; font-size:12.5px; color:#1f2937; cursor:pointer; transition:background .15s ease; }
+  .export-menu button:hover { background:#f3f6f4; }
+  .export-menu button svg { width:14px; height:14px; opacity:.7; flex-shrink:0; }
+  .export-menu .export-hint { padding:8px 12px 4px; font-size:10px; color:#9ca3af; letter-spacing:.02em; }
 
-  .body-layout { display: grid; grid-template-columns: 210px 1fr; flex: 1; overflow: hidden; }
-  .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-  .sb-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; }
-  .sb-section-header { display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; margin-bottom:7px; }
-  .sb-chevron { width:14px; height:14px; color:var(--gray-text); transition: transform .2s; flex-shrink:0; }
-  .sb-chevron.collapsed { transform: rotate(-90deg); }
-  .sb-collapse { overflow:hidden; transition: max-height .25s ease, opacity .2s ease; max-height:600px; opacity:1; }
-  .sb-collapse.collapsed { max-height:0; opacity:0; }
-  .chip-group { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
-  .chip-search { width:100%; padding:6px 9px; font-size:11.5px; border:1px solid var(--gray-1); border-radius:7px; background:var(--gray-0); margin-bottom:6px; outline:none; transition: border-color .15s; }
-  .chip-search:focus { border-color: var(--green-mid); background: var(--white); }
+  .body-layout { display: grid; grid-template-columns: 280px 1fr; flex: 1; overflow: hidden; position: relative; }
+    .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 2; box-shadow: 6px 0 24px -20px rgba(17,24,39,.15); }
+  .sidebar > * { animation: sidebarEnter .5s var(--ease-out) both; }
+  .sidebar > *:nth-child(1) { animation-delay: .03s; }
+  .sidebar > *:nth-child(2) { animation-delay: .07s; }
+  .sidebar > *:nth-child(3) { animation-delay: .11s; }
+  .sidebar > *:nth-child(4) { animation-delay: .15s; }
+  .sidebar > *:nth-child(5) { animation-delay: .19s; }
+  .sb-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; display:flex; align-items:center; gap:6px; }
+  .sb-section-title:not(:first-child) { margin-top: 16px; }
+  .chip-group { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+
+  /* ── Abas de filtro (Localização / Catálogo) ── */
+.filter-tabs { background: var(--gray-0); border: 1px solid var(--gray-1); border-radius: 12px; padding: 10px; display:flex; flex-direction:column; }
+.filter-tabs-nav { display:flex; gap:2px; background: var(--white); border: 1px solid var(--gray-1); border-radius: 9px; padding: 2px; margin-bottom: 12px; position: relative; }
+.filter-tab { flex:1; min-width:0; position:relative; z-index:2; border:none; background:transparent; padding:7px 5px; font-size:10.5px; font-weight:600; color: var(--gray-text); border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; transition: color .2s ease; }
+  .filter-tab svg { width:11px; height:11px; flex-shrink:0; }
+  .filter-tab .tab-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .filter-tab .tab-count { flex-shrink:0; font-size:8.5px; background: rgba(0,0,0,.06); padding:1px 4px; border-radius: 8px; font-weight:700; }
+  .filter-tab.active { color: var(--green-dark); }
+  .filter-tab.active .tab-count { background: var(--green-pale); color: var(--green-dark); }
+  .filter-tab-indicator { position:absolute; top:3px; bottom:3px; left:3px; width: calc(50% - 3px); background: linear-gradient(135deg, var(--green-pale), #f2faf5); border: 1px solid var(--green-border); border-radius:7px; transition: transform .32s var(--ease-spring); box-shadow: 0 2px 6px -2px rgba(26,77,46,.2); z-index: 1; }
+  .filter-tab-panel { display:none; animation: floatUp .3s var(--ease-out) both; max-height: 640px; overflow-y: auto; padding-right: 4px; }
+  .filter-tab-panel.active { display:flex; flex-direction: column; gap: 12px; }
+
+  /* ── Resumo de filtros aplicados ── */
+  .fam-box { display:none; flex-direction:column; gap:7px; background: linear-gradient(135deg, var(--green-pale), #f4faf6); border:1px solid var(--green-border); border-radius:12px; padding:10px 11px; }
+  .fam-box.show { display:flex; animation: floatUp .3s var(--ease-out) both; }
+  .fam-head { display:flex; align-items:center; justify-content:space-between; }
+  .fam-title { font-size:9.5px; text-transform:uppercase; letter-spacing:.7px; font-weight:700; color: var(--green-dark); }
+  .fam-clear { font-size:10px; color: var(--green-mid); background:none; border:none; cursor:pointer; font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+  .fam-clear:hover { color: var(--green-dark); }
+  .fam-chips { display:flex; flex-wrap:wrap; gap:5px; }
+  .fam-pill { display:inline-flex; align-items:center; gap:5px; background:white; border:1px solid var(--green-border); color: var(--green-dark); font-size:10.5px; font-weight:600; padding:3px 6px 3px 9px; border-radius: 20px; animation: pillIn .28s var(--ease-spring) both; }
+  .fam-pill button { border:none; background: var(--green-pale); color: var(--green-dark); width:14px; height:14px; border-radius:50%; font-size:10px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition: background .15s ease, transform .15s ease; }
+  .fam-pill button:hover { background: var(--green-dark); color:white; transform: scale(1.12); }
+  .chip-search { width:100%; padding:6px 9px; font-size:11.5px; border:1px solid var(--gray-1); border-radius:7px; background:var(--gray-0); margin-bottom:6px; outline:none; transition: border-color .18s ease, box-shadow .18s ease; }
+  .chip-search:focus { border-color: var(--green-mid); background: var(--white); box-shadow: 0 0 0 3px var(--green-pale); }
   .chip-empty { font-size:11px; color:var(--gray-text); padding:6px 4px; }
-  .chip { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--gray-1); background: var(--gray-0); font-size: 12px; cursor: pointer; transition: all .14s ease, transform .12s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
-  .chip:hover { border-color: var(--green-mid); background: var(--green-pale); }
-  .chip.active { background: var(--green-dark); color: white; border-color: var(--green-dark); }
+  .chip { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--gray-1); background: var(--white); font-size: 12px; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .15s var(--ease-spring), box-shadow .16s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
+  .chip:hover { border-color: var(--green-mid); background: var(--green-pale); transform: translateX(2px); }
+  .chip.active { background: var(--green-dark); color: white; border-color: var(--green-dark); box-shadow: 0 3px 10px -3px rgba(26,77,46,.5); animation: tabPop .3s var(--ease-spring); }
   .chip:active { transform: scale(0.96); }
   .chip .badge { font-size: 10px; opacity: .65; font-variant-numeric: tabular-nums; }
-  .btn-apply { padding: 9px; background: var(--green-dark); color: white; border: none; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; width: 100%; transition: all .15s ease; }
-  .btn-apply:hover { background: var(--green-mid); }
-  .btn-reset { padding: 8px; background: transparent; color: var(--gray-text); border: 1px solid var(--gray-1); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; }
+  .btn-apply { padding: 10px; background: var(--green-dark); background-size: 200% 100%; color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; width: 100%; transition: background-position .35s ease, transform .15s var(--ease-spring), box-shadow .2s ease; background-image: linear-gradient(100deg, var(--green-dark) 0%, var(--green-mid) 50%, var(--green-dark) 100%); }
+  .btn-apply:hover { background-position: 100% 0; box-shadow: 0 8px 20px -8px rgba(26,77,46,.55); transform: translateY(-1px); }
+  .btn-apply:active { transform: scale(.97); }
+  .btn-reset { padding: 8px; background: transparent; color: var(--gray-text); border: 1px solid var(--gray-1); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; transition: border-color .16s ease, color .16s ease; }
   .btn-reset:hover { border-color: var(--gray-2); color: var(--text-dark); }
-  .btn-export { padding: 8px 10px; background: transparent; color: var(--green-dark); border: 1px solid var(--green-border); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; text-align:left; }
-  .btn-export:hover { background: var(--green-pale); border-color: var(--green-mid); }
-  .btn-upload { padding: 9px 10px; background: var(--green-dark); color: white; border: none; border-radius: 7px; font-size: 11px; font-weight: 500; cursor: pointer; width: 100%; text-align:left; display:flex; align-items:center; gap:7px; }
-  .btn-upload:hover { background: var(--green-mid); }
-  .btn-upload:disabled { background: var(--gray-2); cursor: not-allowed; }
-  .upload-status { font-size: 10.5px; color: var(--gray-text); line-height: 1.4; min-height: 14px; }
-  .upload-status.err { color: #9b2c1d; }
-  .upload-status.ok { color: #166534; }
-  .upload-progress-track { width:100%; height:4px; background: var(--gray-1); border-radius:3px; overflow:hidden; display:none; }
-  .upload-progress-track.show { display:block; }
-  .upload-progress-bar { height:100%; width:0%; background: var(--green-mid); transition: width .2s; }
 
-  /* ── destaque do filtro de período ── */
-  .periodo-box { background: var(--amber-pale); border:1px solid #f3d38a; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; }
-  .periodo-title { font-size:10px; text-transform:uppercase; letter-spacing:.8px; color:#8a5a00; font-weight:700; display:flex; align-items:center; gap:5px; }
-  .periodo-row { display:flex; gap:6px; }
-  .periodo-row select { flex:1; padding:6px; font-size:11px; border:1px solid #f3d38a; border-radius:6px; background:white; }
-  .periodo-presets { display:flex; flex-wrap:wrap; gap:5px; }
-  .periodo-preset-btn { font-size:10px; padding:4px 8px; border-radius:12px; border:1px solid #f3d38a; background:white; color:#8a5a00; cursor:pointer; font-weight:500; transition: all .15s; }
-  .periodo-preset-btn:hover, .periodo-preset-btn.active { background: var(--amber); color:white; border-color: var(--amber); }
-  .periodo-atual { font-size:11px; font-weight:700; color:#8a5a00; text-align:center; padding:4px; background:white; border-radius:6px; border:1px dashed #f3d38a; }
+  /* ── seletor de período (botão compacto + painel de calendário) ── */
+  .periodo-filter { position: relative; }
+  .periodo-trigger { width:100%; display:flex; align-items:center; gap:8px; padding:10px 12px; background: var(--gray-0); border:1px solid var(--gray-1); border-radius:10px; cursor:pointer; font-size:12px; font-weight:600; color: var(--text-dark); transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
+  .periodo-trigger:hover { border-color: var(--green-mid); background: var(--green-pale); }
+  .periodo-trigger .cal-icon { width:14px; height:14px; color: var(--green-mid); flex-shrink:0; }
+  .periodo-trigger span#periodoAtual { flex:1; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .periodo-trigger .chev { width:12px; height:12px; color: var(--gray-text); transition: transform .2s var(--ease-spring); flex-shrink:0; }
+  .periodo-filter.open .periodo-trigger { border-color: var(--green-mid); background: var(--green-pale); box-shadow: 0 0 0 3px var(--green-pale); }
+  .periodo-filter.open .periodo-trigger .chev { transform: rotate(180deg); }
 
-  .main { overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .periodo-panel { display:none; position:fixed; background:var(--white); border:1px solid var(--gray-1); border-radius:12px; box-shadow: 0 18px 38px -16px rgba(17,24,39,.3); padding:12px; z-index:9999; }
+  .periodo-panel.open { display:block; animation: floatUp .2s var(--ease-out) both; }
 
-  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
-  .kpi-card { background: var(--white); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 13px 14px 13px 17px; position: relative; overflow: hidden; animation: cardEnter .55s cubic-bezier(.2,.7,.3,1) both; transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
-  .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 12px 26px -14px rgba(26,77,46,.28); border-color: var(--green-border); }
-  .kpi-card::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--accent-color, var(--green-dark)); }
-  .kpi-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-text); margin-bottom: 5px; font-weight: 500; }
-  .kpi-value { font-size: 20px; font-weight: 700; line-height: 1; background: linear-gradient(90deg, var(--accent-color, var(--green-dark)), var(--accent-color2, var(--green-mid))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .periodo-presets-row { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; }
+  .periodo-preset-btn { font-size:10px; padding:4px 9px; border-radius:12px; border:1px solid var(--gray-1); background: var(--gray-0); color: var(--gray-text); cursor:pointer; font-weight:600; transition: background .16s ease, color .16s ease, border-color .16s ease, transform .15s var(--ease-spring); }
+  .periodo-preset-btn:hover { transform: translateY(-1px); border-color: var(--green-mid); }
+  .periodo-preset-btn:active { transform: scale(.95); }
+  .periodo-preset-btn:hover, .periodo-preset-btn.active { background: var(--green-dark); color:white; border-color: var(--green-dark); }
+
+  .periodo-calendar { display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; padding-right:2px; }
+  .periodo-year-row { display:flex; align-items:center; gap:8px; }
+  .periodo-year-label { font-size:10.5px; font-weight:700; color: var(--gray-text); width:32px; flex-shrink:0; }
+  .periodo-months { display:grid; grid-template-columns: repeat(6, 1fr); gap:4px; flex:1; }
+  .month-cell { font-size:9.5px; text-align:center; padding:5px 0; border-radius:6px; border:none; background: var(--gray-0); color: var(--text-dark); cursor:pointer; font-weight:600; transition: background .15s ease, color .15s ease, transform .15s var(--ease-spring); }
+  .month-cell:hover:not(.disabled) { background: var(--green-pale); transform: translateY(-1px); }
+  .month-cell.disabled { color: var(--gray-2); background: transparent; cursor: not-allowed; }
+  .month-cell.in-range { background: var(--green-pale); border-radius:0; }
+  .month-cell.range-start { background: var(--green-dark); color:white; border-radius: 6px 0 0 6px; }
+  .month-cell.range-end { background: var(--green-dark); color:white; border-radius: 0 6px 6px 0; }
+  .month-cell.range-start.range-end { border-radius: 6px; }
+
+  .periodo-panel-actions { display:flex; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid var(--gray-1); }
+  .periodo-panel-actions button { flex:1; font-size:11px; padding:7px; border-radius:7px; cursor:pointer; font-weight:600; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+  .periodo-clear-btn { background:transparent; border:1px solid var(--gray-1); color: var(--gray-text); }
+  .periodo-clear-btn:hover { border-color: var(--gray-2); color: var(--text-dark); }
+  .periodo-confirm-btn { background: var(--green-dark); border:1px solid var(--green-dark); color:white; }
+  .periodo-confirm-btn:hover { background: var(--green-mid); }
+
+  .main { overflow-y: auto; padding: 18px 22px 26px; display: flex; flex-direction: column; gap: 16px; transition: opacity .25s ease, filter .25s ease; position: relative; }
+  .main.is-loading { opacity: .55; filter: saturate(.75); pointer-events: none; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 11px; position: relative; min-height: 84px; }
+  .kpi-card { background: var(--surface-solid); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 14px 14px 14px 18px; position: relative; overflow: hidden; animation: revealUp .6s var(--ease-out) both; transition: transform .3s var(--ease-out), box-shadow .3s ease, border-color .25s ease; box-shadow: var(--shadow-card); }
+  .kpi-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-hover); border-color: var(--green-border); }
+  .kpi-card::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--accent-color, var(--green-dark)); transform-origin: top; transform: scaleY(.42); transition: transform .32s var(--ease-spring); }
+  .kpi-card:hover::before { transform: scaleY(1.0); box-shadow: 0 0 12px var(--accent-color, var(--green-dark)); }
+  .kpi-card::after { content:''; position:absolute; inset:0; background: linear-gradient(100deg, transparent 40%, rgba(255,255,255,.55) 50%, transparent 60%); background-size: 250% 100%; animation: valueSweep 1.6s ease-out .3s 1; pointer-events:none; }
+  .kpi-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-text); margin-bottom: 5px; font-weight: 600; }
+  .kpi-value { font-size: 20px; font-weight: 700; line-height: 1; background: linear-gradient(90deg, var(--accent-color, var(--green-dark)), var(--accent-color2, var(--green-mid))); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: -.2px; }
   .kpi-foot { margin-top: 5px; display: flex; align-items: center; gap: 5px; }
   .kpi-delta { font-size: 9.5px; padding: 2px 6px; border-radius: 5px; font-weight: 600; }
   .kpi-delta.up { background:#e8f5ed; color:#166534; }
   .kpi-delta.down { background:#fef2f0; color:#9b2c1d; }
   .kpi-sub { font-size: 10px; color: var(--gray-text); }
-  .kpi-icon { position:absolute; top:12px; right:12px; width:26px; height:26px; border-radius:8px; background: var(--accent-soft, var(--green-pale)); color: var(--accent-color, var(--green-dark)); display:flex; align-items:center; justify-content:center; transition: transform .25s ease; }
-  .kpi-card:hover .kpi-icon { transform: rotate(-6deg) scale(1.08); }
+  .kpi-icon { position:absolute; top:12px; right:12px; width:26px; height:26px; border-radius:8px; background: var(--accent-soft, var(--green-pale)); color: var(--accent-color, var(--green-dark)); display:flex; align-items:center; justify-content:center; transition: transform .3s var(--ease-spring); }
+  .kpi-icon svg { width:14px; height:14px; }
+  .kpi-card:hover .kpi-icon { transform: rotate(-8deg) scale(1.12); }
 
   .row-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
   .row-2-even { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .row-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
   .row-full { display: grid; grid-template-columns: 1fr; gap: 14px; }
 
-  .chart-box { background: var(--white); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 16px; position: relative; overflow: hidden; animation: cardEnter .55s cubic-bezier(.2,.7,.3,1) both; transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
-  .chart-box:hover { transform: translateY(-2px); box-shadow: 0 12px 26px -16px rgba(26,77,46,.22); border-color: var(--green-border); }
-  .chart-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .chart-title { font-size: 12px; font-weight: 500; color: var(--text-dark); }
-  .chart-tag { font-size: 10px; background: var(--green-pale); color: var(--green-dark); padding: 2px 9px; border-radius: 12px; border: 1px solid var(--green-border); }
+  .chart-box { background: var(--surface-solid); border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 17px; position: relative; overflow: hidden; animation: revealUp .6s var(--ease-out) both; transition: transform .3s var(--ease-out), box-shadow .3s ease, border-color .25s ease; display: flex; flex-direction: column; box-shadow: var(--shadow-card); }
+  .chart-canvas-wrap { position: relative; flex: 1; min-height: 200px; }
+  .chart-canvas-wrap canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+  .chart-legend-custom { display: flex; justify-content: center; gap: 18px; font-size: 11px; color: var(--gray-text); margin-top: 10px; }
+  .chart-legend-custom span { display: flex; align-items: center; gap: 6px; }
+  .chart-legend-custom i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .chart-box:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); border-color: var(--green-border); }
+  .chart-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; }
+  .chart-title { font-size: 12.5px; font-weight: 700; color: var(--text-dark); letter-spacing: -.05px; }
+  .chart-tag { font-size: 10px; background: var(--green-pale); color: var(--green-dark); padding: 2px 9px; border-radius: 12px; border: 1px solid var(--green-border); transition: background .2s ease; font-weight: 600; }
   .chart-select { font-size: 10px; padding: 3px 6px; border: 1px solid var(--gray-1); border-radius: 5px; background: var(--gray-0); cursor: pointer; }
 
-  .loading-overlay { display:none; position:absolute; inset:0; background:rgba(255,255,255,.7); border-radius: var(--radius); align-items:center; justify-content:center; z-index:5; }
-  .loading-overlay.show { display:flex; }
-  .spinner { width:22px; height:22px; border:2px solid var(--green-border); border-top-color: var(--green-dark); border-radius:50%; animation: spin .7s linear infinite; }
+  .loading-overlay { display:none; position:absolute; inset:0; background:rgba(255,255,255,.72); backdrop-filter: blur(1.5px); border-radius: var(--radius); align-items:center; justify-content:center; z-index:5; }
+  .loading-overlay.show { display:flex; animation: floatUp .2s; }
+  .spinner-dots { display:flex; gap:5px; }
+  .spinner-dots span { width:7px; height:7px; border-radius:50%; background: var(--green-mid); animation: dotBounce 1.1s ease-in-out infinite; }
+  .spinner-dots span:nth-child(2) { animation-delay: .12s; }
+  .spinner-dots span:nth-child(3) { animation-delay: .24s; }
 
-  .toast { position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; padding: 10px 18px; border-radius: 8px; font-size: 12px; z-index: 100; display: none; }
-  .toast.show { display: block; animation: floatUp .2s; }
+  /* ── Skeleton (loading placeholders) ── */
+  .skel { position:relative; overflow:hidden; background: var(--gray-1); border-radius:6px; }
+  .skel::after { content:''; position:absolute; inset:0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.75) 50%, transparent 70%); background-size: 200% 100%; animation: shimmerMove 1.3s linear infinite; }
+  .skel-kpi-card { border-radius: var(--radius); border: 1px solid var(--gray-1); padding: 14px 14px 14px 18px; display:flex; flex-direction:column; gap:10px; background: var(--surface-solid); }
+  .skel-line { height: 9px; border-radius: 4px; }
+  .skel-line.w40 { width:40%; }
+  .skel-line.w60 { width:60%; }
+  .skel-value { height: 20px; width: 70%; border-radius: 5px; }
+  .skel-chart-body { flex:1; border-radius: 10px; min-height: 160px; }
+  .skel-rank-row { height: 40px; border-radius: 8px; }
+
+  .toast { position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; padding: 10px 18px 10px 15px; border-radius: 9px; font-size: 12px; z-index: 100; display: none; box-shadow: 0 10px 28px -8px rgba(0,0,0,.4); align-items:center; gap:9px; }
+  .toast.show { display: flex; animation: toastIn .3s var(--ease-spring); }
+  .toast-dot { width:7px; height:7px; border-radius:50%; background: var(--green-light); flex-shrink:0; }
+  .toast-dot.spin-dot { background: transparent; border: 2px solid rgba(255,255,255,.25); border-top-color: var(--green-light); animation: ringSpin .7s linear infinite; }
 
   /* ── Mapa ── */
   #mapaLeaflet { height: 460px; width: 100%; border-radius: 8px; z-index: 1; }
+  #mapaLeaflet.definindo-cd, #mapaLeaflet.definindo-cd .leaflet-container { cursor: crosshair !important; }
+  .leaflet-interactive.marker-pop { animation: markerPop .45s var(--ease-spring) both; }
   .map-legend { position:absolute; bottom:14px; left:14px; background: rgba(255,255,255,0.95); border-radius:8px; padding:10px 12px; font-size:10.5px; box-shadow: 0 4px 14px rgba(0,0,0,.12); z-index: 400; }
   .map-legend-row { display:flex; align-items:center; gap:6px; margin-top:4px; }
   .map-legend-dot { border-radius:50%; background: var(--green-mid); opacity:.55; border: 1px solid var(--green-dark); flex-shrink:0; }
   .map-toggle-row { display:flex; gap:6px; position:absolute; top:14px; right:14px; z-index:400; }
-  .map-toggle-btn { background: rgba(255,255,255,0.95); border:1px solid var(--gray-1); border-radius:7px; font-size:10.5px; padding:5px 10px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.08); transition: all .15s; }
+  .map-toggle-btn { background: rgba(255,255,255,0.95); border:1px solid var(--gray-1); border-radius:7px; font-size:10.5px; padding:5px 10px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.08); transition: background .18s ease, color .18s ease, border-color .18s ease, transform .15s var(--ease-spring); }
+  .map-toggle-btn:hover { transform: translateY(-1px); }
   .map-toggle-btn.active { background: var(--green-dark); color:white; border-color: var(--green-dark); }
+  .map-toggle-icon-btn { display:flex; align-items:center; justify-content:center; padding:5px 7px; }
+  .map-toggle-icon-btn svg { width:12px; height:12px; }
+  .map-replay-row { display:flex; align-items:center; gap:10px; padding:8px 12px; background: var(--white); border-top:1px solid var(--gray-1); }
+  .map-replay-btn { width:26px; height:26px; border-radius:50%; background: var(--green-dark); color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition: transform .15s var(--ease-spring); }
+  .map-replay-btn:hover { transform: scale(1.08); }
+  .map-replay-btn svg { width:13px; height:13px; }
+  .map-replay-row input[type="range"] { flex:1; accent-color: var(--green-dark); cursor:pointer; }
+  .map-replay-label { font-size:11px; font-weight:700; color: var(--green-dark); min-width:64px; text-align:right; flex-shrink:0; }
+
+/* ── Altas e Quedas ── */
+  .altas-quedas-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .aq-col-title { font-size:11px; font-weight:700; color: var(--gray-text); text-transform:uppercase; letter-spacing:.03em; margin-bottom:8px; }
+  .aq-list { display:flex; flex-direction:column; gap:7px; min-height: 40px; }
+  .aq-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background: var(--gray-0); animation: floatUp .45s var(--ease-out) both; }
+  .aq-city { font-size:12.5px; font-weight:600; color: var(--text-dark); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .aq-uf { font-size:10px; color: var(--gray-text); font-weight:400; }
+  .aq-value { font-size:11.5px; font-weight:700; padding:3px 8px; border-radius:6px; flex-shrink:0; }
+  .aq-value.up { background: var(--green-pale); color: #166534; }
+  .aq-value.down { background: #fef2f0; color: #9b2c1d; }
+  .aq-empty { font-size:12px; color: var(--gray-text); padding:12px; }
+  @media (max-width: 720px) { .altas-quedas-grid { grid-template-columns: 1fr; } }
 
   /* ── Ranking cidades ── */
-  .rank-list { display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:4px; }
-  .rank-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background: var(--gray-0); transition: background .15s, transform .15s; animation: floatUp .4s both; }
-  .rank-item:hover { background: var(--green-pale); transform: translateX(2px); }
-  .rank-pos { width:24px; height:24px; border-radius:6px; background: var(--green-dark); color:white; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .rank-list { display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:4px; position: relative; min-height: 120px; }
+  .rank-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background: var(--gray-0); transition: background .18s ease, transform .18s var(--ease-out), box-shadow .18s ease; animation: floatUp .45s var(--ease-out) both; }
+  .rank-item:hover { background: var(--green-pale); transform: translateX(3px); box-shadow: 0 4px 12px -6px rgba(26,77,46,.25); }
+  .rank-pos { width:24px; height:24px; border-radius:6px; background: var(--green-dark); color:white; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: transform .2s var(--ease-spring); }
+  .rank-item:hover .rank-pos { transform: scale(1.08) rotate(-4deg); }
   .rank-item:nth-child(1) .rank-pos { background: linear-gradient(135deg,#f0a500,#e07b00); }
   .rank-item:nth-child(2) .rank-pos { background: linear-gradient(135deg,#9ca3af,#6b7280); }
   .rank-item:nth-child(3) .rank-pos { background: linear-gradient(135deg,#cd7f32,#a0522d); }
@@ -152,8 +308,9 @@
   .rank-city { font-size:12.5px; font-weight:600; color: var(--text-dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .rank-uf { font-size:10px; color: var(--gray-text); }
   .rank-bar-track { height:5px; background: var(--gray-1); border-radius:3px; margin-top:4px; overflow:hidden; }
-  .rank-bar-fill { height:100%; background: linear-gradient(90deg, var(--green-mid), var(--green-light)); border-radius:3px; transition: width .6s cubic-bezier(.2,.7,.3,1); }
+  .rank-bar-fill { height:0%; background: linear-gradient(90deg, var(--green-mid), var(--green-light)); border-radius:3px; transition: width .7s var(--ease-out); }
   .rank-value { font-size:12px; font-weight:700; color: var(--green-dark); white-space:nowrap; flex-shrink:0; }
+  .rank-item.md-highlight { background: var(--amber-pale); box-shadow: 0 0 0 2px var(--amber) inset, 0 4px 14px -6px rgba(245,158,11,.45); }
 
   /* ── Heatmap tabela ── */
   .heatmap-table { width:100%; border-collapse: collapse; font-size:10.5px; }
@@ -161,125 +318,202 @@
   .heatmap-table th:first-child { text-align:left; }
   .heatmap-table td { text-align:center; padding:2px; }
   .heatmap-table td:first-child { text-align:left; font-weight:600; color:var(--text-dark); padding:4px 8px; font-size:11px; white-space:nowrap; }
-  .heat-cell { width:100%; height:26px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:9px; color:transparent; transition: all .18s; cursor:pointer; }
-  .heat-cell:hover { transform: scale(1.12); color: white; font-weight:700; z-index:2; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  .heat-cell { width:100%; height:26px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:9px; color:transparent; transition: transform .18s var(--ease-spring), color .18s ease, box-shadow .18s ease; cursor:pointer; opacity:0; animation: floatUp .4s var(--ease-out) forwards; }
+  .heat-cell:hover { transform: scale(1.14); color: white; font-weight:700; z-index:2; box-shadow: 0 3px 10px rgba(0,0,0,.22); }
 
   .toggle-group { display:flex; gap:4px; background: var(--gray-0); border-radius:7px; padding:2px; }
-  .toggle-btn { font-size:10px; padding:4px 9px; border-radius:5px; cursor:pointer; border:none; background:transparent; color: var(--gray-text); font-weight:500; }
+  .toggle-btn { font-size:10px; padding:4px 9px; border-radius:5px; cursor:pointer; border:none; background:transparent; color: var(--gray-text); font-weight:600; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
   .toggle-btn.active { background: var(--white); color: var(--green-dark); box-shadow: 0 1px 4px rgba(0,0,0,.1); }
 
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .65s var(--ease-out), transform .65s var(--ease-out); }
+  .reveal.in-view { opacity: 1; transform: translateY(0); }
+
+  .rank-item:nth-child(1) .rank-pos, .rank-item:nth-child(2) .rank-pos, .rank-item:nth-child(3) .rank-pos { box-shadow: 0 0 0 3px var(--white), 0 0 0 4px currentColor; }
+  .rank-item:nth-child(1) .rank-pos { color: #e07b00; }
+  .rank-item:nth-child(2) .rank-pos { color: #6b7280; }
+  .rank-item:nth-child(3) .rank-pos { color: #a0522d; }
+
+  /* ── Estado de erro (substitui estilo inline) ── */
+  .error-banner { grid-column: 1/-1; display:flex; align-items:flex-start; gap:10px; font-size:12px; line-height:1.5; color:#9b2c1d; background:#fef2f0; border:1px solid #f7cfc7; padding:12px 14px; border-radius:10px; }
+  .error-banner svg { width:16px; height:16px; flex-shrink:0; margin-top:1px; }
+
+  /* ── Barra de progresso global (topo da página) ── */
+  .top-progress { position: fixed; top:0; left:0; height:3px; width:0%; background: linear-gradient(90deg, var(--green-light), var(--amber)); z-index: 200; transition: width .25s ease, opacity .3s ease; opacity: 0; box-shadow: 0 0 8px rgba(76,175,112,.6); }
+  .top-progress.show { opacity: 1; }
+
+  /* ── Acessibilidade: foco visível ── */
+  button:focus-visible, .chip:focus-visible, input:focus-visible, select:focus-visible,
+  .filter-tab:focus-visible, .toggle-btn:focus-visible, .map-toggle-btn:focus-visible,
+  .periodo-preset-btn:focus-visible, .fam-pill button:focus-visible,
+  .heat-cell:focus-visible, .rank-item:focus-visible {
+    outline: 2px solid var(--green-mid);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* ── Responsividade ── */
+  @media (max-width: 1240px) {
+    .kpi-row { grid-template-columns: repeat(3, 1fr); }
+    .row-4 { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 980px) {
+    .body-layout { grid-template-columns: 248px 1fr; }
+    .row-2 { grid-template-columns: 1fr; }
+    .row-2-even { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .kpi-card, .chart-box, .hdr::after, .hdr-pill#filtroAtivo, .rank-item { animation: none !important; }
+    .kpi-card, .chart-box, .hdr::after, .hdr-pill#filtroAtivo, .rank-item, .sidebar > *, .hdr, .heat-cell, .leaflet-interactive.marker-pop, .skel::after { animation: none !important; }
     * { transition-duration: .01ms !important; }
   }
 </style>
 </head>
 <body>
 
+<div class="top-progress" id="topProgress"></div>
+
 <div class="hdr">
   <div class="hdr-left">
-    <div class="hdr-badge">PMG</div>
+    <div class="hdr-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/><circle cx="9" cy="10" r="1.4" fill="currentColor" stroke="none"/>
+      </svg>
+    </div>
     <h1>Mapa Regional de Vendas — PMG Connect</h1>
   </div>
   <div class="hdr-right">
-    <span class="hdr-pill" id="hdrPeriodo">carregando…</span>
-    <span class="hdr-pill" id="hdrRegistros">0 registros</span>
-    <span class="hdr-pill active" id="filtroAtivo" style="display:none;">Filtro ativo</span>
+    <span class="hdr-pill" id="hdrPeriodo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+      <span id="hdrPeriodoTxt">carregando…</span>
+    </span>
+    <span class="hdr-pill" id="hdrRegistros">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V6a1 1 0 0 1 1-1h9l6 6v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M14 5v5h5"/></svg>
+      <span id="hdrRegistrosTxt">0 registros</span>
+    </span>
+    <span class="hdr-pill active" id="filtroAtivo" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.5 8v5l-3 2v-7Z"/></svg>
+      Filtro ativo
+    </span>
+    <button class="hdr-pill" id="refreshBtn" onclick="atualizarDadosForcado()" title="Recarregar dados do servidor, ignorando o cache local desta sessão">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.36M21 4v5h-5"/></svg>
+      <span class="md-label">Atualizar dados</span>
+    </button>
+    <button class="hdr-pill" id="modoDiretoriaBtn" onclick="toggleModoDiretoria()" title="Tour automático pelas cidades de maior destaque">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18l15-9L5 3Z"/></svg>
+      <span class="md-label">Modo Diretoria</span>
+    </button>
+    <div class="export-wrap">
+      <button class="hdr-pill" id="exportBtn" onclick="toggleExportMenu()" title="Exportar dados filtrados (por cidade)" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13m0 0-4-4m4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <span class="md-label">Exportar</span>
+      </button>
+      <div class="export-menu" id="exportMenu">
+        <div class="export-hint">DADOS POR CIDADE (FILTRO ATUAL)</div>
+        <button onclick="exportarDados('csv')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+          CSV (.csv)
+        </button>
+        <button onclick="exportarDados('xlsx')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
+          Excel (.xlsx)
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
 <div class="body-layout">
   <aside class="sidebar">
 
-    <div class="periodo-box">
-      <div class="periodo-title">📅 Período</div>
-      <div class="periodo-presets" id="periodoPresets"></div>
-      <div class="periodo-row">
-        <select id="periodoDe"></select>
-        <select id="periodoAte"></select>
-      </div>
-      <div class="periodo-atual" id="periodoAtual">Todo o histórico</div>
-    </div>
-
-    <div>
-      <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">Região</div>
-        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="sb-collapse">
-        <input type="text" class="chip-search" placeholder="Buscar região…" oninput="filtrarChips('regiaoChips', this.value)">
-        <div class="chip-group" id="regiaoChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div>
+    <div class="periodo-filter" id="periodoFilter">
+      <button class="periodo-trigger" type="button" onclick="togglePeriodoPanel()" aria-haspopup="true" aria-expanded="false">
+        <svg class="cal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+        <span id="periodoAtual">Todo o histórico</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <input type="hidden" id="periodoDe">
+      <input type="hidden" id="periodoAte">
+      <div class="periodo-panel" id="periodoPanel">
+        <div class="periodo-presets-row" id="periodoPresets"></div>
+        <div class="periodo-calendar" id="periodoCalendar"></div>
+        <div class="periodo-panel-actions">
+          <button class="periodo-clear-btn" type="button" onclick="limparPeriodoPendente()">Limpar</button>
+          <button class="periodo-confirm-btn" type="button" onclick="fecharPeriodoPanel()">Aplicar</button>
+        </div>
       </div>
     </div>
 
-    <div>
-      <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">UF</div>
-        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    <div class="fam-box" id="famBox">
+      <div class="fam-head">
+        <span class="fam-title">Filtros aplicados</span>
+        <button class="fam-clear" onclick="resetarFiltros()">Limpar tudo</button>
       </div>
-      <div class="sb-collapse">
-        <input type="text" class="chip-search" placeholder="Buscar UF…" oninput="filtrarChips('ufChips', this.value)">
-        <div class="chip-group" id="ufChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div>
-      </div>
+      <div class="fam-chips" id="famChips"></div>
     </div>
 
-    <div>
-      <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">Segmento</div>
-        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    <div class="filter-tabs">
+      <div class="filter-tabs-nav">
+        <div class="filter-tab-indicator" id="filterTabIndicator"></div>
+         <button class="filter-tab active" data-tab="local" onclick="switchFilterTab('local')" title="Localização">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.4 7-12a7 7 0 1 0-14 0c0 5.6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.4"/></svg>
+          <span class="tab-label">Localização</span><span class="tab-count" id="tabCountLocal">–</span>
+        </button>
+        <button class="filter-tab" data-tab="catalogo" onclick="switchFilterTab('catalogo')" title="Catálogo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+          <span class="tab-label">Catálogo</span><span class="tab-count" id="tabCountCatalogo">–</span>
+        </button>
       </div>
-      <div class="sb-collapse">
-        <input type="text" class="chip-search" placeholder="Buscar segmento…" oninput="filtrarChips('segmentoChips', this.value)">
-        <div class="chip-group" id="segmentoChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div>
-      </div>
-    </div>
 
-    <div>
-      <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">Grupo</div>
-        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-      </div>
-      <div class="sb-collapse">
-        <input type="text" class="chip-search" placeholder="Buscar grupo…" oninput="filtrarChips('grupoChips', this.value)">
-        <div class="chip-group" id="grupoChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div>
-      </div>
-    </div>
+      <div class="filter-tab-panel active" data-panel="local">
+        <div>
+          <div class="sb-section-title">Região</div>
+          <input type="text" class="chip-search" placeholder="Buscar região…" oninput="filtrarChips('regiaoChips', this.value)">
+          <div class="chip-group" id="regiaoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
+        </div>
 
-    <div>
-      <div class="sb-section-header" onclick="toggleSbSection(this)">
-        <div class="sb-section-title">Fornecedor</div>
-        <svg class="sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        <div>
+          <div class="sb-section-title">UF</div>
+          <input type="text" class="chip-search" placeholder="Buscar UF…" oninput="filtrarChips('ufChips', this.value)">
+          <div class="chip-group" id="ufChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
+        </div>
       </div>
-      <div class="sb-collapse">
-        <input type="text" class="chip-search" placeholder="Buscar fornecedor…" oninput="filtrarChips('fornecedorChips', this.value)">
-        <div class="chip-group" id="fornecedorChips"><div class="chip active" data-val="">Todos <span class="badge">–</span></div></div>
+
+      <div class="filter-tab-panel" data-panel="catalogo">
+        <div>
+          <div class="sb-section-title">Segmento</div>
+          <input type="text" class="chip-search" placeholder="Buscar segmento…" oninput="filtrarChips('segmentoChips', this.value)">
+          <div class="chip-group" id="segmentoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
+        </div>
+
+        <div>
+          <div class="sb-section-title">Grupo</div>
+          <input type="text" class="chip-search" placeholder="Buscar grupo…" oninput="filtrarChips('grupoChips', this.value)">
+          <div class="chip-group" id="grupoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
+        </div>
+
+        <div>
+          <div class="sb-section-title">Fornecedor</div>
+          <input type="text" class="chip-search" placeholder="Buscar fornecedor…" oninput="filtrarChips('fornecedorChips', this.value)">
+          <div class="chip-group" id="fornecedorChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
+        </div>
       </div>
     </div>
 
     <div style="display:flex; flex-direction:column; gap:8px;">
-      <button class="btn-apply" onclick="aplicarFiltros()">Aplicar filtros</button>
+      <button class="btn-apply" id="btnAplicarFiltros" onclick="aplicarFiltros()">Aplicar filtros</button>
       <button class="btn-reset" onclick="resetarFiltros()">Limpar filtros</button>
-    </div>
-
-    <div style="border-top:1px solid var(--gray-1); padding-top:12px; display:flex; flex-direction:column; gap:8px;">
-      <div class="sb-section-title" style="margin-bottom:0;">Dados</div>
-      <button class="btn-upload" onclick="document.getElementById('fileInput').click()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-        Importar CSV / Excel
-      </button>
-      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileUpload(event)">
-      <div class="upload-progress-track" id="uploadProgressTrack"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
-      <div class="upload-status" id="uploadStatus"></div>
-      <button class="btn-export" onclick="exportarPDF()">↓ Exportar relatório (PDF)</button>
     </div>
 
   </aside>
 
   <main class="main">
 
-    <div class="kpi-row" id="kpiRow"></div>
+    <div class="kpi-row reveal" id="kpiRow"></div>
 
-    <div class="row-2">
+    <div class="row-2 reveal">
       <div class="chart-box" style="position:relative;">
         <div class="chart-hdr">
           <div class="chart-title">Mapa de Bolhas — Faturamento por Cidade</div>
@@ -290,6 +524,11 @@
           <div class="map-toggle-row">
             <button class="map-toggle-btn active" id="mapModeValor" onclick="setMapMode('valor')">Valor</button>
             <button class="map-toggle-btn" id="mapModeKg" onclick="setMapMode('kg')">Kg</button>
+            <button class="map-toggle-btn" id="mapFluxoToggle" onclick="toggleFluxo()" title="Linhas de fluxo a partir do centro de distribuição">Fluxo</button>
+            <button class="map-toggle-btn map-toggle-icon-btn" id="mapCdRedefinirBtn" onclick="redefinirCentroDistribuicao()" title="Redefinir o Centro de Distribuição" style="display:none;" aria-label="Redefinir Centro de Distribuição">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            </button>
+            <button class="map-toggle-btn" id="mapReplayToggle" onclick="toggleReplay()" title="Reproduzir a evolução das vendas mês a mês no mapa">Replay</button>
           </div>
           <div class="map-legend">
             <div style="font-weight:600; font-size:10.5px;">Intensidade</div>
@@ -298,7 +537,14 @@
             <div class="map-legend-row"><div class="map-legend-dot" style="width:26px;height:26px;"></div><span>Alta</span></div>
           </div>
         </div>
-        <div class="loading-overlay" id="mapLoading"><div class="spinner"></div></div>
+        <div class="map-replay-row" id="mapReplayRow" style="display:none;">
+          <button class="map-replay-btn" id="mapReplayPlayBtn" onclick="toggleReplayPlay()" title="Reproduzir/Pausar" aria-label="Reproduzir ou pausar o replay">
+            <svg id="mapReplayPlayIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <input type="range" id="mapReplaySlider" min="0" max="0" value="0" step="1" oninput="pausarReplay(); irParaMesReplay(this.value)" aria-label="Mês do replay">
+          <span class="map-replay-label" id="mapReplayLabel">—</span>
+        </div>
+        <div class="loading-overlay" id="mapLoading"><div class="spinner-dots"><span></span><span></span><span></span></div></div>
       </div>
 
       <div class="chart-box">
@@ -313,10 +559,33 @@
       </div>
     </div>
 
-    <div class="row-2-even">
+    <div class="row-full reveal">
+      <div class="chart-box">
+        <div class="chart-hdr">
+          <div class="chart-title">Maiores Altas e Quedas — Cidades</div>
+          <div class="chart-tag" id="altasQuedasTag">selecione um período</div>
+        </div>
+        <div class="altas-quedas-grid" id="altasQuedasGrid">
+          <div class="aq-empty" style="grid-column:1/-1;">Selecione um período no filtro para ver as maiores variações entre cidades.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-full reveal">
+      <div class="chart-box">
+        <div class="chart-hdr"><div class="chart-title">Concentração de Faturamento por Cidade (Pareto)</div><div class="chart-tag" id="paretoTag">carregando…</div></div>
+        <div class="chart-canvas-wrap" id="wrap-chartConcentracaoCidades" style="height:260px; flex:none;"><canvas id="chartConcentracaoCidades"></canvas></div>
+        <div class="chart-legend-custom">
+          <span><i style="background:#1a4d2e"></i> Faturamento</span>
+          <span><i style="background:#f59e0b"></i> % Acumulado</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-2-even reveal">
       <div class="chart-box">
         <div class="chart-hdr"><div class="chart-title">Evolução Mensal — Faturamento por Ano</div><div class="chart-tag">Linha</div></div>
-        <canvas id="chartEvolucao" height="130"></canvas>
+        <div class="chart-canvas-wrap" id="wrap-chartEvolucao"><canvas id="chartEvolucao"></canvas></div>
       </div>
       <div class="chart-box">
         <div class="chart-hdr"><div class="chart-title">Heatmap — UF x Mês (Faturamento)</div><div class="chart-tag">Grid</div></div>
@@ -324,44 +593,121 @@
       </div>
     </div>
 
-    <div class="row-3">
+    <div class="row-4 reveal">
       <div class="chart-box">
         <div class="chart-hdr"><div class="chart-title">Faturamento por Região</div><div class="chart-tag">Barras</div></div>
-        <canvas id="chartRegiao" height="180"></canvas>
+        <div class="chart-canvas-wrap" id="wrap-chartRegiao"><canvas id="chartRegiao"></canvas></div>
       </div>
       <div class="chart-box">
         <div class="chart-hdr"><div class="chart-title">Faturamento por Segmento</div><div class="chart-tag">Barras</div></div>
-        <canvas id="chartSegmento" height="180"></canvas>
+        <div class="chart-canvas-wrap" id="wrap-chartSegmento"><canvas id="chartSegmento"></canvas></div>
       </div>
       <div class="chart-box">
         <div class="chart-hdr"><div class="chart-title">Top 10 Fornecedores</div><div class="chart-tag">Rosca</div></div>
-        <canvas id="chartFornecedor" height="180"></canvas>
-      </div>
-    </div>
-
-    <div class="row-2">
-      <div class="chart-box">
-        <div class="chart-hdr"><div class="chart-title">Grupo x Região (Composição)</div><div class="chart-tag">Empilhado</div></div>
-        <canvas id="chartGrupoRegiao" height="150"></canvas>
+        <div class="chart-canvas-wrap" id="wrap-chartFornecedor"><canvas id="chartFornecedor"></canvas></div>
       </div>
       <div class="chart-box">
         <div class="chart-hdr"><div class="chart-title">Top 10 Grupos por Kg</div><div class="chart-tag">Barras horizontais</div></div>
-        <canvas id="chartGrupoKg" height="150"></canvas>
+        <div class="chart-canvas-wrap" id="wrap-chartGrupoKg"><canvas id="chartGrupoKg"></canvas></div>
       </div>
     </div>
 
   </main>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"><span class="toast-dot" id="toastDot"></span><span id="toastMsg"></span></div>
 
 <script src="geo-data.js"></script>
 <script>
 /* ══════════════════ CONFIG ══════════════════ */
-const SUPABASE_URL      = 'https://scokolfzvtzohrzdgisz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjb2tvbGZ6dnR6b2hyemRnaXN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODk3OTQsImV4cCI6MjA5ODY2NTc5NH0.43X3j64Ds6lcVonDAsONyueveOMaovHb1pqE9ofa3FI';
-const TABLE_NAME = 'Fechamento Mensal PMG - Regional';
-const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+// Projeto roda apenas na máquina local por enquanto — quando for para produção,
+// trocar para a URL do servidor real (ou ler de uma variável de ambiente/config).
+const API_BASE = 'http://localhost:3001/api';
+
+/* ══════════════════ CHART.JS — DEFAULTS VISUAIS/ANIMAÇÃO ══════════════════ */
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#6b7280';
+Chart.defaults.animation.duration = 700;
+Chart.defaults.animation.easing = 'easeOutQuart';
+Chart.defaults.transitions.active.animation.duration = 250;
+Chart.defaults.elements.bar.borderSkipped = false;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyle = 'circle';
+Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(17,24,39,0.94)';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
+Chart.defaults.plugins.tooltip.titleFont = { weight: '600', size: 11.5 };
+Chart.defaults.plugins.tooltip.bodyFont = { size: 11 };
+Chart.defaults.plugins.tooltip.displayColors = true;
+Chart.defaults.plugins.tooltip.boxPadding = 4;
+Chart.defaults.scale.grid.color = '#eceeed';
+Chart.defaults.scale.border = { display: false };
+
+/* ══════════════════ SEGURANÇA — SANITIZAÇÃO DE TEXTO ══════════════════ */
+// Todo texto vindo da API (nomes de cidade, UF, fornecedor, grupo, segmento etc.)
+// deve passar por aqui antes de entrar em innerHTML, pois esses valores vêm de
+// cadastros e podem conter caracteres HTML/JS maliciosos.
+const _escapeHtmlEl = document.createElement('div');
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  _escapeHtmlEl.textContent = String(str);
+  return _escapeHtmlEl.innerHTML;
+}
+
+/* ══════════════════ CACHE DE REQUISIÇÕES ══════════════════ */
+// Cache simples em memória: evita refazer uma chamada idêntica (mesmo path + params)
+// em um curto intervalo — por exemplo, ao alternar entre dois filtros já visitados,
+// ou quando duas partes do dashboard pedem os mesmos dados quase ao mesmo tempo.
+const API_CACHE_TTL_MS = 30_000; // 30s: dados locais mudam pouco durante uma sessão de análise
+const _apiCache = new Map();   // chave -> { ts, result }
+const _apiInFlight = new Map(); // chave -> Promise (dedup de chamadas simultâneas idênticas)
+
+function _apiCacheKey(path, params) {
+  const qs = new URLSearchParams();
+  Object.keys(params).sort().forEach(k => {
+    const v = params[k];
+    if (v !== null && v !== undefined && v !== '') qs.append(k, v);
+  });
+  return `${path}?${qs.toString()}`;
+}
+
+function limparCacheApi() { _apiCache.clear(); }
+
+async function apiGet(path, params = {}, { forceRefresh = false } = {}) {
+  const key = _apiCacheKey(path, params);
+
+  if (!forceRefresh) {
+    const cached = _apiCache.get(key);
+    if (cached && (Date.now() - cached.ts) < API_CACHE_TTL_MS) return cached.result;
+    const inFlight = _apiInFlight.get(key);
+    if (inFlight) return inFlight;
+  }
+
+  const promise = _apiGetRaw(path, params).then(result => {
+    _apiInFlight.delete(key);
+    // Só guarda em cache respostas sem erro — falhas de rede não devem "grudar".
+    if (!result.error) _apiCache.set(key, { ts: Date.now(), result });
+    return result;
+  });
+  _apiInFlight.set(key, promise);
+  return promise;
+}
+
+async function _apiGetRaw(path, params) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== null && v !== undefined && v !== '') qs.append(k, v);
+  });
+  try {
+    const res = await fetch(`${API_BASE}${path}?${qs.toString()}`);
+    const json = await res.json();
+    if (!res.ok) return { data: null, error: json };
+    return { data: json, error: null };
+  } catch (err) {
+    return { data: null, error: { message: `Falha ao conectar na API local (${API_BASE}). O servidor Node está rodando? Detalhe: ${err.message}` } };
+  }
+}
 
 const COLS = {
   cidade: 'Cidade', uf: 'UF', zona: 'Zona', segmento: 'Segmento',
@@ -403,28 +749,132 @@ function getFiltrosParams() {
   };
 }
 let markerLayer = null;
+let flowLayer = null;
+let mostrarFluxo = false;
+let definindoCD = false; // true enquanto o usuário está no modo "clique no mapa para definir o CD"
+
+/* ══════════════════ REPLAY TEMPORAL (mês a mês no mapa) ══════════════════ */
+let replayAtivo = false;
+let replayPlaying = false;
+let replayMeses = [];        // lista de "YYYY-MM" percorrida pelo replay, já respeitando o período filtrado
+let replayIdx = 0;
+let replayTimer = null;
+let replayCidadesCache = []; // dados agregados do mês atualmente exibido pelo replay
+
+/* ══════════════════ CENTRO DE DISTRIBUIÇÃO (configurável) ══════════════════ */
+// As linhas de "Fluxo" partem deste ponto. Como as coordenadas reais do CD
+// não foram informadas, elas NÃO vêm fixas no código — o usuário define uma
+// vez clicando no mapa (botão "Definir CD") e o valor fica salvo no navegador
+// (localStorage), sobrevivendo a reloads da página.
+const CD_STORAGE_KEY = 'pmg_dashboard_centro_distribuicao';
+function carregarCentroDistribuicao() {
+  try {
+    const raw = localStorage.getItem(CD_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.lat === 'number' && typeof parsed?.lng === 'number') return parsed;
+  } catch (e) { console.warn('Não foi possível ler o centro de distribuição salvo:', e); }
+  return null;
+}
+function salvarCentroDistribuicao(lat, lng, nome) {
+  const dado = { lat, lng, nome: nome || 'Centro de Distribuição PMG' };
+  try { localStorage.setItem(CD_STORAGE_KEY, JSON.stringify(dado)); }
+  catch (e) { console.warn('Não foi possível salvar o centro de distribuição:', e); }
+  return dado;
+}
+let DISTRIBUICAO_CENTRAL = carregarCentroDistribuicao(); // null = ainda não configurado
 
 const PALETTE = ['#1a4d2e','#4caf70','#f59e0b','#8b5cf6','#3b82f6','#ec4899','#14b8a6','#ef4444','#a855f7','#84cc16'];
 
-/* ══════════════════ NORMALIZAÇÃO DE CIDADES (mescla variações) ══════════════════ */
+/* ══════════════════ LOADING HELPERS ══════════════════ */
+let requisicoesAtivas = 0;
+function iniciarProgresso() {
+  requisicoesAtivas++;
+  const bar = document.getElementById('topProgress');
+  bar.classList.add('show');
+  bar.style.width = '18%';
+  clearTimeout(iniciarProgresso._t1);
+  clearTimeout(iniciarProgresso._t2);
+  iniciarProgresso._t1 = setTimeout(() => { if (requisicoesAtivas) bar.style.width = '55%'; }, 220);
+  iniciarProgresso._t2 = setTimeout(() => { if (requisicoesAtivas) bar.style.width = '78%'; }, 900);
+}
+function finalizarProgresso() {
+  requisicoesAtivas = Math.max(0, requisicoesAtivas - 1);
+  if (requisicoesAtivas > 0) return;
+  const bar = document.getElementById('topProgress');
+  bar.style.width = '100%';
+  setTimeout(() => { bar.classList.remove('show'); bar.style.width = '0%'; }, 260);
+}
+
+function showLoading(container) {
+  if (!container) return;
+  let ov = container.querySelector(':scope > .loading-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.className = 'loading-overlay';
+    ov.innerHTML = '<div class="spinner-dots"><span></span><span></span><span></span></div>';
+    container.appendChild(ov);
+  }
+  ov.classList.add('show');
+}
+function hideLoading(container) {
+  container?.querySelector(':scope > .loading-overlay')?.classList.remove('show');
+}
+function chartWrapOf(canvasId) {
+  // Usa o id fixo do wrapper (wrap-<canvasId>) em vez de partir do <canvas>,
+  // porque o canvas é removido do DOM enquanto o skeleton de loading está ativo.
+  return document.getElementById('wrap-' + canvasId) || document.getElementById(canvasId)?.closest('.chart-canvas-wrap') || null;
+}
+function chartBoxOf(canvasId) {
+  return chartWrapOf(canvasId)?.closest('.chart-box') || null;
+}
+function renderChartWrapError(canvasId, message) {
+  const wrap = chartWrapOf(canvasId);
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:14px;">
+      <div class="error-banner" style="grid-column:auto;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <span>${escapeHtml(message)}</span>
+      </div>
+    </div>`;
+}
+
+function renderKpiSkeleton() {
+  document.getElementById('kpiRow').innerHTML = Array.from({length:6}).map((_,i) => `
+    <div class="skel-kpi-card">
+      <div class="skel skel-line w40"></div>
+      <div class="skel skel-value"></div>
+      <div class="skel skel-line w60"></div>
+    </div>
+  `).join('');
+}
+function renderRankSkeleton() {
+  document.getElementById('rankList').innerHTML = Array.from({length:6}).map(() => `<div class="skel skel-rank-row"></div>`).join('');
+}
+function renderChartSkeleton(canvasId) {
+  const wrap = chartWrapOf(canvasId);
+  if (wrap) wrap.innerHTML = `<div class="skel skel-chart-body" style="position:absolute; inset:0;"></div>`;
+}
+
+/* ══════════════════ NORMALIZAÇÃO DE CIDADES ══════════════════ */
 function normalizeKey(str) {
   if (!str) return '';
   return String(str)
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toUpperCase()
     .replace(/\s+/g, ' ');
 }
-let cidadeCanonicaMap = {}; // chave normalizada -> grafia oficial
+let cidadeCanonicaMap = {};
 
 async function carregarCidadesCanonicas() {
-  const { data, error } = await db.rpc('cidades_existentes');
+  const { data, error } = await apiGet('/cidades-existentes');
   if (error) { console.error(error); return; }
   cidadeCanonicaMap = {};
   (data || []).forEach(r => {
     const uf = String(r.uf || '').trim().toUpperCase();
     const chave = normalizeKey(r.cidade) + '|' + uf;
-    // só grava se ainda não existe (mantém a primeira ocorrência como padrão)
     if (!cidadeCanonicaMap[chave]) {
       cidadeCanonicaMap[chave] = { cidade: r.cidade, uf };
     }
@@ -436,7 +886,6 @@ function corrigirCidadeUF(cidadeRaw, ufRaw) {
   const chave = normalizeKey(cidadeRaw) + '|' + uf;
   const canonico = cidadeCanonicaMap[chave];
   if (canonico) return { cidade: canonico.cidade, uf: canonico.uf };
-  // se não existe ainda, aplica title case como padrão e usa como novo canônico
   return { cidade: toTitleCasePtBr(String(cidadeRaw || '').trim()), uf };
 }
 
@@ -449,28 +898,95 @@ function toTitleCasePtBr(str) {
 }
 
 /* ══════════════════ CHIPS / SIDEBAR ══════════════════ */
-function toggleSbSection(headerEl) {
-  const collapse = headerEl.nextElementSibling;
-  const chevron = headerEl.querySelector('.sb-chevron');
-  collapse.classList.toggle('collapsed');
-  chevron.classList.toggle('collapsed');
+function switchFilterTab(tab) {
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.filter-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+  const indicator = document.getElementById('filterTabIndicator');
+  indicator.style.transform = tab === 'local' ? 'translateX(0)' : 'translateX(calc(100% + 3px))';
 }
+
+const FAM_LABELS = {
+  regiaoChips: 'Região', ufChips: 'UF', segmentoChips: 'Segmento',
+  grupoChips: 'Grupo', fornecedorChips: 'Fornecedor'
+};
+
+function updateFiltrosAplicadosMini() {
+  const famBox = document.getElementById('famBox');
+  const famChips = document.getElementById('famChips');
+  const grupos = Object.keys(FAM_LABELS);
+  const ativos = [];
+
+  grupos.forEach(containerId => {
+    const chipAtivo = document.querySelector(`#${containerId} .chip.active`);
+    const val = chipAtivo?.dataset.val || '';
+    if (val) ativos.push({ containerId, label: FAM_LABELS[containerId], val });
+  });
+
+  const periodoDe = document.getElementById('periodoDe').value;
+  const periodoAte = document.getElementById('periodoAte').value;
+  if (periodoDe || periodoAte) {
+    ativos.push({ containerId: null, label: 'Período', val: `${periodoDe || '…'} → ${periodoAte || '…'}`, isPeriodo: true });
+  }
+
+  document.getElementById('tabCountLocal').textContent =
+    [filtroRegiao, filtroUF].filter(Boolean).length || '–';
+  document.getElementById('tabCountCatalogo').textContent =
+    [filtroSegmento, filtroGrupo, filtroFornecedor].filter(Boolean).length || '–';
+
+  if (!ativos.length) { famBox.classList.remove('show'); famChips.innerHTML = ''; return; }
+  famBox.classList.add('show');
+  famChips.innerHTML = ativos.map(a => `
+    <span class="fam-pill">${escapeHtml(a.label)}: ${escapeHtml(a.val)}
+      <button onclick="${a.isPeriodo ? 'removerFiltroPeriodo()' : `removerFiltroChip('${a.containerId}')`}" title="Remover">✕</button>
+    </span>
+  `).join('');
+}
+
+function removerFiltroChip(containerId) {
+  const container = document.getElementById(containerId);
+  selecionarChip(container, container.querySelector('.chip[data-val=""]'));
+  aplicarFiltros();
+}
+
 async function buildChipsRPC(containerId, coluna) {
   const container = document.getElementById(containerId);
-  const { data, error } = await db.rpc('valores_distintos', { p_coluna: coluna });
+  const { data, error } = await apiGet('/valores-distintos', { p_coluna: coluna });
   if (error) { console.error(error); showToast('Erro ao carregar filtros: ' + error.message); return; }
   const total = data.reduce((s,r)=>s+Number(r.qtd),0);
-  container.innerHTML = `<div class="chip active" data-val="">Todos <span class="badge">${fmtNum(total)}</span></div>`;
+  container.innerHTML = `<div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">${fmtNum(total)}</span></div>`;
   data.forEach(row => {
     const v = row.valor;
     const div = document.createElement('div');
     div.className = 'chip'; div.dataset.val = v;
-    div.innerHTML = `<span>${v}</span><span class="badge">${fmtNum(Number(row.qtd))}</span>`;
-    div.onclick = () => { container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); div.classList.add('active'); };
+    div.tabIndex = 0; div.setAttribute('role', 'button'); div.setAttribute('aria-pressed', 'false');
+    div.innerHTML = `<span>${escapeHtml(v)}</span><span class="badge">${fmtNum(Number(row.qtd))}</span>`;
+    div.onclick = () => selecionarChip(container, div);
     container.appendChild(div);
   });
-  container.querySelector('.chip[data-val=""]').onclick = () => { container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); container.querySelector('.chip[data-val=""]').classList.add('active'); };
+  const chipTodos = container.querySelector('.chip[data-val=""]');
+  chipTodos.onclick = () => selecionarChip(container, chipTodos);
 }
+
+function selecionarChip(container, chipSelecionado) {
+  container.querySelectorAll('.chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-pressed', 'false'); });
+  chipSelecionado.classList.add('active');
+  chipSelecionado.setAttribute('aria-pressed', 'true');
+}
+
+// Seleciona o chip cujo data-val bate com `valor` dentro do container informado.
+// Se não encontrar (ex: valor não existe mais nos dados), cai no chip "Todos".
+function selecionarChipPorValor(containerId, valor) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const alvo = valor ? container.querySelector(`.chip[data-val="${CSS.escape(valor)}"]`) : null;
+  selecionarChip(container, alvo || container.querySelector('.chip[data-val=""]'));
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList?.contains('chip')) {
+    e.preventDefault();
+    e.target.click();
+  }
+});
 
 function filtrarChips(containerId, termo) {
   const container = document.getElementById(containerId);
@@ -494,13 +1010,12 @@ function filtrarChips(containerId, termo) {
 }
 
 async function buildPeriodoOptionsRPC() {
-  const { data, error } = await db.rpc('periodos_distintos');
+  const { data, error } = await apiGet('/periodos-distintos');
   if (error) { console.error(error); showToast('Erro ao carregar períodos: ' + error.message); return; }
   const meses = (data||[]).map(r => `${r.ano}-${r.mes}`).sort();
-  const deSel = document.getElementById('periodoDe');
-  const ateSel = document.getElementById('periodoAte');
-  deSel.innerHTML = '<option value="">Início</option>' + meses.map(m=>`<option value="${m}">${m}</option>`).join('');
-  ateSel.innerHTML = '<option value="">Fim</option>' + meses.map(m=>`<option value="${m}">${m}</option>`).join('');
+
+  buildPeriodoCalendarHTML(meses);
+  renderPeriodoCalendarHighlight();
 
   const presets = [
     { label: 'Últimos 3 meses', n: 3 },
@@ -509,10 +1024,118 @@ async function buildPeriodoOptionsRPC() {
     { label: 'Este ano', ano: true },
   ];
   const presetsEl = document.getElementById('periodoPresets');
-  presetsEl.innerHTML = presets.map((p,i) => `<button class="periodo-preset-btn" onclick="aplicarPresetPeriodo(${i})">${p.label}</button>`).join('')
-    + `<button class="periodo-preset-btn" onclick="limparPeriodo()">Tudo</button>`;
+  presetsEl.innerHTML = presets.map((p,i) => `<button type="button" class="periodo-preset-btn" onclick="aplicarPresetPeriodo(${i})">${p.label}</button>`).join('')
+    + `<button type="button" class="periodo-preset-btn" onclick="limparPeriodoPendente()">Tudo</button>`;
   presetsEl.dataset.meses = JSON.stringify(meses);
   presetsEl.dataset.presets = JSON.stringify(presets);
+}
+
+function buildPeriodoCalendarHTML(meses) {
+  const disponiveis = new Set(meses);
+  const anos = [...new Set(meses.map(m => m.slice(0,4)))].sort();
+  const mesesLabel = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const html = anos.map(ano => {
+    const cells = mesesLabel.map((lbl, i) => {
+      const mm = String(i+1).padStart(2,'0');
+      const val = `${ano}-${mm}`;
+      const disabled = !disponiveis.has(val);
+      return `<button type="button" class="month-cell${disabled?' disabled':''}" data-val="${val}" ${disabled?'disabled':''} onclick="periodoCellClick('${val}')">${lbl}</button>`;
+    }).join('');
+    return `<div class="periodo-year-row"><div class="periodo-year-label">${ano}</div><div class="periodo-months">${cells}</div></div>`;
+  }).join('');
+  const cal = document.getElementById('periodoCalendar');
+  if (cal) cal.innerHTML = html || '<div style="font-size:11px; color:var(--gray-text); padding:6px 2px;">Sem períodos disponíveis.</div>';
+}
+
+function renderPeriodoCalendarHighlight() {
+  const de = document.getElementById('periodoDe').value;
+  const ate = document.getElementById('periodoAte').value;
+  document.querySelectorAll('#periodoCalendar .month-cell').forEach(cell => {
+    const val = cell.dataset.val;
+    cell.classList.remove('in-range','range-start','range-end');
+    if (!de) return;
+    if (de && !ate) { if (val === de) cell.classList.add('range-start','range-end'); return; }
+    if (val === de) cell.classList.add('range-start');
+    if (val === ate) cell.classList.add('range-end');
+    if (val > de && val < ate) cell.classList.add('in-range');
+  });
+}
+
+function periodoCellClick(val) {
+  const deInput = document.getElementById('periodoDe');
+  const ateInput = document.getElementById('periodoAte');
+  const de = deInput.value, ate = ateInput.value;
+  if (!de || (de && ate)) {
+    deInput.value = val;
+    ateInput.value = '';
+  } else if (val < de) {
+    ateInput.value = de;
+    deInput.value = val;
+  } else {
+    ateInput.value = val;
+  }
+  document.querySelectorAll('.periodo-preset-btn').forEach(b=>b.classList.remove('active'));
+  renderPeriodoCalendarHighlight();
+  atualizarLabelPeriodoPendente();
+}
+
+function posicionarPeriodoPanel() {
+  const trigger = document.querySelector('#periodoFilter .periodo-trigger');
+  const panel = document.getElementById('periodoPanel');
+  if (!trigger || !panel) return;
+  const rect = trigger.getBoundingClientRect();
+  const larguraMin = 260;
+  const largura = Math.max(rect.width, larguraMin);
+  let left = rect.left;
+  if (left + largura > window.innerWidth - 12) left = window.innerWidth - largura - 12;
+  panel.style.top = (rect.bottom + 8) + 'px';
+  panel.style.left = left + 'px';
+  panel.style.width = largura + 'px';
+}
+
+let _periodoSnapshotAoAbrir = null; // { de, ate } — estado aplicado no momento em que o painel foi aberto
+
+function togglePeriodoPanel() {
+  const el = document.getElementById('periodoFilter');
+  const panel = document.getElementById('periodoPanel');
+  const abrindo = !el.classList.contains('open');
+  el.classList.toggle('open', abrindo);
+  panel.classList.toggle('open', abrindo);
+  el.querySelector('.periodo-trigger').setAttribute('aria-expanded', String(abrindo));
+  if (abrindo) {
+    _periodoSnapshotAoAbrir = {
+      de: document.getElementById('periodoDe').value,
+      ate: document.getElementById('periodoAte').value
+    };
+    posicionarPeriodoPanel();
+  }
+}
+
+// Descarta qualquer seleção feita no painel e volta ao período que estava
+// realmente aplicado — usado quando o usuário fecha o painel sem confirmar.
+function cancelarSelecaoPeriodo() {
+  if (!_periodoSnapshotAoAbrir) return;
+  document.getElementById('periodoDe').value = _periodoSnapshotAoAbrir.de;
+  document.getElementById('periodoAte').value = _periodoSnapshotAoAbrir.ate;
+  document.querySelectorAll('.periodo-preset-btn').forEach(b=>b.classList.remove('active'));
+  renderPeriodoCalendarHighlight();
+  atualizarLabelPeriodoPendente();
+  _periodoSnapshotAoAbrir = null;
+}
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('periodoFilter').classList.contains('open')) posicionarPeriodoPanel();
+});
+document.querySelector('.sidebar')?.addEventListener('scroll', () => {
+  if (document.getElementById('periodoFilter').classList.contains('open')) posicionarPeriodoPanel();
+}, { passive: true });
+
+function fecharPeriodoPanel() {
+  document.getElementById('periodoFilter').classList.remove('open');
+  document.getElementById('periodoPanel').classList.remove('open');
+  document.querySelector('.periodo-trigger')?.setAttribute('aria-expanded', 'false');
+  _periodoSnapshotAoAbrir = null; // confirmado — não há mais o que reverter
+  aplicarFiltros();
 }
 
 function aplicarPresetPeriodo(idx) {
@@ -527,51 +1150,270 @@ function aplicarPresetPeriodo(idx) {
   }
   document.getElementById('periodoAte').value = meses[meses.length-1];
   document.querySelectorAll('.periodo-preset-btn').forEach((b,i)=>b.classList.toggle('active', i===idx));
-  aplicarFiltros();
+  renderPeriodoCalendarHighlight();
+  atualizarLabelPeriodoPendente();
+  // Não aplica sozinho: assim como marcar um chip, o preset só fica "selecionado"
+  // até o usuário clicar em "Aplicar" (no painel) ou "Aplicar filtros" (na barra lateral).
 }
-function limparPeriodo() {
+
+// Limpa a seleção de período sem consultar a API — usada dentro do próprio painel
+// (botão "Limpar" e preset "Tudo"), onde o usuário ainda pode ajustar outros filtros
+// antes de aplicar tudo de uma vez.
+function limparPeriodoPendente() {
   document.getElementById('periodoDe').value = '';
   document.getElementById('periodoAte').value = '';
   document.querySelectorAll('.periodo-preset-btn').forEach(b=>b.classList.remove('active'));
+  renderPeriodoCalendarHighlight();
+  atualizarLabelPeriodoPendente();
+}
+
+// Remove o período e aplica na hora — usada pelo "✕" do resumo de filtros aplicados,
+// uma ação pontual e explícita (equivalente a remover um chip específico).
+function removerFiltroPeriodo() {
+  limparPeriodoPendente();
+  _periodoSnapshotAoAbrir = null;
   aplicarFiltros();
 }
 
-async function aplicarFiltros() {
-  filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
-  filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
-  filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
-  filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
-  filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
-  const periodoDe = document.getElementById('periodoDe').value;
-  const periodoAte = document.getElementById('periodoAte').value;
-  document.getElementById('periodoAtual').textContent =
-    (periodoDe || periodoAte) ? `${periodoDe || '…'} → ${periodoAte || '…'}` : 'Todo o histórico';
-
-  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
-  document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
-
-  document.getElementById('hdrPeriodo').textContent = document.getElementById('periodoAtual').textContent;
-  await renderDashboard();
+function atualizarLabelPeriodoPendente() {
+  const deV = document.getElementById('periodoDe').value;
+  const ateV = document.getElementById('periodoAte').value;
+  document.getElementById('periodoAtual').textContent = (deV || ateV) ? `${deV || '…'} → ${ateV || '…'}` : 'Todo o histórico';
 }
 
+document.addEventListener('click', (e) => {
+  const pf = document.getElementById('periodoFilter');
+  const panel = document.getElementById('periodoPanel');
+  const cliqueFora = pf && !pf.contains(e.target) && !(panel && panel.contains(e.target));
+  if (pf && pf.classList.contains('open') && cliqueFora) {
+    pf.classList.remove('open');
+    panel?.classList.remove('open');
+    pf.querySelector('.periodo-trigger')?.setAttribute('aria-expanded', 'false');
+    cancelarSelecaoPeriodo(); // fechar sem clicar em "Aplicar" = cancelar, não aplicar
+  }
+});
+
+let _aplicandoFiltros = false;
+
+async function aplicarFiltros() {
+  if (_aplicandoFiltros) return; // ignora cliques repetidos enquanto uma aplicação já está em andamento
+  _aplicandoFiltros = true;
+  const btn = document.getElementById('btnAplicarFiltros');
+  const btnTextoOriginal = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'wait'; btn.textContent = 'Aplicando…'; }
+
+  try {
+    pararModoDiretoria();
+    if (replayAtivo) toggleReplay(); // muda o período/filtros: encerra o replay para não ficar com dado desatualizado
+    filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
+    filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
+    filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
+    filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
+    filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+    const periodoDe = document.getElementById('periodoDe').value;
+    const periodoAte = document.getElementById('periodoAte').value;
+    document.getElementById('periodoAtual').textContent =
+      (periodoDe || periodoAte) ? `${periodoDe || '…'} → ${periodoAte || '…'}` : 'Todo o histórico';
+
+    const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
+    document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
+
+    document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
+    updateFiltrosAplicadosMini();
+    atualizarUrlComFiltros();
+    await renderDashboard();
+  } finally {
+    _aplicandoFiltros = false;
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.textContent = btnTextoOriginal; }
+  }
+}
+
+/* ══════════════════ ATUALIZAR DADOS (limpa cache em memória e recarrega tudo) ══════════════════ */
+function reselecionarChipsAtuais() {
+  // buildChipsRPC reconstrói o innerHTML dos chips selecionando "Todos" por padrão —
+  // aqui reaplicamos os valores de filtro que já estavam em vigor antes da atualização,
+  // para que "Atualizar dados" nunca resete silenciosamente os filtros do usuário.
+  const mapa = [
+    ['regiaoChips', filtroRegiao],
+    ['ufChips', filtroUF],
+    ['segmentoChips', filtroSegmento],
+    ['grupoChips', filtroGrupo],
+    ['fornecedorChips', filtroFornecedor],
+  ];
+  mapa.forEach(([containerId, valorAtual]) => {
+    if (!valorAtual) return;
+    const container = document.getElementById(containerId);
+    const chip = container?.querySelector(`.chip[data-val="${CSS.escape(valorAtual)}"]`);
+    if (chip) selecionarChip(container, chip);
+    // Se o valor não existir mais entre as opções (ex.: cadastro removido), o filtro
+    // permanece em "Todos" — o próximo aplicarFiltros/renderDashboard vai refletir isso.
+  });
+}
+
+async function atualizarDadosForcado() {
+  const btn = document.getElementById('refreshBtn');
+  if (btn.disabled) return; // evita cliques duplicados enquanto já está atualizando
+  if (replayAtivo) toggleReplay(); // encerra o replay antes de recarregar tudo do zero
+  btn.disabled = true;
+  btn.classList.add('spinning');
+  showToast('Atualizando dados do servidor…', { loading: true });
+
+  limparCacheApi(); // descarta tudo que estava em memória — próximas chamadas vão direto ao servidor
+
+  try {
+    // Recarrega também o mapeamento de nomes canônicos de cidade e as opções de
+    // filtro (chips/período), pois cadastros novos podem ter surgido desde a última carga.
+    await carregarCidadesCanonicas();
+    await Promise.all([
+      buildChipsRPC('regiaoChips', 'Regiao'),
+      buildChipsRPC('ufChips', 'UF'),
+      buildChipsRPC('segmentoChips', 'Segmento'),
+      buildChipsRPC('grupoChips', 'Grupo'),
+      buildChipsRPC('fornecedorChips', 'Fornecedor'),
+      buildPeriodoOptionsRPC()
+    ]);
+    reselecionarChipsAtuais();
+    updateFiltrosAplicadosMini();
+    await renderDashboard();
+    showToast('Dados atualizados com sucesso.');
+  } catch (e) {
+    console.error(e);
+    showToast('Erro ao atualizar dados: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('spinning');
+  }
+}
+
+/* ══════════════════ PERSISTÊNCIA DE FILTROS NA URL ══════════════════ */
+// Mapeia cada filtro para o nome do parâmetro que aparece na querystring,
+// para que o estado do dashboard possa ser compartilhado por link e
+// restaurado com o botão voltar/avançar do navegador.
+const URL_PARAM_MAP = {
+  regiao: 'regiaoChips', uf: 'ufChips', segmento: 'segmentoChips',
+  grupo: 'grupoChips', fornecedor: 'fornecedorChips'
+};
+
+function montarSearchParamsDosFiltrosAtuais() {
+  const params = new URLSearchParams();
+  if (filtroRegiao) params.set('regiao', filtroRegiao);
+  if (filtroUF) params.set('uf', filtroUF);
+  if (filtroSegmento) params.set('segmento', filtroSegmento);
+  if (filtroGrupo) params.set('grupo', filtroGrupo);
+  if (filtroFornecedor) params.set('fornecedor', filtroFornecedor);
+  const de = document.getElementById('periodoDe')?.value;
+  const ate = document.getElementById('periodoAte')?.value;
+  if (de) params.set('de', de);
+  if (ate) params.set('ate', ate);
+  return params;
+}
+
+// Empurra o estado atual dos filtros para a URL. Cada "Aplicar" vira uma
+// entrada no histórico (pushState), então o botão voltar do navegador
+// desfaz filtros um a um — assim como um usuário esperaria.
+function atualizarUrlComFiltros() {
+  const params = montarSearchParamsDosFiltrosAtuais();
+  const novaQuery = params.toString();
+  const queryAtual = window.location.search.replace(/^\?/, '');
+  if (novaQuery === queryAtual) return; // nada mudou, não polui o histórico
+  const novaUrl = window.location.pathname + (novaQuery ? `?${novaQuery}` : '') + window.location.hash;
+  window.history.pushState({ pmgFiltros: true }, '', novaUrl);
+}
+
+// Lê a querystring atual e aplica nos chips/inputs de período, SEM disparar
+// requisição — quem chama decide se e quando renderiza (evita duplo fetch).
+function restaurarFiltrosDaURL() {
+  const params = new URLSearchParams(window.location.search);
+  Object.entries(URL_PARAM_MAP).forEach(([param, containerId]) => {
+    selecionarChipPorValor(containerId, params.get(param) || '');
+  });
+  document.getElementById('periodoDe').value = params.get('de') || '';
+  document.getElementById('periodoAte').value = params.get('ate') || '';
+  renderPeriodoCalendarHighlight();
+  atualizarLabelPeriodoPendente();
+
+  filtroRegiao = params.get('regiao') || '';
+  filtroUF = params.get('uf') || '';
+  filtroSegmento = params.get('segmento') || '';
+  filtroGrupo = params.get('grupo') || '';
+  filtroFornecedor = params.get('fornecedor') || '';
+
+  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || params.get('de') || params.get('ate');
+  document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
+  document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
+  updateFiltrosAplicadosMini();
+}
+
+// Botão voltar/avançar do navegador: restaura os filtros daquele ponto do
+// histórico e re-renderiza — sem empurrar uma nova entrada (senão o back
+// vira um loop).
+window.addEventListener('popstate', () => {
+  pararModoDiretoria();
+  restaurarFiltrosDaURL();
+  renderDashboard();
+});
+
 function resetarFiltros() {
+  pararModoDiretoria();
   document.querySelectorAll('.chip-group').forEach(g => {
-    g.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
-    g.querySelector('.chip[data-val=""]').classList.add('active');
+    selecionarChip(g, g.querySelector('.chip[data-val=""]'));
   });
   document.querySelectorAll('.chip-search').forEach(inp => inp.value = '');
   document.querySelectorAll('.chip').forEach(c => c.style.display = '');
-  limparPeriodo();
+  limparPeriodoPendente();
+  // "Limpar filtros" é uma ação explícita e única — diferente de mexer em um chip
+  // ou no período isoladamente, aqui faz sentido aplicar imediatamente.
+  aplicarFiltros();
+}
+
+/* ══════════════════ KPIs ══════════════════ */
+/* ══════════════════ COMPARATIVO COM PERÍODO ANTERIOR ══════════════════ */
+function shiftPeriodoAnterior(de, ate) {
+  const [ay, am] = de.split('-').map(Number);
+  const [by, bm] = (ate || de).split('-').map(Number);
+  const inicioIdx = ay * 12 + (am - 1);
+  const fimIdx = by * 12 + (bm - 1);
+  const span = fimIdx - inicioIdx + 1;
+  const prevFimIdx = inicioIdx - 1;
+  const prevInicioIdx = prevFimIdx - span + 1;
+  const idxParaStr = (idx) => {
+    const y = Math.floor(idx / 12);
+    const m = (idx % 12) + 1;
+    return `${y}-${String(m).padStart(2, '0')}`;
+  };
+  return { prevDe: idxParaStr(prevInicioIdx), prevAte: idxParaStr(prevFimIdx) };
 }
 
 /* ══════════════════ KPIs ══════════════════ */
 async function renderKPIs() {
-  const { data, error } = await db.rpc('kpis_agregados', getFiltrosParams());
+  const box = document.getElementById('kpiRow');
+  showLoading(box);
+  iniciarProgresso();
+
+  const periodoDeAtual = document.getElementById('periodoDe').value;
+  const periodoAteAtual = document.getElementById('periodoAte').value;
+  const temPeriodoComparativo = Boolean(periodoDeAtual && periodoAteAtual);
+
+  // As duas chamadas (período atual e período anterior) são independentes entre si,
+  // então disparamos ambas ao mesmo tempo em vez de esperar uma para começar a outra.
+  const paramsAtual = getFiltrosParams();
+  let paramsAnterior = null;
+  if (temPeriodoComparativo) {
+    const { prevDe, prevAte } = shiftPeriodoAnterior(periodoDeAtual, periodoAteAtual);
+    paramsAnterior = { ...paramsAtual, p_de: prevDe, p_ate: prevAte };
+  }
+
+  const [{ data, error }, resultAnterior] = await Promise.all([
+    apiGet('/kpis', paramsAtual),
+    temPeriodoComparativo ? apiGet('/kpis', paramsAnterior) : Promise.resolve({ data: null, error: null })
+  ]);
+  finalizarProgresso();
   if (error) {
     console.error(error);
     document.getElementById('kpiRow').innerHTML =
-      `<div style="grid-column:1/-1;font-size:12px;color:#9b2c1d;background:#fef2f0;padding:12px;border-radius:8px;">
-        Erro ao carregar KPIs: ${error.message}${error.hint ? ' — ' + error.hint : ''}
+      `<div class="error-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <span>Erro ao carregar KPIs: ${escapeHtml(error.message)}${error.hint ? ' — ' + escapeHtml(error.hint) : ''}</span>
       </div>`;
     showToast('Erro ao carregar KPIs: ' + error.message);
     return; }
@@ -584,41 +1426,91 @@ async function renderKPIs() {
   const nFornecedores = Number(k.n_fornecedores) || 0;
   const ticketMedio = nRegistros ? totalValor / nRegistros : 0;
 
-  const kpis = [
-    { label:'Faturamento Total', value: fmtMoney(totalValor), icon:'💰', color:'--green-dark', color2:'--green-mid', soft:'--green-pale' },
-    { label:'Volume Total', value: fmtKg(totalKg), icon:'📦', color:'--blue', color2:'--blue', soft:'--blue-pale' },
-    { label:'Cidades Atendidas', value: fmtNum(nCidades), icon:'📍', color:'--amber', color2:'--amber', soft:'--amber-pale' },
-    { label:'UFs Atendidas', value: fmtNum(nUFs), icon:'🗺️', color:'--violet', color2:'--violet', soft:'--violet-pale' },
-    { label:'Fornecedores Ativos', value: fmtNum(nFornecedores), icon:'🏭', color:'--green-mid', color2:'--green-light', soft:'--green-pale' },
-    { label:'Ticket Médio / Registro', value: fmtMoney(ticketMedio), icon:'📊', color:'--blue', color2:'--violet', soft:'--blue-pale' },
+  let deltaValor = null, deltaKg = null, deltaTicket = null;
+  if (temPeriodoComparativo && resultAnterior && !resultAnterior.error) {
+    const kAnt = (resultAnterior.data && resultAnterior.data[0]) || {};
+    const valorAnt = Number(kAnt.total_valor) || 0;
+    const kgAnt = Number(kAnt.total_kg) || 0;
+    const registrosAnt = Number(kAnt.n_registros) || 0;
+    const ticketAnt = registrosAnt ? valorAnt / registrosAnt : 0;
+    if (valorAnt > 0) deltaValor = ((totalValor - valorAnt) / valorAnt) * 100;
+    if (kgAnt > 0) deltaKg = ((totalKg - kgAnt) / kgAnt) * 100;
+    if (ticketAnt > 0) deltaTicket = ((ticketMedio - ticketAnt) / ticketAnt) * 100;
+  }
+
+  const ICONS = {
+    coin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.3c0-1.1 1.1-2 2.5-2s2.5.7 2.5 1.8-1 1.6-2.5 1.9-2.5.9-2.5 1.9S10.9 15 12 15s2.5-.7 2.5-1.9"/></svg>',
+    box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.4 7-12a7 7 0 1 0-14 0c0 5.6 7 12 7 12Z"/><circle cx="12" cy="9" r="2.4"/></svg>',
+    map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>',
+    factory: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V11l5 3.5V11l5 3.5V11l5 3.5V21H3Z"/><path d="M6 21v-4M11 21v-4M16 21v-4M18 8V4l3 2v2"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M4 20h16"/></svg>',
+  };
+ const kpis = [
+    { label:'Faturamento Total', raw: totalValor, fmt: fmtMoney, icon: ICONS.coin, color:'--green-dark', color2:'--green-mid', soft:'--green-pale', delta: deltaValor },
+    { label:'Volume Total', raw: totalKg, fmt: fmtKg, icon: ICONS.box, color:'--blue', color2:'--blue', soft:'--blue-pale', delta: deltaKg },
+    { label:'Cidades Atendidas', raw: nCidades, fmt: fmtNum, icon: ICONS.pin, color:'--amber', color2:'--amber', soft:'--amber-pale' },
+    { label:'UFs Atendidas', raw: nUFs, fmt: fmtNum, icon: ICONS.map, color:'--violet', color2:'--violet', soft:'--violet-pale' },
+    { label:'Fornecedores Ativos', raw: nFornecedores, fmt: fmtNum, icon: ICONS.factory, color:'--green-mid', color2:'--green-light', soft:'--green-pale' },
+    { label:'Ticket Médio / Registro', raw: ticketMedio, fmt: fmtMoney, icon: ICONS.chart, color:'--blue', color2:'--violet', soft:'--blue-pale', delta: deltaTicket },
   ];
 
-  document.getElementById('kpiRow').innerHTML = kpis.map((k,i) => `
-    <div class="kpi-card" style="animation-delay:${i*0.05}s; --accent-color:var(${k.color}); --accent-color2:var(${k.color2}); --accent-soft:var(${k.soft});">
-      <div class="kpi-icon">${k.icon}</div>
-      <div class="kpi-label">${k.label}</div>
-      <div class="kpi-value">${k.value}</div>
+  const tituloComparativo = paramsAnterior
+    ? `Comparado com ${paramsAnterior.p_de} → ${paramsAnterior.p_ate}: mesmo número de meses, imediatamente anterior ao período selecionado.`
+    : '';
+
+  document.getElementById('kpiRow').innerHTML = kpis.map((kp,i) => `
+    <div class="kpi-card" style="animation-delay:${i*0.06}s; --accent-color:var(${kp.color}); --accent-color2:var(${kp.color2}); --accent-soft:var(${kp.soft});">
+      <div class="kpi-icon">${kp.icon}</div>
+      <div class="kpi-label">${kp.label}</div>
+      <div class="kpi-value" id="kpiVal${i}">${kp.fmt(0)}</div>
+      ${kp.delta !== null && kp.delta !== undefined ? `
+      <div class="kpi-foot" ${tituloComparativo ? `title="${escapeHtml(tituloComparativo)}"` : ''}>
+        <span class="kpi-delta ${kp.delta >= 0 ? 'up' : 'down'}">${kp.delta >= 0 ? '▲' : '▼'} ${Math.abs(kp.delta).toFixed(1)}%</span>
+        <span class="kpi-sub">vs. período anterior</span>
+      </div>` : ''}
     </div>
   `).join('');
 
-  document.getElementById('hdrRegistros').textContent = `${fmtNum(nRegistros)} registros`;
+  kpis.forEach((kp,i) => animateKpiValue(document.getElementById(`kpiVal${i}`), kp.raw, kp.fmt));
+
+  document.getElementById('hdrRegistrosTxt').textContent = `${fmtNum(nRegistros)} registros`;
+}
+
+function animateKpiValue(el, target, fmt, duration = 750) {
+  if (!el) return;
+  const startTime = performance.now();
+  function step(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = fmt(target * eased);
+    if (t < 1) requestAnimationFrame(step);
+    else el.textContent = fmt(target);
+  }
+  requestAnimationFrame(step);
 }
 
 async function fetchCidades() {
-  const { data, error } = await db.rpc('agregado_cidades', getFiltrosParams());
+  iniciarProgresso();
+  const { data, error } = await apiGet('/agregado-cidades', getFiltrosParams());
+  finalizarProgresso();
   if (error) { console.error(error); showToast('Erro ao carregar cidades: ' + error.message); cidadesCache = []; return; }
+  cidadesCache = agregarCidadesRaw(data);
+}
 
+// Extraída de fetchCidades para ser reaproveitada no cálculo de Altas e Quedas
+// (que precisa agregar os dados de um período diferente do período em exibição).
+function agregarCidadesRaw(data) {
   const merged = new Map();
   (data || []).forEach(r => {
     const ufRaw = String(r.uf || '').trim().toUpperCase();
     const cidadeRaw = String(r.cidade || '').trim();
 
-    // usa a grafia oficial já conhecida (com acento), se existir
     const canonico = cidadeCanonicaMap[normalizeKey(cidadeRaw) + '|' + ufRaw];
     const cidade = canonico ? canonico.cidade : toTitleCasePtBr(cidadeRaw);
     const uf = canonico ? canonico.uf : ufRaw;
 
-    const key = normalizeKey(cidade) + '|' + uf; // chave sem acento/maiúsculas
+    const key = normalizeKey(cidade) + '|' + uf;
     const valor = Number(r.valor) || 0;
     const kg = Number(r.kg) || 0;
 
@@ -630,8 +1522,68 @@ async function fetchCidades() {
       merged.set(key, { cidade, uf, valor, kg });
     }
   });
+  return Array.from(merged.values());
+}
 
-  cidadesCache = Array.from(merged.values());
+/* ══════════════════ MAIORES ALTAS E QUEDAS (cidade vs período anterior) ══════════════════ */
+async function renderAltasQuedas() {
+  const grid = document.getElementById('altasQuedasGrid');
+  const tag = document.getElementById('altasQuedasTag');
+  const periodoDe = document.getElementById('periodoDe').value;
+  const periodoAte = document.getElementById('periodoAte').value;
+
+  // Sem um período definido não há um "anterior" claro para comparar — mesma regra do card de KPIs.
+  if (!periodoDe || !periodoAte) {
+    tag.textContent = 'selecione um período';
+    grid.innerHTML = '<div class="aq-empty" style="grid-column:1/-1;">Selecione um período no filtro para ver as maiores variações entre cidades.</div>';
+    return;
+  }
+
+  tag.textContent = 'carregando…';
+  const { prevDe, prevAte } = shiftPeriodoAnterior(periodoDe, periodoAte);
+  const paramsAnterior = { ...getFiltrosParams(), p_de: prevDe, p_ate: prevAte };
+
+  const { data, error } = await apiGet('/agregado-cidades', paramsAnterior);
+  if (error) {
+    console.error(error);
+    tag.textContent = 'erro';
+    grid.innerHTML = '<div class="aq-empty" style="grid-column:1/-1;">Não foi possível calcular a comparação com o período anterior.</div>';
+    return;
+  }
+
+  const cidadesAnterior = agregarCidadesRaw(data);
+  const mapaAnterior = new Map(cidadesAnterior.map(c => [normalizeKey(c.cidade) + '|' + c.uf, c.valor]));
+
+  const variacoes = cidadesCache
+    .map(c => {
+      const key = normalizeKey(c.cidade) + '|' + c.uf;
+      const anterior = mapaAnterior.get(key) || 0;
+      if (anterior <= 0) return null; // sem base de comparação (cidade nova ou sem venda no período anterior)
+      return { cidade: c.cidade, uf: c.uf, pct: ((c.valor - anterior) / anterior) * 100 };
+    })
+    .filter(Boolean);
+
+  const altas = [...variacoes].sort((a, b) => b.pct - a.pct).slice(0, 5);
+  const quedas = [...variacoes].sort((a, b) => a.pct - b.pct).slice(0, 5);
+
+  tag.textContent = `vs. ${prevDe} → ${prevAte}`;
+
+  const itemHtml = (v) => `
+    <div class="aq-item">
+      <div class="aq-city">${escapeHtml(v.cidade)} <span class="aq-uf">${escapeHtml(v.uf)}</span></div>
+      <div class="aq-value ${v.pct >= 0 ? 'up' : 'down'}">${v.pct >= 0 ? '▲' : '▼'} ${Math.abs(v.pct).toFixed(1)}%</div>
+    </div>`;
+
+  grid.innerHTML = `
+    <div class="aq-col">
+      <div class="aq-col-title">▲ Maiores Altas</div>
+      <div class="aq-list">${altas.length ? altas.map(itemHtml).join('') : '<div class="aq-empty">Sem dados suficientes.</div>'}</div>
+    </div>
+    <div class="aq-col">
+      <div class="aq-col-title">▼ Maiores Quedas</div>
+      <div class="aq-list">${quedas.length ? quedas.map(itemHtml).join('') : '<div class="aq-empty">Sem dados suficientes.</div>'}</div>
+    </div>
+  `;
 }
 
 /* ══════════════════ MAPA ══════════════════ */
@@ -641,6 +1593,14 @@ function initMap() {
     attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
   }).addTo(leafletMap);
   markerLayer = L.layerGroup().addTo(leafletMap);
+  flowLayer = L.layerGroup().addTo(leafletMap);
+  leafletMap.on('click', onMapaClick);
+  atualizarBotaoFluxo();
+  // Botão direito no toggle "Fluxo" abre o modo de redefinição do CD
+  document.getElementById('mapFluxoToggle')?.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (DISTRIBUICAO_CENTRAL) redefinirCentroDistribuicao();
+  });
 }
 function setMapMode(mode) {
   mapMode = mode;
@@ -649,13 +1609,23 @@ function setMapMode(mode) {
   renderMapa();
 }
 
-function renderMapa() {
-  document.getElementById('mapLoading').classList.add('show');
+function renderMapa({ silencioso = false } = {}) {
+  if (!silencioso) document.getElementById('mapLoading').classList.add('show');
   markerLayer.clearLayers();
-  const cidades = [...cidadesCache].sort((a,b)=>b[mapMode]-a[mapMode]);
+  if (flowLayer) flowLayer.clearLayers();
+
+  if (typeof lookupGeo !== 'function') {
+    document.getElementById('mapLoading').classList.remove('show');
+    document.getElementById('mapCidadesCount').textContent = 'geo-data.js não carregado';
+    showToast('Não foi possível carregar as coordenadas das cidades (geo-data.js). Verifique se o arquivo está disponível.');
+    return;
+  }
+
+  const cidades = [...(replayAtivo ? replayCidadesCache : cidadesCache)].sort((a,b)=>b[mapMode]-a[mapMode]);
   const maxVal = Math.max(...cidades.map(c => c[mapMode]), 1);
   let plotadas = 0;
   const semMatch = [];
+  const fluxoCidades = [];
 
   cidades.forEach(c => {
     const coords = lookupGeo(c.cidade, c.uf);
@@ -663,7 +1633,7 @@ function renderMapa() {
       semMatch.push({
         cidade_raw: c.cidade,
         uf_raw: c.uf,
-        chave_normalizada: normalizeStr(c.cidade) + '|' + normalizeStr(c.uf)
+        chave_normalizada: normalizeKey(c.cidade) + '|' + normalizeKey(c.uf)
       });
       return;
     }
@@ -675,11 +1645,19 @@ function renderMapa() {
       fillOpacity: 0.35 + intensidade * 0.4
     });
     marker.bindTooltip(
-      `<b>${c.cidade}/${c.uf}</b><br>Valor: ${fmtMoney(c.valor)}<br>Kg: ${fmtKg(c.kg)}`,
+      `<b>${escapeHtml(c.cidade)}/${escapeHtml(c.uf)}</b><br>Valor: ${fmtMoney(c.valor)}<br>Kg: ${fmtKg(c.kg)}`,
       { direction: 'top', offset: [0,-radius] }
     );
     marker.addTo(markerLayer);
+    const el = marker.getElement && marker.getElement();
+    if (el && !silencioso) {
+      el.style.animationDelay = `${Math.min(plotadas * 0.012, 0.4)}s`;
+      el.classList.add('marker-pop');
+    }
+    if (fluxoCidades.length < 20) fluxoCidades.push({ coords, intensidade });
   });
+
+  if (mostrarFluxo) renderFluxo(fluxoCidades);
 
   document.getElementById('mapCidadesCount').textContent =
     semMatch.length ? `${plotadas} cidades (${semMatch.length} sem match)` : `${plotadas} cidades`;
@@ -692,6 +1670,168 @@ function renderMapa() {
   document.getElementById('mapLoading').classList.remove('show');
 }
 
+function renderFluxo(fluxoCidades) {
+  if (!flowLayer || typeof L.polyline.antPath !== 'function') return;
+  if (!DISTRIBUICAO_CENTRAL) return; // CD ainda não configurado — nada a desenhar
+  const origem = [DISTRIBUICAO_CENTRAL.lat, DISTRIBUICAO_CENTRAL.lng];
+  fluxoCidades.forEach(({ coords, intensidade }) => {
+    L.polyline.antPath([origem, coords], {
+      delay: 900,
+      dashArray: [6, 10],
+      weight: 1.5 + intensidade * 3.5,
+      color: '#f59e0b',
+      pulseColor: '#ffffff',
+      opacity: 0.3 + intensidade * 0.35,
+      paused: false,
+      hardwareAccelerated: true
+    }).addTo(flowLayer);
+  });
+  L.circleMarker(origem, {
+    radius: 7, fillColor: '#1a4d2e', color: '#ffffff', weight: 2, fillOpacity: 1
+  }).bindTooltip(`<b>${escapeHtml(DISTRIBUICAO_CENTRAL.nome)}</b>`, { direction: 'top', offset: [0,-8] }).addTo(flowLayer);
+}
+
+function atualizarBotaoFluxo() {
+  const btn = document.getElementById('mapFluxoToggle');
+  const redefBtn = document.getElementById('mapCdRedefinirBtn');
+  if (!btn) return;
+  if (!DISTRIBUICAO_CENTRAL) {
+    btn.textContent = 'Definir CD';
+    btn.title = 'Clique e depois clique em qualquer ponto do mapa para marcar o Centro de Distribuição';
+    if (redefBtn) redefBtn.style.display = 'none';
+  } else {
+    btn.textContent = 'Fluxo';
+    btn.title = 'Linhas de fluxo a partir do centro de distribuição';
+    if (redefBtn) redefBtn.style.display = '';
+  }
+}
+
+function toggleFluxo() {
+  // CD ainda não configurado: este clique entra em "modo definição" em vez de alternar o fluxo.
+  if (!DISTRIBUICAO_CENTRAL) {
+    definindoCD = true;
+    document.getElementById('mapaLeaflet').classList.add('definindo-cd');
+    showToast('Clique em qualquer ponto do mapa para marcar o Centro de Distribuição.');
+    document.getElementById('mapFluxoToggle').classList.add('active');
+    return;
+  }
+  mostrarFluxo = !mostrarFluxo;
+  document.getElementById('mapFluxoToggle').classList.toggle('active', mostrarFluxo);
+  renderMapa();
+}
+
+function redefinirCentroDistribuicao() {
+  definindoCD = true;
+  mostrarFluxo = false;
+  document.getElementById('mapaLeaflet').classList.add('definindo-cd');
+  document.getElementById('mapFluxoToggle').classList.remove('active');
+  showToast('Clique em qualquer ponto do mapa para redefinir o Centro de Distribuição.');
+}
+
+/* ── Replay: percorre os meses disponíveis (dentro do período filtrado, se houver)
+   buscando /agregado-cidades mês a mês e reaproveitando o mesmo renderMapa(). ── */
+function toggleReplay() {
+  replayAtivo = !replayAtivo;
+  const btn = document.getElementById('mapReplayToggle');
+  const row = document.getElementById('mapReplayRow');
+  btn.classList.toggle('active', replayAtivo);
+  row.style.display = replayAtivo ? 'flex' : 'none';
+
+  if (replayAtivo) {
+    pararModoDiretoria(); // evita dois "tours" automáticos disputando o mapa ao mesmo tempo
+    iniciarReplay();
+  } else {
+    pausarReplay();
+    renderMapa(); // volta a mostrar os dados normais, respeitando os filtros atuais
+  }
+}
+
+async function iniciarReplay() {
+  const todosMeses = JSON.parse(document.getElementById('periodoPresets')?.dataset.meses || '[]');
+  const de = document.getElementById('periodoDe').value;
+  const ate = document.getElementById('periodoAte').value;
+  // Com período selecionado, o replay percorre só os meses dentro dele; sem período, todo o histórico.
+  replayMeses = todosMeses.filter(m => (!de || m >= de) && (!ate || m <= ate));
+
+  if (!replayMeses.length) {
+    showToast('Não há meses disponíveis para o replay com os filtros atuais.');
+    toggleReplay();
+    return;
+  }
+
+  const slider = document.getElementById('mapReplaySlider');
+  slider.max = replayMeses.length - 1;
+  slider.value = 0;
+  await irParaMesReplay(0);
+  playReplay();
+}
+
+async function irParaMesReplay(idx) {
+  idx = Number(idx);
+  replayIdx = idx;
+  const mes = replayMeses[idx];
+  document.getElementById('mapReplaySlider').value = idx;
+  document.getElementById('mapReplayLabel').textContent = formatarMesReplay(mes);
+
+  const params = { ...getFiltrosParams(), p_de: mes, p_ate: mes };
+  const { data, error } = await apiGet('/agregado-cidades', params);
+  if (error) { console.error(error); showToast('Erro ao carregar o replay: ' + error.message); return; }
+  replayCidadesCache = agregarCidadesRaw(data);
+  if (replayAtivo) renderMapa();
+}
+
+function formatarMesReplay(mes) {
+  const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const [ano, m] = mes.split('-');
+  return `${nomes[Number(m) - 1]}/${ano}`;
+}
+
+function playReplay() {
+  replayPlaying = true;
+  atualizarIconePlayReplay();
+  agendarProximoPassoReplay();
+}
+
+function agendarProximoPassoReplay() {
+  clearTimeout(replayTimer);
+  replayTimer = setTimeout(async () => {
+    if (!replayAtivo || !replayPlaying) return;
+    const proximo = (replayIdx + 1) % replayMeses.length;
+    await irParaMesReplay(proximo);
+    agendarProximoPassoReplay();
+  }, 1100);
+}
+
+function pausarReplay() {
+  replayPlaying = false;
+  clearTimeout(replayTimer);
+  atualizarIconePlayReplay();
+}
+
+function toggleReplayPlay() {
+  if (replayPlaying) pausarReplay(); else playReplay();
+}
+
+function atualizarIconePlayReplay() {
+  const icon = document.getElementById('mapReplayPlayIcon');
+  if (!icon) return;
+  icon.innerHTML = replayPlaying
+    ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>'  // pause
+    : '<path d="M8 5v14l11-7z"/>';              // play
+}
+
+function onMapaClick(e) {
+  if (!definindoCD) return;
+  definindoCD = false;
+  document.getElementById('mapaLeaflet').classList.remove('definindo-cd');
+  DISTRIBUICAO_CENTRAL = salvarCentroDistribuicao(e.latlng.lat, e.latlng.lng, DISTRIBUICAO_CENTRAL?.nome);
+  atualizarBotaoFluxo();
+  showToast('Centro de Distribuição definido com sucesso.');
+  mostrarFluxo = true;
+  document.getElementById('mapFluxoToggle').classList.add('active');
+  renderMapa();
+}
+
 /* ══════════════════ RANKING TOP 10 CIDADES ══════════════════ */
 function setRankMode(mode) {
   rankMode = mode;
@@ -702,25 +1842,46 @@ function setRankMode(mode) {
 function renderRanking() {
   const cidades = [...cidadesCache].sort((a,b)=>b[rankMode]-a[rankMode]).slice(0,10);
   const max = cidades.length ? cidades[0][rankMode] : 1;
-  document.getElementById('rankList').innerHTML = cidades.map((c,i) => `
-    <div class="rank-item" style="animation-delay:${i*0.04}s;">
+  document.getElementById('rankList').innerHTML = cidades.map((c,i) => {
+    const valorTexto = rankMode==='valor' ? fmtMoney(c.valor) : fmtKg(c.kg);
+    const label = `${i+1}º lugar: ${c.cidade} ${c.uf}, ${valorTexto}`;
+    return `
+    <div class="rank-item" style="animation-delay:${i*0.045}s;" tabindex="0" role="listitem" aria-label="${escapeHtml(label)}">
       <div class="rank-pos">${i+1}</div>
       <div class="rank-info">
-        <div class="rank-city">${c.cidade} <span class="rank-uf">${c.uf}</span></div>
-        <div class="rank-bar-track"><div class="rank-bar-fill" style="width:${(c[rankMode]/max*100).toFixed(0)}%"></div></div>
+        <div class="rank-city">${escapeHtml(c.cidade)} <span class="rank-uf">${escapeHtml(c.uf)}</span></div>
+        <div class="rank-bar-track"><div class="rank-bar-fill" data-w="${(c[rankMode]/max*100).toFixed(0)}"></div></div>
       </div>
-      <div class="rank-value">${rankMode==='valor' ? fmtMoney(c.valor) : fmtKg(c.kg)}</div>
+      <div class="rank-value">${valorTexto}</div>
     </div>
-  `).join('') || '<div style="font-size:12px; color:var(--gray-text); padding:12px;">Sem dados para o filtro atual.</div>';
+  `;
+  }).join('') || '<div style="font-size:12px; color:var(--gray-text); padding:12px;">Sem dados para o filtro atual.</div>';
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('#rankList .rank-bar-fill').forEach(el => { el.style.width = el.dataset.w + '%'; });
+  }));
 }
 
 /* ══════════════════ CHARTS ══════════════════ */
 function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
 
+function ensureCanvas(canvasId) {
+  const wrap = chartWrapOf(canvasId);
+  if (wrap && !document.getElementById(canvasId)) {
+    wrap.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+  }
+}
+
 async function renderEvolucao() {
   destroyChart('evolucao');
-  const { data, error } = await db.rpc('evolucao_mensal', getFiltrosParams());
-  if (error) { console.error(error); return; }
+  const box = chartBoxOf('chartEvolucao');
+  showLoading(box);
+  iniciarProgresso();
+  const { data, error } = await apiGet('/evolucao-mensal', getFiltrosParams());
+  finalizarProgresso();
+  hideLoading(box);
+  if (error) { console.error(error); renderChartWrapError('chartEvolucao', error.message); return; }
+  ensureCanvas('chartEvolucao');
   const porAno = {};
   (data||[]).forEach(r => {
     const ano = String(r.ano).trim();
@@ -735,79 +1896,157 @@ async function renderEvolucao() {
   }));
   charts.evolucao = new Chart(document.getElementById('chartEvolucao'), {
     type:'line', data:{ labels, datasets },
-    options:{ responsive:true, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
   });
 }
 
 async function renderBarSimples(canvasId, dimensao, metrica, color) {
   destroyChart(canvasId);
-  const { data, error } = await db.rpc('agregado_por_dimensao', {
+  const box = chartBoxOf(canvasId);
+  showLoading(box);
+  iniciarProgresso();
+  const { data, error } = await apiGet('/agregado-por-dimensao', {
     p_dimensao: dimensao, p_metrica: metrica, p_limit: 10, ...getFiltrosParams()
   });
-  if (error) { console.error(error); return; }
+  finalizarProgresso();
+  hideLoading(box);
+  if (error) { console.error(error); renderChartWrapError(canvasId, error.message); return; }
+  ensureCanvas(canvasId);
   const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts[canvasId] = new Chart(document.getElementById(canvasId), {
     type:'bar',
     data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: color, borderRadius: 6 }] },
-    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>fmtMoney(v)}}} }
   });
 }
 
 async function renderFornecedor() {
   destroyChart('chartFornecedor');
-  const { data, error } = await db.rpc('agregado_por_dimensao', {
+  const box = chartBoxOf('chartFornecedor');
+  showLoading(box);
+  iniciarProgresso();
+  const { data, error } = await apiGet('/agregado-por-dimensao', {
     p_dimensao: 'Fornecedor', p_metrica: 'Valor', p_limit: 10, ...getFiltrosParams()
   });
-  if (error) { console.error(error); return; }
+  finalizarProgresso();
+  hideLoading(box);
+  if (error) { console.error(error); renderChartWrapError('chartFornecedor', error.message); return; }
+  ensureCanvas('chartFornecedor');
   const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts.chartFornecedor = new Chart(document.getElementById('chartFornecedor'), {
     type:'doughnut',
     data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: PALETTE, borderWidth:2, borderColor:'#fff' }] },
-    options:{ responsive:true, plugins:{legend:{position:'right', labels:{boxWidth:9,font:{size:9}}}} }
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{boxWidth:9,font:{size:9}}}} }
   });
 }
 
-async function renderGrupoRegiao() {
-  destroyChart('chartGrupoRegiao');
-  const { data, error } = await db.rpc('agregado_grupo_regiao', getFiltrosParams());
-  if (error) { console.error(error); return; }
-  const rows = data || [];
-  const regioes = [...new Set(rows.map(r=>r.regiao))];
-  const totaisPorGrupo = {};
-  rows.forEach(r => { totaisPorGrupo[r.grupo] = (totaisPorGrupo[r.grupo]||0) + (Number(r.valor)||0); });
-  const grupos = Object.entries(totaisPorGrupo).sort((a,b)=>b[1]-a[1]).slice(0,6).map(a=>a[0]);
-  const datasets = regioes.map((reg,i) => ({
-    label: reg,
-    data: grupos.map(g => {
-      const found = rows.find(r => r.grupo===g && r.regiao===reg);
-      return found ? Number(found.valor)||0 : 0;
-    }),
-    backgroundColor: PALETTE[i%PALETTE.length]
-  }));
-  charts.chartGrupoRegiao = new Chart(document.getElementById('chartGrupoRegiao'), {
-    type:'bar', data:{ labels: grupos, datasets },
-    options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:9}}}}, scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>fmtMoney(v)}}} }
+async function renderConcentracaoCidades() {
+  destroyChart('chartConcentracaoCidades');
+  const box = chartBoxOf('chartConcentracaoCidades');
+  showLoading(box);
+
+  const cidades = [...cidadesCache].sort((a, b) => b.valor - a.valor);
+  const tagEl = document.getElementById('paretoTag');
+
+  ensureCanvas('chartConcentracaoCidades');
+
+  if (!cidades.length) {
+    if (tagEl) tagEl.textContent = 'Sem dados';
+    charts.chartConcentracaoCidades = new Chart(document.getElementById('chartConcentracaoCidades'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{ data: [] }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+    hideLoading(box);
+    return;
+  }
+
+  const total = cidades.reduce((s, c) => s + c.valor, 0) || 1;
+
+  let acc = 0, n80 = 0;
+  for (const c of cidades) { acc += c.valor; n80++; if (acc / total >= 0.8) break; }
+  if (tagEl) tagEl.textContent = `${n80} de ${cidades.length} cidades = 80%`;
+
+  const top = cidades.slice(0, 15);
+  let acumulado = 0;
+  const nomesCompletos = top.map(c => `${c.cidade}/${c.uf}`);
+  const labels = top.map(c => {
+    const nome = `${c.cidade}/${c.uf}`;
+    return nome.length > 14 ? nome.slice(0, 13) + '…' : nome;
   });
+  const barData = top.map(c => c.valor);
+  const cumData = top.map(c => { acumulado += c.valor; return (acumulado / total) * 100; });
+
+  charts.chartConcentracaoCidades = new Chart(document.getElementById('chartConcentracaoCidades'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Faturamento', data: barData, backgroundColor: '#1a4d2e', borderRadius: 6, yAxisID: 'y', order: 2 },
+        { type: 'line', label: '% Acumulado', data: cumData, borderColor: '#f59e0b', backgroundColor: '#f59e0b', yAxisID: 'y1', tension: 0.3, pointRadius: 3, order: 1 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => nomesCompletos[ctx[0].dataIndex],
+            label: ctx => ctx.dataset.yAxisID === 'y1'
+              ? `% Acumulado: ${ctx.raw.toFixed(1)}%`
+              : `Faturamento: ${fmtMoney(ctx.raw)}`
+          }
+        }
+      },
+      scales: {
+        y: { position: 'left', ticks: { callback: v => fmtMoney(v) } },
+        y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%' } },
+        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 }, autoSkip: false } }
+      }
+    }
+  });
+  hideLoading(box);
 }
 
 async function renderGrupoKg() {
   destroyChart('chartGrupoKg');
-  const { data, error } = await db.rpc('agregado_por_dimensao', {
+  const box = chartBoxOf('chartGrupoKg');
+  showLoading(box);
+  iniciarProgresso();
+  const { data, error } = await apiGet('/agregado-por-dimensao', {
     p_dimensao: 'Grupo', p_metrica: 'Qtde Kg', p_limit: 10, ...getFiltrosParams()
   });
-  if (error) { console.error(error); return; }
+  finalizarProgresso();
+  hideLoading(box);
+  if (error) { console.error(error); renderChartWrapError('chartGrupoKg', error.message); return; }
+  ensureCanvas('chartGrupoKg');
   const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts.chartGrupoKg = new Chart(document.getElementById('chartGrupoKg'), {
     type:'bar',
     data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: '#3b82f6', borderRadius:6 }] },
-    options:{ indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{ticks:{callback:v=>fmtKg(v)}}} }
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{callback:v=>fmtKg(v)}}} }
   });
 }
 
 /* ══════════════════ HEATMAP UF x MÊS ══════════════════ */
 async function renderHeatmap() {
-  const { data, error } = await db.rpc('heatmap_uf_mes', getFiltrosParams());
-  if (error) { console.error(error); return; }
+  const wrap = document.getElementById('heatmapTable')?.closest('.chart-box');
+  showLoading(wrap);
+  iniciarProgresso();
+  const { data, error } = await apiGet('/heatmap-uf-mes', getFiltrosParams());
+  finalizarProgresso();
+  hideLoading(wrap);
+  if (error) {
+    console.error(error);
+    document.getElementById('heatmapTable').innerHTML =
+      `<tr><td colspan="13"><div class="error-banner" style="grid-column:auto;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        <span>Erro ao carregar heatmap: ${escapeHtml(error.message)}</span>
+      </div></td></tr>`;
+    return;
+  }
   const meses = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const mesesLabel = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const rows = data || [];
@@ -823,118 +2062,133 @@ async function renderHeatmap() {
   });
   function colorFor(v) {
     if (!v) return '#f0f1f0';
-    const t = v / max;
+    // Escala em raiz quadrada em vez de linear: quando uma UF concentra a maior
+    // parte do faturamento, uma escala linear deixa quase tudo "claro" — a raiz
+    // comprime o topo e expande a base, tornando as diferenças menores visíveis.
+    const t = Math.sqrt(v / max);
     const r = Math.round(112 - t*(112-26)), g = Math.round(148 - t*(148-77)), b = Math.round(127 - t*(127-46));
     return `rgb(${r},${g},${b})`;
   }
   let html = '<tr><th>UF</th>' + mesesLabel.map(m=>`<th>${m}</th>`).join('') + '</tr>';
+  let cellIdx = 0;
   ufs.forEach(uf => {
-    html += `<tr><td>${uf}</td>` + meses.map((_,i) => {
+    const ufSafe = escapeHtml(uf);
+    html += `<tr><td>${ufSafe}</td>` + meses.map((_,i) => {
       const v = (grid[uf] && grid[uf][i]) || 0;
-      const dark = v/max > 0.55;
-      return `<td><div class="heat-cell" style="background:${colorFor(v)}; ${dark?'color:white':''}" title="${uf} • ${mesesLabel[i]}: ${fmtMoney(v)}">${v?Math.round(v/1000)+'k':''}</div></td>`;
+      const dark = v && Math.sqrt(v/max) > 0.55;
+      const delay = Math.min(cellIdx++ * 0.008, 0.5);
+      const label = `${ufSafe} • ${mesesLabel[i]}: ${fmtMoney(v)}`;
+      return `<td><div class="heat-cell" style="background:${colorFor(v)}; ${dark?'color:white;':''} animation-delay:${delay}s;" title="${label}" role="img" aria-label="${label}" tabindex="0">${v?Math.round(v/1000)+'k':''}</div></td>`;
     }).join('') + '</tr>';
   });
   document.getElementById('heatmapTable').innerHTML = html;
 }
 
 /* ══════════════════ RENDER GERAL ══════════════════ */
-async function renderDashboard() {
-  await fetchCidades();
-  renderMapa();
-  renderRanking();
-  await Promise.all([
-    renderKPIs(),
-    renderEvolucao(),
-    renderBarSimples('chartRegiao', 'Regiao', 'Valor', '#1a4d2e'),
-    renderBarSimples('chartSegmento', 'Segmento', 'Valor', '#f59e0b'),
-    renderFornecedor(),
-    renderGrupoRegiao(),
-    renderGrupoKg(),
-    renderHeatmap()
-  ]);
+async function renderDashboard({ primeiraCarga = false } = {}) {
+  const mainEl = document.querySelector('.main');
+  if (primeiraCarga) {
+    renderKpiSkeleton();
+    renderRankSkeleton();
+    ['chartEvolucao','chartRegiao','chartSegmento','chartFornecedor','chartConcentracaoCidades','chartGrupoKg'].forEach(renderChartSkeleton);
+  } else {
+    mainEl?.classList.add('is-loading');
+  }
+  try {
+    await fetchCidades();
+    renderMapa();
+    renderRanking();
+    await Promise.all([
+      renderKPIs(),
+      renderEvolucao(),
+      renderBarSimples('chartRegiao', 'Regiao', 'Valor', '#1a4d2e'),
+      renderBarSimples('chartSegmento', 'Segmento', 'Valor', '#f59e0b'),
+      renderFornecedor(),
+      renderConcentracaoCidades(),
+      renderGrupoKg(),
+      renderHeatmap(),
+      renderAltasQuedas()
+    ]);
+  } finally {
+    mainEl?.classList.remove('is-loading');
+  }
 }
 
 /* ══════════════════ TOAST ══════════════════ */
-function showToast(msg) {
+function showToast(msg, { loading = false } = {}) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 3200);
+  document.getElementById('toastMsg').textContent = msg;
+  document.getElementById('toastDot').classList.toggle('spin-dot', loading);
+  t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
+  clearTimeout(showToast._tm);
+  if (!loading) showToast._tm = setTimeout(()=>t.classList.remove('show'), 3200);
 }
 
-/* ══════════════════ UPLOAD ══════════════════ */
-function handleFileUpload(evt) {
-  const file = evt.target.files[0];
-  if (!file) return;
-  const statusEl = document.getElementById('uploadStatus');
-  statusEl.className = 'upload-status'; statusEl.textContent = 'Lendo arquivo…';
+/* ══════════════════ MODO DIRETORIA (tour automático) ══════════════════ */
+let modoDiretoriaAtivo = false;
+let modoDiretoriaTimer = null;
+let modoDiretoriaIdx = 0;
 
-  const ext = file.name.split('.').pop().toLowerCase();
-  if (ext === 'csv') {
-    Papa.parse(file, { header:true, skipEmptyLines:true, complete: res => processUploadedRows(res.data) });
+function toggleModoDiretoria() {
+  modoDiretoriaAtivo = !modoDiretoriaAtivo;
+  const btn = document.getElementById('modoDiretoriaBtn');
+  btn.classList.toggle('active', modoDiretoriaAtivo);
+  const lbl = btn.querySelector('.md-label');
+  if (lbl) lbl.textContent = modoDiretoriaAtivo ? 'Parar tour' : 'Modo Diretoria';
+  if (modoDiretoriaAtivo) {
+    modoDiretoriaIdx = 0;
+    rodarModoDiretoria();
   } else {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const wb = XLSX.read(e.target.result, { type:'binary' });
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'' });
-      processUploadedRows(rows);
-    };
-    reader.readAsBinaryString(file);
+    clearTimeout(modoDiretoriaTimer);
+    document.querySelectorAll('.rank-item.md-highlight').forEach(el => el.classList.remove('md-highlight'));
   }
 }
 
-async function processUploadedRows(rows) {
-  const statusEl = document.getElementById('uploadStatus');
-  const track = document.getElementById('uploadProgressTrack');
-  const bar = document.getElementById('uploadProgressBar');
-  if (!rows.length) { statusEl.textContent='Arquivo vazio.'; statusEl.className='upload-status err'; return; }
-  if (!db) { statusEl.textContent='Configure SUPABASE_URL / SUPABASE_KEY no código.'; statusEl.className='upload-status err'; return; }
+function pararModoDiretoria() {
+  if (!modoDiretoriaAtivo) return;
+  modoDiretoriaAtivo = false;
+  clearTimeout(modoDiretoriaTimer);
+  const btn = document.getElementById('modoDiretoriaBtn');
+  btn?.classList.remove('active');
+  const lbl = btn?.querySelector('.md-label');
+  if (lbl) lbl.textContent = 'Modo Diretoria';
+  document.querySelectorAll('.rank-item.md-highlight').forEach(el => el.classList.remove('md-highlight'));
+}
 
-  await carregarCidadesCanonicas(); // busca a lista atualizada antes de cada upload
+function rodarModoDiretoria() {
+  if (!modoDiretoriaAtivo) return;
+  const top = [...cidadesCache].sort((a,b) => b[rankMode] - a[rankMode]).slice(0, 5);
+  if (!top.length) { pararModoDiretoria(); return; }
 
-  // corrige cidade/UF de cada linha antes de inserir
-  rows = rows.map(row => {
-    const corrigido = corrigirCidadeUF(row[COLS.cidade], row[COLS.uf]);
-    return { ...row, [COLS.cidade]: corrigido.cidade, [COLS.uf]: corrigido.uf };
-  });
+  const passo = modoDiretoriaIdx % top.length;
+  const cidade = top[passo];
+  const coords = typeof lookupGeo === 'function' ? lookupGeo(cidade.cidade, cidade.uf) : null;
 
-  track.classList.add('show');
-  const batchSize = 500;
-  const batches = [];
-  for (let i=0; i<rows.length; i+=batchSize) batches.push(rows.slice(i, i+batchSize));
-
-  let enviados = 0;
-  for (let i=0; i<batches.length; i++) {
-    const { error } = await db.from(TABLE_NAME).insert(batches[i]);
-    if (error) { statusEl.textContent = 'Erro: ' + error.message; statusEl.className='upload-status err'; return; }
-    enviados += batches[i].length;
-    bar.style.width = Math.round((enviados/rows.length)*100) + '%';
+  document.querySelectorAll('.rank-item.md-highlight').forEach(el => el.classList.remove('md-highlight'));
+  const rankItems = document.querySelectorAll('#rankList .rank-item');
+  if (rankItems[passo]) {
+    rankItems[passo].classList.add('md-highlight');
+    rankItems[passo].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
-  finishUpload(true, `${enviados} linha(s) importada(s) com sucesso!`);
-  showToast('Importação concluída: ' + enviados + ' linha(s).');
-  await inicializar();
-}
 
-function finishUpload(ok, msg) {
-  const statusEl = document.getElementById('uploadStatus');
-  statusEl.textContent = msg; statusEl.className = 'upload-status ' + (ok?'ok':'err');
-  setTimeout(()=>{ document.getElementById('uploadProgressTrack').classList.remove('show'); document.getElementById('uploadProgressBar').style.width='0%'; }, 1500);
-  document.getElementById('fileInput').value = '';
-}
+  if (coords && leafletMap) {
+    leafletMap.flyTo(coords, 7, { duration: 1.2 });
+  }
 
-/* ══════════════════ EXPORTAR PDF ══════════════════ */
-function exportarPDF() {
-  const filtroTexto = `Filtros ativos:${filtroRegiao?' · Região: '+filtroRegiao:''}${filtroUF?' · UF: '+filtroUF:''}${filtroSegmento?' · Segmento: '+filtroSegmento:''}${filtroGrupo?' · Grupo: '+filtroGrupo:''}${filtroFornecedor?' · Fornecedor: '+filtroFornecedor:''}`;
-  showToast('Gerando relatório… ' + (filtroRegiao||filtroUF||filtroSegmento||filtroGrupo||filtroFornecedor ? filtroTexto : 'sem filtros ativos'));
-  window.print();
+  modoDiretoriaIdx++;
+  modoDiretoriaTimer = setTimeout(rodarModoDiretoria, 4500);
 }
 
 /* ══════════════════ INICIALIZAÇÃO ══════════════════ */
 async function inicializar() {
-  if (!db) { showToast('Configure as credenciais do Supabase no topo do arquivo.'); return; }
-  document.getElementById('hdrPeriodo').textContent = 'Todo o histórico';
-  await carregarCidadesCanonicas(); // <-- adicionar aqui
+  document.getElementById('hdrPeriodoTxt').textContent = 'Todo o histórico';
+  renderKpiSkeleton();
+  renderRankSkeleton();
+  ['chartEvolucao','chartRegiao','chartSegmento','chartFornecedor','chartConcentracaoCidades','chartGrupoKg'].forEach(renderChartSkeleton);
+  // Nenhuma destas chamadas depende do resultado das outras — todas disparam juntas
+  // em vez de esperar carregarCidadesCanonicas() terminar antes de começar o resto.
   await Promise.all([
+    carregarCidadesCanonicas(),
     buildChipsRPC('regiaoChips', 'Regiao'),
     buildChipsRPC('ufChips', 'UF'),
     buildChipsRPC('segmentoChips', 'Segmento'),
@@ -942,10 +2196,107 @@ async function inicializar() {
     buildChipsRPC('fornecedorChips', 'Fornecedor'),
     buildPeriodoOptionsRPC()
   ]);
-  await renderDashboard();
+  restaurarFiltrosDaURL(); // aplica filtros vindos de um link compartilhado, se houver
+  await renderDashboard({ primeiraCarga: true });
 }
 
-window.addEventListener('DOMContentLoaded', () => { initMap(); inicializar(); });
+function staggerEntrance() {
+  document.querySelectorAll('.chart-box').forEach((el, i) => {
+    el.style.animationDelay = `${0.08 + i * 0.05}s`;
+  });
+}
+
+/* ══════════════════ EXPORTAÇÃO (CSV via PapaParse / Excel via SheetJS) ══════════════════ */
+function toggleExportMenu(forceClose) {
+  const menu = document.getElementById('exportMenu');
+  const btn = document.getElementById('exportBtn');
+  const abrir = forceClose === true ? false : !menu.classList.contains('open');
+  menu.classList.toggle('open', abrir);
+  btn.setAttribute('aria-expanded', String(abrir));
+}
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.export-wrap');
+  if (wrap && !wrap.contains(e.target)) toggleExportMenu(true);
+});
+
+// Nome de arquivo descritivo, refletindo os filtros aplicados no momento da exportação.
+function nomeArquivoExport(extensao) {
+  const partes = ['vendas-por-cidade'];
+  if (filtroRegiao) partes.push(filtroRegiao);
+  if (filtroUF) partes.push(filtroUF);
+  const de = document.getElementById('periodoDe').value;
+  const ate = document.getElementById('periodoAte').value;
+  if (de || ate) partes.push(`${de || 'inicio'}_a_${ate || 'fim'}`);
+  const hoje = new Date().toISOString().slice(0, 10);
+  partes.push(hoje);
+  return partes
+    .map(p => normalizeKey(p).toLowerCase().replace(/\s+/g, '-'))
+    .join('_') + '.' + extensao;
+}
+
+function dadosParaExport() {
+  // Exporta o mesmo conjunto agregado por cidade usado no mapa/ranking, já
+  // refletindo os filtros (região, UF, segmento, grupo, fornecedor, período) aplicados.
+  return [...cidadesCache]
+    .sort((a, b) => b.valor - a.valor)
+    .map(c => ({
+      Cidade: c.cidade,
+      UF: c.uf,
+      Valor: Number(c.valor.toFixed(2)),
+      'Qtde Kg': Number(c.kg.toFixed(2)),
+    }));
+}
+
+function baixarArquivo(blob, nomeArquivo) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportarDados(formato) {
+  toggleExportMenu(true);
+  const linhas = dadosParaExport();
+  if (!linhas.length) {
+    showToast('Nada para exportar com os filtros atuais.');
+    return;
+  }
+  if (formato === 'csv') {
+    const csv = Papa.unparse(linhas, { delimiter: ';' }); // ; é o separador padrão do Excel em pt-BR
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM garante acentuação correta ao abrir no Excel
+    baixarArquivo(blob, nomeArquivoExport('csv'));
+  } else {
+    const ws = XLSX.utils.json_to_sheet(linhas);
+    ws['!cols'] = [{ wch: 28 }, { wch: 6 }, { wch: 16 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Vendas por cidade');
+    XLSX.writeFile(wb, nomeArquivoExport('xlsx'));
+  }
+  showToast(`Exportado: ${linhas.length} cidade(s).`);
+}
+
+function initScrollReveal() {
+  const els = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) { els.forEach(el => el.classList.add('in-view')); return; }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('in-view');
+        io.unobserve(entry.target);
+      }
+    });
+  }, { root: document.querySelector('.main'), threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+  els.forEach(el => io.observe(el));
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.body.appendChild(document.getElementById('periodoPanel'));
+  staggerEntrance(); initScrollReveal(); initMap(); inicializar();
+});
 </script>
 </body>
 </html>
