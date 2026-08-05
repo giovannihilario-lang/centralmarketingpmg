@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/demandas-v2.css">
+  <link rel="stylesheet" href="/assets/demandas-v2.css?v=3.1.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -196,6 +196,11 @@
             <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
           </section>
 
+          <section class="avatar-filter-panel" aria-label="Filtro rápido por responsável">
+            <div class="avatar-filter-copy"><i data-lucide="user-round-search"></i><span><strong>Filtrar pela equipe</strong><small>Clique em um avatar para ver somente as demandas da pessoa.</small></span></div>
+            <div id="taskAvatarFilters" class="task-avatar-filters"></div>
+          </section>
+
           <div id="taskSmartFilterBar" class="smart-filter-bar hidden"><span id="smartFilterLabel"></span><button id="clearSmartFilter"><i data-lucide="x"></i>Limpar</button></div>
 
           <section id="taskBoard" class="task-board">
@@ -230,6 +235,7 @@
           </div>
 
           <div id="teamSummary" class="team-summary"></div>
+          <div id="teamAvatarStrip" class="team-avatar-strip"></div>
           <div id="teamInsights" class="team-insights manager-only"></div>
 
           <div class="team-controls manager-only">
@@ -353,7 +359,7 @@
 
   <div id="profileModal" class="modal-layer hidden">
     <div class="modal-card small">
-      <div class="modal-head"><div><span class="eyebrow">Seu perfil</span><h2>Como você aparece</h2><p>Depois você pode trocar as iniciais por um avatar personalizado.</p></div><button id="profileCloseBtn" class="icon-btn subtle" data-close-modal="profileModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Seu perfil</span><h2>Como você aparece</h2><p>Sua foto identifica você nas demandas, comentários, atividades e visão da equipe.</p></div><button id="profileCloseBtn" class="icon-btn subtle" data-close-modal="profileModal"><i data-lucide="x"></i></button></div>
       <form id="profileForm">
         <div class="modal-body">
           <div class="profile-preview"><div id="profileAvatar"></div><div><strong id="profilePreviewName">Seu nome</strong><span id="profilePreviewJob">Marketing</span></div></div>
@@ -387,6 +393,6 @@
 
   <div id="toastStack" class="toast-stack"></div>
 
-  <script src="/assets/demandas-v2.js"></script>
+  <script src="/assets/demandas-v2.js?v=3.1.0"></script>
 </body>
 </html>

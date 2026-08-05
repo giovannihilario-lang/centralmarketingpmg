@@ -60,6 +60,10 @@ const ACTIVITY_TEXT = {
   criada: 'criou a demanda', editada: 'editou a demanda', status: 'alterou o status de',
   atribuida: 'alterou o responsável de', comentario: 'comentou em', arquivada: 'arquivou', restaurada: 'restaurou'
 };
+const ACTIVITY_ICON = {
+  criada: 'clipboard-plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog',
+  comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore'
+};
 const PRIORITY_ORDER = { urgente: 0, alta: 1, media: 2, baixa: 3 };
 const VIEW_META = {
   hoje: ['Sua rotina', 'Hoje'], agenda: ['Planejamento', 'Agenda'],
@@ -109,8 +113,27 @@ function firstName(name) { return String(name || 'equipe').trim().split(/\s+/)[0
 function collaborator(id) { return state.collaborators.find(item => item.id === id); }
 function avatarHTML(person, size = '') {
   const cls = `avatar ${size}`.trim();
-  if (person?.foto_url) return `<div class="${cls}"><img src="${escapeHtml(person.foto_url)}" alt="${escapeHtml(person.nome)}" onerror="this.parentElement.textContent='${initials(person.nome)}'"></div>`;
-  return `<div class="${cls}">${initials(person?.nome)}</div>`;
+  const name = person?.nome || 'Sem responsável';
+  if (!person) return `<div class="${cls} avatar-empty" title="Sem responsável" aria-label="Sem responsável"><i data-lucide="user-round-x"></i></div>`;
+  if (person.foto_url) return `<div class="${cls}" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(person.foto_url)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.parentElement.textContent='${initials(name)}'"></div>`;
+  return `<div class="${cls}" title="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">${initials(name)}</div>`;
+}
+function avatarStatusHTML(person, stats, size = 'md') {
+  const risk = stats?.risk || 'balanced';
+  const meta = teamRiskLabel(stats || { risk });
+  const title = `${person?.nome || 'Sem responsável'} · ${meta.label}`;
+  return `<span class="avatar-status-wrap risk-${risk}" title="${escapeHtml(title)}">${avatarHTML(person, size)}<span class="avatar-status-badge" aria-hidden="true"><i data-lucide="${meta.icon}"></i></span></span>`;
+}
+function taskAvatarHTML(person, task, size = 'sm') {
+  const late = isOverdue(task);
+  const today = taskDueKey(task) === todayKey();
+  const tone = late ? 'late' : today ? 'today' : task?.status || 'nova';
+  const icon = late ? 'triangle-alert' : today ? 'clock-3' : (STATUS[task?.status]?.icon || 'circle-user-round');
+  const description = `${person?.nome || 'Sem responsável'} · ${late ? 'Demanda atrasada' : today ? 'Prazo hoje' : STATUS[task?.status]?.label || 'Demanda'}`;
+  return `<span class="task-avatar-wrap ${tone}" title="${escapeHtml(description)}">${avatarHTML(person, size)}<span class="task-avatar-icon" aria-hidden="true"><i data-lucide="${icon}"></i></span></span>`;
+}
+function activityAvatarHTML(person, type, size = 'sm') {
+  return `<span class="activity-avatar-wrap">${avatarHTML(person, size)}<span class="activity-avatar-icon" aria-hidden="true"><i data-lucide="${ACTIVITY_ICON[type] || 'activity'}"></i></span></span>`;
 }
 function parseDate(value) { return value ? new Date(value) : null; }
 function dateKey(value) {
@@ -314,7 +337,7 @@ function renderFocusList(mine) {
 }
 function renderActivityFeed() {
   const items = state.activities.slice(0, 6);
-  $('activityFeed').innerHTML = items.length ? items.map(activity => `<div class="activity-item">${avatarHTML(activity.ator, 'sm')}<div class="activity-copy"><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou')} <strong>${escapeHtml(activity.tarefa?.titulo || 'uma demanda')}</strong><span>${relativeTime(activity.criado_em)}</span></div></div>`).join('')
+  $('activityFeed').innerHTML = items.length ? items.map(activity => `<div class="activity-item">${activityAvatarHTML(activity.ator, activity.tipo, 'sm')}<div class="activity-copy"><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou')} <strong>${escapeHtml(activity.tarefa?.titulo || 'uma demanda')}</strong><span>${relativeTime(activity.criado_em)}</span></div></div>`).join('')
     : `<div class="empty-state"><i data-lucide="activity"></i>As movimentações da equipe aparecerão aqui.</div>`;
 }
 
@@ -373,12 +396,26 @@ function renderDemandas() {
   $$('[data-task-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.taskView === state.taskView));
   const labels = { atrasadas: 'Mostrando demandas atrasadas', hoje: 'Mostrando demandas para hoje', semana: 'Mostrando os próximos 7 dias', minhas: 'Mostrando minhas demandas' };
   $('taskSmartFilterBar').classList.toggle('hidden', !state.smartFilter); $('smartFilterLabel').textContent = labels[state.smartFilter] || '';
-  renderBoard(); renderTaskList();
+  renderTaskAvatarFilters(); renderBoard(); renderTaskList();
 }
 function populateAssigneeSelects() {
   const options = `<option value="">Todos os responsáveis</option><option value="none">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
   const select = $('taskAssigneeFilter'); if (select) { const value = select.value; select.innerHTML = options; select.value = value; }
   ['itemAssignee', 'editTaskAssignee'].forEach(id => { const el = $(id); if (!el) return; const value = el.value; el.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`; el.value = value; });
+}
+function renderTaskAvatarFilters() {
+  const container = $('taskAvatarFilters'); if (!container) return;
+  const selected = $('taskAssigneeFilter')?.value || '';
+  const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
+  const countFor = personId => active.filter(task => task.responsavel_id === personId).length;
+  const unassigned = active.filter(task => !task.responsavel_id).length;
+  const buttons = [
+    `<button type="button" class="task-avatar-filter ${selected === '' ? 'active' : ''}" data-avatar-filter="" title="Mostrar todos"><span class="task-avatar-filter-all"><i data-lucide="users-round"></i></span><span><strong>Todos</strong><small>${active.length} abertas</small></span></button>`,
+    ...state.collaborators.map(person => `<button type="button" class="task-avatar-filter ${selected === person.id ? 'active' : ''}" data-avatar-filter="${person.id}" title="Filtrar demandas de ${escapeHtml(person.nome)}">${avatarHTML(person, 'sm')}<span><strong>${escapeHtml(firstName(person.nome))}</strong><small>${countFor(person.id)} aberta(s)</small></span></button>`),
+    `<button type="button" class="task-avatar-filter unassigned ${selected === 'none' ? 'active' : ''}" data-avatar-filter="none" title="Mostrar demandas sem responsável"><span class="task-avatar-filter-all"><i data-lucide="user-round-x"></i></span><span><strong>Sem dono</strong><small>${unassigned} aberta(s)</small></span></button>`
+  ];
+  container.innerHTML = buttons.join('');
+  refreshIcons();
 }
 function renderBoard() {
   const tasks = filteredTasks();
@@ -397,14 +434,14 @@ function taskCardHTML(task) {
     <h3>${escapeHtml(task.titulo)}</h3>${task.descricao ? `<p>${escapeHtml(task.descricao)}</p>` : ''}
     ${(task.tags || []).length ? `<div class="task-tags">${task.tags.slice(0, 4).map(tag => `<span class="task-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     <div class="task-progress-meta"><span>${task.estimativa_horas ? `${Number(task.estimativa_horas)}h estimadas` : 'Sem estimativa'}</span><span>${STATUS[task.status]?.label}</span></div>
-    <div class="task-card-footer"><span class="task-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span><div class="task-card-person">${avatarHTML(person, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div></div>
+    <div class="task-card-footer"><span class="task-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span><div class="task-card-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div></div>
   </article>`;
 }
 function renderTaskList() {
   const tasks = filteredTasks();
   $('taskRows').innerHTML = tasks.length ? tasks.map(task => { const person = collaborator(task.responsavel_id); return `<div class="task-row" data-open-task="${task.id}">
     <div class="task-row-title"><i class="priority-line" style="background:${task.prioridade === 'urgente' ? 'var(--red)' : task.prioridade === 'alta' ? 'var(--amber)' : task.prioridade === 'baixa' ? 'var(--blue)' : 'var(--green-300)'}"></i><div><strong>${escapeHtml(task.titulo)}</strong><small>${escapeHtml((task.tags || []).join(' · ') || 'Sem tags')}</small></div></div>
-    <div class="task-row-person">${avatarHTML(person, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
+    <div class="task-row-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
     : `<div class="empty-state" style="margin:15px"><i data-lucide="search-x"></i>Nenhuma demanda encontrada.</div>`;
 }
 function bindTaskDrag() {
@@ -483,6 +520,7 @@ function renderEquipe() {
   const dueWeek = active.filter(task => { const due = taskDue(task); return due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
   const unassigned = active.filter(task => !task.responsavel_id);
   let stats = state.collaborators.map(teamPersonStats);
+  renderTeamAvatarStrip(stats, manager);
 
   $('teamPageEyebrow').textContent = manager ? 'Painel gerencial' : 'Colaboração do setor';
   $('teamPageDescription').textContent = manager
@@ -526,6 +564,19 @@ function renderEquipe() {
     : `<div class="team-empty"><i data-lucide="users-round"></i><strong>Ninguém encontrado</strong><span>Ajuste a busca ou remova o filtro de atenção.</span></div>`;
   refreshIcons();
 }
+function renderTeamAvatarStrip(stats, manager) {
+  const container = $('teamAvatarStrip'); if (!container) return;
+  const ordered = [...stats].sort((a, b) => TEAM_RISK[b.risk].score - TEAM_RISK[a.risk].score || a.person.nome.localeCompare(b.person.nome, 'pt-BR'));
+  const legend = [
+    ['available', 'Disponível'], ['balanced', 'Equilibrado'], ['busy', 'Carga alta'], ['attention', 'Atenção'], ['critical', 'Crítico']
+  ].map(([tone, label]) => `<span><i class="avatar-legend-dot ${tone}"></i>${label}</span>`).join('');
+  container.innerHTML = `<div class="team-avatar-strip-head"><div><span class="eyebrow">Quem está com o quê</span><strong>Equipe em um olhar</strong></div><div class="avatar-risk-legend">${legend}</div></div>
+    <div class="team-avatar-list">${ordered.map(item => {
+      const meta = teamRiskLabel(item);
+      const action = `data-person-show-tasks="${item.person.id}"`;
+      return `<button type="button" class="team-avatar-person risk-${item.risk}" ${action} title="Ver demandas de ${escapeHtml(item.person.nome)}"><span class="team-avatar-visual">${avatarStatusHTML(item.person, item, 'md')}</span><span class="team-avatar-copy"><strong>${escapeHtml(firstName(item.person.nome))}</strong><small><i data-lucide="${meta.icon}"></i>${meta.label} · ${item.active.length} aberta(s)</small></span><i class="team-avatar-action" data-lucide="list-filter"></i></button>`;
+    }).join('')}</div>`;
+}
 function renderTeamInsights(stats, active, unassigned) {
   const attention = stats.filter(item => ['critical', 'attention'].includes(item.risk));
   const overloaded = [...stats].sort((a, b) => b.hours - a.hours)[0];
@@ -535,7 +586,7 @@ function renderTeamInsights(stats, active, unassigned) {
   }).sort(taskSortByAttention);
   const idleWithWork = stats.filter(item => item.active.length && item.lastActivity && !isWithinDays(item.lastActivity, 7));
   const alerts = [
-    ...attention.slice(0, 3).map(item => ({ icon: TEAM_RISK[item.risk].icon, title: item.person.nome, text: `${item.overdue.length} atrasada(s) · ${Math.round(item.hours)}h em aberto`, personId: item.person.id, tone: item.risk })),
+    ...attention.slice(0, 3).map(item => ({ icon: TEAM_RISK[item.risk].icon, title: item.person.nome, text: `${item.overdue.length} atrasada(s) · ${Math.round(item.hours)}h em aberto`, personId: item.person.id, person: item.person, stats: item, tone: item.risk })),
     ...unassigned.slice(0, 2).map(task => ({ icon: 'user-round-x', title: task.titulo, text: 'Demanda sem responsável', taskId: task.id, tone: 'attention' }))
   ].slice(0, 5);
   const statusTotals = Object.keys(STATUS).map(status => ({ status, count: state.tasks.filter(task => !task.arquivada_em && task.status === status).length }));
@@ -543,7 +594,7 @@ function renderTeamInsights(stats, active, unassigned) {
 
   $('teamInsights').innerHTML = `<article class="team-insight-card team-alert-card">
       <div class="team-insight-head"><div><span class="eyebrow">Atenção agora</span><h3>Riscos e gargalos</h3></div><span class="insight-count">${alerts.length}</span></div>
-      <div class="team-alert-list">${alerts.length ? alerts.map(item => `<button class="team-alert-item ${item.tone}" ${item.personId ? `data-open-person="${item.personId}"` : `data-open-task="${item.taskId}"`}><span><i data-lucide="${item.icon}"></i></span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div><i data-lucide="chevron-right"></i></button>`).join('') : `<div class="team-insight-empty"><i data-lucide="shield-check"></i><span>Nenhum gargalo crítico neste momento.</span></div>`}</div>
+      <div class="team-alert-list">${alerts.length ? alerts.map(item => `<button class="team-alert-item ${item.tone}" ${item.personId ? `data-open-person="${item.personId}"` : `data-open-task="${item.taskId}"`}>${item.person ? avatarStatusHTML(item.person, item.stats, 'sm') : `<span><i data-lucide="${item.icon}"></i></span>`}<div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.text)}</small></div><i data-lucide="chevron-right"></i></button>`).join('') : `<div class="team-insight-empty"><i data-lucide="shield-check"></i><span>Nenhum gargalo crítico neste momento.</span></div>`}</div>
     </article>
     <article class="team-insight-card">
       <div class="team-insight-head"><div><span class="eyebrow">Fluxo do setor</span><h3>Distribuição das demandas</h3></div><span class="insight-count neutral">${active.length}</span></div>
@@ -567,7 +618,7 @@ function personCardHTML(stats, manager) {
   const preview = nextTasks.slice(0, 3);
   return `<article class="person-card team-person-card risk-${risk} ${manager ? 'clickable' : 'readonly'}" ${cardAttrs}>
     <div class="person-card-accent"></div>
-    <div class="person-head">${avatarHTML(person, 'md')}<div class="person-copy"><strong>${escapeHtml(person.nome)}</strong><span>${escapeHtml(person.cargo || 'Marketing')}</span></div>${person.role === 'gestor' ? '<span class="role-chip">Gestor</span>' : ''}</div>
+    <div class="person-head">${avatarStatusHTML(person, stats, 'md')}<div class="person-copy"><strong>${escapeHtml(person.nome)}</strong><span>${escapeHtml(person.cargo || 'Marketing')}</span></div>${person.role === 'gestor' ? '<span class="role-chip">Gestor</span>' : ''}</div>
     <div class="person-state-line"><span class="person-risk ${risk}"><i data-lucide="${riskMeta.icon}"></i>${riskMeta.label}</span><span>${lastActivity ? `Movimento ${relativeTime(lastActivity)}` : 'Sem atividade registrada'}</span></div>
     <div class="person-metrics manager-metrics">
       <div class="person-metric"><strong>${active.length}</strong><span>Em aberto</span></div>
@@ -608,7 +659,7 @@ function renderPersonDrawer(person) {
   const completed = [...stats.completed30].sort((a, b) => new Date(b.concluida_em || b.atualizado_em) - new Date(a.concluida_em || a.atualizado_em));
   const activities = state.personActivities || [];
   $('personDrawerContent').innerHTML = `<div class="person-hero risk-${stats.risk}">
-      <div class="person-hero-profile">${avatarHTML(person, 'xl')}<div><span class="person-risk ${stats.risk}"><i data-lucide="${riskMeta.icon}"></i>${riskMeta.label}</span><h3>${escapeHtml(person.nome)}</h3><p>${escapeHtml(person.cargo || 'Marketing')} · ${person.role === 'gestor' ? 'Gestor' : 'Colaborador'}</p></div></div>
+      <div class="person-hero-profile">${avatarStatusHTML(person, stats, 'xl')}<div><span class="person-risk ${stats.risk}"><i data-lucide="${riskMeta.icon}"></i>${riskMeta.label}</span><h3>${escapeHtml(person.nome)}</h3><p>${escapeHtml(person.cargo || 'Marketing')} · ${person.role === 'gestor' ? 'Gestor' : 'Colaborador'}</p></div></div>
       <div class="person-hero-copy"><i data-lucide="sparkles"></i><span>${teamManagerNarrative(stats)}</span></div>
     </div>
     <div class="person-drawer-metrics">
@@ -773,7 +824,7 @@ function renderTaskDrawer() {
   const canChangeStatus = isManager() || task.responsavel_id === state.me.id || task.criado_por === state.me.id;
   $('taskDrawerContent').innerHTML = `<div class="detail-banner"><p>${escapeHtml(task.descricao || 'Esta demanda ainda não possui descrição.')}</p>${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}</div>
     <div class="detail-grid"><div class="detail-field"><label>Status</label>${canChangeStatus && !task.arquivada_em ? `<select id="drawerTaskStatus">${Object.entries(STATUS).map(([key, item]) => `<option value="${key}" ${task.status === key ? 'selected' : ''}>${item.label}</option>`).join('')}</select>` : `<strong>${STATUS[task.status]?.label}</strong>`}</div>
-    <div class="detail-field"><label>Responsável</label>${isManager() && !task.arquivada_em ? `<select id="drawerTaskAssignee"><option value="">Sem responsável</option>${state.collaborators.map(item => `<option value="${item.id}" ${task.responsavel_id === item.id ? 'selected' : ''}>${escapeHtml(item.nome)}</option>`).join('')}</select>` : `<strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong>`}</div>
+    <div class="detail-field"><label>Responsável</label>${isManager() && !task.arquivada_em ? `<select id="drawerTaskAssignee"><option value="">Sem responsável</option>${state.collaborators.map(item => `<option value="${item.id}" ${task.responsavel_id === item.id ? 'selected' : ''}>${escapeHtml(item.nome)}</option>`).join('')}</select>` : `<div class="drawer-assignee-display">${taskAvatarHTML(person, task, 'sm')}<strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong></div>`}</div>
     <div class="detail-field"><label>Prazo</label><strong class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</strong></div><div class="detail-field"><label>Esforço</label><strong>${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</strong></div></div>
     <section class="detail-section"><div class="detail-section-head"><h3>Comentários</h3><span>${state.comments.length}</span></div><div class="comment-list">${renderComments()}</div>${!task.arquivada_em ? `<form id="drawerCommentForm" class="comment-form"><textarea id="drawerCommentText" required placeholder="Escreva um comentário..."></textarea><button type="submit"><i data-lucide="send"></i></button></form>` : ''}</section>
     <section class="detail-section"><div class="detail-section-head"><h3>Histórico</h3><span>${state.taskActivities.length} registros</span></div><div class="activity-timeline">${renderTaskActivities()}</div></section>
@@ -781,7 +832,7 @@ function renderTaskDrawer() {
   bindTaskDrawerEvents(); refreshIcons();
 }
 function renderComments() {
-  return state.comments.length ? state.comments.map(comment => `<div class="comment">${avatarHTML(comment.colaborador, 'sm')}<div class="comment-bubble"><div class="comment-meta"><strong>${escapeHtml(comment.colaborador?.nome || 'Colaborador')}</strong><span>${formatDateTime(comment.criado_em)}</span></div><p>${escapeHtml(comment.texto)}</p></div></div>`).join('') : `<div class="empty-state">Sem comentários ainda.</div>`;
+  return state.comments.length ? state.comments.map(comment => `<div class="comment">${activityAvatarHTML(comment.colaborador, 'comentario', 'sm')}<div class="comment-bubble"><div class="comment-meta"><strong>${escapeHtml(comment.colaborador?.nome || 'Colaborador')}</strong><span>${formatDateTime(comment.criado_em)}</span></div><p>${escapeHtml(comment.texto)}</p></div></div>`).join('') : `<div class="empty-state">Sem comentários ainda.</div>`;
 }
 function renderTaskActivities() {
   return state.taskActivities.length ? state.taskActivities.map(activity => `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${activity.tipo === 'comentario' ? 'message-circle' : activity.tipo === 'status' ? 'refresh-cw' : activity.tipo === 'atribuida' ? 'user-round-check' : 'activity'}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou esta demanda')}</p><span>${formatDateTime(activity.criado_em)}</span></div></div>`).join('') : `<div class="empty-state">O histórico começará a aparecer nas próximas alterações.</div>`;
@@ -1004,6 +1055,8 @@ function bindEvents() {
   $('addOnSelectedDay').addEventListener('click', () => openQuickAdd('lembrete', { date: state.selectedDate }));
   $('openSidebarBtn').addEventListener('click', openMobileSidebar); $('closeSidebarBtn').addEventListener('click', closeMobileSidebar); $('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
   document.addEventListener('click', event => {
+    const avatarFilter = event.target.closest('[data-avatar-filter]');
+    if (avatarFilter) { $('taskAssigneeFilter').value = avatarFilter.dataset.avatarFilter; renderDemandas(); return; }
     const person = event.target.closest('[data-open-person]'); if (person) openPerson(person.dataset.openPerson);
     const showTasks = event.target.closest('[data-person-show-tasks]'); if (showTasks) showPersonTasks(showTasks.dataset.personShowTasks);
     const createFor = event.target.closest('[data-person-create-task]'); if (createFor) { const personId = createFor.dataset.personCreateTask; closeDrawer('personDrawer'); openQuickAdd('demanda', { assigneeId: personId }); }
