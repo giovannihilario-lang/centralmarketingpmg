@@ -8,51 +8,77 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// Libera acesso de outras origens na rede local (ex: enquanto o front roda
-// via Live Server em outra porta). Quando tudo rodar só por este servidor
-// (recomendado), isso deixa de ser necessário, mas não atrapalha.
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
-// Serve os arquivos estáticos (o mesmo conteúdo da pasta public/ que hoje
-// vai pro Vercel). Ex: http://localhost:3001/dashboard.html
-app.use(express.static(path.join(__dirname, 'public')));
+/**
+ * Registra handlers no formato usado pela Vercel.
+ *
+ * /api       -> funções que também serão publicadas na Vercel.
+ * /local-api -> funções que dependem do SQL Server acessível apenas na rede local.
+ *
+ * As duas pastas continuam respondendo localmente em /api/<nome>, então o
+ * dashboard não precisa saber onde o arquivo físico está guardado.
+ */
+async function registrarDiretorioApi(nomeDiretorio) {
+  const diretorio = path.join(__dirname, nomeDiretorio);
+  if (!fs.existsSync(diretorio)) return;
 
-// Roteamento automático estilo Vercel: cada arquivo em /api/<nome>.js vira
-// a rota /api/<nome>. Não precisa registrar rota manualmente ao adicionar
-// um novo arquivo em api/.
-const apiDir = path.join(__dirname, 'api');
-const arquivos = fs.readdirSync(apiDir).filter((f) => f.endsWith('.js'));
+  const arquivos = fs.readdirSync(diretorio).filter((arquivo) => arquivo.endsWith('.js'));
 
-for (const arquivo of arquivos) {
-  const nomeRota = arquivo.replace(/\.js$/, '');
-  try {
-    const modulo = await import(pathToFileURL(path.join(apiDir, arquivo)));
-    const handler = modulo.default;
-    app.all(`/api/${nomeRota}`, (req, res) => handler(req, res));
-    console.log(`[api] /api/${nomeRota} <- api/${arquivo}`);
-  } catch (err) {
-    console.error(`[api] FALHOU ao carregar api/${arquivo} — rota /api/${nomeRota} ficará indisponível.`);
-    console.error(`      Motivo: ${err.message}`);
-    app.all(`/api/${nomeRota}`, (req, res) =>
-      res.status(500).json({ erro: `api/${arquivo} não pôde ser carregado: ${err.message}` })
-    );
+  for (const arquivo of arquivos) {
+    const nomeRota = arquivo.replace(/\.js$/, '');
+    const rota = `/api/${nomeRota}`;
+
+    try {
+      const modulo = await import(pathToFileURL(path.join(diretorio, arquivo)));
+      const handler = modulo.default;
+
+      if (typeof handler !== 'function') {
+        throw new TypeError('O módulo não exporta um handler default');
+      }
+
+      app.all(rota, (req, res) => handler(req, res));
+      console.log(`[api] ${rota} <- ${nomeDiretorio}/${arquivo}`);
+    } catch (erro) {
+      console.error(`[api] Falha ao carregar ${nomeDiretorio}/${arquivo}: ${erro.message}`);
+      app.all(rota, (req, res) => {
+        res.status(500).json({
+          message: `A rota ${rota} não pôde ser carregada`,
+          detail: erro.message,
+        });
+      });
+    }
   }
 }
 
-// Compatibilidade com os rewrites que existiam no vercel.json
+await registrarDiretorioApi('api');
+await registrarDiretorioApi('local-api');
+
+// Uma rota de API inexistente deve responder JSON, não uma página HTML.
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    message: `Rota local não encontrada: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+// O frontend local é servido somente depois das rotas da API.
+app.use(express.static(path.join(__dirname, 'public')));
+
 app.get('/fornecedor/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'fornecedor', 'slug.html'));
 });
+
 app.get('/img-proxy', async (req, res) => {
-  const modulo = await import(pathToFileURL(path.join(apiDir, 'img-proxy.js')));
+  const modulo = await import(pathToFileURL(path.join(__dirname, 'api', 'img-proxy.js')));
   return modulo.default(req, res);
 });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\nServidor rodando!`);
-  console.log(`- Neste PC:        http://localhost:${PORT}`);
-  console.log(`- Na rede local:   http://<IP-deste-PC>:${PORT}  (ex: http://192.168.0.10:${PORT})`);
-  console.log(`Descubra o IP deste PC com "ipconfig" (Windows) e procure o "Endereço IPv4".\n`);
+  console.log('\nServidor local do PMG Connect rodando.');
+  console.log(`- Neste computador: http://localhost:${PORT}`);
+  console.log(`- Dashboard regional: http://localhost:${PORT}/dashboard-regional.html`);
+  console.log(`- Na rede local: http://<IP-DESTE-PC>:${PORT}`);
+  console.log('Mantenha este terminal aberto enquanto usar os relatórios conectados ao SQL Server.\n');
 });

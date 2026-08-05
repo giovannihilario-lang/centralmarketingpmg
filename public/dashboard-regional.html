@@ -620,9 +620,9 @@
 <script src="geo-data.js"></script>
 <script>
 /* ══════════════════ CONFIG ══════════════════ */
-// Uma única função serverless atende todas as consultas do dashboard regional.
-// A URL relativa funciona tanto no servidor local quanto na Vercel.
-const API_BASE = '/api/regional';
+// Projeto roda apenas na máquina local por enquanto — quando for para produção,
+// trocar para a URL do servidor real (ou ler de uma variável de ambiente/config).
+const API_BASE = 'http://localhost:3001/api';
 
 /* ══════════════════ CHART.JS — DEFAULTS VISUAIS/ANIMAÇÃO ══════════════════ */
 Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
@@ -696,57 +696,16 @@ async function apiGet(path, params = {}, { forceRefresh = false } = {}) {
 
 async function _apiGetRaw(path, params) {
   const qs = new URLSearchParams();
-  qs.set('rota', String(path || '').replace(/^\/+/, ''));
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== '') qs.append(k, v);
   });
-
-  const url = `${API_BASE}?${qs.toString()}`;
-
   try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store'
-    });
-
-    const contentType = res.headers.get('content-type') || '';
-    const body = await res.text();
-    let json = null;
-
-    if (contentType.includes('application/json')) {
-      try {
-        json = body ? JSON.parse(body) : null;
-      } catch (parseError) {
-        return {
-          data: null,
-          error: { message: `A API respondeu JSON inválido em ${url}: ${parseError.message}` }
-        };
-      }
-    } else {
-      const resumo = body.replace(/\s+/g, ' ').trim().slice(0, 160);
-      return {
-        data: null,
-        error: {
-          message: `A rota ${url} respondeu ${res.status} com conteúdo não JSON${resumo ? `: ${resumo}` : ''}`
-        }
-      };
-    }
-
-    if (!res.ok) {
-      return {
-        data: null,
-        error: json && typeof json === 'object'
-          ? json
-          : { message: `Erro HTTP ${res.status} ao consultar ${url}` }
-      };
-    }
-
+    const res = await fetch(`${API_BASE}${path}?${qs.toString()}`);
+    const json = await res.json();
+    if (!res.ok) return { data: null, error: json };
     return { data: json, error: null };
   } catch (err) {
-    return {
-      data: null,
-      error: { message: `Falha ao conectar na API regional (${url}). Detalhe: ${err.message}` }
-    };
+    return { data: null, error: { message: `Falha ao conectar na API local (${API_BASE}). O servidor Node está rodando? Detalhe: ${err.message}` } };
   }
 }
 
