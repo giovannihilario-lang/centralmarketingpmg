@@ -23,6 +23,15 @@ async function initializeSupabaseClient() {
       db = supabase.createClient(payload.supabaseUrl, payload.supabaseAnonKey, {
         realtime: { params: { eventsPerSecond: 8 } }
       });
+
+      // O cliente só existe depois que a configuração pública é carregada.
+      // Registrar o listener antes disso fazia a página parar eternamente
+      // na tela "Organizando o dia..." com `db` ainda igual a null.
+      db.auth.onAuthStateChange((event, session) => {
+        state.session = session;
+        if (event === 'SIGNED_OUT') location.reload();
+      });
+
       return db;
     });
   }
@@ -790,7 +799,6 @@ function bindEvents() {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); }
     if (event.key === 'Escape') { closeSearch(); $$('.modal-layer:not(.hidden)').forEach(modal => { if (modal.id !== 'profileModal' || modal.dataset.required !== '1') closeModal(modal.id); }); closeDrawer('taskDrawer'); closeDrawer('notificationDrawer'); }
   });
-  db.auth.onAuthStateChange((event, session) => { state.session = session; if (event === 'SIGNED_OUT') location.reload(); });
 }
 async function markNotificationAndOpen(element) {
   const id = element.dataset.notificationId; const { error } = await db.rpc('marcar_notificacao_lida', { p_id: id }); if (!error) { const found = state.notifications.find(item => item.id === id); if (found) found.lida = true; renderNotifications(); }
