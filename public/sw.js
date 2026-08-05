@@ -13,20 +13,35 @@ self.addEventListener('push', event => {
       badge: data.badge || '/imagenssite/pmglogo.png',
       tag: data.tag || undefined,
       renotify: false,
-      data: { url: data.url || '/central.html' }
+      requireInteraction: Boolean(data.reminderId),
+      actions: Array.isArray(data.actions) ? data.actions : [],
+      data: {
+        url: data.url || '/central.html',
+        reminderId: data.reminderId || null,
+        taskId: data.taskId || null
+      }
     })
   );
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || '/central.html', self.location.origin).href;
+  const data = event.notification.data || {};
+  let path = data.url || '/central.html';
+
+  if (event.action === 'snooze-10' && data.reminderId) {
+    path = `/demandas.html?adiar_lembrete=${encodeURIComponent(data.reminderId)}`;
+  } else if (event.action === 'complete' && data.reminderId) {
+    path = `/demandas.html?concluir_lembrete=${encodeURIComponent(data.reminderId)}`;
+  }
+
+  const targetUrl = new URL(path, self.location.origin).href;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async windowClients => {
       for (const client of windowClients) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          if ('navigate' in client) client.navigate(targetUrl);
+          if ('navigate' in client) await client.navigate(targetUrl);
           return client.focus();
         }
       }

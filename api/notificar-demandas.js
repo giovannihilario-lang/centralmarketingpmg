@@ -5,7 +5,7 @@ const NOTIFICATION_TEXT = {
   nova_tarefa: 'Você recebeu uma nova demanda',
   prazo_proximo: 'Uma demanda está perto do prazo',
   comentario: 'Há um novo comentário em uma demanda',
-  status_mudou: 'O status de uma demanda foi alterado'
+  status_mudou: 'Uma demanda foi atualizada'
 };
 
 function makeSupabase() {
@@ -15,7 +15,7 @@ function makeSupabase() {
     throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY não configuradas');
   }
   return createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
 }
 
@@ -41,7 +41,6 @@ async function authorize(req, supabase) {
   const token = bearerToken(req);
   const cronSecret = process.env.CRON_SECRET;
 
-  // O Vercel envia CRON_SECRET automaticamente no header Authorization.
   if (cronSecret && token === cronSecret) {
     return { type: 'cron' };
   }
@@ -64,13 +63,64 @@ async function markAsSent(supabase, notificationId) {
     .is('push_enviada_em', null);
 }
 
+function payloadFor(notification) {
+  const task = notification.tarefa;
+  const reminder = notification.lembrete;
+  const isReminder = Boolean(notification.lembrete_id);
+  const itemTitle = task?.titulo || reminder?.titulo || 'Atualização';
+  const heading = notification.mensagem
+    || (isReminder
+      ? reminder?.tipo === 'compromisso' ? 'Compromisso próximo' : 'Lembrete programado'
+      : NOTIFICATION_TEXT[notification.tipo] || 'Atualização');
+
+  const url = isReminder
+    ? `/demandas.html?lembrete=${notification.lembrete_id}`
+    : `/demandas.html?tarefa=${notification.tarefa_id || ''}`;
+
+  const actions = isReminder
+    ? [
+        { action: 'snooze-10', title: 'Adiar 10 min' },
+        { action: 'complete', title: 'Concluir' }
+      ]
+    : [{ action: 'open', title: 'Abrir demanda' }];
+
+  return JSON.stringify({
+    title: isReminder ? 'PMG Connect · Agenda' : 'PMG Connect · Demandas',
+    body: `${heading}: ${itemTitle}`,
+    icon: '/imagenssite/pmglogo.png',
+    badge: '/imagenssite/pmglogo.png',
+    tag: `pmg-${notification.id}`,
+    url,
+    actions,
+    reminderId: notification.lembrete_id || null,
+    taskId: notification.tarefa_id || null
+  });
+}
+
 async function processPending(supabase) {
+  // Gera lembretes vencidos antes de buscar a fila. Assim a chamada feita
+  // pelo navegador e a chamada do cron usam exatamente o mesmo fluxo.
+  const { error: generationError } = await supabase.rpc('gerar_notificacoes_agenda');
+  if (generationError && !/function .* does not exist/i.test(generationError.message || '')) {
+    throw generationError;
+  }
+
   const { data: notifications, error: notificationsError } = await supabase
     .from('notificacoes')
-    .select('id, tarefa_id, colaborador_id, tipo, criado_em, tarefas(titulo)')
+    .select(`
+      id,
+      tarefa_id,
+      lembrete_id,
+      colaborador_id,
+      tipo,
+      mensagem,
+      criado_em,
+      tarefa:tarefas(id,titulo),
+      lembrete:lembretes(id,titulo,tipo)
+    `)
     .is('push_enviada_em', null)
     .order('criado_em', { ascending: true })
-    .limit(100);
+    .limit(150);
 
   if (notificationsError) throw notificationsError;
   if (!notifications?.length) return { processed: 0, delivered: 0, failed: 0 };
@@ -95,18 +145,10 @@ async function processPending(supabase) {
 
   for (const notification of notifications) {
     const targetSubscriptions = byCollaborator.get(notification.colaborador_id) || [];
-    const title = 'PMG Connect · Demandas';
-    const taskTitle = notification.tarefas?.titulo || 'Demanda atualizada';
-    const payload = JSON.stringify({
-      title,
-      body: `${NOTIFICATION_TEXT[notification.tipo] || 'Atualização'}: ${taskTitle}`,
-      icon: '/imagenssite/pmglogo.png',
-      badge: '/imagenssite/pmglogo.png',
-      tag: notification.id,
-      url: `/demandas.html?tarefa=${notification.tarefa_id || ''}`
-    });
+    const payload = payloadFor(notification);
 
-    // Sem inscrição registrada, a notificação fica somente dentro do sistema.
+    // Sem inscrição, a notificação continua disponível dentro do sistema,
+    // mas sai da fila de Push para não ficar sendo processada eternamente.
     if (!targetSubscriptions.length) {
       await markAsSent(supabase, notification.id);
       continue;
@@ -122,7 +164,8 @@ async function processPending(supabase) {
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth }
           },
-          payload
+          payload,
+          { TTL: 60 * 60 * 24, urgency: 'high' }
         );
         hadSuccess = true;
         delivered += 1;
@@ -138,7 +181,6 @@ async function processPending(supabase) {
       }
     }
 
-    // Marca como tratada quando houve entrega ou quando só existiam inscrições expiradas.
     if (hadSuccess || !hadTransientFailure) {
       await markAsSent(supabase, notification.id);
     }
