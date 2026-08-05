@@ -1,5 +1,20 @@
-import webpush from 'web-push';
-import { createClient } from '@supabase/supabase-js';
+let webpush = null;
+let createClient = null;
+let dependenciesPromise = null;
+
+async function loadDependencies() {
+  if (webpush && createClient) return;
+  if (!dependenciesPromise) {
+    dependenciesPromise = Promise.all([
+      import('web-push'),
+      import('@supabase/supabase-js')
+    ]).then(([webPushModule, supabaseModule]) => {
+      webpush = webPushModule.default || webPushModule;
+      createClient = supabaseModule.createClient;
+    });
+  }
+  await dependenciesPromise;
+}
 
 const NOTIFICATION_TEXT = {
   nova_tarefa: 'Você recebeu uma nova demanda',
@@ -213,6 +228,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Carrega dependências pesadas somente nas chamadas de envio.
+    // A rota pública ?config=1 funciona sem importar web-push ou Supabase Admin.
+    await loadDependencies();
     const supabase = makeSupabase();
     configureWebPush();
     await authorize(req, supabase);
