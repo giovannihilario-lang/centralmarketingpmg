@@ -194,6 +194,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ erro: 'Método não permitido' });
   }
 
+  // Configuração pública usada pelo navegador. A chave anon/publishable do
+  // Supabase é própria para uso no frontend; a service_role nunca é enviada.
+  if (req.method === 'GET' && String(req.query?.config || '') === '1') {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return res.status(500).json({
+        erro: 'Configure SUPABASE_URL e SUPABASE_ANON_KEY nas variáveis de ambiente.'
+      });
+    }
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    return res.status(200).json({
+      supabaseUrl,
+      supabaseAnonKey,
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || ''
+    });
+  }
+
   try {
     const supabase = makeSupabase();
     configureWebPush();

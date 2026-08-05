@@ -1,10 +1,33 @@
 /* PMG Connect — Central de Demandas V2 */
-const SUPABASE_URL = 'https://scokolfzvtzohrzdgisz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdWJhc2UiLCJyZWYiOiJzY29rb2xmenZ0em9ocnpkZ2lzeiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzgzMDg5Nzk0LCJleHAiOjIwOTg2NjU3OTR9.43X3j64Ds6lcVonDAsONyueveOMaovHb1pqE9ofa3FI';
-const VAPID_PUBLIC_KEY = 'BMqO4_Calsh0PSCc4uAwO5HUGfahVN5E-LrOnBpgKmKbvEjq3LFdrgCfYehpMsNR_YE7iiGcrYei2mKnwp3PGjQ';
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  realtime: { params: { eventsPerSecond: 8 } }
-});
+let db = null;
+let VAPID_PUBLIC_KEY = '';
+let publicConfigPromise = null;
+
+async function initializeSupabaseClient() {
+  if (db) return db;
+  if (!publicConfigPromise) {
+    publicConfigPromise = fetch('/api/notificar-demandas?config=1', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' }
+    }).then(async response => {
+      const contentType = response.headers.get('content-type') || '';
+      const payload = contentType.includes('application/json')
+        ? await response.json()
+        : { erro: await response.text() };
+      if (!response.ok) throw new Error(payload.erro || 'Não foi possível carregar a configuração do Supabase.');
+      if (!payload.supabaseUrl || !payload.supabaseAnonKey) {
+        throw new Error('SUPABASE_URL ou SUPABASE_ANON_KEY não configurada no servidor.');
+      }
+      VAPID_PUBLIC_KEY = payload.vapidPublicKey || '';
+      db = supabase.createClient(payload.supabaseUrl, payload.supabaseAnonKey, {
+        realtime: { params: { eventsPerSecond: 8 } }
+      });
+      return db;
+    });
+  }
+  return publicConfigPromise;
+}
 
 const STATUS = {
   nova: { label: 'Nova', icon: 'circle-dot-dashed' },
@@ -144,6 +167,7 @@ function sizeWeight(task) { return Number(task.estimativa_horas) || ({ rapida: 1
 async function bootstrap() {
   setLoading(true); refreshIcons();
   try {
+    await initializeSupabaseClient();
     const { data: { session } } = await db.auth.getSession();
     state.session = session;
     if (!session) {
@@ -716,7 +740,7 @@ function closeMobileSidebar() { $('sidebar').classList.remove('open'); $('sideba
 function bindEvents() {
   $('authForm').addEventListener('submit', async event => {
     event.preventDefault(); $('authError').classList.add('hidden'); setLoading(true);
-    try { const { data, error } = await db.auth.signInWithPassword({ email: $('authEmail').value.trim(), password: $('authPassword').value }); if (error) throw error; state.session = data.session; await initializeUser(); }
+    try { await initializeSupabaseClient(); const { data, error } = await db.auth.signInWithPassword({ email: $('authEmail').value.trim(), password: $('authPassword').value }); if (error) throw error; state.session = data.session; await initializeUser(); }
     catch (error) { $('authError').textContent = errorMessage(error); $('authError').classList.remove('hidden'); }
     finally { setLoading(false); }
   });

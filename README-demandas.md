@@ -1,3 +1,18 @@
+
+## Correção de login: configuração do Supabase
+
+A Central de Demandas não possui mais URL ou chave do Supabase gravadas no JavaScript. Configure, tanto no `.env` local quanto nas variáveis do projeto na Vercel:
+
+```env
+SUPABASE_URL=https://SEU-PROJETO.supabase.co
+SUPABASE_ANON_KEY=SUA_PUBLISHABLE_OU_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY=SUA_SERVICE_ROLE_KEY
+```
+
+No painel atual do Supabase, copie a **Publishable key** (ou a chave legada `anon`) em **Project Settings > API Keys**. Não use a `service_role` como `SUPABASE_ANON_KEY`.
+
+Depois de alterar variáveis na Vercel, faça um novo deployment. Localmente, reinicie `npm start`.
+
 # PMG Connect — Central de Demandas V2
 
 A V2 transforma o módulo antigo em uma central diária de trabalho: demandas, agenda, lembretes, compromissos, carga da equipe e histórico de alterações.
