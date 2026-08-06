@@ -77,7 +77,7 @@ const state = {
   quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
   selectedDate: dateKey(new Date()), pushSubscription: null,
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
-  assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }
+  assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0
 };
 
 const $ = id => document.getElementById(id);
@@ -356,8 +356,10 @@ async function initializeUser() {
   $('authScreen').classList.add('hidden'); $('app').classList.remove('hidden');
   await loadAll();
   renderAll(); setupRealtime(); await updatePushStatus();
-  if (!state.me.perfil_configurado) openProfile(true);
+  const needsProfile = !state.me.perfil_configurado;
+  if (needsProfile) openProfile(true);
   await handleUrlActions();
+  if (!needsProfile) setTimeout(() => maybeOpenOnboarding(), 420);
 }
 async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities()]);
@@ -1107,7 +1109,7 @@ function openProfile(required = false) {
   $('profileCloseBtn').classList.toggle('hidden', required); $('profileModal').dataset.required = required ? '1' : '0'; $('profileModal').classList.remove('hidden'); refreshIcons();
 }
 async function saveProfile(event) {
-  event.preventDefault(); setLoading(true); try { const { data, error } = await db.rpc('atualizar_meu_perfil', { p_nome: $('profileName').value.trim(), p_cargo: $('profileJob').value.trim() || null }); if (error) throw error; state.me = data; $('profileModal').dataset.required = '0'; closeModal('profileModal'); await loadCollaborators(); renderAll(); toast('Perfil atualizado.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
+  event.preventDefault(); setLoading(true); try { const { data, error } = await db.rpc('atualizar_meu_perfil', { p_nome: $('profileName').value.trim(), p_cargo: $('profileJob').value.trim() || null }); if (error) throw error; state.me = data; $('profileModal').dataset.required = '0'; closeModal('profileModal'); await loadCollaborators(); renderAll(); toast('Perfil atualizado.'); setTimeout(() => maybeOpenOnboarding(), 350); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 
 async function updatePushStatus() {
@@ -1206,6 +1208,132 @@ function closeMobileSidebar() { $('sidebar').classList.remove('open'); $('sideba
 
 
 /* =========================================================
+   TUTORIAL DE PRIMEIRO ACESSO
+   ========================================================= */
+const ONBOARDING_VERSION = '2026-08-demandas-v1';
+
+function onboardingStorageKey() {
+  return `pmg-demandas-onboarding:${ONBOARDING_VERSION}:${state.me?.id || 'usuario'}`;
+}
+
+function onboardingDemoWindow(title, content) {
+  return `<div class="onboarding-demo-window"><div class="onboarding-demo-head"><i></i><i></i><i></i><span class="onboarding-demo-title">${escapeHtml(title)}</span></div>${content}</div>`;
+}
+
+function getOnboardingSteps() {
+  const manager = isManager();
+  const userName = firstName(state.me?.nome || 'você');
+  return [
+    {
+      icon: 'rocket', eyebrow: 'Primeiro acesso', title: `Bem-vindo, ${userName}.`,
+      description: 'A Central organiza demandas, prazos, responsáveis, agenda e notificações do Marketing. Este passeio mostra o essencial para você não precisar descobrir tudo por tentativa, erro e mensagens perdidas.',
+      points: [
+        ['layout-dashboard', 'Uma rotina centralizada', 'Hoje, Agenda, Demandas e Equipe ficam no mesmo lugar.'],
+        ['users-round', 'Responsabilidade visível', 'Cada demanda mostra claramente quem está cuidando dela.'],
+        ['bell-ring', 'Prazos que avisam', 'Lembretes e notificações ajudam a evitar entregas esquecidas.']
+      ],
+      demo: onboardingDemoWindow('Sua rotina', `<div class="onboarding-demo-metrics"><div class="onboarding-demo-metric"><strong>0</strong><span>Atrasadas</span></div><div class="onboarding-demo-metric"><strong>0</strong><span>Para hoje</span></div><div class="onboarding-demo-metric"><strong>0</strong><span>Próximos 7 dias</span></div><div class="onboarding-demo-metric"><strong>0</strong><span>Minhas demandas</span></div></div>`)
+    },
+    {
+      icon: 'sun', eyebrow: 'Sua visão diária', title: 'Comece pela tela Hoje',
+      description: 'Aqui você encontra o que precisa de atenção agora: atrasos, entregas do dia, próximos prazos, lembretes e movimentações recentes.',
+      points: [
+        ['triangle-alert', 'Prioridade primeiro', 'Itens atrasados e com prazo próximo aparecem em destaque.'],
+        ['calendar-clock', 'Agenda do dia', 'Demandas, compromissos e lembretes entram na mesma linha do tempo.'],
+        ['sparkles', 'Captura rápida', 'Escreva algo e transforme em lembrete sem atravessar um formulário gigantesco.']
+      ],
+      demo: onboardingDemoWindow('Hoje', `<div class="onboarding-demo-list"><div class="onboarding-demo-row"><span><i data-lucide="triangle-alert"></i></span><div><strong>Revisar campanha</strong><small>Prazo hoje, 14:00</small></div><b>Urgente</b></div><div class="onboarding-demo-row"><span><i data-lucide="calendar-clock"></i></span><div><strong>Reunião de alinhamento</strong><small>Hoje, 15:30</small></div><b>Agenda</b></div><div class="onboarding-demo-row"><span><i data-lucide="bell"></i></span><div><strong>Enviar aprovação</strong><small>Lembrete, 16:00</small></div><b>Aviso</b></div></div>`)
+    },
+    {
+      icon: 'workflow', eyebrow: 'Fluxo de trabalho', title: 'O status conta a história da demanda',
+      description: manager ? 'Gestores criam e distribuem demandas. Depois, o responsável move o trabalho pelas etapas até a conclusão.' : 'Você recebe demandas criadas pelo gestor e move cada trabalho pelas etapas conforme avança.',
+      points: [
+        ['play', 'Inicie quando começar', 'Nova passa para Em andamento quando o trabalho realmente começou.'],
+        ['scan-eye', 'Envie para revisão', 'Use Em revisão quando a entrega estiver pronta para validação.'],
+        ['circle-check-big', 'Conclua no final', 'Concluída encerra o fluxo e registra a entrega no histórico.']
+      ],
+      demo: onboardingDemoWindow('Status da demanda', `<div class="onboarding-status-flow"><div class="onboarding-status-step"><span><i data-lucide="circle-dot-dashed"></i></span><div><strong>Nova</strong><small>Aguardando início</small></div><b>1</b></div><div class="onboarding-status-step active"><span><i data-lucide="loader-circle"></i></span><div><strong>Em andamento</strong><small>Sendo executada</small></div><b>2</b></div><div class="onboarding-status-step"><span><i data-lucide="scan-eye"></i></span><div><strong>Em revisão</strong><small>Aguardando validação</small></div><b>3</b></div><div class="onboarding-status-step"><span><i data-lucide="circle-check-big"></i></span><div><strong>Concluída</strong><small>Entrega encerrada</small></div><b>4</b></div></div>`)
+    },
+    {
+      icon: 'circle-user-round', eyebrow: 'Pessoas e avatares', title: 'Os avatares mostram quem está com o quê',
+      description: manager ? 'Ao criar ou editar uma demanda, escolha o responsável pelo seletor visual. Carga, atrasos e disponibilidade ajudam a distribuir melhor o trabalho.' : 'Seu avatar identifica as demandas atribuídas a você. Os avatares também aparecem nos comentários, atividades e filtros da equipe.',
+      points: [
+        ['user-round-check', 'Responsável definido', 'Uma demanda deve ter uma pessoa claramente encarregada.'],
+        ['gauge', 'Carga visível', 'A tela Equipe estima volume e horas em aberto para cada pessoa.'],
+        ['list-filter', 'Filtro por pessoa', 'Na tela Demandas, clique em um avatar para ver a fila daquele colaborador.']
+      ],
+      demo: onboardingDemoWindow('Equipe', `<div class="onboarding-avatar-grid"><div class="onboarding-person"><div class="onboarding-person-top"><span class="onboarding-person-avatar">${escapeHtml(initials(state.me?.nome || 'GV'))}</span><div><strong>${escapeHtml(firstName(state.me?.nome || 'Giovanni'))}</strong><small>${manager ? 'Gestor' : 'Colaborador'}</small></div></div><div class="onboarding-load"><i style="width:42%"></i></div></div><div class="onboarding-person"><div class="onboarding-person-top"><span class="onboarding-person-avatar">FM</span><div><strong>Equipe</strong><small>4 demandas abertas</small></div></div><div class="onboarding-load"><i style="width:68%"></i></div></div></div>`)
+    },
+    {
+      icon: 'calendar-days', eyebrow: 'Agenda e alertas', title: 'Prazos, compromissos e lembretes juntos',
+      description: 'A Agenda mostra o mês inteiro. Você pode abrir qualquer dia, criar lembretes pessoais e ativar alertas do navegador neste computador.',
+      points: [
+        ['calendar-range', 'Calendário único', 'Demandas, compromissos e lembretes usam cores diferentes.'],
+        ['alarm-clock', 'Lembretes pessoais', 'Crie avisos que só você vê ou, quando permitido, compartilhe com a equipe.'],
+        ['monitor-smartphone', 'Notificações no computador', 'Ative os alertas no menu lateral para receber avisos de prazo.']
+      ],
+      demo: onboardingDemoWindow('Agenda', `<div class="onboarding-calendar"><div class="onboarding-calendar-day">04<div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day active">05<div class="onboarding-calendar-event purple"></div><div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day">06</div><div class="onboarding-calendar-day">07<div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day">08</div></div>`)
+    },
+    {
+      icon: 'badge-check', eyebrow: 'Tudo pronto', title: 'A Central começa vazia e organizada',
+      description: manager ? 'Crie a primeira demanda, escolha um responsável e acompanhe o fluxo. O tutorial pode ser aberto novamente no menu do seu perfil.' : 'Quando uma demanda for atribuída a você, ela aparecerá em Hoje e em Minhas demandas. O tutorial pode ser aberto novamente no menu do seu perfil.',
+      points: [
+        ['mouse-pointer-click', 'Abra qualquer item', 'Clique numa demanda para ver briefing, prazo, comentários e histórico.'],
+        ['message-circle', 'Registre o contexto', 'Use comentários para manter decisões ligadas à própria demanda.'],
+        ['circle-help', 'Reveja quando precisar', 'No menu do usuário, clique em Ver tutorial.']
+      ],
+      demo: `<div class="onboarding-complete"><div class="onboarding-complete-icon"><i data-lucide="check-check"></i></div><strong>Pronto para começar</strong><span>Um sistema vazio é estranhamente pacífico. Vamos tentar mantê-lo organizado.</span></div>`
+    }
+  ];
+}
+
+function renderOnboardingStep() {
+  const steps = getOnboardingSteps();
+  const index = Math.max(0, Math.min(state.onboardingStep, steps.length - 1));
+  state.onboardingStep = index;
+  const step = steps[index];
+
+  $('onboardingProgressText').textContent = `Passo ${index + 1} de ${steps.length}`;
+  $('onboardingEyebrow').textContent = step.eyebrow;
+  $('onboardingTitle').textContent = step.title;
+  $('onboardingDescription').textContent = step.description;
+  $('onboardingIcon').innerHTML = `<i data-lucide="${step.icon}"></i>`;
+  $('onboardingDemo').innerHTML = step.demo;
+  $('onboardingPoints').innerHTML = step.points.map(([icon, title, text]) => `<div class="onboarding-point"><span><i data-lucide="${icon}"></i></span><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(text)}</small></div></div>`).join('');
+  $('onboardingStepDots').innerHTML = steps.map((_, dotIndex) => `<button type="button" class="${dotIndex === index ? 'active' : dotIndex < index ? 'done' : ''}" data-onboarding-step="${dotIndex}" aria-label="Ir para o passo ${dotIndex + 1}"></button>`).join('');
+  $('onboardingBackBtn').classList.toggle('hidden', index === 0);
+  $('onboardingNextBtn').innerHTML = index === steps.length - 1 ? `Começar a usar<i data-lucide="check"></i>` : `Continuar<i data-lucide="arrow-right"></i>`;
+  refreshIcons();
+}
+
+function maybeOpenOnboarding(force = false) {
+  if (!state.me || !$('onboardingModal')) return;
+  let completed = false;
+  try { completed = localStorage.getItem(onboardingStorageKey()) === 'done'; } catch (_) {}
+  if (!force && completed) return;
+  state.onboardingStep = 0;
+  renderOnboardingStep();
+  $('onboardingModal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeOnboarding(markCompleted = true) {
+  if (markCompleted) {
+    try { localStorage.setItem(onboardingStorageKey(), 'done'); } catch (_) {}
+  }
+  $('onboardingModal')?.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function moveOnboarding(direction) {
+  const steps = getOnboardingSteps();
+  const next = state.onboardingStep + direction;
+  if (next >= steps.length) return closeOnboarding(true);
+  state.onboardingStep = Math.max(0, next);
+  renderOnboardingStep();
+}
+
+/* =========================================================
    MENU DO USUÁRIO E LOGOUT
    ========================================================= */
 function renderUserMenu() {
@@ -1299,6 +1427,12 @@ function bindEvents() {
   $('userMenuProfileBtn')?.addEventListener('click', () => { closeUserMenu(); openProfile(false); });
   $('userMenuTasksBtn')?.addEventListener('click', () => { closeUserMenu(); applySmartFilter('minhas'); });
   $('userMenuAgendaBtn')?.addEventListener('click', () => { closeUserMenu(); switchView('agenda'); });
+  $('userMenuTutorialBtn')?.addEventListener('click', () => { closeUserMenu(); maybeOpenOnboarding(true); });
+  $('onboardingCloseBtn')?.addEventListener('click', () => closeOnboarding(true));
+  $('onboardingSkipBtn')?.addEventListener('click', () => closeOnboarding(true));
+  $('onboardingBackBtn')?.addEventListener('click', () => moveOnboarding(-1));
+  $('onboardingNextBtn')?.addEventListener('click', () => moveOnboarding(1));
+  $('onboardingStepDots')?.addEventListener('click', event => { const dot = event.target.closest('[data-onboarding-step]'); if (!dot) return; state.onboardingStep = Number(dot.dataset.onboardingStep) || 0; renderOnboardingStep(); });
   $('logoutBtn')?.addEventListener('click', logout);
   $('teamNewDemandBtn')?.addEventListener('click', () => openQuickAdd('demanda'));
   $('teamSearch')?.addEventListener('input', debounce(event => { state.teamSearch = event.target.value; renderEquipe(); }, 120));
@@ -1342,6 +1476,11 @@ function bindEvents() {
     column.addEventListener('drop', event => { event.preventDefault(); column.classList.remove('drag-over'); const id = event.dataTransfer.getData('text/plain'); const task = state.tasks.find(item => item.id === id); if (task && task.status !== column.dataset.status) updateTaskStatus(id, column.dataset.status); });
   });
   document.addEventListener('keydown', event => {
+    if (!$('onboardingModal')?.classList.contains('hidden')) {
+      if (event.key === 'Escape') { event.preventDefault(); closeOnboarding(true); return; }
+      if (event.key === 'ArrowRight') { event.preventDefault(); moveOnboarding(1); return; }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); moveOnboarding(-1); return; }
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); }
     if ((event.key === 'Enter' || event.key === ' ') && document.activeElement?.matches?.('[data-open-person]')) { event.preventDefault(); openPerson(document.activeElement.dataset.openPerson); }
     if (event.key === 'Escape') { closeUserMenu(); closeSearch(); $$('.modal-layer:not(.hidden)').forEach(modal => { if (modal.id !== 'profileModal' || modal.dataset.required !== '1') closeModal(modal.id); }); closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); }
