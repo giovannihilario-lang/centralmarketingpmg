@@ -62,7 +62,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.0.0',
+    version: '5.1.0',
   };
 }
 
@@ -279,6 +279,31 @@ function parseDate(value, field) {
   return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
+function fixedSixMondayPeriods(startRaw) {
+  const start = parseDate(startRaw, 'campaignStart');
+  if (start.getUTCDay() !== 1) {
+    const error = new Error('A primeira data da campanha precisa ser uma segunda-feira.');
+    error.code = 'PERIODO_INVALIDO';
+    throw error;
+  }
+  const addDays = (date, days) => {
+    const copy = new Date(date);
+    copy.setUTCDate(copy.getUTCDate() + days);
+    return copy;
+  };
+  const currentLast = addDays(start, 35);
+  const previousStart = addDays(start, -42);
+  const previousLast = addDays(start, -7);
+  return {
+    currentStart: start,
+    currentEnd: addDays(currentLast, 1),
+    currentLast,
+    previousStart,
+    previousEnd: addDays(previousLast, 1),
+    previousLast,
+  };
+}
+
 function uniqueIntegers(values, max = 20000) {
   return [...new Set((Array.isArray(values) ? values : []).map(Number).filter(Number.isFinite))].slice(0, max);
 }
@@ -305,10 +330,11 @@ function addTextParams(request, prefix, values) {
 
 async function queryPerformance(payload = {}) {
   const startedAt = Date.now();
-  const currentStart = parseDate(payload.currentStart, 'currentStart');
-  const currentEnd = parseDate(payload.currentEnd, 'currentEnd');
-  const previousStart = parseDate(payload.previousStart, 'previousStart');
-  const previousEnd = parseDate(payload.previousEnd, 'previousEnd');
+  const fixedPeriods = payload.campaignStart ? fixedSixMondayPeriods(payload.campaignStart) : null;
+  const currentStart = fixedPeriods?.currentStart || parseDate(payload.currentStart, 'currentStart');
+  const currentEnd = fixedPeriods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
+  const previousStart = fixedPeriods?.previousStart || parseDate(payload.previousStart, 'previousStart');
+  const previousEnd = fixedPeriods?.previousEnd || parseDate(payload.previousEnd, 'previousEnd');
   const productIds = uniqueIntegers(payload.productIds);
   const supplierIds = uniqueIntegers(payload.supplierIds);
   const sellers = uniqueTexts(payload.sellers);
@@ -419,6 +445,13 @@ async function queryPerformance(payload = {}) {
     source: 'SQL Server · Power BI',
     dateReference: 'dbo.Vendas.[Data]',
     activeSellersOnly: true,
+    periodPolicy: 'SEIS_SEGUNDAS_FIXAS',
+    periodsUsed: {
+      currentStart,
+      currentEndExclusive: currentEnd,
+      previousStart,
+      previousEndExclusive: previousEnd,
+    },
     lines,
     ordersBySeller,
     durationMs: Date.now() - startedAt,
@@ -437,7 +470,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.0.0',
+    versao: '5.1.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -469,7 +502,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.0.0',
+        version: '5.1.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),

@@ -265,7 +265,7 @@
     const end = campaign.end ? new Date(`${campaign.end}T12:00:00`) : null;
     if (!start || !end) return { id:'draft', label:'Rascunho', class:'closed' };
     if (today < start) return { id:'scheduled', label:'Agendada', class:'scheduled' };
-    if (today >= end) return { id:'closed', label:'Encerrada', class:'closed' };
+    if (today > end) return { id:'closed', label:'Encerrada', class:'closed' };
     return { id:'active', label:'Ativa', class:'active' };
   }
 
@@ -401,7 +401,7 @@
 
   function defaultCampaign() {
     const start = nextMonday();
-    const end = new Date(start); end.setDate(end.getDate() + 28);
+    const end = new Date(start); end.setDate(end.getDate() + 35);
     return {
       id:uid('campaign'), name:'', description:'', start:inputDate(start), end:inputDate(end),
       suppliers:[], participantMode:'all', representatives:[], rankingMetrics:['points','positivity'], rankingMode:'TOP_N_ELIGIBLE', topN:5,
@@ -411,15 +411,25 @@
     };
   }
 
+  function sixthMondayFrom(startRaw) {
+    const start = startRaw ? new Date(`${startRaw}T12:00:00`) : null;
+    if (!start || Number.isNaN(start.getTime())) return '';
+    const end = new Date(start);
+    end.setDate(end.getDate() + 35);
+    return inputDate(end);
+  }
+
   function normalizeCampaign(raw = {}) {
     const base = defaultCampaign();
     const legacySuppliers = raw.suppliers || (raw.supplier ? [raw.supplier] : raw.fornecedor ? [{ id:raw.fornecedorId || null, name:raw.fornecedor }] : []);
     const legacyCollective = raw.collectiveGoals || (raw.collectiveMeta ? [{ id:uid('goal'), scope:'collective', mode:['revenueGrowth','kgGrowth'].includes(raw.collectiveMeta.metric) ? 'growth_percent' : 'absolute', metric:String(raw.collectiveMeta.metric || 'positivity').replace('Growth',''), operator:'>=', value:Number(raw.collectiveMeta.value)||0 }] : []);
     const legacyIndividual = raw.individualGoals || (raw.individualMeta ? [{ id:uid('goal'), scope:'individual', mode:['revenueGrowth','kgGrowth'].includes(raw.individualMeta.metric) ? 'growth_percent' : 'absolute', metric:String(raw.individualMeta.metric || 'positivity').replace('Growth',''), operator:'>=', value:Number(raw.individualMeta.value)||0 }] : []);
+    const normalizedStart = raw.start || raw.dataInicio || base.start;
+    const normalizedEnd = sixthMondayFrom(normalizedStart) || base.end;
     return {
       ...base, ...raw,
       name:raw.name || raw.nome || '', description:raw.description || raw.descricao || '',
-      start:raw.start || raw.dataInicio || base.start, end:raw.end || raw.dataFim || raw.dataFechamento || base.end,
+      start:normalizedStart, end:normalizedEnd,
       suppliers:Array.isArray(legacySuppliers) ? legacySuppliers.map((supplier) => ({ id:Number(supplier.id ?? supplier.code ?? supplier.fornecedorId) || null, name:supplier.name || supplier.nome || supplier.fornecedor || 'Fornecedor', totalProducts:Number(supplier.totalProducts || supplier.totalProdutos)||0 })) : [],
       rankingMetrics:Array.isArray(raw.rankingMetrics) ? raw.rankingMetrics : Array.isArray(raw.metricasRanking) ? raw.metricasRanking : [raw.metricaRanking || 'points'],
       collectiveGoals:Array.isArray(legacyCollective) ? legacyCollective : [], individualGoals:Array.isArray(legacyIndividual) ? legacyIndividual : [],
@@ -428,20 +438,23 @@
     };
   }
 
-  function calculatePeriods(startRaw, endRaw) {
+  function calculatePeriods(startRaw) {
     const start = startRaw ? new Date(`${startRaw}T12:00:00`) : null;
-    const end = endRaw ? new Date(`${endRaw}T12:00:00`) : null;
-    if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return { valid:false, error:'Informe um período válido.' };
-    const days = Math.round((end - start) / 86400000);
-    if (start.getDay() !== 1 || end.getDay() !== 1) return { valid:false, error:'Início e fechamento precisam ser segundas-feiras.' };
-    if (days % 7 !== 0) return { valid:false, error:'O período precisa ter semanas completas.' };
-    const previousStart = new Date(start); previousStart.setDate(previousStart.getDate() - days);
-    const lastCurrent = new Date(end); lastCurrent.setDate(lastCurrent.getDate() - 1);
-    const lastPrevious = new Date(start); lastPrevious.setDate(lastPrevious.getDate() - 1);
+    if (!start || Number.isNaN(start.getTime())) return { valid:false, error:'Informe a primeira segunda-feira da campanha.' };
+    if (start.getDay() !== 1) return { valid:false, error:'O início da campanha precisa ser uma segunda-feira.' };
+
+    // Regra PMG: sempre seis segundas-feiras.
+    // Ex.: campanha 22/06 a 27/07; referência anterior 11/05 a 15/06.
+    const currentLast = new Date(start); currentLast.setDate(currentLast.getDate() + 35);
+    const currentEndExclusive = new Date(currentLast); currentEndExclusive.setDate(currentEndExclusive.getDate() + 1);
+    const previousStart = new Date(start); previousStart.setDate(previousStart.getDate() - 42);
+    const previousLast = new Date(start); previousLast.setDate(previousLast.getDate() - 7);
+    const previousEndExclusive = new Date(previousLast); previousEndExclusive.setDate(previousEndExclusive.getDate() + 1);
+
     return {
-      valid:true, weeks:days/7, days,
-      currentStart:inputDate(start), currentEnd:inputDate(end), currentLast:inputDate(lastCurrent),
-      previousStart:inputDate(previousStart), previousEnd:inputDate(start), previousLast:inputDate(lastPrevious),
+      valid:true, weeks:6, mondays:6,
+      currentStart:inputDate(start), currentEnd:inputDate(currentEndExclusive), currentLast:inputDate(currentLast),
+      previousStart:inputDate(previousStart), previousEnd:inputDate(previousEndExclusive), previousLast:inputDate(previousLast),
     };
   }
 
@@ -485,20 +498,20 @@
 
   function periodPreview(periods) {
     if (!periods.valid) return `<div class="hint" style="grid-column:1/-1;color:var(--danger)">${esc(periods.error)}</div>`;
-    return `<div class="period-box"><span>Campanha · ${periods.weeks} semana(s)</span><strong>${dateBR(periods.currentStart)} a ${dateBR(periods.currentLast)}</strong></div><div class="period-arrow"><i data-lucide="arrow-left-right"></i></div><div class="period-box"><span>Período anterior equivalente</span><strong>${dateBR(periods.previousStart)} a ${dateBR(periods.previousLast)}</strong></div>`;
+    return `<div class="period-box"><span>Campanha · 6 segundas-feiras</span><strong>${dateBR(periods.currentStart)} a ${dateBR(periods.currentLast)}</strong></div><div class="period-arrow"><i data-lucide="arrow-left-right"></i></div><div class="period-box"><span>Referência anterior · 6 segundas-feiras</span><strong>${dateBR(periods.previousStart)} a ${dateBR(periods.previousLast)}</strong></div>`;
   }
 
   function renderGeneralStep() {
     const campaign = app.wizard.campaign;
-    const periods = calculatePeriods(campaign.start, campaign.end);
+    const periods = calculatePeriods(campaign.start);
     return `<div class="step-head"><div><h3>Informações gerais</h3><p>Defina o período, selecione um ou mais códigos de fornecedor e determine os participantes.</p></div></div>
       <div class="form-grid">
         <div class="field"><label>Nome da campanha *</label><input id="campaignName" value="${esc(campaign.name)}" placeholder="Ex.: Campanha Camil Q3"></div>
         <div class="field"><label>Status calculado</label><input value="${campaignStatus(campaign).label}" disabled></div>
         <div class="field full"><label>Descrição ou regulamento</label><textarea id="campaignDescription" placeholder="Objetivo, observações e regras gerais…">${esc(campaign.description)}</textarea></div>
         <div class="field full"><label>Códigos de fornecedor participantes *</label>${supplierSelector()}</div>
-        <div class="field"><label>Início da campanha · segunda-feira *</label><input id="campaignStart" type="date" value="${esc(campaign.start)}"></div>
-        <div class="field"><label>Fechamento · segunda-feira exclusiva *</label><input id="campaignEnd" type="date" value="${esc(campaign.end)}"></div>
+        <div class="field"><label>1ª segunda-feira da campanha *</label><input id="campaignStart" type="date" value="${esc(campaign.start)}"></div>
+        <div class="field"><label>6ª segunda-feira · calculada automaticamente</label><input id="campaignEnd" type="date" value="${esc(campaign.end)}" disabled><small class="hint">Toda campanha utiliza exatamente seis segundas-feiras.</small></div>
         <div class="period-preview" id="periodPreview">${periodPreview(periods)}</div>
         <div class="field full"><label>Participantes</label><div class="choice-grid">
           ${choiceCard('participant-mode','all','users-round','Todos os representantes ativos','Usa automaticamente todos os vendedores ativos do contexto.',campaign.participantMode === 'all')}
@@ -719,7 +732,7 @@
       campaign.name = $('#campaignName')?.value.trim() || campaign.name;
       campaign.description = $('#campaignDescription')?.value.trim() || '';
       campaign.start = $('#campaignStart')?.value || campaign.start;
-      campaign.end = $('#campaignEnd')?.value || campaign.end;
+      campaign.end = sixthMondayFrom(campaign.start) || campaign.end;
       campaign.representatives = $$('[data-representative]:checked').map((input) => input.dataset.representative);
     }
     if (app.wizard.step === 1) {
@@ -782,7 +795,7 @@
     if (step === 0) {
       if (!campaign.name) return 'Informe o nome da campanha.';
       if (!campaign.suppliers.length) return 'Selecione pelo menos um código de fornecedor.';
-      const periods = calculatePeriods(campaign.start, campaign.end);
+      const periods = calculatePeriods(campaign.start);
       if (!periods.valid) return periods.error;
       if (campaign.participantMode === 'specific' && !campaign.representatives.length) return 'Selecione os representantes participantes.';
     }
@@ -1056,8 +1069,8 @@
     $('#drawerBackdrop').hidden = false;
     document.body.style.overflow = 'hidden';
     $('#performanceTitle').textContent = campaign.name;
-    $('#performanceBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Consultando vendas reais</h3><p>A apuração compara a campanha com o período anterior equivalente.</p></div></div>`;
-    const periods = calculatePeriods(campaign.start, campaign.end);
+    $('#performanceBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Consultando vendas reais</h3><p>A apuração compara seis segundas-feiras da campanha com as seis segundas-feiras anteriores.</p></div></div>`;
+    const periods = calculatePeriods(campaign.start);
     if (!periods.valid) { $('#performanceBody').innerHTML = `<div class="context-error">${esc(periods.error)}</div>`; return; }
     const productIds = [...new Set((campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite))];
     const supplierIds = (campaign.suppliers || []).map((supplier) => Number(supplier.id)).filter(Number.isFinite);
@@ -1065,6 +1078,7 @@
       const data = await api(`${SQL_ENDPOINT}?recurso=apuracao`, {
         method:'POST',
         body:JSON.stringify({
+          campaignStart:periods.currentStart,
           currentStart:periods.currentStart, currentEnd:periods.currentEnd,
           previousStart:periods.previousStart, previousEnd:periods.previousEnd,
           supplierIds, productIds,
@@ -1157,11 +1171,13 @@
     if (event.target.id === 'representativeSearch') { app.representativeSearch = event.target.value; renderRepresentatives(); $('#representativeSearch')?.focus(); }
     if (event.target.id === 'productPageSearch') { app.productSearch = event.target.value; renderProducts(); $('#productPageSearch')?.focus(); }
     if (event.target.id === 'supplierSearch') { clearTimeout(supplierTimer); supplierTimer = setTimeout(() => renderSupplierResults(event.target.value), 80); }
-    if (event.target.id === 'campaignStart' || event.target.id === 'campaignEnd') {
+    if (event.target.id === 'campaignStart') {
       app.wizard.campaign.start = $('#campaignStart')?.value || app.wizard.campaign.start;
-      app.wizard.campaign.end = $('#campaignEnd')?.value || app.wizard.campaign.end;
+      app.wizard.campaign.end = sixthMondayFrom(app.wizard.campaign.start) || app.wizard.campaign.end;
+      const endField = $('#campaignEnd');
+      if (endField) endField.value = app.wizard.campaign.end;
       const preview = $('#periodPreview');
-      if (preview) { preview.innerHTML = periodPreview(calculatePeriods(app.wizard.campaign.start, app.wizard.campaign.end)); icons(preview); }
+      if (preview) { preview.innerHTML = periodPreview(calculatePeriods(app.wizard.campaign.start)); icons(preview); }
     }
     if (event.target.id === 'wizardRepSearch') {
       const query = norm(event.target.value);
