@@ -311,16 +311,12 @@ const MAPA_CATEGORIAS_API = {
 function categoriaPorIdAPI(idCategoria) {
   return MAPA_CATEGORIAS_API[String(idCategoria)] || '';
 }
-// Em localhost/LAN na porta 3001, os dados estruturais usam a API Node local.
-// Na Vercel não existe acesso ao /local-api do computador do usuário, então todos
-// os stores passam a usar IndexedDB. Isso evita o 404 e mantém a plataforma utilizável.
-const API_CAMPANHAS_LOCAL_DISPONIVEL =
-  window.location.port === '3001' ||
-  ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-window.CAMPANHAS_API_LOCAL = API_CAMPANHAS_LOCAL_DISPONIVEL;
-const STORES_LOCAIS = API_CAMPANHAS_LOCAL_DISPONIVEL
-  ? ['produtos', 'config']
-  : [...STORES];
+// Arquitetura híbrida: dados configuráveis usam Supabase pela Vercel Function
+// em qualquer ambiente. IndexedDB continua como cache e contingência offline.
+const STORES_LOCAIS = ['produtos', 'config'];
+const STORES_REMOTOS = STORES.filter((store) => !STORES_LOCAIS.includes(store));
+window.CAMPANHAS_API_LOCAL = false;
+window.CAMPANHAS_ARQUITETURA = 'SQL Server + Vercel + Supabase + IndexedDB';
 
 let _db = null;
 
@@ -403,7 +399,7 @@ const DBLocal = {
   },
 };
 
-/* ---- camada remota (Supabase, via rotas serverless) — usada pelos demais stores ---- */
+/* ---- camada remota (Supabase, via Vercel Function) ---- */
 const TABELA_POR_STORE = {
   campanhas: 'campanhas',
   representantes: 'campanhas_representantes',
@@ -421,14 +417,19 @@ async function apiCall(method, store, params, body) {
   const resp = await fetch('/api/campanhas-data?' + qs, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  const textoResposta = await resp.text();
+  let dados = null;
+  try { dados = textoResposta ? JSON.parse(textoResposta) : null; }
+  catch (_) { throw new Error(`A API respondeu HTTP ${resp.status} sem JSON: ${textoResposta.slice(0, 180)}`); }
   if (!resp.ok) {
-    let msg = `Erro ao acessar ${store} (${resp.status})`;
-    try { const j = await resp.json(); if (j.erro) msg = j.erro; } catch (e) {}
-    throw new Error(msg);
+    const erro = new Error(dados?.erro || dados?.message || `Erro ao acessar ${store} (${resp.status})`);
+    erro.codigo = dados?.codigo;
+    erro.dica = dados?.dica;
+    throw erro;
   }
-  return resp.status === 204 ? null : resp.json();
+  return dados;
 }
 
 const DBRemote = {
@@ -443,7 +444,7 @@ const DBRemote = {
     return obj;
   },
   async putMany(store, list) {
-    list.forEach(obj => { if (!obj.id) obj.id = uid(); });
+    list.forEach((obj) => { if (!obj.id) obj.id = uid(); });
     if (list.length) await apiCall('POST', store, null, list);
     return list;
   },
@@ -451,11 +452,143 @@ const DBRemote = {
   async clearStore(store) { await apiCall('DELETE', store, { all: 1 }); return true; },
 };
 
-/* ---- fachada única: mesma interface de sempre, roteando por store ---- */
+const SYNC_QUEUE_KEY = '__campanhas_sync_queue__';
+const STATUS_REMOTO_KEY = '__campanhas_remote_status__';
+
+async function lerFilaSincronizacao() {
+  const registro = await DBLocal.get('config', SYNC_QUEUE_KEY);
+  return Array.isArray(registro?.value) ? registro.value : [];
+}
+
+async function salvarFilaSincronizacao(fila) {
+  await DBLocal.put('config', { id: SYNC_QUEUE_KEY, value: fila.slice(-500) });
+}
+
+async function enfileirarOperacao(operacao) {
+  const fila = await lerFilaSincronizacao();
+  fila.push({ ...operacao, criadoEm: new Date().toISOString() });
+  await salvarFilaSincronizacao(fila);
+}
+
+async function registrarStatusRemoto(ok, erro = null) {
+  await DBLocal.put('config', {
+    id: STATUS_REMOTO_KEY,
+    value: { ok, erro: erro?.message || null, atualizadoEm: new Date().toISOString() },
+  });
+  window.dispatchEvent(new CustomEvent('campanhas:status-remoto', { detail: { ok, erro } }));
+}
+
+async function aplicarOperacaoLocal(operacao) {
+  const { tipo, store } = operacao;
+  if (tipo === 'put') return DBLocal.put(store, operacao.obj);
+  if (tipo === 'putMany') return DBLocal.putMany(store, operacao.list || []);
+  if (tipo === 'remove') return DBLocal.remove(store, operacao.id);
+  if (tipo === 'clear') return DBLocal.clearStore(store);
+  return null;
+}
+
+async function sincronizarPendencias() {
+  if (!navigator.onLine) return;
+  const fila = await lerFilaSincronizacao();
+  if (!fila.length) return;
+  const restantes = [];
+  for (const operacao of fila) {
+    try {
+      if (operacao.tipo === 'put') await DBRemote.put(operacao.store, operacao.obj);
+      else if (operacao.tipo === 'putMany') await DBRemote.putMany(operacao.store, operacao.list || []);
+      else if (operacao.tipo === 'remove') await DBRemote.remove(operacao.store, operacao.id);
+      else if (operacao.tipo === 'clear') await DBRemote.clearStore(operacao.store);
+    } catch (_) {
+      restantes.push(operacao);
+    }
+  }
+  await salvarFilaSincronizacao(restantes);
+  await registrarStatusRemoto(restantes.length === 0, restantes.length ? new Error(`${restantes.length} alteração(ões) aguardando sincronização`) : null);
+}
+
+const DBHibrido = {
+  async getAll(store) {
+    try {
+      const remoto = await DBRemote.getAll(store);
+      await DBLocal.clearStore(store);
+      if (remoto?.length) await DBLocal.putMany(store, remoto);
+      await registrarStatusRemoto(true);
+      return remoto || [];
+    } catch (erro) {
+      console.warn(`[Campanhas] ${store}: usando cache IndexedDB`, erro);
+      await registrarStatusRemoto(false, erro);
+      return DBLocal.getAll(store);
+    }
+  },
+  async get(store, id) {
+    try {
+      const remoto = await DBRemote.get(store, id);
+      if (remoto) await DBLocal.put(store, remoto);
+      await registrarStatusRemoto(true);
+      return remoto;
+    } catch (erro) {
+      await registrarStatusRemoto(false, erro);
+      return DBLocal.get(store, id);
+    }
+  },
+  async put(store, obj) {
+    if (!obj.id) obj.id = uid();
+    await DBLocal.put(store, obj);
+    try {
+      await DBRemote.put(store, obj);
+      await registrarStatusRemoto(true);
+    } catch (erro) {
+      await enfileirarOperacao({ tipo: 'put', store, obj });
+      await registrarStatusRemoto(false, erro);
+      console.warn(`[Campanhas] ${store}: salvo localmente e aguardando sincronização`, erro);
+    }
+    return obj;
+  },
+  async putMany(store, list) {
+    list.forEach((obj) => { if (!obj.id) obj.id = uid(); });
+    if (list.length) await DBLocal.putMany(store, list);
+    try {
+      if (list.length) await DBRemote.putMany(store, list);
+      await registrarStatusRemoto(true);
+    } catch (erro) {
+      await enfileirarOperacao({ tipo: 'putMany', store, list });
+      await registrarStatusRemoto(false, erro);
+    }
+    return list;
+  },
+  async remove(store, id) {
+    await DBLocal.remove(store, id);
+    try {
+      await DBRemote.remove(store, id);
+      await registrarStatusRemoto(true);
+    } catch (erro) {
+      await enfileirarOperacao({ tipo: 'remove', store, id });
+      await registrarStatusRemoto(false, erro);
+    }
+    return true;
+  },
+  async clearStore(store) {
+    await DBLocal.clearStore(store);
+    try {
+      await DBRemote.clearStore(store);
+      await registrarStatusRemoto(true);
+    } catch (erro) {
+      await enfileirarOperacao({ tipo: 'clear', store });
+      await registrarStatusRemoto(false, erro);
+    }
+    return true;
+  },
+};
+
+/* ---- fachada única ---- */
 const DB = {
   uid,
-  _camada(store) { return STORES_LOCAIS.includes(store) ? DBLocal : DBRemote; },
-  async init() { return DBLocal.init(); },
+  _camada(store) { return STORES_LOCAIS.includes(store) ? DBLocal : DBHibrido; },
+  async init() {
+    await DBLocal.init();
+    setTimeout(() => sincronizarPendencias().catch(console.warn), 500);
+    return _db;
+  },
   async getAll(store) { return this._camada(store).getAll(store); },
   async get(store, id) { return this._camada(store).get(store, id); },
   async put(store, obj) { return this._camada(store).put(store, obj); },
@@ -463,6 +596,7 @@ const DB = {
   async remove(store, id) { return this._camada(store).remove(store, id); },
   async clearStore(store) { return this._camada(store).clearStore(store); },
   async clearAll() { for (const s of STORES) await this.clearStore(s); },
+  async sincronizar() { return sincronizarPendencias(); },
 
   async getConfig(key, def = null) {
     const row = await DBLocal.get('config', key);
@@ -470,8 +604,10 @@ const DB = {
   },
   async setConfig(key, value) {
     return DBLocal.put('config', { id: key, value });
-  }
+  },
 };
+
+window.addEventListener('online', () => sincronizarPendencias().catch(console.warn));
 
 
 /* ===== catalogo.js ===== */
@@ -1327,13 +1463,7 @@ function campTabInfoHtml(c) {
       <div class="chip-bar">${TIPOS_RANKING.map(t => `<div class="chip-btn ${((c.tipos || []).includes(t)) ? 'active' : ''}" onclick="this.classList.toggle('active')" data-tipo="${t}">${t}</div>`).join('')}</div>
     </div>
     <div class="field"><label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="cf_ativa" ${c.ativa ? 'checked' : ''} style="width:16px;height:16px;"> Campanha ativa</label></div>
-    <div class="field"><label>Meta coletiva (%)</label><input id="cf_metaColetivaPct" type="number" step="0.1" value="${c.metaColetivaPct ?? ''}" placeholder="Ex: 12"></div>
-    <div class="field"><label>Meta coletiva — o que aparece no banner?</label>
-      <select id="cf_metaColetivaCampo">
-        <option value="kg" ${c.metaColetivaCampo === 'kg' || !c.metaColetivaCampo ? 'selected' : ''}>Volume (Kg)</option>
-        <option value="valor" ${c.metaColetivaCampo === 'valor' ? 'selected' : ''}>Faturamento (R$)</option>
-      </select>
-    </div>
+    <div class="field full"><div class="cs-meta-moved-note"><b>Metas coletiva e individual</b><span>Agora são configuradas na etapa <strong>Regras e metas</strong>, com métrica e valor absoluto. Ex.: 100 positivações coletivas ou 4 por vendedor.</span></div></div>
     <div class="field"><label>Requisito mínimo do bônus (clientes)</label><input id="cf_minClientesBonus" type="number" value="${c.minClientesBonus ?? ''}" placeholder="Ex: 5"></div>
   </div>`;
 }
