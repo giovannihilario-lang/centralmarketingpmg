@@ -76,7 +76,8 @@ const state = {
   comments: [], taskActivities: [], realtime: null, loading: 0, quickType: 'demanda',
   quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
   selectedDate: dateKey(new Date()), pushSubscription: null,
-  teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: []
+  teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
+  assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }
 };
 
 const $ = id => document.getElementById(id);
@@ -134,6 +135,141 @@ function taskAvatarHTML(person, task, size = 'sm') {
 }
 function activityAvatarHTML(person, type, size = 'sm') {
   return `<span class="activity-avatar-wrap">${avatarHTML(person, size)}<span class="activity-avatar-icon" aria-hidden="true"><i data-lucide="${ACTIVITY_ICON[type] || 'activity'}"></i></span></span>`;
+}
+
+const STATUS_ORDER = ['nova', 'andamento', 'revisao', 'concluida'];
+const STATUS_HELP = {
+  nova: 'Aguardando alguém começar',
+  andamento: 'Sendo executada agora',
+  revisao: 'Pronta para conferência',
+  concluida: 'Entrega finalizada'
+};
+const STATUS_ACTION = {
+  nova: { next: 'andamento', label: 'Iniciar demanda', icon: 'play' },
+  andamento: { next: 'revisao', label: 'Enviar para revisão', icon: 'scan-eye' },
+  revisao: { next: 'concluida', label: 'Concluir demanda', icon: 'circle-check-big' },
+  concluida: { next: 'andamento', label: 'Reabrir demanda', icon: 'rotate-ccw' }
+};
+
+function syncChoiceCards(selectId) {
+  const select = $(selectId);
+  if (!select) return;
+  $$(`[data-choice-target="${selectId}"]`).forEach(button => {
+    const active = button.dataset.choiceValue === select.value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function assigneeStats(person) {
+  if (!person) return null;
+  try { return teamPersonStats(person); }
+  catch (error) {
+    const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === person.id);
+    return { active, overdue: active.filter(isOverdue), dueToday: active.filter(task => taskDueKey(task) === todayKey()), hours: active.reduce((sum, task) => sum + sizeWeight(task), 0), utilization: 0, risk: 'balanced' };
+  }
+}
+
+function assigneeLoadText(stats) {
+  if (!stats) return 'Sem demandas atribuídas';
+  const parts = [`${stats.active.length} aberta${stats.active.length === 1 ? '' : 's'}`];
+  if (stats.overdue.length) parts.push(`${stats.overdue.length} atrasada${stats.overdue.length === 1 ? '' : 's'}`);
+  if (stats.dueToday.length) parts.push(`${stats.dueToday.length} para hoje`);
+  parts.push(`${Math.round(stats.hours)}h estimadas`);
+  return parts.join(' · ');
+}
+
+function assigneePreviewHTML(person) {
+  if (!person) {
+    return `<span class="assignee-preview-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-preview-copy"><strong>Sem responsável</strong><small>A demanda ficará disponível para atribuição.</small></span>`;
+  }
+  const stats = assigneeStats(person);
+  return `<span class="assignee-preview-avatar">${avatarStatusHTML(person, stats, 'md')}</span><span class="assignee-preview-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')} · ${escapeHtml(assigneeLoadText(stats))}</small></span>`;
+}
+
+function renderAssigneePreview(selectId, previewId) {
+  const select = $(selectId); const preview = $(previewId);
+  if (!select || !preview) return;
+  preview.innerHTML = assigneePreviewHTML(collaborator(select.value));
+  refreshIcons();
+}
+
+function syncTaskFormVisuals(prefix) {
+  const isEdit = prefix === 'editTask';
+  const assigneeId = isEdit ? 'editTaskAssignee' : 'itemAssignee';
+  const previewId = isEdit ? 'editTaskAssigneePreview' : 'itemAssigneePreview';
+  const priorityId = isEdit ? 'editTaskPriority' : 'itemPriority';
+  const sizeId = isEdit ? 'editTaskSize' : 'itemSize';
+  renderAssigneePreview(assigneeId, previewId);
+  syncChoiceCards(priorityId);
+  syncChoiceCards(sizeId);
+}
+
+function openAssigneePicker({ selectId = null, previewId = null, taskId = null, title = 'Selecionar responsável' } = {}) {
+  state.assigneePicker = { selectId, previewId, taskId, search: '' };
+  $('assigneePickerTitle').textContent = title;
+  $('assigneePickerSearch').value = '';
+  renderAssigneePicker();
+  $('assigneePickerModal').classList.remove('hidden');
+  setTimeout(() => $('assigneePickerSearch').focus(), 60);
+  refreshIcons();
+}
+
+function renderAssigneePicker() {
+  const query = (state.assigneePicker.search || '').trim().toLowerCase();
+  const currentId = state.assigneePicker.taskId
+    ? state.tasks.find(task => task.id === state.assigneePicker.taskId)?.responsavel_id || ''
+    : $(state.assigneePicker.selectId)?.value || '';
+  const people = state.collaborators
+    .filter(person => !query || [person.nome, person.cargo, person.role].join(' ').toLowerCase().includes(query))
+    .map(person => ({ person, stats: assigneeStats(person) }))
+    .sort((a, b) => {
+      const selectedDiff = Number(b.person.id === currentId) - Number(a.person.id === currentId);
+      const riskDiff = (TEAM_RISK[a.stats.risk]?.score || 0) - (TEAM_RISK[b.stats.risk]?.score || 0);
+      return selectedDiff || riskDiff || a.stats.hours - b.stats.hours || String(a.person.nome || '').localeCompare(String(b.person.nome || ''), 'pt-BR');
+    });
+
+  $('assigneePickerContext').innerHTML = `<i data-lucide="info"></i><span>${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}. Carga calculada pelas demandas abertas e estimativas registradas.</span>`;
+  const noneOption = !query || 'sem responsável'.includes(query)
+    ? `<button type="button" class="assignee-option none ${currentId === '' ? 'selected' : ''}" data-assignee-choice=""><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsável</strong><small>Deixar na fila para atribuir depois</small></span><span class="assignee-option-state"><i data-lucide="${currentId === '' ? 'check' : 'chevron-right'}"></i></span></button>`
+    : '';
+  $('assigneePickerList').innerHTML = noneOption + (people.length ? people.map(({ person, stats }) => {
+    const risk = teamRiskLabel(stats);
+    return `<button type="button" class="assignee-option risk-${stats.risk} ${currentId === person.id ? 'selected' : ''}" data-assignee-choice="${person.id}">
+      <span class="assignee-option-avatar">${avatarStatusHTML(person, stats, 'md')}</span>
+      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}</em></span>
+      <span class="assignee-option-load"><b>${Math.round(stats.hours)}h</b><small>${risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, stats.utilization || 0)}%"></span></i></span>
+      <span class="assignee-option-state"><i data-lucide="${currentId === person.id ? 'check' : 'chevron-right'}"></i></span>
+    </button>`;
+  }).join('') : `<div class="assignee-picker-empty"><i data-lucide="user-search"></i><strong>Ninguém encontrado</strong><span>Tente outro nome ou cargo.</span></div>`);
+  refreshIcons();
+}
+
+async function chooseAssignee(personId) {
+  const picker = { ...state.assigneePicker };
+  closeModal('assigneePickerModal');
+  if (picker.taskId) {
+    await updateTaskAssignee(picker.taskId, personId || null);
+    return;
+  }
+  const select = $(picker.selectId);
+  if (!select) return;
+  select.value = personId || '';
+  renderAssigneePreview(picker.selectId, picker.previewId);
+}
+
+function statusFlowHTML(task, canChangeStatus) {
+  const currentIndex = STATUS_ORDER.indexOf(task.status);
+  return STATUS_ORDER.map((status, index) => {
+    const meta = STATUS[status];
+    const current = status === task.status;
+    const passed = currentIndex >= 0 && index < currentIndex;
+    const disabled = !canChangeStatus || Boolean(task.arquivada_em) || current;
+    return `<button type="button" class="status-step ${status} ${current ? 'current' : ''} ${passed ? 'passed' : ''}" data-task-status="${status}" ${disabled ? 'disabled' : ''}>
+      <span class="status-step-icon"><i data-lucide="${current || passed ? 'check' : meta.icon}"></i></span>
+      <span class="status-step-copy"><strong>${meta.label}</strong><small>${STATUS_HELP[status]}</small></span>
+    </button>`;
+  }).join('');
 }
 function parseDate(value) { return value ? new Date(value) : null; }
 function dateKey(value) {
@@ -369,8 +505,13 @@ function renderSelectedDayHeader() {
 }
 function renderSelectedDayItems() {
   const items = calendarItemsForDate(state.selectedDate);
-  $('selectedDayItems').innerHTML = items.length ? items.map(entry => `<div class="day-item" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong></div>`).join('')
-    : `<div class="empty-state"><i data-lucide="calendar-x-2"></i>Nenhum item neste dia.</div>`;
+  $('selectedDayItems').innerHTML = items.length ? items.map(entry => {
+    const taskPerson = entry.kind === 'task' ? collaborator(entry.item.responsavel_id) : null;
+    const visual = entry.kind === 'task'
+      ? `<span class="day-item-avatar">${taskAvatarHTML(taskPerson, entry.item, 'sm')}</span>`
+      : `<span class="day-item-symbol ${entry.kind}"><i data-lucide="${entry.kind === 'meeting' ? 'calendar-clock' : 'bell'}"></i></span>`;
+    return `<div class="day-item enriched" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskPerson?.nome || 'Sem responsável')}</span>` : ''}</div></div>`;
+  }).join('') : `<div class="empty-state"><i data-lucide="calendar-x-2"></i>Nenhum item neste dia.</div>`;
 }
 
 function filteredTasks() {
@@ -725,14 +866,21 @@ function applySmartFilter(filter) { state.smartFilter = filter; switchView('dema
 function openQuickAdd(type = 'demanda', preset = {}) {
   if (type === 'demanda' && !isManager()) { toast('Somente gestores podem criar demandas.', 'error'); type = 'lembrete'; }
   state.editingReminderId = preset.editingReminderId || null;
-  setQuickType(type); $('quickAddForm').reset(); setQuickType(type);
+  $('quickAddForm').reset();
+  setQuickType(type);
   const today = preset.date || todayKey();
   $('itemTitle').value = preset.title || ''; $('itemDescription').value = preset.description || '';
   $('itemDueDate').value = preset.date || ''; $('itemDueTime').value = preset.time || '17:00';
   $('reminderDate').value = today; $('reminderTime').value = preset.time || '09:00';
   $('meetingEndDate').value = today; $('meetingEndTime').value = preset.endTime || '10:00';
   $('reminderVisibility').value = isManager() ? (preset.visibility || 'pessoal') : 'pessoal';
-  if (type === 'demanda') { populateAssigneeSelects(); $('itemAssignee').value = preset.assigneeId || ''; }
+  if (type === 'demanda') {
+    populateAssigneeSelects();
+    $('itemAssignee').value = preset.assigneeId || '';
+    $('itemPriority').value = preset.priority || 'media';
+    $('itemSize').value = preset.size || 'media';
+    syncTaskFormVisuals('item');
+  }
   if (preset.reminder) fillReminderForm(preset.reminder);
   $('quickAddModal').classList.remove('hidden'); setTimeout(() => $('itemTitle').focus(), 60); refreshIcons();
 }
@@ -742,6 +890,7 @@ function setQuickType(type) {
   $('demandFields').classList.toggle('hidden', type !== 'demanda'); $('reminderFields').classList.toggle('hidden', type === 'demanda');
   $('meetingEndFields').classList.toggle('hidden', type !== 'compromisso');
   $('visibilityField').classList.toggle('hidden', !isManager());
+  if (type === 'demanda') { populateAssigneeSelects(); syncTaskFormVisuals('item'); }
   $('saveItemBtn').innerHTML = `<i data-lucide="check"></i>${state.editingReminderId ? 'Salvar alterações' : type === 'demanda' ? 'Criar demanda' : type === 'compromisso' ? 'Criar compromisso' : 'Criar lembrete'}`;
   refreshIcons();
 }
@@ -756,7 +905,7 @@ function fillReminderForm(reminder) {
     $('reminderOffset').value = ['0', '10', '30', '60', '1440'].includes(String(diff)) ? String(diff) : '0';
   }
 }
-function closeModal(id) { $(id).classList.add('hidden'); if (id === 'quickAddModal') state.editingReminderId = null; }
+function closeModal(id) { $(id).classList.add('hidden'); if (id === 'quickAddModal') state.editingReminderId = null; if (id === 'assigneePickerModal') state.assigneePicker = { selectId: null, previewId: null, taskId: null, search: '' }; }
 
 async function saveQuickItem(event) {
   event.preventDefault(); setLoading(true);
@@ -820,16 +969,51 @@ async function openTask(taskId) {
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 function renderTaskDrawer() {
-  const task = state.selectedTask; if (!task) return; const person = collaborator(task.responsavel_id);
+  const task = state.selectedTask; if (!task) return;
+  const person = collaborator(task.responsavel_id);
+  const creator = collaborator(task.criado_por);
+  const personStats = person ? assigneeStats(person) : null;
   $('taskDrawerKicker').textContent = `Demanda #${task.id.slice(0, 5).toUpperCase()}`; $('taskDrawerTitle').textContent = task.titulo;
   const canChangeStatus = isManager() || task.responsavel_id === state.me.id || task.criado_por === state.me.id;
-  $('taskDrawerContent').innerHTML = `<div class="detail-banner"><p>${escapeHtml(task.descricao || 'Esta demanda ainda não possui descrição.')}</p>${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}</div>
-    <div class="detail-grid"><div class="detail-field"><label>Status</label>${canChangeStatus && !task.arquivada_em ? `<select id="drawerTaskStatus">${Object.entries(STATUS).map(([key, item]) => `<option value="${key}" ${task.status === key ? 'selected' : ''}>${item.label}</option>`).join('')}</select>` : `<strong>${STATUS[task.status]?.label}</strong>`}</div>
-    <div class="detail-field"><label>Responsável</label>${isManager() && !task.arquivada_em ? `<select id="drawerTaskAssignee"><option value="">Sem responsável</option>${state.collaborators.map(item => `<option value="${item.id}" ${task.responsavel_id === item.id ? 'selected' : ''}>${escapeHtml(item.nome)}</option>`).join('')}</select>` : `<div class="drawer-assignee-display">${taskAvatarHTML(person, task, 'sm')}<strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong></div>`}</div>
-    <div class="detail-field"><label>Prazo</label><strong class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</strong></div><div class="detail-field"><label>Esforço</label><strong>${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</strong></div></div>
+  const nextAction = STATUS_ACTION[task.status] || STATUS_ACTION.nova;
+  const canAssign = isManager() && !task.arquivada_em;
+  $('taskDrawerContent').innerHTML = `
+    <section class="task-overview-hero">
+      <div class="task-people-flow">
+        <div class="task-person-identity"><span>${avatarHTML(creator, 'md')}</span><div><small>Criada por</small><strong>${escapeHtml(creator?.nome || 'Sistema')}</strong></div></div>
+        <i data-lucide="arrow-right"></i>
+        <div class="task-person-identity assigned"><span>${taskAvatarHTML(person, task, 'md')}</span><div><small>Responsável</small><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong></div></div>
+      </div>
+      <div class="task-overview-meta"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span><span class="task-overview-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div>
+      <p>${escapeHtml(task.descricao || 'Esta demanda ainda não possui descrição.')}</p>
+      ${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+    </section>
+
+    <section class="task-status-section">
+      <div class="task-section-heading"><div><span class="eyebrow">Fluxo</span><h3>Status da demanda</h3></div><span class="current-status-label ${task.status}"><i data-lucide="${STATUS[task.status]?.icon || 'circle-dot'}"></i>${STATUS[task.status]?.label || task.status}</span></div>
+      <div class="status-flow">${statusFlowHTML(task, canChangeStatus)}</div>
+      ${canChangeStatus && !task.arquivada_em ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${nextAction.label}</strong><small>${STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>` : ''}
+    </section>
+
+    <section class="task-assignee-section">
+      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Clique para alterar</span>' : ''}</div>
+      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card ${canAssign ? 'editable' : ''}" ${canAssign ? '' : 'disabled'}>
+        <span class="drawer-assignee-avatar">${person ? avatarStatusHTML(person, personStats, 'lg') : avatarHTML(null, 'lg')}</span>
+        <span class="drawer-assignee-copy"><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Aguardando atribuição')}</small><em>${escapeHtml(person ? assigneeLoadText(personStats) : 'A demanda ainda não pertence a ninguém.')}</em></span>
+        ${canAssign ? '<span class="drawer-assignee-change"><span>Alterar responsável</span><i data-lucide="chevron-right"></i></span>' : ''}
+      </button>
+    </section>
+
+    <section class="task-detail-summary">
+      <div><span><i data-lucide="calendar-days"></i>Prazo</span><strong class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</strong></div>
+      <div><span><i data-lucide="gauge"></i>Esforço</span><strong>${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</strong></div>
+      <div><span><i data-lucide="flag"></i>Prioridade</span><strong>${PRIORITY[task.prioridade]}</strong></div>
+      <div><span><i data-lucide="activity"></i>Atualizada</span><strong>${relativeTime(task.atualizado_em)}</strong></div>
+    </section>
+
     <section class="detail-section"><div class="detail-section-head"><h3>Comentários</h3><span>${state.comments.length}</span></div><div class="comment-list">${renderComments()}</div>${!task.arquivada_em ? `<form id="drawerCommentForm" class="comment-form"><textarea id="drawerCommentText" required placeholder="Escreva um comentário..."></textarea><button type="submit"><i data-lucide="send"></i></button></form>` : ''}</section>
     <section class="detail-section"><div class="detail-section-head"><h3>Histórico</h3><span>${state.taskActivities.length} registros</span></div><div class="activity-timeline">${renderTaskActivities()}</div></section>
-    <div class="drawer-footer-actions">${isManager() && !task.arquivada_em ? `<button id="editTaskBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar</button><button id="archiveTaskBtn" class="btn danger-soft"><i data-lucide="archive"></i>Arquivar</button>` : ''}${isManager() && task.arquivada_em ? `<button id="restoreTaskBtn" class="btn primary"><i data-lucide="archive-restore"></i>Restaurar</button>` : ''}</div>`;
+    <div class="drawer-footer-actions">${isManager() && !task.arquivada_em ? `<button id="editTaskBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar detalhes</button><button id="archiveTaskBtn" class="btn danger-soft"><i data-lucide="archive"></i>Arquivar</button>` : ''}${isManager() && task.arquivada_em ? `<button id="restoreTaskBtn" class="btn primary"><i data-lucide="archive-restore"></i>Restaurar</button>` : ''}</div>`;
   bindTaskDrawerEvents(); refreshIcons();
 }
 function renderComments() {
@@ -839,8 +1023,11 @@ function renderTaskActivities() {
   return state.taskActivities.length ? state.taskActivities.map(activity => `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${activity.tipo === 'comentario' ? 'message-circle' : activity.tipo === 'status' ? 'refresh-cw' : activity.tipo === 'atribuida' ? 'user-round-check' : 'activity'}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou esta demanda')}</p><span>${formatDateTime(activity.criado_em)}</span></div></div>`).join('') : `<div class="empty-state">O histórico começará a aparecer nas próximas alterações.</div>`;
 }
 function bindTaskDrawerEvents() {
-  $('drawerTaskStatus')?.addEventListener('change', event => updateTaskStatus(state.selectedTask.id, event.target.value));
-  $('drawerTaskAssignee')?.addEventListener('change', event => updateTaskAssignee(state.selectedTask.id, event.target.value || null));
+  $$('#taskDrawerContent [data-task-status]').forEach(button => button.addEventListener('click', () => {
+    if (!button.disabled && button.dataset.taskStatus !== state.selectedTask?.status) updateTaskStatus(state.selectedTask.id, button.dataset.taskStatus);
+  }));
+  $('drawerNextStatusBtn')?.addEventListener('click', event => updateTaskStatus(state.selectedTask.id, event.currentTarget.dataset.nextStatus));
+  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ taskId: state.selectedTask.id, title: 'Alterar responsável' }));
   $('drawerCommentForm')?.addEventListener('submit', addComment);
   $('editTaskBtn')?.addEventListener('click', openEditTask);
   $('archiveTaskBtn')?.addEventListener('click', archiveTask);
@@ -854,6 +1041,7 @@ function openEditTask() {
   $('editTaskEstimate').value = task.estimativa_horas || ''; $('editTaskTags').value = (task.tags || []).join(', ');
   const reminderOffset = task.lembrar_em && taskDue(task) ? Math.round((new Date(taskDue(task)) - new Date(task.lembrar_em)) / 60000) : '';
   $('editTaskReminderOffset').value = ['0', '10', '30', '60', '1440'].includes(String(reminderOffset)) ? String(reminderOffset) : '';
+  syncTaskFormVisuals('editTask');
   $('editTaskModal').classList.remove('hidden'); refreshIcons();
 }
 async function saveEditedTask(event) {
@@ -995,9 +1183,10 @@ function renderGlobalSearch() {
   if (!query) { $('globalSearchResults').innerHTML = `<div class="empty-state" style="margin:8px"><i data-lucide="search"></i>Busque demandas, compromissos ou lembretes.</div>`; refreshIcons(); return; }
   const tasks = state.tasks.filter(task => [task.titulo, task.descricao, ...(task.tags || [])].join(' ').toLowerCase().includes(query)).slice(0, 8);
   const reminders = state.reminders.filter(item => [item.titulo, item.descricao].join(' ').toLowerCase().includes(query)).slice(0, 8);
-  $('globalSearchResults').innerHTML = `${tasks.length ? `<div class="search-group-label">Demandas</div>${tasks.map(task => searchResultHTML('task', task.id, task.titulo, `${STATUS[task.status]?.label} · ${dueLabel(task)}`, 'clipboard-check')).join('')}` : ''}${reminders.length ? `<div class="search-group-label">Agenda</div>${reminders.map(item => searchResultHTML('reminder', item.id, item.titulo, `${item.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'} · ${formatDateTime(item.inicio_em)}`, item.tipo === 'compromisso' ? 'calendar-clock' : 'bell')).join('')}` : ''}${!tasks.length && !reminders.length ? `<div class="empty-state" style="margin:8px"><i data-lucide="search-x"></i>Nenhum resultado encontrado.</div>` : ''}`; refreshIcons();
+  $('globalSearchResults').innerHTML = `${tasks.length ? `<div class="search-group-label">Demandas</div>${tasks.map(task => taskSearchResultHTML(task)).join('')}` : ''}${reminders.length ? `<div class="search-group-label">Agenda</div>${reminders.map(item => searchResultHTML('reminder', item.id, item.titulo, `${item.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'} · ${formatDateTime(item.inicio_em)}`, item.tipo === 'compromisso' ? 'calendar-clock' : 'bell')).join('')}` : ''}${!tasks.length && !reminders.length ? `<div class="empty-state" style="margin:8px"><i data-lucide="search-x"></i>Nenhum resultado encontrado.</div>` : ''}`; refreshIcons();
 }
 function searchResultHTML(type, id, title, meta, icon) { return `<button class="search-result" data-search-${type}="${id}"><span class="search-result-icon"><i data-lucide="${icon}"></i></span><span class="search-result-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
+function taskSearchResultHTML(task) { const person = collaborator(task.responsavel_id); return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar">${taskAvatarHTML(person, task, 'sm')}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${escapeHtml(person?.nome || 'Sem responsável')} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
 function openSearch() { $('searchModal').classList.remove('hidden'); $('globalSearchInput').value = ''; renderGlobalSearch(); setTimeout(() => $('globalSearchInput').focus(), 40); }
 function closeSearch() { $('searchModal').classList.add('hidden'); }
 
@@ -1103,6 +1292,9 @@ function bindEvents() {
   $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
   $('enablePushBtn').addEventListener('click', enablePush); $('disablePushBtn').addEventListener('click', disablePush); $('testPushBtn').addEventListener('click', testPush);
   $('profileBtn').addEventListener('click', () => openProfile(false));
+  $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', title: 'Selecionar responsável' }));
+  $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', title: 'Alterar responsável' }));
+  $('assigneePickerSearch')?.addEventListener('input', debounce(event => { state.assigneePicker.search = event.target.value; renderAssigneePicker(); }, 100));
   $('userMenuTrigger')?.addEventListener('click', toggleUserMenu);
   $('userMenuProfileBtn')?.addEventListener('click', () => { closeUserMenu(); openProfile(false); });
   $('userMenuTasksBtn')?.addEventListener('click', () => { closeUserMenu(); applySmartFilter('minhas'); });
@@ -1128,6 +1320,10 @@ function bindEvents() {
   $('openSidebarBtn').addEventListener('click', openMobileSidebar); $('closeSidebarBtn').addEventListener('click', closeMobileSidebar); $('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
   document.addEventListener('click', event => {
     if (!$('userMenuWrapper')?.contains(event.target)) closeUserMenu();
+    const choice = event.target.closest('[data-choice-target]');
+    if (choice) { const select = $(choice.dataset.choiceTarget); if (select) { select.value = choice.dataset.choiceValue; syncChoiceCards(choice.dataset.choiceTarget); } return; }
+    const assigneeChoice = event.target.closest('[data-assignee-choice]');
+    if (assigneeChoice) { chooseAssignee(assigneeChoice.dataset.assigneeChoice); return; }
     const avatarFilter = event.target.closest('[data-avatar-filter]');
     if (avatarFilter) { $('taskAssigneeFilter').value = avatarFilter.dataset.avatarFilter; renderDemandas(); return; }
     const person = event.target.closest('[data-open-person]'); if (person) openPerson(person.dataset.openPerson);

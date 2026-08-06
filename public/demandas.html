@@ -242,6 +242,14 @@
             <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
           </section>
 
+          <section class="avatar-filter-panel" aria-label="Filtrar demandas por responsável">
+            <div class="avatar-filter-copy">
+              <i data-lucide="users-round"></i>
+              <span><strong>Responsáveis</strong><small>Filtre a fila usando os avatares da equipe.</small></span>
+            </div>
+            <div id="taskAvatarFilters" class="task-avatar-filters"></div>
+          </section>
+
           <div id="taskSmartFilterBar" class="smart-filter-bar hidden"><span id="smartFilterLabel"></span><button id="clearSmartFilter"><i data-lucide="x"></i>Limpar</button></div>
 
           <section id="taskBoard" class="task-board">
@@ -332,20 +340,61 @@
           <label class="field"><span>Descrição <em>opcional</em></span><textarea id="itemDescription" rows="3" placeholder="Contexto, briefing ou observações"></textarea></label>
 
           <div id="demandFields">
-            <div class="form-grid three">
-              <label class="field"><span>Responsável</span><select id="itemAssignee"><option value="">Sem responsável</option></select></label>
-              <label class="field"><span>Prioridade</span><select id="itemPriority"><option value="media">Média</option><option value="baixa">Baixa</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></label>
-              <label class="field"><span>Tamanho</span><select id="itemSize"><option value="rapida">Rápida</option><option value="media" selected>Média</option><option value="grande">Grande</option></select></label>
-            </div>
-            <div class="form-grid three">
-              <label class="field"><span>Prazo</span><input id="itemDueDate" type="date"></label>
-              <label class="field"><span>Horário</span><input id="itemDueTime" type="time" value="17:00"></label>
-              <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="itemEstimate" type="number" min="0" step="0.5" placeholder="2"><span>horas</span></div></label>
-            </div>
-            <div class="form-grid two">
-              <label class="field"><span>Lembrar</span><select id="itemReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
-              <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
-            </div>
+            <section class="task-config-section">
+              <div class="task-config-heading">
+                <div><span class="eyebrow">Organização</span><h3>Quem faz e como entra na fila</h3></div>
+                <p>Use informações de carga e prioridade para distribuir o trabalho com clareza.</p>
+              </div>
+
+              <div class="task-setup-grid">
+                <div class="visual-field assignee-visual-field">
+                  <span class="visual-field-label">Responsável</span>
+                  <select id="itemAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="">Sem responsável</option></select>
+                  <button id="itemAssigneePickerBtn" class="assignee-selector-button" type="button">
+                    <span id="itemAssigneePreview" class="assignee-selector-preview"></span>
+                    <span class="assignee-selector-action"><span>Selecionar</span><i data-lucide="chevron-right"></i></span>
+                  </button>
+                </div>
+
+                <div class="visual-field">
+                  <span class="visual-field-label">Prioridade</span>
+                  <select id="itemPriority" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="media" selected>Média</option><option value="baixa">Baixa</option><option value="alta">Alta</option><option value="urgente">Urgente</option>
+                  </select>
+                  <div class="choice-card-grid priority-choice-grid" role="group" aria-label="Prioridade da demanda">
+                    <button type="button" class="choice-card priority-low" data-choice-target="itemPriority" data-choice-value="baixa"><i data-lucide="feather"></i><span><strong>Baixa</strong><small>Pode aguardar</small></span></button>
+                    <button type="button" class="choice-card priority-medium" data-choice-target="itemPriority" data-choice-value="media"><i data-lucide="circle-dot"></i><span><strong>Média</strong><small>Fluxo normal</small></span></button>
+                    <button type="button" class="choice-card priority-high" data-choice-target="itemPriority" data-choice-value="alta"><i data-lucide="arrow-up"></i><span><strong>Alta</strong><small>Precisa de atenção</small></span></button>
+                    <button type="button" class="choice-card priority-urgent" data-choice-target="itemPriority" data-choice-value="urgente"><i data-lucide="siren"></i><span><strong>Urgente</strong><small>Interrompe prioridades</small></span></button>
+                  </div>
+                </div>
+
+                <div class="visual-field">
+                  <span class="visual-field-label">Tamanho</span>
+                  <select id="itemSize" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="rapida">Rápida</option><option value="media" selected>Média</option><option value="grande">Grande</option>
+                  </select>
+                  <div class="choice-card-grid size-choice-grid" role="group" aria-label="Tamanho da demanda">
+                    <button type="button" class="choice-card" data-choice-target="itemSize" data-choice-value="rapida"><i data-lucide="zap"></i><span><strong>Rápida</strong><small>Até 1 hora</small></span></button>
+                    <button type="button" class="choice-card" data-choice-target="itemSize" data-choice-value="media"><i data-lucide="layers-2"></i><span><strong>Média</strong><small>Algumas horas</small></span></button>
+                    <button type="button" class="choice-card" data-choice-target="itemSize" data-choice-value="grande"><i data-lucide="mountain"></i><span><strong>Grande</strong><small>Mais de um período</small></span></button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="task-config-section compact-config-section">
+              <div class="task-config-heading"><div><span class="eyebrow">Prazo e contexto</span><h3>Quando precisa acontecer</h3></div></div>
+              <div class="form-grid three">
+                <label class="field"><span>Prazo</span><input id="itemDueDate" type="date"></label>
+                <label class="field"><span>Horário</span><input id="itemDueTime" type="time" value="17:00"></label>
+                <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="itemEstimate" type="number" min="0" step="0.5" placeholder="2"><span>horas</span></div></label>
+              </div>
+              <div class="form-grid two">
+                <label class="field"><span>Lembrar</span><select id="itemReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
+                <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
+              </div>
+            </section>
           </div>
 
           <div id="reminderFields" class="hidden">
@@ -370,18 +419,44 @@
   </div>
 
   <div id="editTaskModal" class="modal-layer hidden">
-    <div class="modal-card">
+    <div class="modal-card task-edit-modal">
       <div class="modal-head"><div><span class="eyebrow">Editar</span><h2>Detalhes da demanda</h2><p>Ajuste briefing, prazo, responsável e esforço.</p></div><button class="icon-btn subtle" data-close-modal="editTaskModal"><i data-lucide="x"></i></button></div>
       <form id="editTaskForm">
         <input id="editTaskId" type="hidden">
         <div class="modal-body">
           <label class="field"><span>Título</span><input id="editTaskTitle" required maxlength="160"></label>
           <label class="field"><span>Descrição</span><textarea id="editTaskDescription" rows="4"></textarea></label>
-          <div class="form-grid three">
-            <label class="field"><span>Responsável</span><select id="editTaskAssignee"></select></label>
-            <label class="field"><span>Prioridade</span><select id="editTaskPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></label>
-            <label class="field"><span>Tamanho</span><select id="editTaskSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
-          </div>
+          <section class="task-config-section edit-task-config">
+            <div class="task-setup-grid">
+              <div class="visual-field assignee-visual-field">
+                <span class="visual-field-label">Responsável</span>
+                <select id="editTaskAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select>
+                <button id="editTaskAssigneePickerBtn" class="assignee-selector-button" type="button">
+                  <span id="editTaskAssigneePreview" class="assignee-selector-preview"></span>
+                  <span class="assignee-selector-action"><span>Alterar</span><i data-lucide="chevron-right"></i></span>
+                </button>
+              </div>
+              <div class="visual-field">
+                <span class="visual-field-label">Prioridade</span>
+                <select id="editTaskPriority" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
+                <div class="choice-card-grid priority-choice-grid compact-choice-grid">
+                  <button type="button" class="choice-card priority-low" data-choice-target="editTaskPriority" data-choice-value="baixa"><i data-lucide="feather"></i><span><strong>Baixa</strong><small>Pode aguardar</small></span></button>
+                  <button type="button" class="choice-card priority-medium" data-choice-target="editTaskPriority" data-choice-value="media"><i data-lucide="circle-dot"></i><span><strong>Média</strong><small>Fluxo normal</small></span></button>
+                  <button type="button" class="choice-card priority-high" data-choice-target="editTaskPriority" data-choice-value="alta"><i data-lucide="arrow-up"></i><span><strong>Alta</strong><small>Atenção</small></span></button>
+                  <button type="button" class="choice-card priority-urgent" data-choice-target="editTaskPriority" data-choice-value="urgente"><i data-lucide="siren"></i><span><strong>Urgente</strong><small>Imediata</small></span></button>
+                </div>
+              </div>
+              <div class="visual-field">
+                <span class="visual-field-label">Tamanho</span>
+                <select id="editTaskSize" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select>
+                <div class="choice-card-grid size-choice-grid compact-choice-grid">
+                  <button type="button" class="choice-card" data-choice-target="editTaskSize" data-choice-value="rapida"><i data-lucide="zap"></i><span><strong>Rápida</strong><small>Até 1h</small></span></button>
+                  <button type="button" class="choice-card" data-choice-target="editTaskSize" data-choice-value="media"><i data-lucide="layers-2"></i><span><strong>Média</strong><small>Algumas horas</small></span></button>
+                  <button type="button" class="choice-card" data-choice-target="editTaskSize" data-choice-value="grande"><i data-lucide="mountain"></i><span><strong>Grande</strong><small>Mais de um período</small></span></button>
+                </div>
+              </div>
+            </div>
+          </section>
           <div class="form-grid three">
             <label class="field"><span>Prazo</span><input id="editTaskDueDate" type="date"></label>
             <label class="field"><span>Horário</span><input id="editTaskDueTime" type="time"></label>
@@ -394,6 +469,21 @@
         </div>
         <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="editTaskModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar alterações</button></div>
       </form>
+    </div>
+  </div>
+
+  <div id="assigneePickerModal" class="modal-layer hidden">
+    <div class="modal-card assignee-picker-modal">
+      <div class="modal-head">
+        <div><span class="eyebrow">Equipe</span><h2 id="assigneePickerTitle">Selecionar responsável</h2><p>Consulte a carga atual e escolha a pessoa mais adequada para a demanda.</p></div>
+        <button class="icon-btn subtle" data-close-modal="assigneePickerModal" type="button"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body assignee-picker-body">
+        <div class="assignee-picker-search"><i data-lucide="search"></i><input id="assigneePickerSearch" type="search" placeholder="Buscar por nome ou cargo"></div>
+        <div id="assigneePickerContext" class="assignee-picker-context"></div>
+        <div id="assigneePickerList" class="assignee-picker-list"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="assigneePickerModal">Cancelar</button></div>
     </div>
   </div>
 
