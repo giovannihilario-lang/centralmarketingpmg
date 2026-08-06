@@ -1,5 +1,9 @@
 /* global CAMPOS_METRICA, DB, normalizeKey, showToast */
 (function () {
+  // Consultas comerciais seguem o Dashboard Regional: SQL via Node local.
+  const CAMPANHAS_SQL_API_BASE = String(window.CAMPANHAS_SQL_API_BASE || 'http://localhost:3001/api').replace(/\/$/, '');
+  const CAMPANHAS_SQL_ENDPOINT = `${CAMPANHAS_SQL_API_BASE}/campanhas-data`;
+
   const CORES = ['#2d7a4f', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#0891b2', '#7c3aed'];
 
   const state = {
@@ -36,7 +40,12 @@
 
 
   async function fetchJson(url, options = {}) {
-    const resposta = await fetch(url, options);
+    let resposta;
+    try {
+      resposta = await fetch(url, options);
+    } catch (erroRede) {
+      throw new Error(`Servidor local PMG indisponível em ${CAMPANHAS_SQL_API_BASE}. Execute npm start na pasta do projeto. Detalhe: ${erroRede?.message || erroRede}`);
+    }
     const textoResposta = await resposta.text();
     let dados = null;
     try {
@@ -374,7 +383,7 @@
       const parametros = new URLSearchParams({ recurso: 'filtros-produtos' });
       if (fornecedorId) parametros.set('fornecedorId', fornecedorId);
       if (fornecedor) parametros.set('fornecedor', fornecedor);
-      const dados = await fetchJson('/api/campanhas-data?' + parametros.toString());
+      const dados = await fetchJson(CAMPANHAS_SQL_ENDPOINT + '?' + parametros.toString());
       state.filtros = dados;
       state.filtrosChave = chave;
       return dados;
@@ -435,7 +444,7 @@
       let dados = null;
 
       try {
-        dados = await fetchJson('/api/campanhas-data?' + parametros.toString());
+        dados = await fetchJson(CAMPANHAS_SQL_ENDPOINT + '?' + parametros.toString());
       } catch (erro) {
         console.warn('[campaign-builder] produtos SQL indisponíveis; usando catálogo PMG', erro);
       }

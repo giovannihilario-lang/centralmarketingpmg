@@ -4,6 +4,11 @@
 (() => {
   'use strict';
 
+  // Mesmo padrão do Dashboard Regional: a interface pode estar na Vercel,
+  // mas as consultas ao SQL Server saem do Node local da PMG.
+  const CAMPANHAS_SQL_API_BASE = String(window.CAMPANHAS_SQL_API_BASE || 'http://localhost:3001/api').replace(/\/$/, '');
+  const CAMPANHAS_SQL_ENDPOINT = `${CAMPANHAS_SQL_API_BASE}/campanhas-data`;
+
   const METRICAS_RANKING = [
     { valor: 'pontosFinal', label: 'Pontos', icon: 'sparkles', descricao: 'Pontuação configurada por produtos e regras' },
     { valor: 'faturamentoCampanha', label: 'Faturamento', icon: 'badge-dollar-sign', descricao: 'Maior valor vendido no período' },
@@ -61,7 +66,15 @@
   const icon = (nome) => `<i data-lucide="${nome}"></i>`;
   const atualizarIcones = () => window.lucide?.createIcons({ attrs: { 'stroke-width': 1.9 } });
   async function fetchJsonSeguro(url, options = {}) {
-    const resposta = await fetch(url, options);
+    let resposta;
+    try {
+      resposta = await fetch(url, options);
+    } catch (erroRede) {
+      const erro = new Error(`Não foi possível acessar a API local da PMG em ${CAMPANHAS_SQL_API_BASE}. Abra o terminal na pasta do projeto e execute npm start.`);
+      erro.codigo = 'API_LOCAL_INDISPONIVEL';
+      erro.dica = erroRede?.message || 'Servidor local não respondeu.';
+      throw erro;
+    }
     const textoResposta = await resposta.text();
     let dados;
     try {
@@ -426,7 +439,7 @@
 
     const params = new URLSearchParams({ recurso: 'fornecedores', limite: '500' });
     if (termo) params.set('busca', termo);
-    const dados = await fetchJsonSeguro(`/api/campanhas-data?${params.toString()}`);
+    const dados = await fetchJsonSeguro(`${CAMPANHAS_SQL_ENDPOINT}?${params.toString()}`);
     const lista = normalizarListaFornecedores(dados);
     if (!termo) fornecedoresCache = lista;
     return lista;
@@ -617,7 +630,7 @@
   async function consultarVendedoresSql(busca = '') {
     const parametros = new URLSearchParams({ recurso: 'vendedores', ativos: 'true', diasHistorico: '365' });
     if (busca) parametros.set('busca', busca);
-    return fetchJsonSeguro('/api/campanhas-data?' + parametros.toString());
+    return fetchJsonSeguro(CAMPANHAS_SQL_ENDPOINT + '?' + parametros.toString());
   }
 
   async function sincronizarRepresentantes(dados) {
@@ -778,7 +791,7 @@
     if (resultadoAlvo) resultadoAlvo.innerHTML = '<div class="cs-loading-state">Consultando vendas, produtos, clientes e vendedores ativos no SQL Server Power BI...</div>';
 
     try {
-      const dados = await fetchJsonSeguro('/api/campanhas-data?recurso=apuracao', {
+      const dados = await fetchJsonSeguro(CAMPANHAS_SQL_ENDPOINT + '?recurso=apuracao', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           campanhaInicio: corte.campanhaInicioISO,
@@ -853,7 +866,7 @@
       showToast(`Apuração SQL concluída para ${resultados.length} vendedor(es) ativo(s).`);
       window.desenharApuracao(apuracao);
     } catch (erro) {
-      if (resultadoAlvo) resultadoAlvo.innerHTML = `<div class="cs-apuration-error"><strong>Não foi possível consultar o SQL Server.</strong><span>${esc(erro.message)}</span>${erro.dica ? `<small>${esc(erro.dica)}</small>` : ''}<div><a class="btn btn-ghost btn-sm" href="/api/campanhas-data?recurso=diagnostico" target="_blank">Abrir diagnóstico da API</a></div></div>`;
+      if (resultadoAlvo) resultadoAlvo.innerHTML = `<div class="cs-apuration-error"><strong>Não foi possível consultar o SQL Server.</strong><span>${esc(erro.message)}</span>${erro.dica ? `<small>${esc(erro.dica)}</small>` : ''}<div><a class="btn btn-ghost btn-sm" href="${CAMPANHAS_SQL_ENDPOINT}?recurso=diagnostico" target="_blank">Abrir diagnóstico da API</a></div></div>`;
       showToast(erro.message, true);
     }
   };
