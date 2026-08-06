@@ -8,7 +8,30 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-app.use(cors());
+// Autoriza a página HTTPS da Vercel a conversar com a API local.
+// Navegadores recentes fazem um preflight específico para acesso à rede local.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    req.headers['access-control-request-headers'] || 'Content-Type, Authorization'
+  );
+
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
+
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: '15mb' }));
 
 /**
@@ -52,9 +75,8 @@ async function registrarDiretorioApi(nomeDiretorio) {
   }
 }
 
-// No ambiente local, rotas de local-api têm prioridade sobre wrappers serverless homônimos.
-await registrarDiretorioApi('local-api');
 await registrarDiretorioApi('api');
+await registrarDiretorioApi('local-api');
 
 // Uma rota de API inexistente deve responder JSON, não uma página HTML.
 app.use('/api', (req, res) => {

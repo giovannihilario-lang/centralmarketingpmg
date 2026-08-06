@@ -120,36 +120,74 @@
     $('#sideStatusDetail').textContent = detail || '';
   }
 
-  function apiKey(url, options = {}) { return `${options.method || 'GET'}:${url}:${options.body || ''}`; }
+  function apiKey(url, options = {}) { return `${String(options.method || 'GET').toUpperCase()}:${url}:${options.body || ''}`; }
   async function api(url, options = {}) {
-    const key = apiKey(url, options);
-    const cacheable = (options.method || 'GET') === 'GET' && !options.force;
+    const {
+      force = false,
+      ttl = 60000,
+      timeout = 20000,
+      headers: suppliedHeaders = {},
+      ...fetchOptions
+    } = options;
+
+    const method = String(fetchOptions.method || 'GET').toUpperCase();
+    const key = apiKey(url, { ...fetchOptions, method });
+    const cacheable = method === 'GET' && !force;
     const cached = app.apiCache.get(key);
-    if (cacheable && cached && Date.now() - cached.at < (options.ttl || 60000)) return cached.data;
+
+    if (cacheable && cached && Date.now() - cached.at < ttl) return cached.data;
     if (cacheable && app.apiInFlight.has(key)) return app.apiInFlight.get(key);
 
     const promise = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error('Tempo limite da API local excedido.')), timeout);
+      const headers = { ...suppliedHeaders };
+
+      // GETs e POSTs sem corpo permanecem "simple requests", como no Dashboard Regional.
+      // Isso evita um preflight desnecessário entre a página HTTPS da Vercel e o localhost.
+      if (fetchOptions.body != null && !(fetchOptions.body instanceof FormData)) {
+        const hasContentType = Object.keys(headers).some((name) => name.toLowerCase() === 'content-type');
+        if (!hasContentType) headers['Content-Type'] = 'application/json';
+      }
+
       let response;
       try {
-        response = await fetch(url, { ...options, headers:{ 'Content-Type':'application/json', ...(options.headers || {}) } });
+        response = await fetch(url, {
+          ...fetchOptions,
+          method,
+          headers,
+          signal: controller.signal,
+          cache: 'no-store',
+          credentials: 'omit',
+        });
       } catch (error) {
-        const networkError = new Error(`Não foi possível acessar a API local em ${SQL_BASE}. Execute npm start e mantenha o terminal aberto.`);
+        const detail = error?.name === 'AbortError'
+          ? 'A API local demorou para responder.'
+          : 'O navegador não conseguiu acessar a API local.';
+        const networkError = new Error(`${detail} Confirme que npm start está aberto e permita o acesso à rede local para este site.`);
+        networkError.code = error?.name === 'AbortError' ? 'LOCAL_API_TIMEOUT' : 'LOCAL_API_NETWORK';
         networkError.cause = error;
         throw networkError;
+      } finally {
+        clearTimeout(timer);
       }
+
       const raw = await response.text();
       let data;
       try { data = raw ? JSON.parse(raw) : {}; }
       catch { throw new Error(`A API respondeu HTTP ${response.status} sem JSON: ${raw.slice(0,180) || 'resposta vazia'}`); }
+
       if (!response.ok && response.status !== 202) {
         const error = new Error(data.erro || data.message || `Falha HTTP ${response.status}`);
         error.code = data.codigo;
         error.hint = data.dica;
         throw error;
       }
+
       if (cacheable && response.ok) app.apiCache.set(key, { at:Date.now(), data });
       return data;
     })().finally(() => app.apiInFlight.delete(key));
+
     if (cacheable) app.apiInFlight.set(key, promise);
     return promise;
   }
@@ -190,8 +228,40 @@
     icons($('#contextOverlay'));
   }
 
+  async function useContextPayload(payload, { blocking = true } = {}) {
+    if (!payload?.context) throw new Error('A API informou que o contexto está pronto, mas não enviou os dados.');
+    app.context = payload.context;
+    app.contextReady = true;
+    app.contextCached = true;
+    app.useCachedAllowed = true;
+    await saveContext(payload.context, payload.updatedAt);
+
+    setSideStatus(
+      'online',
+      `${payload.context.suppliers.length} códigos · ${payload.context.products.length} produtos · ${payload.context.representatives.length} representantes ativos`
+    );
+
+    if (blocking) {
+      updateContextOverlay({
+        ...payload,
+        ready: true,
+        status: 'ready',
+        phase: 'ready',
+        progress: 100,
+        message: 'Contexto comercial pronto.',
+      });
+      await sleep(120);
+      $('#contextOverlay').hidden = true;
+      document.body.style.overflow = '';
+    }
+
+    renderView();
+    return payload.context;
+  }
+
   async function pollContext({ force = false, blocking = true } = {}) {
     if (app.contextPromise) return app.contextPromise;
+
     app.contextPromise = (async () => {
       const overlay = $('#contextOverlay');
       if (blocking) {
@@ -201,61 +271,100 @@
       if (force) app.apiCache.clear();
 
       try {
-        await api(`${SQL_ENDPOINT}?recurso=contexto-preparar&force=${force ? 'true' : 'false'}`, { method:'POST', force:true });
-        let attempts = 0;
-        while (attempts < 300) {
-          attempts += 1;
-          const status = await api(`${SQL_ENDPOINT}?recurso=contexto-status&_=${Date.now()}`, { force:true });
+        // Primeiro consulta o estado. Se o Node já carregou o cache em disco,
+        // não inicia uma preparação nova e não deixa a tela parada em 0%.
+        let status = await api(`${SQL_ENDPOINT}?recurso=contexto-status&_=${Date.now()}`, {
+          force: true,
+          timeout: 8000,
+        });
+
+        if (blocking) updateContextOverlay(status);
+
+        if (status.ready) {
+          const payload = await api(`${SQL_ENDPOINT}?recurso=contexto&_=${Date.now()}`, {
+            force: true,
+            timeout: 20000,
+          });
+          return useContextPayload(payload, { blocking });
+        }
+
+        // A rota aceita GET. Isso mantém a chamada simples entre Vercel e localhost.
+        await api(`${SQL_ENDPOINT}?recurso=contexto-preparar&force=${force ? 'true' : 'false'}&_=${Date.now()}`, {
+          method: 'GET',
+          force: true,
+          timeout: 8000,
+        });
+
+        for (let attempts = 0; attempts < 300; attempts += 1) {
+          status = await api(`${SQL_ENDPOINT}?recurso=contexto-status&_=${Date.now()}`, {
+            force: true,
+            timeout: 8000,
+          });
+
           if (blocking) updateContextOverlay(status);
-          else setSideStatus(status.status === 'error' ? 'error' : 'online', status.message || 'Atualizando contexto em segundo plano…');
+          else setSideStatus(
+            status.status === 'error' ? 'error' : 'online',
+            status.message || 'Atualizando contexto em segundo plano…'
+          );
+
           if (status.ready) {
-            const payload = await api(`${SQL_ENDPOINT}?recurso=contexto&_=${Date.now()}`, { force:true });
-            if (payload.context) {
-              app.context = payload.context;
-              app.contextReady = true;
-              app.contextCached = true;
-              app.useCachedAllowed = true;
-              await saveContext(payload.context, payload.updatedAt);
-              setSideStatus('online', `${payload.context.suppliers.length} códigos · ${payload.context.products.length} produtos · ${payload.context.representatives.length} representantes ativos`);
-              if (blocking) {
-                await sleep(180);
-                overlay.hidden = true;
-                document.body.style.overflow = '';
-              }
-              renderView();
-              return payload.context;
-            }
+            const payload = await api(`${SQL_ENDPOINT}?recurso=contexto&_=${Date.now()}`, {
+              force: true,
+              timeout: 20000,
+            });
+            return useContextPayload(payload, { blocking });
           }
-          if (status.status === 'error') throw Object.assign(new Error(status.error?.message || status.message), { code:status.error?.code });
+
+          if (status.status === 'error') {
+            throw Object.assign(
+              new Error(status.error?.message || status.message || 'Falha ao preparar o contexto.'),
+              { code: status.error?.code }
+            );
+          }
+
           await sleep(650);
         }
+
         throw new Error('A preparação do contexto excedeu o tempo esperado.');
       } catch (error) {
         setSideStatus('error', error.message);
-        if (blocking) updateContextOverlay({ status:'error', phase:'error', progress:0, message:error.message, error:{ message:error.message, code:error.code } });
-        else toast('Não foi possível atualizar o contexto. O último contexto salvo continua em uso.', 'warning');
+        if (blocking) {
+          updateContextOverlay({
+            status: 'error',
+            phase: 'error',
+            progress: 0,
+            message: error.message,
+            error: { message: error.message, code: error.code },
+          });
+        } else {
+          toast('Não foi possível atualizar o contexto. O último contexto salvo continua em uso.', 'warning');
+        }
         throw error;
       } finally {
         app.contextPromise = null;
       }
     })();
+
     return app.contextPromise;
   }
 
   async function initializeContext() {
     const cached = await loadCachedContext();
+
     if (cached) {
       app.contextReady = true;
+      $('#contextOverlay').hidden = true;
+      document.body.style.overflow = '';
       setSideStatus('online', `Contexto local: ${app.context.suppliers.length} códigos · atualização em segundo plano`);
       renderView();
-      // Depois do primeiro carregamento, o sistema abre instantaneamente e atualiza sem bloquear a tela.
-      void pollContext({ force:false, blocking:false }).catch(() => {});
+      void pollContext({ force: false, blocking: false }).catch(() => {});
       return;
     }
+
     try {
-      await pollContext({ force:false, blocking:true });
+      await pollContext({ force: false, blocking: true });
     } catch (_) {
-      // A própria tela de preparação exibe o erro e permite tentar novamente.
+      // A tela de preparação apresenta o erro e oferece nova tentativa.
     }
   }
 
