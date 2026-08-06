@@ -1,14 +1,14 @@
 /**
- * Esta rota não acessa o SQL Server pela Vercel.
- * A página de Campanhas segue o Dashboard Regional e usa a API Node local.
+ * A interface de Campanhas é publicada na Vercel, mas os dados comerciais
+ * precisam sair pela API Node local, como no Dashboard Regional. Esta rota
+ * existe apenas para devolver uma explicação em JSON caso seja aberta por engano.
  */
 export default function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   return res.status(409).json({
-    erro: 'Os dados comerciais de Campanhas são fornecidos pela API local da PMG.',
+    erro: 'As consultas comerciais de Campanhas são executadas pela API local da PMG.',
     codigo: 'USE_LOCAL_API',
-    endpoint: 'http://localhost:3001/api/campanhas-data',
-    dica: 'Abra o terminal na pasta do projeto, execute npm start e mantenha-o aberto.',
-    escritaSupabase: false,
+    origem: 'api/campanhas-data',
+    urlLocal: 'http://localhost:3001/api/campanhas-data',
+    dica: 'Execute npm start no computador da PMG e mantenha o terminal aberto.',
   });
 }

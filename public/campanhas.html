@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>PMG Connect — Campanhas</title>
-  <link rel="stylesheet" href="/assets/campanhas-fast-v4.css?v=4.0.1">
-  <script defer src="/assets/campanhas-fast-v4.js?v=4.0.1"></script>
+  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.0.1">
+  <script defer src="/assets/campanhas-studio-v5.js?v=5.0.1"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
 </head>
 <body>
@@ -18,16 +18,27 @@
         <button class="icon-btn mobile-only" type="button" data-action="close-sidebar" aria-label="Fechar menu"><i data-lucide="x"></i></button>
       </div>
 
-      <nav class="nav" aria-label="Navegação principal">
-        <button class="nav-item is-active" type="button" data-view="dashboard"><i data-lucide="layout-dashboard"></i><span>Visão geral</span></button>
-        <button class="nav-item" type="button" data-view="campaigns"><i data-lucide="megaphone"></i><span>Campanhas</span><b id="navCampaignCount">0</b></button>
-        <button class="nav-item" type="button" data-view="representatives"><i data-lucide="users"></i><span>Representantes</span></button>
-      </nav>
+      <div class="nav-group">
+        <span class="nav-label">Gestão</span>
+        <nav class="nav" aria-label="Gestão">
+          <button class="nav-item is-active" type="button" data-view="dashboard"><i data-lucide="layout-dashboard"></i><span>Visão geral</span></button>
+          <button class="nav-item" type="button" data-view="campaigns"><i data-lucide="megaphone"></i><span>Campanhas</span><b id="navCampaignCount">0</b></button>
+        </nav>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-label">Cadastros</span>
+        <nav class="nav" aria-label="Cadastros">
+          <button class="nav-item" type="button" data-view="products"><i data-lucide="package-search"></i><span>Produtos</span></button>
+          <button class="nav-item" type="button" data-view="representatives"><i data-lucide="users"></i><span>Representantes</span></button>
+        </nav>
+      </div>
 
       <div class="side-status" id="sideStatus">
-        <div class="side-status-head"><span class="status-dot"></span><strong>API local</strong></div>
-        <p>Conectando ao servidor PMG sem bloquear a interface.</p>
-        <small id="sideStatusDetail">Aguardando resposta...</small>
+        <div class="side-status-head"><span class="status-dot"></span><strong>Contexto comercial</strong></div>
+        <p>Produtos, fornecedores e representantes ficam preparados para a navegação ser imediata.</p>
+        <small id="sideStatusDetail">Aguardando preparação…</small>
+        <button class="side-status-action" type="button" data-action="refresh-context"><i data-lucide="refresh-cw"></i>Atualizar contexto</button>
       </div>
 
       <div class="side-footer">
@@ -44,8 +55,9 @@
           <button class="icon-btn mobile-only" type="button" data-action="open-sidebar" aria-label="Abrir menu"><i data-lucide="menu"></i></button>
           <div><span id="pageEyebrow">Central comercial</span><h1 id="pageTitle">Visão geral</h1></div>
         </div>
+        <div class="global-search"><i data-lucide="search"></i><input id="globalSearch" placeholder="Buscar campanha, fornecedor ou ação"><kbd>Ctrl K</kbd></div>
         <div class="topbar-actions">
-          <button class="icon-btn" type="button" data-action="refresh" title="Atualizar dados"><i data-lucide="refresh-cw"></i></button>
+          <button class="icon-btn" type="button" data-action="refresh-context" title="Atualizar contexto"><i data-lucide="refresh-cw"></i></button>
           <button class="icon-btn" type="button" data-action="theme" title="Alternar tema"><i data-lucide="moon"></i></button>
           <button class="primary-btn" type="button" data-action="new-campaign"><i data-lucide="plus"></i><span>Nova campanha</span></button>
         </div>
@@ -55,18 +67,38 @@
     </main>
   </div>
 
+  <div class="context-overlay" id="contextOverlay" hidden>
+    <section class="context-card" role="status" aria-live="polite">
+      <div class="context-icon"><i data-lucide="database-zap"></i></div>
+      <span class="eyebrow">Preparação inteligente</span>
+      <h2>Preparando o contexto comercial da PMG</h2>
+      <p>Essa etapa carrega produtos, códigos de fornecedor e representantes ativos uma única vez. Depois, buscas, filtros e montagem das campanhas acontecem no próprio navegador, sem consultar o SQL a cada clique.</p>
+      <div class="context-progress"><span id="contextProgressBar"></span></div>
+      <div class="context-progress-row"><strong id="contextProgressText">Iniciando…</strong><b id="contextProgressPct">0%</b></div>
+      <div class="context-steps" id="contextSteps">
+        <div data-phase="connect"><i data-lucide="circle"></i><span>Conexão com SQL Server</span></div>
+        <div data-phase="query"><i data-lucide="circle"></i><span>Produtos e representantes ativos</span></div>
+        <div data-phase="organize"><i data-lucide="circle"></i><span>Fornecedores, códigos e categorias</span></div>
+        <div data-phase="cache"><i data-lucide="circle"></i><span>Cache local para os próximos acessos</span></div>
+      </div>
+      <div class="context-error" id="contextError" hidden></div>
+      <div class="context-actions">
+        <button class="secondary-btn" type="button" data-action="use-cached-context" id="useCachedContext" hidden>Usar último contexto salvo</button>
+        <button class="primary-btn" type="button" data-action="retry-context" id="retryContext" hidden><i data-lucide="refresh-cw"></i>Tentar novamente</button>
+      </div>
+    </section>
+  </div>
+
   <div class="modal-backdrop" id="modalBackdrop" hidden>
-    <section class="campaign-modal" id="campaignModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <section class="campaign-modal" id="campaignModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
       <header class="modal-header">
-        <div><span class="eyebrow">Construtor de campanha</span><h2 id="modalTitle">Nova campanha</h2></div>
+        <div><span class="eyebrow">Campaign Studio</span><h2 id="modalTitle">Nova campanha</h2></div>
         <button class="icon-btn" type="button" data-action="close-modal" aria-label="Fechar"><i data-lucide="x"></i></button>
       </header>
+      <div class="wizard-progress-track"><span id="wizardProgress"></span></div>
       <div class="wizard-shell">
         <aside class="wizard-nav" id="wizardNav"></aside>
-        <div class="wizard-content">
-          <div class="wizard-progress"><span id="wizardProgress"></span></div>
-          <div id="wizardStep"></div>
-        </div>
+        <div class="wizard-content" id="wizardStep"></div>
       </div>
       <footer class="modal-footer">
         <div id="modalFootStatus" class="modal-foot-status"></div>

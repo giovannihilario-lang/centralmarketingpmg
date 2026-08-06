@@ -504,6 +504,46 @@
     </div>
   </div>
 
+
+  <!-- Alerta invasivo de notificações importantes -->
+  <div id="intrusiveNotificationModal" class="intrusive-notification-layer hidden" role="alertdialog" aria-modal="true" aria-labelledby="intrusiveNotificationTitle" aria-describedby="intrusiveNotificationMessage">
+    <article id="intrusiveNotificationCard" class="intrusive-notification-card tone-blue">
+      <div class="intrusive-notification-glow" aria-hidden="true"></div>
+
+      <header class="intrusive-notification-header">
+        <div class="intrusive-notification-brand">
+          <img src="/imagenssite/pmglogo.png" alt="PMG">
+          <div><strong>PMG Connect</strong><span>Alerta importante</span></div>
+        </div>
+        <span id="intrusiveNotificationCounter" class="intrusive-notification-counter">1 de 1</span>
+      </header>
+
+      <div class="intrusive-notification-body">
+        <div class="intrusive-notification-hero">
+          <span id="intrusiveNotificationIcon" class="intrusive-notification-icon"><i data-lucide="bell-ring"></i></span>
+          <div>
+            <span id="intrusiveNotificationType" class="intrusive-notification-type">NOVA NOTIFICAÇÃO</span>
+            <h2 id="intrusiveNotificationTitle">Você recebeu uma atualização</h2>
+            <p id="intrusiveNotificationMessage">Abra a notificação para ver todos os detalhes.</p>
+          </div>
+        </div>
+
+        <div id="intrusiveNotificationActor" class="intrusive-notification-actor"></div>
+        <div id="intrusiveNotificationMeta" class="intrusive-notification-meta"></div>
+
+        <div class="intrusive-notification-warning">
+          <i data-lucide="eye"></i>
+          <span>Este aviso não desaparece sozinho. Abra agora ou escolha ver depois para continuar.</span>
+        </div>
+      </div>
+
+      <footer class="intrusive-notification-footer">
+        <button id="intrusiveNotificationLaterBtn" class="intrusive-notification-later" type="button"><i data-lucide="clock-3"></i>Ver depois</button>
+        <button id="intrusiveNotificationOpenBtn" class="intrusive-notification-open" type="button"><span>Abrir agora</span><i data-lucide="arrow-up-right"></i></button>
+      </footer>
+    </article>
+  </div>
+
   <div id="onboardingModal" class="onboarding-layer hidden" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
     <div class="onboarding-card">
       <button id="onboardingCloseBtn" class="onboarding-close" type="button" aria-label="Fechar tutorial"><i data-lucide="x"></i></button>

@@ -77,7 +77,8 @@ const state = {
   quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
   selectedDate: dateKey(new Date()), pushSubscription: null,
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
-  assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0
+  assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
+  intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false
 };
 
 const $ = id => document.getElementById(id);
@@ -360,6 +361,7 @@ async function initializeUser() {
   if (needsProfile) openProfile(true);
   await handleUrlActions();
   if (!needsProfile) setTimeout(() => maybeOpenOnboarding(), 420);
+  setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
 }
 async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities()]);
@@ -853,8 +855,13 @@ function renderNotifications() {
   $('notificationList').innerHTML = state.notifications.length ? state.notifications.map(notification => {
     const title = notification.tarefa?.titulo || notification.lembrete?.titulo || 'Atualização';
     const heading = notification.mensagem || (notification.lembrete_id ? (notification.lembrete?.tipo === 'compromisso' ? 'Compromisso próximo' : 'Lembrete programado') : NOTIFICATION_TEXT[notification.tipo] || 'Atualização');
-    const icon = notification.lembrete_id ? (notification.lembrete?.tipo === 'compromisso' ? 'calendar-clock' : 'alarm-clock') : notification.tipo === 'comentario' ? 'message-circle' : notification.tipo.includes('prazo') ? 'calendar-clock' : 'clipboard-check';
-    return `<div class="notification-item ${notification.lida ? '' : 'unread'}" data-notification-id="${notification.id}" data-task-id="${notification.tarefa_id || ''}" data-reminder-id="${notification.lembrete_id || ''}"><span class="notification-item-icon"><i data-lucide="${icon}"></i></span><div class="notification-item-copy"><strong>${escapeHtml(heading)}</strong><p>${escapeHtml(title)}</p><span>${relativeTime(notification.criado_em)}</span></div></div>`;
+    const type = notification.tipo || '';
+    const icon = notification.lembrete_id ? (notification.lembrete?.tipo === 'compromisso' ? 'calendar-clock' : 'alarm-clock') : type === 'comentario' ? 'message-circle' : type.includes('prazo') ? 'calendar-clock' : 'clipboard-check';
+    const actor = resolveNotificationActor(notification);
+    const visual = actor ? `<span class="notification-item-avatar">${avatarHTML(actor, 'sm')}</span>` : `<span class="notification-item-icon"><i data-lucide="${icon}"></i></span>`;
+    const task = notification.tarefa_id ? state.tasks.find(item => item.id === notification.tarefa_id) : null;
+    const context = task ? `${PRIORITY[task.prioridade] || 'Média'} · ${dueLabel(task)}` : relativeTime(notification.criado_em);
+    return `<div class="notification-item ${notification.lida ? '' : 'unread'}" data-notification-id="${notification.id}" data-task-id="${notification.tarefa_id || ''}" data-reminder-id="${notification.lembrete_id || ''}">${visual}<div class="notification-item-copy"><strong>${escapeHtml(heading)}</strong><p>${escapeHtml(title)}</p><span>${escapeHtml(context)} · ${relativeTime(notification.criado_em)}</span></div><i class="notification-item-arrow" data-lucide="chevron-right"></i></div>`;
   }).join('') : `<div class="empty-state" style="margin:16px"><i data-lucide="bell-off"></i>Nenhuma notificação por aqui.</div>`;
 }
 
@@ -1153,6 +1160,190 @@ async function dispatchPendingPush() {
   try { const response = await fetch('/api/notificar-demandas', { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) console.warn('[push dispatcher]', await response.text()); } catch (error) { console.warn('[push dispatcher]', error); }
 }
 
+
+/* =========================================================
+   ALERTAS INVASIVOS EM TELA
+   ========================================================= */
+const INTRUSIVE_NOTIFICATION_TYPES = {
+  nova_tarefa: { label: 'Nova demanda recebida', icon: 'clipboard-plus', tone: 'blue', action: 'Abrir demanda' },
+  prazo_proximo: { label: 'Prazo próximo', icon: 'clock-alert', tone: 'amber', action: 'Ver prazo' },
+  prazo_atrasado: { label: 'Demanda atrasada', icon: 'triangle-alert', tone: 'red', action: 'Resolver agora' },
+  prazo_alterado: { label: 'Prazo alterado', icon: 'calendar-cog', tone: 'amber', action: 'Ver alteração' },
+  comentario: { label: 'Novo comentário', icon: 'message-circle-more', tone: 'purple', action: 'Abrir conversa' },
+  status_mudou: { label: 'Status atualizado', icon: 'refresh-cw', tone: 'green', action: 'Ver demanda' },
+  lembrete: { label: 'Lembrete programado', icon: 'alarm-clock', tone: 'green', action: 'Abrir lembrete' }
+};
+
+function intrusiveSessionKey(notificationId) {
+  return `pmg-intrusive-notification:${state.me?.id || 'usuario'}:${notificationId}`;
+}
+
+function intrusiveWasDismissed() {
+  // O adiamento vale apenas enquanto esta página permanece aberta.
+  // Em um novo acesso, notificações ainda não lidas voltam a aparecer.
+  return false;
+}
+
+function intrusiveMarkDismissed() {}
+
+
+function notificationActivityType(notificationType) {
+  return ({ nova_tarefa: 'criada', comentario: 'comentario', status_mudou: 'status', prazo_alterado: 'editada' })[notificationType] || '';
+}
+
+function resolveNotificationActor(notification) {
+  if (!notification?.tarefa_id) return null;
+  const task = state.tasks.find(item => item.id === notification.tarefa_id);
+  const expectedType = notificationActivityType(notification.tipo);
+  const notificationTime = new Date(notification.criado_em || Date.now()).getTime();
+  const candidates = state.activities
+    .filter(activity => activity.tarefa_id === notification.tarefa_id && (!expectedType || activity.tipo === expectedType) && activity.ator)
+    .map(activity => ({ activity, distance: Math.abs(new Date(activity.criado_em).getTime() - notificationTime) }))
+    .sort((a, b) => a.distance - b.distance);
+  if (candidates[0] && candidates[0].distance <= 45 * 60000) return candidates[0].activity.ator;
+  if (notification.tipo === 'nova_tarefa' && task?.criado_por) return collaborator(task.criado_por) || null;
+  return null;
+}
+
+function intrusiveNotificationData(notification) {
+  const config = INTRUSIVE_NOTIFICATION_TYPES[notification.tipo] || { label: 'Atualização importante', icon: 'bell-ring', tone: 'blue', action: 'Abrir agora' };
+  const task = notification.tarefa_id ? state.tasks.find(item => item.id === notification.tarefa_id) : null;
+  const reminder = notification.lembrete_id ? state.reminders.find(item => item.id === notification.lembrete_id) : null;
+  const actor = resolveNotificationActor(notification);
+  const title = task?.titulo || reminder?.titulo || notification.tarefa?.titulo || notification.lembrete?.titulo || 'Atualização no PMG Connect';
+  const message = notification.mensagem || NOTIFICATION_TEXT[notification.tipo] || (reminder ? 'Há um item da sua agenda pedindo atenção.' : 'Há uma atualização importante na Central de Demandas.');
+  const meta = [];
+
+  if (task) {
+    meta.push({ icon: 'flag', label: 'Prioridade', value: PRIORITY[task.prioridade] || 'Média', tone: task.prioridade || 'media' });
+    meta.push({ icon: 'calendar-clock', label: 'Prazo', value: dueLabel(task), tone: dueClass(task) || '' });
+    meta.push({ icon: STATUS[task.status]?.icon || 'circle-dot', label: 'Status', value: STATUS[task.status]?.label || task.status || 'Nova', tone: task.status || '' });
+  } else if (reminder) {
+    meta.push({ icon: 'calendar-days', label: 'Quando', value: formatDateTime(reminder.inicio_em), tone: '' });
+    meta.push({ icon: reminder.tipo === 'compromisso' ? 'calendar-clock' : 'bell-ring', label: 'Tipo', value: reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete', tone: '' });
+    meta.push({ icon: 'repeat-2', label: 'Recorrência', value: RECURRENCE[reminder.recorrencia] || 'Não repete', tone: '' });
+  } else {
+    meta.push({ icon: 'clock-3', label: 'Recebida', value: formatDateTime(notification.criado_em), tone: '' });
+  }
+
+  return { config, task, reminder, actor, title, message, meta };
+}
+
+function playIntrusiveNotificationSound(tone = 'blue') {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const baseFrequency = tone === 'red' ? 760 : tone === 'amber' ? 620 : tone === 'purple' ? 560 : 680;
+    const notes = tone === 'red' ? [0, 0.16, 0.32] : [0, 0.2];
+    notes.forEach((offset, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(baseFrequency + index * 90, context.currentTime + offset);
+      gain.gain.setValueAtTime(0.0001, context.currentTime + offset);
+      gain.gain.exponentialRampToValueAtTime(0.11, context.currentTime + offset + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + offset + 0.14);
+      oscillator.connect(gain); gain.connect(context.destination);
+      oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + 0.16);
+    });
+    setTimeout(() => context.close().catch(() => {}), 900);
+  } catch (_) {}
+  try { navigator.vibrate?.([120, 70, 120]); } catch (_) {}
+}
+
+function renderIntrusiveNotification(notification) {
+  const data = intrusiveNotificationData(notification);
+  const card = $('intrusiveNotificationCard');
+  card.className = `intrusive-notification-card tone-${data.config.tone}`;
+  $('intrusiveNotificationIcon').innerHTML = `<i data-lucide="${data.config.icon}"></i>`;
+  $('intrusiveNotificationType').textContent = data.config.label;
+  $('intrusiveNotificationTitle').textContent = data.title;
+  $('intrusiveNotificationMessage').textContent = data.message;
+  $('intrusiveNotificationCounter').textContent = `1 de ${1 + state.intrusiveQueue.length}`;
+  $('intrusiveNotificationOpenBtn').innerHTML = `<span>${escapeHtml(data.config.action)}</span><i data-lucide="arrow-up-right"></i>`;
+
+  $('intrusiveNotificationActor').innerHTML = data.actor
+    ? `${avatarHTML(data.actor, 'md')}<div><span>Atualização feita por</span><strong>${escapeHtml(data.actor.nome)}</strong><small>${escapeHtml(data.actor.cargo || 'Marketing')}</small></div>`
+    : `<span class="intrusive-system-avatar"><i data-lucide="sparkles"></i></span><div><span>Origem do alerta</span><strong>PMG Connect</strong><small>Atualização automática do sistema</small></div>`;
+
+  $('intrusiveNotificationMeta').innerHTML = data.meta.map(item => `<div class="intrusive-meta-card ${escapeHtml(item.tone)}"><span><i data-lucide="${item.icon}"></i>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('');
+  refreshIcons();
+}
+
+function maybeShowNextIntrusiveNotification() {
+  if (state.intrusiveActive || !state.intrusiveQueue.length || document.hidden) return;
+  if (!$('intrusiveNotificationModal') || !$('intrusiveNotificationModal').classList.contains('hidden')) return;
+  if ($('onboardingModal') && !$('onboardingModal').classList.contains('hidden')) return;
+  if ($('profileModal') && !$('profileModal').classList.contains('hidden') && $('profileModal').dataset.required === '1') return;
+
+  const notification = state.intrusiveQueue.shift();
+  if (!notification || notification.lida) return maybeShowNextIntrusiveNotification();
+  state.intrusiveActive = notification;
+  state.intrusiveShownIds.add(notification.id);
+  renderIntrusiveNotification(notification);
+  $('intrusiveNotificationModal').classList.remove('hidden');
+  document.body.classList.add('intrusive-notification-open');
+  playIntrusiveNotificationSound((INTRUSIVE_NOTIFICATION_TYPES[notification.tipo] || {}).tone || 'blue');
+  setTimeout(() => $('intrusiveNotificationOpenBtn')?.focus(), 80);
+}
+
+function enqueueIntrusiveNotification(notification) {
+  if (!notification?.id || notification.lida || intrusiveWasDismissed(notification.id)) return;
+  if (state.intrusiveActive?.id === notification.id || state.intrusiveShownIds.has(notification.id) || state.intrusiveQueue.some(item => item.id === notification.id)) return;
+  state.intrusiveQueue.push(notification);
+  maybeShowNextIntrusiveNotification();
+}
+
+function queueUnreadIntrusiveNotifications() {
+  if (state.intrusiveBootstrapped) return;
+  state.intrusiveBootstrapped = true;
+  state.notifications.filter(item => !item.lida).slice(0, 20).forEach(enqueueIntrusiveNotification);
+  maybeShowNextIntrusiveNotification();
+}
+
+function closeIntrusiveNotification() {
+  $('intrusiveNotificationModal')?.classList.add('hidden');
+  document.body.classList.remove('intrusive-notification-open');
+  state.intrusiveActive = null;
+  setTimeout(maybeShowNextIntrusiveNotification, 220);
+}
+
+async function markIntrusiveNotificationRead(notification) {
+  if (!notification || notification.lida) return;
+  const { error } = await db.rpc('marcar_notificacao_lida', { p_id: notification.id });
+  if (error) throw error;
+  notification.lida = true;
+  const found = state.notifications.find(item => item.id === notification.id);
+  if (found) found.lida = true;
+  renderNotifications();
+}
+
+async function openIntrusiveNotification() {
+  const notification = state.intrusiveActive;
+  if (!notification) return;
+  const button = $('intrusiveNotificationOpenBtn');
+  button.disabled = true;
+  try {
+    await markIntrusiveNotificationRead(notification);
+    closeIntrusiveNotification();
+    if (notification.tarefa_id) await openTask(notification.tarefa_id);
+    else if (notification.lembrete_id) openReminder(notification.lembrete_id);
+    else openDrawer('notificationDrawer');
+  } catch (error) {
+    toast(errorMessage(error), 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function postponeIntrusiveNotification() {
+  const notification = state.intrusiveActive;
+  if (!notification) return;
+  intrusiveMarkDismissed(notification.id);
+  closeIntrusiveNotification();
+}
+
 function setupRealtime() {
   if (state.realtime) db.removeChannel(state.realtime);
   const refreshDebounced = debounce(async () => { try { await loadAll(); renderAll(); } catch (error) { console.warn('[realtime refresh]', error); } }, 350);
@@ -1161,7 +1352,7 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'lembretes' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comentarios' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atividades_tarefa' }, refreshDebounced)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async () => { await loadNotifications(); renderNotifications(); await dispatchPendingPush(); refreshIcons(); })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => { await loadNotifications(); renderNotifications(); const inserted = state.notifications.find(item => item.id === payload.new?.id); if (inserted) enqueueIntrusiveNotification(inserted); await dispatchPendingPush(); refreshIcons(); })
     .subscribe(status => {
       const online = status === 'SUBSCRIBED'; const failed = ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status);
       $('realtimeDot').className = `live-dot ${online ? 'online' : failed ? 'offline' : ''}`; $('realtimeLabel').textContent = online ? 'Conectado' : failed ? 'Reconectando' : 'Conectando';
@@ -1583,6 +1774,7 @@ function closeOnboarding(markCompleted = true) {
   }
   $('onboardingModal')?.classList.add('hidden');
   document.body.style.overflow = '';
+  setTimeout(maybeShowNextIntrusiveNotification, 220);
 }
 
 function moveOnboarding(direction) {
@@ -1675,6 +1867,9 @@ function bindEvents() {
   $$('[data-close-modal]').forEach(button => button.addEventListener('click', () => { const modal = $(button.dataset.closeModal); if (modal.id === 'profileModal' && modal.dataset.required === '1') return; closeModal(modal.id); }));
   $$('[data-close-drawer]').forEach(button => button.addEventListener('click', () => closeDrawer(button.dataset.closeDrawer)));
   $('drawerBackdrop').addEventListener('click', () => { closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); });
+  $('intrusiveNotificationOpenBtn')?.addEventListener('click', openIntrusiveNotification);
+  $('intrusiveNotificationLaterBtn')?.addEventListener('click', postponeIntrusiveNotification);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) maybeShowNextIntrusiveNotification(); });
   $('notificationBtn').addEventListener('click', () => openDrawer('notificationDrawer')); $('markAllReadBtn').addEventListener('click', markAllRead);
   $('notificationSettingsBtn').addEventListener('click', () => { closeDrawer('notificationDrawer'); $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
   $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
@@ -1688,7 +1883,7 @@ function bindEvents() {
   $('userMenuTasksBtn')?.addEventListener('click', () => { closeUserMenu(); applySmartFilter('minhas'); });
   $('userMenuAgendaBtn')?.addEventListener('click', () => { closeUserMenu(); switchView('agenda'); });
   $('userMenuTutorialBtn')?.addEventListener('click', () => { closeUserMenu(); maybeOpenOnboarding(true); });
-  $('onboardingCloseBtn')?.addEventListener('click', () => closeOnboarding(true));
+  $('onboardingCloseBtn')?.addEventListener('click', () => closeOnboarding(false));
   $('onboardingSkipBtn')?.addEventListener('click', () => closeOnboarding(true));
   $('onboardingBackBtn')?.addEventListener('click', () => moveOnboarding(-1));
   $('onboardingNextBtn')?.addEventListener('click', () => moveOnboarding(1));
@@ -1736,6 +1931,10 @@ function bindEvents() {
     column.addEventListener('drop', event => { event.preventDefault(); column.classList.remove('drag-over'); const id = event.dataTransfer.getData('text/plain'); const task = state.tasks.find(item => item.id === id); if (task && task.status !== column.dataset.status) updateTaskStatus(id, column.dataset.status); });
   });
   document.addEventListener('keydown', event => {
+    if (!$('intrusiveNotificationModal')?.classList.contains('hidden')) {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); $('intrusiveNotificationCard')?.classList.remove('attention-pulse'); void $('intrusiveNotificationCard')?.offsetWidth; $('intrusiveNotificationCard')?.classList.add('attention-pulse'); }
+      return;
+    }
     if (!$('onboardingModal')?.classList.contains('hidden')) {
       if (event.key === 'Escape') { event.preventDefault(); closeOnboarding(true); return; }
       if (event.key === 'ArrowRight') { event.preventDefault(); moveOnboarding(1); return; }
