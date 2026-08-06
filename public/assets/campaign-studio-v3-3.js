@@ -1,6 +1,6 @@
-/* PMG Connect — Campaign Studio 3.3
-   Fornecedor como contexto, regras visuais, desempates configuráveis,
-   representantes e apuração direta do SQL Server Power BI. */
+/* PMG Connect — Campaign Studio 3.5
+   Múltiplas métricas de ranking, metas coletivas/individuais, regras visuais,
+   fornecedor como contexto e apuração direta do SQL Server Power BI. */
 (() => {
   'use strict';
 
@@ -11,6 +11,22 @@
     { valor: 'positivacao', label: 'Positivação líquida', icon: 'users-round', descricao: 'Saldo de clientes: campanha menos período anterior' },
     { valor: 'mix', label: 'Mix de categorias', icon: 'boxes', descricao: 'Categorias obrigatórias cumpridas pelo vendedor' },
     { valor: 'crescimentoFaturamento', label: 'Crescimento', icon: 'trending-up', descricao: 'Maior evolução sobre o período anterior' },
+  ];
+
+  const METRICAS_META_COLETIVA = [
+    { valor: 'positivacao', label: 'Positivação líquida', unidade: 'clientes' },
+    { valor: 'faturamentoCampanha', label: 'Faturamento', unidade: 'R$' },
+    { valor: 'kgCampanha', label: 'Volume', unidade: 'KG' },
+    { valor: 'pontosFinal', label: 'Pontos totais', unidade: 'pontos' },
+    { valor: 'clientesCampanha', label: 'Clientes únicos', unidade: 'clientes' },
+  ];
+
+  const METRICAS_META_INDIVIDUAL = [
+    ...METRICAS_META_COLETIVA,
+    { valor: 'mix', label: 'Mix de categorias', unidade: '%' },
+    { valor: 'crescimentoFaturamento', label: 'Crescimento de faturamento', unidade: '%' },
+    { valor: 'crescimentoKg', label: 'Crescimento de volume', unidade: '%' },
+    { valor: 'pedidos', label: 'Pedidos', unidade: 'pedidos' },
   ];
 
   const TEMPLATES_REGRAS = {
@@ -136,24 +152,36 @@
 
   window.campTabRegrasHtml = function regrasStudioHtml(regras = []) {
     const campanha = estadoModal()?.campanha || {};
-    const metricaAtual = campanha.metricaPrincipal || 'pontosFinal';
+    const metricasAtuais = Array.isArray(campanha.metricasPrincipais) && campanha.metricasPrincipais.length
+      ? campanha.metricasPrincipais
+      : [campanha.metricaPrincipal || 'pontosFinal'];
     const tipoResultado = campanha.tipoResultado || 'TOP_N_ENTRE_ELEGIVEIS';
+    const metaModo = campanha.metaModo || (campanha.metaColetivaValor != null || campanha.metaColetivaPct != null ? 'COLETIVA' : campanha.metaIndividualValor != null ? 'INDIVIDUAL' : 'NENHUMA');
+    const metaColetivaMetrica = campanha.metaColetivaMetrica || (campanha.metaColetivaCampo === 'valor' ? 'faturamentoCampanha' : campanha.metaColetivaCampo === 'kg' ? 'kgCampanha' : 'positivacao');
+    const metaColetivaValor = campanha.metaColetivaValor ?? campanha.metaColetivaPct ?? '';
+    const metaIndividualMetrica = campanha.metaIndividualMetrica || 'positivacao';
+    const metaIndividualValor = campanha.metaIndividualValor ?? '';
     return `<div class="cs-rules-studio">
       <section class="cs-ranking-setup">
         <div class="section-title">Como o ranking principal será definido?</div>
-        <p>Escolha a métrica que ordena os vendedores. As regras abaixo decidem quem está elegível.</p>
-        <input type="hidden" id="cf_metricaPrincipal" value="${esc(metricaAtual)}">
+        <p>Você pode selecionar mais de uma métrica. A ordem de seleção define a prioridade: a primeira ordena, a segunda resolve empate, e assim por diante.</p>
+        <input type="hidden" id="cf_metricasPrincipais" value="${esc(JSON.stringify(metricasAtuais))}">
+        <input type="hidden" id="cf_metricaPrincipal" value="${esc(metricasAtuais[0] || 'pontosFinal')}">
         <div class="cs-metric-grid">
-          ${METRICAS_RANKING.map((metrica) => `<button type="button" class="cs-metric-card ${metrica.valor === metricaAtual ? 'active' : ''}" data-metrica="${metrica.valor}" onclick="csSelecionarMetrica('${metrica.valor}')">
-            ${icon(metrica.icon)}<strong>${metrica.label}</strong><span>${metrica.descricao}</span>
-          </button>`).join('')}
+          ${METRICAS_RANKING.map((metrica) => {
+            const ordem = metricasAtuais.indexOf(metrica.valor);
+            return `<button type="button" class="cs-metric-card ${ordem >= 0 ? 'active' : ''}" data-metrica="${metrica.valor}" onclick="csSelecionarMetrica('${metrica.valor}')">
+              <b class="cs-metric-order" ${ordem < 0 ? 'hidden' : ''}>${ordem + 1}</b>${icon(metrica.icon)}<strong>${metrica.label}</strong><span>${metrica.descricao}</span>
+            </button>`;
+          }).join('')}
         </div>
+        <div class="cs-ranking-sequence" id="csRankingSequence"></div>
         <div class="cs-ranking-options">
           <label>Modelo de premiação
             <select id="cf_tipoResultado" onchange="csAtualizarTipoResultado()">
               <option value="TOP_N_ENTRE_ELEGIVEIS" ${tipoResultado === 'TOP_N_ENTRE_ELEGIVEIS' ? 'selected' : ''}>Premiar os melhores entre os elegíveis</option>
               <option value="TOP_N" ${tipoResultado === 'TOP_N' ? 'selected' : ''}>Premiar Top N, sem filtro de elegibilidade</option>
-              <option value="TODOS_QUE_ATINGIREM" ${tipoResultado === 'TODOS_QUE_ATINGIREM' ? 'selected' : ''}>Premiar todos que cumprirem as regras</option>
+              <option value="TODOS_QUE_ATINGIREM" ${tipoResultado === 'TODOS_QUE_ATINGIREM' ? 'selected' : ''}>Premiar todos que cumprirem as metas e regras</option>
             </select>
           </label>
           <label id="csQuantidadeClassificadosWrap">Quantidade de classificados
@@ -162,9 +190,41 @@
         </div>
       </section>
 
+      <section class="cs-goals-setup">
+        <div class="section-title">Como a meta da campanha funciona?</div>
+        <p>Meta coletiva mede o resultado total da equipe. Meta individual define o mínimo que cada vendedor precisa alcançar.</p>
+        <div class="cs-goal-mode-grid">
+          ${[
+            ['NENHUMA', 'Sem meta', 'Somente ranking e regras'],
+            ['COLETIVA', 'Meta coletiva', 'Ex.: equipe alcançar 100 positivações'],
+            ['INDIVIDUAL', 'Meta individual', 'Ex.: cada vendedor alcançar 4 positivações'],
+            ['AMBAS', 'Coletiva + individual', 'As duas condições precisam ser cumpridas'],
+          ].map(([valor, titulo, texto]) => `<button type="button" class="cs-goal-mode ${metaModo === valor ? 'active' : ''}" data-goal-mode="${valor}" onclick="csSelecionarModoMeta('${valor}')"><strong>${titulo}</strong><span>${texto}</span></button>`).join('')}
+        </div>
+        <input type="hidden" id="cf_metaModo" value="${esc(metaModo)}">
+        <div class="cs-goal-configs">
+          <article class="cs-goal-config" id="csMetaColetivaBox">
+            <header><span>${icon('users-round')}</span><div><strong>Meta coletiva</strong><small>Somatório do desempenho dos vendedores ativos</small></div></header>
+            <div class="cs-goal-fields">
+              <label>Métrica<select id="cf_metaColetivaMetrica">${METRICAS_META_COLETIVA.map((m) => `<option value="${m.valor}" ${m.valor === metaColetivaMetrica ? 'selected' : ''}>${m.label}</option>`).join('')}</select></label>
+              <label>Meta mínima<input type="number" step="0.01" min="0" id="cf_metaColetivaValor" value="${esc(metaColetivaValor)}" placeholder="Ex.: 100"></label>
+            </div>
+            <p class="cs-goal-example">Exemplo: a equipe precisa alcançar pelo menos <b>100 positivações líquidas</b>.</p>
+          </article>
+          <article class="cs-goal-config" id="csMetaIndividualBox">
+            <header><span>${icon('user-round-check')}</span><div><strong>Meta individual</strong><small>Aplicada separadamente a cada vendedor</small></div></header>
+            <div class="cs-goal-fields">
+              <label>Métrica<select id="cf_metaIndividualMetrica">${METRICAS_META_INDIVIDUAL.map((m) => `<option value="${m.valor}" ${m.valor === metaIndividualMetrica ? 'selected' : ''}>${m.label}</option>`).join('')}</select></label>
+              <label>Meta mínima<input type="number" step="0.01" min="0" id="cf_metaIndividualValor" value="${esc(metaIndividualValor)}" placeholder="Ex.: 4"></label>
+            </div>
+            <p class="cs-goal-example">Exemplo: cada vendedor precisa alcançar pelo menos <b>4 positivações líquidas</b> para ficar elegível.</p>
+          </article>
+        </div>
+      </section>
+
       <section class="cs-rule-library">
-        <div class="section-title">Adicionar regra</div>
-        <p>Selecione um bloco pronto e ajuste apenas o valor. Nada de montar uma equação administrativa em sete colunas.</p>
+        <div class="section-title">Adicionar regra complementar</div>
+        <p>Use regras adicionais somente quando a campanha exigir algo além da meta principal.</p>
         <div class="cs-template-grid">
           ${Object.entries(TEMPLATES_REGRAS).map(([id, template]) => `<button type="button" class="cs-template" onclick="csAdicionarRegra('${id}')">
             <span>${icon(template.icon)}</span><strong>${template.nome}</strong><small>${template.texto}</small><b>${icon('plus')}</b>
@@ -178,16 +238,58 @@
       <section class="cs-rules-list-section">
         <div class="section-title"><span>Regras configuradas</span><span class="cs-count" id="csRegrasCount">${regras.length}</span></div>
         <div id="regrasList" class="cs-rules-list">
-          ${regras.length ? regras.map(window.regraRowHtml).join('') : '<div class="cs-rules-empty" id="csRegrasEmpty">Selecione acima as regras necessárias para esta campanha.</div>'}
+          ${regras.length ? regras.map(window.regraRowHtml).join('') : '<div class="cs-rules-empty" id="csRegrasEmpty">Nenhuma regra complementar configurada. A campanha pode funcionar apenas com as metas acima.</div>'}
         </div>
       </section>
     </div>`;
   };
 
+  function lerMetricasPrincipais() {
+    const input = document.getElementById('cf_metricasPrincipais');
+    try {
+      const lista = JSON.parse(input?.value || '[]');
+      return Array.isArray(lista) ? lista.filter((m) => METRICAS_RANKING.some((x) => x.valor === m)) : [];
+    } catch (_) { return []; }
+  }
+
+  function renderSequenciaRanking() {
+    const metricas = lerMetricasPrincipais();
+    const inputPrincipal = document.getElementById('cf_metricaPrincipal');
+    if (inputPrincipal) inputPrincipal.value = metricas[0] || 'pontosFinal';
+    document.querySelectorAll('.cs-metric-card').forEach((card) => {
+      const ordem = metricas.indexOf(card.dataset.metrica);
+      card.classList.toggle('active', ordem >= 0);
+      const badge = card.querySelector('.cs-metric-order');
+      if (badge) { badge.hidden = ordem < 0; badge.textContent = String(ordem + 1); }
+    });
+    const alvo = document.getElementById('csRankingSequence');
+    if (alvo) alvo.innerHTML = metricas.length
+      ? `<small>Prioridade do ranking</small><div>${metricas.map((valor, i) => { const m = METRICAS_RANKING.find((x) => x.valor === valor); return `<span><b>${i + 1}</b>${esc(m?.label || valor)}</span>`; }).join(icon('chevron-right'))}</div>`
+      : '<small>Selecione pelo menos uma métrica para ordenar o ranking.</small>';
+    atualizarIcones();
+  }
+
   window.csSelecionarMetrica = function (valor) {
-    const input = document.getElementById('cf_metricaPrincipal');
-    if (input) input.value = valor;
-    document.querySelectorAll('.cs-metric-card').forEach((card) => card.classList.toggle('active', card.dataset.metrica === valor));
+    const input = document.getElementById('cf_metricasPrincipais');
+    if (!input) return;
+    const metricas = lerMetricasPrincipais();
+    const indice = metricas.indexOf(valor);
+    if (indice >= 0) {
+      if (metricas.length === 1) return showToast('O ranking precisa ter pelo menos uma métrica.', true);
+      metricas.splice(indice, 1);
+    } else metricas.push(valor);
+    input.value = JSON.stringify(metricas);
+    renderSequenciaRanking();
+  };
+
+  window.csSelecionarModoMeta = function (modo) {
+    const input = document.getElementById('cf_metaModo');
+    if (input) input.value = modo;
+    document.querySelectorAll('[data-goal-mode]').forEach((botao) => botao.classList.toggle('active', botao.dataset.goalMode === modo));
+    const coletiva = document.getElementById('csMetaColetivaBox');
+    const individual = document.getElementById('csMetaIndividualBox');
+    if (coletiva) coletiva.hidden = !['COLETIVA', 'AMBAS'].includes(modo);
+    if (individual) individual.hidden = !['INDIVIDUAL', 'AMBAS'].includes(modo);
   };
 
   window.csAtualizarTipoResultado = function () {
@@ -282,11 +384,14 @@
     });
   };
 
-  window.ordenarComDesempate = function (lista, ordemDesempate, metricaPrincipal = 'pontosFinal') {
-    const ordem = normalizarDesempates(ordemDesempate);
+  window.ordenarComDesempate = function (lista, ordemDesempate, metricasPrincipais = ['pontosFinal']) {
+    const principais = Array.isArray(metricasPrincipais) ? metricasPrincipais : [metricasPrincipais || 'pontosFinal'];
+    const ordem = normalizarDesempates(ordemDesempate).filter((c) => !principais.includes(c.campo));
     return [...(lista || [])].sort((a, b) => {
-      const principal = (Number(b[metricaPrincipal]) || 0) - (Number(a[metricaPrincipal]) || 0);
-      if (principal !== 0) return principal;
+      for (const metrica of principais) {
+        const diferenca = (Number(b[metrica]) || 0) - (Number(a[metrica]) || 0);
+        if (diferenca !== 0) return diferenca;
+      }
       for (const criterio of ordem) {
         const aValor = Number(a[criterio.campo]) || 0;
         const bValor = Number(b[criterio.campo]) || 0;
@@ -298,23 +403,78 @@
   };
 
   let fornecedoresCache = [];
-  async function carregarFornecedores() {
-    if (fornecedoresCache.length) return fornecedoresCache;
-    const dados = await fetchJsonSeguro('/api/campanhas-data?recurso=fornecedores&limite=500');
-    fornecedoresCache = dados;
-    return dados;
+  let fornecedorBuscaTimer = null;
+  let fornecedorCarregando = false;
+
+  function normalizarListaFornecedores(dados) {
+    const lista = Array.isArray(dados) ? dados : (Array.isArray(dados?.dados) ? dados.dados : []);
+    return lista
+      .map((item) => ({
+        id: item.id ?? item.fornecedorId ?? '',
+        nome: String(item.nome ?? item.fornecedor ?? '').trim(),
+        totalProdutos: Number(item.totalProdutos ?? item.produtos ?? 0) || 0,
+        produtosAtivos: Number(item.produtosAtivos ?? 0) || 0,
+        totalGrupos: Number(item.totalGrupos ?? item.grupos ?? 0) || 0,
+        totalSubgrupos: Number(item.totalSubgrupos ?? item.subgrupos ?? 0) || 0,
+      }))
+      .filter((item) => item.nome);
   }
 
-  function renderFornecedorCards(lista) {
+  async function carregarFornecedores({ busca = '', forcar = false } = {}) {
+    const termo = String(busca || '').trim();
+    if (!termo && fornecedoresCache.length && !forcar) return fornecedoresCache;
+
+    const params = new URLSearchParams({ recurso: 'fornecedores', limite: '500' });
+    if (termo) params.set('busca', termo);
+    const dados = await fetchJsonSeguro(`/api/campanhas-data?${params.toString()}`);
+    const lista = normalizarListaFornecedores(dados);
+    if (!termo) fornecedoresCache = lista;
+    return lista;
+  }
+
+  function renderFornecedorCards(lista, opcoes = {}) {
     const grade = document.getElementById('csFornecedorGrade');
     if (!grade) return;
     const selecionado = document.getElementById('cf_fornecedor')?.value || '';
+    const termo = String(opcoes.termo || '').trim();
+
+    if (opcoes.carregando) {
+      grade.innerHTML = `<div class="cs-supplier-loading">${icon('loader-circle')} Consultando fornecedores no SQL Server...</div>`;
+      atualizarIcones();
+      return;
+    }
+
+    if (opcoes.erro) {
+      grade.innerHTML = `<div class="cs-supplier-error">
+        <strong>Não foi possível carregar os fornecedores.</strong>
+        <span>${esc(opcoes.erro.message || opcoes.erro)}</span>
+        ${opcoes.erro.dica ? `<small>${esc(opcoes.erro.dica)}</small>` : '<small>A consulta usa dbo.Produtos no banco Power BI.</small>'}
+        <button type="button" class="btn btn-primary btn-sm" onclick="csRecarregarFornecedores()">${icon('refresh-cw')} Tentar novamente</button>
+      </div>`;
+      atualizarIcones();
+      return;
+    }
+
     grade.innerHTML = lista.map((fornecedor) => `<button type="button" class="cs-supplier-card ${normalizeKey(fornecedor.nome) === normalizeKey(selecionado) ? 'active' : ''}" data-id="${esc(String(fornecedor.id ?? ''))}" data-nome="${esc(fornecedor.nome)}" onclick="csSelecionarFornecedor(this.dataset.id, this.dataset.nome)">
       <span class="cs-supplier-avatar">${esc(fornecedor.nome.slice(0, 2).toUpperCase())}</span>
       <div><strong>${esc(fornecedor.nome)}</strong><small>${Number(fornecedor.totalProdutos || 0)} produtos · ${Number(fornecedor.totalGrupos || 0)} grupos</small></div>
       <span class="cs-supplier-check">${icon('check')}</span>
-    </button>`).join('') || '<div class="cs-supplier-empty">Nenhum fornecedor encontrado.</div>';
+    </button>`).join('') || `<div class="cs-supplier-empty">${termo ? `Nenhum fornecedor encontrado para “${esc(termo)}”.` : 'Nenhum fornecedor foi retornado pelo SQL Server.'}<button type="button" class="btn btn-ghost btn-sm" onclick="csRecarregarFornecedores()">${icon('refresh-cw')} Recarregar</button></div>`;
     atualizarIcones();
+  }
+
+  async function consultarFornecedoresNaTela(termo = '', forcar = false) {
+    if (fornecedorCarregando) return;
+    fornecedorCarregando = true;
+    renderFornecedorCards([], { carregando: true });
+    try {
+      const lista = await carregarFornecedores({ busca: termo, forcar });
+      renderFornecedorCards(lista, { termo });
+    } catch (erro) {
+      renderFornecedorCards([], { erro, termo });
+    } finally {
+      fornecedorCarregando = false;
+    }
   }
 
   async function instalarSeletorFornecedor() {
@@ -325,20 +485,30 @@
     if (!document.getElementById('cf_fornecedorId')) input.insertAdjacentHTML('afterend', `<input type="hidden" id="cf_fornecedorId" value="${esc(estadoModal()?.campanha?.fornecedorId || '')}">`);
     campo.insertAdjacentHTML('afterend', `<section class="field full cs-supplier-studio" id="csFornecedorStudio">
       <div class="cs-supplier-heading"><div><label>Fornecedor da campanha *</label><p>Selecione o fornecedor primeiro. Produtos e apuração serão limitados a ele.</p></div><span class="cs-source-badge">SQL · dbo.Produtos</span></div>
-      <div class="cs-supplier-search">${icon('search')}<input id="csFornecedorBusca" placeholder="Buscar fornecedor pelo nome" oninput="csFiltrarFornecedores(this.value)"></div>
-      <div class="cs-supplier-grid" id="csFornecedorGrade"><div class="cs-supplier-loading">Consultando fornecedores do Power BI...</div></div>
+      <div class="cs-supplier-search">${icon('search')}<input id="csFornecedorBusca" placeholder="Buscar fornecedor pelo nome" oninput="csFiltrarFornecedores(this.value)"><button type="button" class="cs-supplier-refresh" onclick="csRecarregarFornecedores()" title="Recarregar fornecedores">${icon('refresh-cw')}</button></div>
+      <div class="cs-supplier-grid" id="csFornecedorGrade"></div>
     </section>`);
-    try {
-      const fornecedores = await carregarFornecedores();
-      renderFornecedorCards(fornecedores);
-    } catch (erro) {
-      document.getElementById('csFornecedorGrade').innerHTML = `<div class="cs-supplier-error">${esc(erro.message)}<small>Confira a rota /api/campanhas-data e as variáveis SQL do ambiente.</small></div>`;
-    }
+    await consultarFornecedoresNaTela('', false);
   }
 
   window.csFiltrarFornecedores = function (termo) {
-    const busca = normalizeKey(termo || '');
-    renderFornecedorCards(fornecedoresCache.filter((item) => !busca || normalizeKey(item.nome).includes(busca)));
+    clearTimeout(fornecedorBuscaTimer);
+    const busca = String(termo || '').trim();
+
+    // Resposta instantânea com o que já foi carregado.
+    if (fornecedoresCache.length) {
+      const local = fornecedoresCache.filter((item) => !busca || normalizeKey(item.nome).includes(normalizeKey(busca)));
+      renderFornecedorCards(local, { termo: busca });
+    }
+
+    // Confirma a pesquisa no servidor, inclusive quando o cache inicial falhou/vazio.
+    fornecedorBuscaTimer = setTimeout(() => consultarFornecedoresNaTela(busca, true), 350);
+  };
+
+  window.csRecarregarFornecedores = async function () {
+    fornecedoresCache = [];
+    const termo = document.getElementById('csFornecedorBusca')?.value || '';
+    await consultarFornecedoresNaTela(termo, true);
   };
 
   window.csSelecionarFornecedor = function (id, nome) {
@@ -346,7 +516,7 @@
     const inputId = document.getElementById('cf_fornecedorId');
     if (input) input.value = nome;
     if (inputId) inputId.value = id;
-    renderFornecedorCards(fornecedoresCache);
+    renderFornecedorCards(fornecedoresCache.length ? fornecedoresCache : [{ id, nome }]);
     window.cbDefinirFornecedor?.(nome, id);
     showToast(`Fornecedor selecionado: ${nome}`);
   };
@@ -414,10 +584,14 @@
       descricao: document.getElementById('cf_descricao')?.value || '',
       premiacoes: document.getElementById('cf_premiacoes')?.value || '',
       ativa: Boolean(document.getElementById('cf_ativa')?.checked),
-      metaColetivaPct: Number(document.getElementById('cf_metaColetivaPct')?.value) || null,
-      metaColetivaCampo: document.getElementById('cf_metaColetivaCampo')?.value || 'kg',
+      metaModo: document.getElementById('cf_metaModo')?.value || 'NENHUMA',
+      metaColetivaMetrica: document.getElementById('cf_metaColetivaMetrica')?.value || 'positivacao',
+      metaColetivaValor: document.getElementById('cf_metaColetivaValor')?.value === '' ? null : Number(document.getElementById('cf_metaColetivaValor')?.value),
+      metaIndividualMetrica: document.getElementById('cf_metaIndividualMetrica')?.value || 'positivacao',
+      metaIndividualValor: document.getElementById('cf_metaIndividualValor')?.value === '' ? null : Number(document.getElementById('cf_metaIndividualValor')?.value),
       minClientesBonus: Number(document.getElementById('cf_minClientesBonus')?.value) || null,
-      metricaPrincipal: document.getElementById('cf_metricaPrincipal')?.value || 'pontosFinal',
+      metricasPrincipais: lerMetricasPrincipais(),
+      metricaPrincipal: lerMetricasPrincipais()[0] || 'pontosFinal',
       tipoResultado: document.getElementById('cf_tipoResultado')?.value || 'TOP_N_ENTRE_ELEGIVEIS',
       quantidadeClassificados: Number(document.getElementById('cf_quantidadeClassificados')?.value) || 5,
       escopoProdutos: regrasProduto.length ? 'LISTA_DE_PRODUTOS' : 'FORNECEDOR_INTEIRO',
@@ -625,12 +799,21 @@
         const vendas = linhas.filter((linha) => linha.representanteId === repId);
         const metricas = metricasRepresentante(vendas, regrasProduto);
         const regraResultado = aplicarRegras(regras, metricas, metricas.pontosProdutos);
-        return { representanteId: repId, nome, regiao: '—', ativo: true, ...metricas, ...regraResultado };
+        const modoMeta = campanha.metaModo || 'NENHUMA';
+        const metaIndividualConfigurada = ['INDIVIDUAL', 'AMBAS'].includes(modoMeta) && campanha.metaIndividualValor != null;
+        const metaIndividualValorAtual = Number(metricas[campanha.metaIndividualMetrica || 'positivacao']) || 0;
+        const metaIndividualBatida = !metaIndividualConfigurada || metaIndividualValorAtual >= Number(campanha.metaIndividualValor);
+        if (!metaIndividualBatida) {
+          regraResultado.elegivel = false;
+          regraResultado.log = [...(regraResultado.log || []), `Meta individual não atingida: ${campoLabel(campanha.metaIndividualMetrica)} ${metaIndividualValorAtual} de ${campanha.metaIndividualValor}`];
+        }
+        return { representanteId: repId, nome, regiao: '—', ativo: true, ...metricas, ...regraResultado, metaIndividualConfigurada, metaIndividualMetrica: campanha.metaIndividualMetrica, metaIndividualValor: campanha.metaIndividualValor, metaIndividualValorAtual, metaIndividualBatida };
       });
 
-      const metaCampo = campanha.metaColetivaCampo === 'valor' ? 'valor' : 'kg';
-      const meta = calcularMetaColetiva(linhas, metaCampo);
-      const possuiMetaColetiva = campanha.metaColetivaPct !== null && campanha.metaColetivaPct !== undefined && campanha.metaColetivaPct !== '';
+      const modoMeta = campanha.metaModo || 'NENHUMA';
+      const possuiMetaColetiva = ['COLETIVA', 'AMBAS'].includes(modoMeta) && campanha.metaColetivaValor !== null && campanha.metaColetivaValor !== undefined && campanha.metaColetivaValor !== '';
+      const metaColetivaMetrica = campanha.metaColetivaMetrica || 'positivacao';
+      const totalMetaColetiva = resultados.reduce((soma, item) => soma + (Number(item[metaColetivaMetrica]) || 0), 0);
       const apuracao = {
         id: parcial ? `ap_${campanhaId}_parcial_s${corte.numSemanas}` : `ap_${campanhaId}`,
         campanhaId,
@@ -642,7 +825,8 @@
         ateSemana: parcial ? corte.numSemanas : null,
         intervaloCampanha: { inicio: corte.campanhaInicioISO, fim: corte.campanhaFimISO },
         intervaloAnterior: { inicio: corte.anteriorInicioISO, fim: corte.anteriorFimISO },
-        metricaPrincipal: campanha.metricaPrincipal || 'pontosFinal',
+        metricasPrincipais: Array.isArray(campanha.metricasPrincipais) && campanha.metricasPrincipais.length ? campanha.metricasPrincipais : [campanha.metricaPrincipal || 'pontosFinal'],
+        metricaPrincipal: campanha.metricaPrincipal || campanha.metricasPrincipais?.[0] || 'pontosFinal',
         desempate: campanha.desempate || [],
         tipoResultado: campanha.tipoResultado,
         quantidadeClassificados: campanha.quantidadeClassificados,
@@ -651,14 +835,18 @@
         filtroRepresentantes: dados.filtroRepresentantes,
         diagnostico: dados.resumo,
         totalProdutosEscopo: Number(dados.totalProdutosEscopo) || produtos.length,
+        metaModo: modoMeta,
         metaColetiva: {
           configurada: possuiMetaColetiva,
-          campo: metaCampo,
-          totalAtual: meta.totalAtual,
-          totalAnterior: meta.totalAnterior,
-          pctAtingido: meta.crescimentoPct,
-          pctExigido: possuiMetaColetiva ? Number(campanha.metaColetivaPct) : null,
-          batida: possuiMetaColetiva ? meta.crescimentoPct >= Number(campanha.metaColetivaPct) : null,
+          metrica: metaColetivaMetrica,
+          valorAtual: totalMetaColetiva,
+          valorExigido: possuiMetaColetiva ? Number(campanha.metaColetivaValor) : null,
+          batida: possuiMetaColetiva ? totalMetaColetiva >= Number(campanha.metaColetivaValor) : null,
+        },
+        metaIndividual: {
+          configurada: ['INDIVIDUAL', 'AMBAS'].includes(modoMeta) && campanha.metaIndividualValor != null,
+          metrica: campanha.metaIndividualMetrica || 'positivacao',
+          valorExigido: campanha.metaIndividualValor,
         },
       };
       await DB.put('apuracoes', apuracao);
@@ -681,22 +869,34 @@
 
   function statusMetaHtml(meta) {
     if (!meta?.configurada) return `<article class="cs-result-kpi neutral"><small>Meta coletiva</small><strong>Não configurada</strong><span>A campanha não exige meta coletiva.</span></article>`;
-    const nome = meta.campo === 'valor' ? 'Faturamento' : 'Volume em KG';
-    return `<article class="cs-result-kpi ${meta.batida ? 'success' : 'danger'}"><small>Meta coletiva · ${nome}</small><strong>${meta.batida ? 'BATIDA' : 'NÃO BATIDA'}</strong><span>${fmtPct(meta.pctAtingido)} de ${fmtPct(meta.pctExigido)} exigidos</span></article>`;
+    const info = [...METRICAS_META_COLETIVA, ...METRICAS_META_INDIVIDUAL].find((m) => m.valor === meta.metrica) || { label: meta.metrica, unidade: '' };
+    const formatar = (valor) => meta.metrica === 'faturamentoCampanha' ? fmtMoney(valor) : meta.metrica === 'kgCampanha' ? fmtKg(valor) : fmtNum(valor);
+    return `<article class="cs-result-kpi ${meta.batida ? 'success' : 'danger'}"><small>Meta coletiva · ${esc(info.label)}</small><strong>${meta.batida ? 'BATIDA' : 'NÃO BATIDA'}</strong><span>${formatar(meta.valorAtual)} de ${formatar(meta.valorExigido)} exigidos</span></article>`;
+  }
+
+  function valorMetricasPrincipais(resultado, metricas) {
+    return (metricas || []).map((metrica, indice) => {
+      const info = METRICAS_RANKING.find((item) => item.valor === metrica) || { label: metrica };
+      return `<span class="cs-multi-metric"><b>${indice + 1}</b><small>${esc(info.label)}</small><strong>${valorMetrica(resultado, metrica)}</strong></span>`;
+    }).join('');
   }
 
   window.desenharApuracao = function desenharApuracaoSql(apuracao) {
     const alvo = document.getElementById('apuracaoResultado');
     if (!alvo) return;
-    const metrica = apuracao.metricaPrincipal || 'pontosFinal';
-    const todosOrdenados = window.ordenarComDesempate(apuracao.resultados || [], apuracao.desempate, metrica);
+    const metricas = Array.isArray(apuracao.metricasPrincipais) && apuracao.metricasPrincipais.length ? apuracao.metricasPrincipais : [apuracao.metricaPrincipal || 'pontosFinal'];
+    const metrica = metricas[0];
+    const todosOrdenados = window.ordenarComDesempate(apuracao.resultados || [], apuracao.desempate, metricas);
     let classificados = apuracao.tipoResultado === 'TOP_N_ENTRE_ELEGIVEIS' ? todosOrdenados.filter((item) => item.elegivel) : [...todosOrdenados];
     if (apuracao.tipoResultado === 'TODOS_QUE_ATINGIREM') classificados = todosOrdenados.filter((item) => item.elegivel);
     else if (apuracao.quantidadeClassificados) classificados = classificados.slice(0, apuracao.quantidadeClassificados);
+    const metaColetivaBloqueiaPremiacao = apuracao.metaColetiva?.configurada && !apuracao.metaColetiva?.batida;
+    if (metaColetivaBloqueiaPremiacao) classificados = [];
     const classificadosIds = new Set(classificados.map((item) => item.representanteId));
     const fimCampanha = addDays(parseISODate(apuracao.intervaloCampanha.fim), -1);
     const fimAnterior = addDays(parseISODate(apuracao.intervaloAnterior.fim), -1);
     const metricaInfo = METRICAS_RANKING.find((item) => item.valor === metrica) || { label: metrica, icon: 'trophy' };
+    const tituloMetricas = metricas.map((m) => METRICAS_RANKING.find((item) => item.valor === m)?.label || m).join(' → ');
     const totais = (apuracao.resultados || []).reduce((acc, item) => {
       acc.faturamentoCampanha += Number(item.faturamentoCampanha) || 0;
       acc.faturamentoAnterior += Number(item.faturamentoAnterior) || 0;
@@ -723,14 +923,14 @@
       <article class="cs-result-kpi"><small>Volume da campanha</small><strong>${fmtKg(totais.kgCampanha)}</strong><span>Anterior: ${fmtKg(totais.kgAnterior)} · ${fmtPct(crescimento(totais.kgCampanha, totais.kgAnterior))}</span></article>
       <article class="cs-result-kpi"><small>Positivação líquida</small><strong>${totais.positivacao > 0 ? '+' : ''}${fmtNum(totais.positivacao)}</strong><span>Saldo agregado de clientes por vendedor</span></article>
     </div>
-    <div class="cs-apuration-heading"><div><span>${icon(metricaInfo.icon)}</span><div><small>Performance e ranking da campanha</small><strong>${esc(metricaInfo.label)}</strong></div></div><span>${classificados.length} classificado(s)</span></div>
-    <div class="table-wrap"><table class="data-table cs-ranking-table cs-performance-table"><thead><tr><th>#</th><th>Vendedor</th><th>${esc(metricaInfo.label)}</th><th>R$ campanha</th><th>R$ anterior</th><th>Δ R$</th><th>KG campanha</th><th>KG anterior</th><th>Δ KG</th><th>Clientes campanha</th><th>Clientes anterior</th><th>Positivação</th><th>Mix</th><th>Status</th></tr></thead><tbody>
+    <div class="cs-apuration-heading"><div><span>${icon(metricaInfo.icon)}</span><div><small>Performance e ranking da campanha</small><strong>${esc(tituloMetricas)}</strong></div></div><span>${classificados.length} classificado(s)</span></div>
+    <div class="table-wrap"><table class="data-table cs-ranking-table cs-performance-table"><thead><tr><th>#</th><th>Vendedor</th><th>Critérios do ranking</th><th>R$ campanha</th><th>R$ anterior</th><th>Δ R$</th><th>KG campanha</th><th>KG anterior</th><th>Δ KG</th><th>Clientes campanha</th><th>Clientes anterior</th><th>Positivação</th><th>Mix</th><th>Status</th></tr></thead><tbody>
       ${todosOrdenados.map((resultado, indice) => {
         const faltantes = (resultado.mixDetalhes || []).filter((item) => item.obrigatoria && !item.atingida).map((item) => item.nome).join(', ');
         const classificado = classificadosIds.has(resultado.representanteId);
-        const status = !resultado.elegivel ? 'Inelegível' : classificado ? 'Classificado' : 'Elegível';
+        const status = !resultado.elegivel ? (resultado.metaIndividualConfigurada && !resultado.metaIndividualBatida ? 'Meta individual não atingida' : 'Inelegível') : metaColetivaBloqueiaPremiacao ? 'Aguardando meta coletiva' : classificado ? 'Classificado' : 'Elegível';
         const statusClass = !resultado.elegivel ? 'nao' : classificado ? 'sim' : 'warn';
-        return `<tr><td><span class="rank-pos">${indice + 1}</span></td><td><strong>${esc(resultado.nome)}</strong></td><td><strong>${valorMetrica(resultado, metrica)}</strong></td><td>${fmtMoney(resultado.faturamentoCampanha)}</td><td>${fmtMoney(resultado.faturamentoAnterior)}</td><td>${fmtPct(resultado.crescimentoFaturamento)}</td><td>${fmtKg(resultado.kgCampanha)}</td><td>${fmtKg(resultado.kgAnterior)}</td><td>${fmtPct(resultado.crescimentoKg)}</td><td>${fmtNum(resultado.clientesCampanha)}</td><td>${fmtNum(resultado.clientesAnterior)}</td><td><strong class="${resultado.positivacao >= 0 ? 'cs-positive' : 'cs-negative'}">${resultado.positivacao > 0 ? '+' : ''}${fmtNum(resultado.positivacao)}</strong></td><td title="${esc(faltantes ? `Faltam: ${faltantes}` : 'Todas as categorias obrigatórias foram cumpridas')}"><strong>${fmtNum(resultado.mixCategoriasAtingidas)}/${fmtNum(resultado.mixCategoriasTotal)}</strong><small class="cs-cell-sub">${fmtPct(resultado.mix)}</small></td><td><span class="badge-eleg ${statusClass}">${status}</span></td></tr>`;
+        return `<tr><td><span class="rank-pos">${indice + 1}</span></td><td><strong>${esc(resultado.nome)}</strong></td><td><div class="cs-multi-metrics-cell">${valorMetricasPrincipais(resultado, metricas)}</div></td><td>${fmtMoney(resultado.faturamentoCampanha)}</td><td>${fmtMoney(resultado.faturamentoAnterior)}</td><td>${fmtPct(resultado.crescimentoFaturamento)}</td><td>${fmtKg(resultado.kgCampanha)}</td><td>${fmtKg(resultado.kgAnterior)}</td><td>${fmtPct(resultado.crescimentoKg)}</td><td>${fmtNum(resultado.clientesCampanha)}</td><td>${fmtNum(resultado.clientesAnterior)}</td><td><strong class="${resultado.positivacao >= 0 ? 'cs-positive' : 'cs-negative'}">${resultado.positivacao > 0 ? '+' : ''}${fmtNum(resultado.positivacao)}</strong></td><td title="${esc(faltantes ? `Faltam: ${faltantes}` : 'Todas as categorias obrigatórias foram cumpridas')}"><strong>${fmtNum(resultado.mixCategoriasAtingidas)}/${fmtNum(resultado.mixCategoriasTotal)}</strong><small class="cs-cell-sub">${fmtPct(resultado.mix)}</small></td><td><span class="badge-eleg ${statusClass}">${status}</span></td></tr>`;
       }).join('') || '<tr><td colspan="14" class="cs-table-empty">Nenhuma venda encontrada no escopo e período selecionados.</td></tr>'}
     </tbody></table></div>`;
     atualizarIcones();
@@ -747,5 +947,8 @@
 
   if (typeof ROUTES !== 'undefined') ROUTES.rankings = () => renderApuracao();
 
-  document.addEventListener('DOMContentLoaded', atualizarIcones);
+  const observerMetas = new MutationObserver(() => {
+    if (document.getElementById('cf_metricasPrincipais')) { renderSequenciaRanking(); window.csSelecionarModoMeta(document.getElementById('cf_metaModo')?.value || 'NENHUMA'); }
+  });
+  document.addEventListener('DOMContentLoaded', () => { atualizarIcones(); observerMetas.observe(document.body, { childList: true, subtree: true }); });
 })();
