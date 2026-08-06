@@ -232,6 +232,7 @@ table.data-table tr:hover td { background: var(--green-pale); }
 
 </style>
 <link rel="stylesheet" href="/assets/campaign-builder-v2.css">
+<link rel="stylesheet" href="/assets/campanhas-v4.css">
 </head>
 <body>
 
@@ -451,6 +452,13 @@ function categoriaPorId(idCategoria) {
   return nome ? toTitleCasePtBr(nome) : 'Sem categoria';
 }
 
+function imagemCatalogoUrl(url) {
+  const limpa = String(url || '').trim().replace(/\\/g, '/');
+  if (!limpa) return '';
+  if (limpa.startsWith('/img-proxy?url=') || limpa.startsWith('data:') || limpa.startsWith('blob:')) return limpa;
+  return `/img-proxy?url=${encodeURIComponent(limpa)}`;
+}
+
 const CATALOGO = {
   _cache: null,
   _carregando: null,
@@ -474,7 +482,7 @@ const CATALOGO = {
           subcategoria: p.id_subcategoria,
           precoEntrega: p.preco_entrega,
           precoRetira: p.preco_retira,
-          imagem: p.imagem,
+          imagem: imagemCatalogoUrl(p.imagem),
           descricao: p.descricao,
           destaque: !!p.destaque,
           ativo: true
@@ -1564,6 +1572,8 @@ async function sincronizarProdutosAPI() {
       peso: existente?.peso || '',
       unidade: existente?.unidade || 'un',
       valor: item.preco_entrega || item.preco_retira || existente?.valor || 0,
+      imagem: imagemCatalogoUrl(item.imagem) || existente?.imagem || '',
+      descricao: item.descricao || existente?.descricao || '',
       pontos: existente?.pontos || 0,
       multiplicador: existente?.multiplicador || 1,
       ativo: existente ? existente.ativo : true
@@ -1600,7 +1610,7 @@ function desenharProdutos(lista) {
   tbody.innerHTML = lista.length ? lista.map(p => `
     <tr style="opacity:${p.ativo === false ? .45 : 1}">
       <td><input type="checkbox" ${p.ativo !== false ? 'checked' : ''} onchange="toggleProdutoAtivo('${p.id}', this.checked)"></td>
-      <td>${p.imagem ? `<img src="${p.imagem}" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:6px;">` : '—'}</td>
+      <td>${p.imagem ? `<img src="${imagemCatalogoUrl(p.imagem)}" alt="${p.nome || ''}" class="product-thumb-large" loading="lazy" onerror="this.style.display='none'">` : '—'}</td>
       <td>${p.codigo}</td>
       <td>${p.nome}</td>
       <td>${p.categoria || '—'}</td>

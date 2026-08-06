@@ -216,3 +216,7 @@
   .cb-group-config { grid-template-columns: 1fr; }
   .cb-filters .cb-wide { grid-column: auto; }
 }
+
+/* Imagens reais do catálogo PMG */
+.cb-product-image { user-select: none; }
+.cb-product-image img { pointer-events: none; }

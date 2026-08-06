@@ -8,6 +8,8 @@
     filtros: null,
     buscaTimer: null,
     carregando: false,
+    catalogoVisual: new Map(),
+    catalogoVisualPromise: null,
   };
 
   function id() {
@@ -26,6 +28,61 @@
   function numero(valor) {
     const n = Number(valor);
     return Number.isFinite(n) ? n : 0;
+  }
+
+
+  function urlImagem(valor) {
+    const limpa = String(valor || '').trim().replace(/\\/g, '/');
+    if (!limpa) return '';
+    if (limpa.startsWith('/img-proxy?url=') || limpa.startsWith('data:') || limpa.startsWith('blob:')) return limpa;
+    return `/img-proxy?url=${encodeURIComponent(limpa)}`;
+  }
+
+  function htmlImagemProduto(produto) {
+    const imagem = urlImagem(produto?.imagem);
+    return `<div class="cb-product-image ${imagem ? '' : 'is-empty'}">
+      ${imagem ? `<img src="${esc(imagem)}" alt="${esc(produto?.nome || 'Produto')}" loading="lazy" onerror="this.parentElement.classList.add('has-error')">` : ''}
+      <span class="cb-image-fallback" aria-hidden="true">📦</span>
+    </div>`;
+  }
+
+  async function carregarCatalogoVisual() {
+    if (state.catalogoVisual.size) return state.catalogoVisual;
+    if (state.catalogoVisualPromise) return state.catalogoVisualPromise;
+
+    state.catalogoVisualPromise = (async () => {
+      try {
+        const resposta = await fetch('/api/produtos-supabase');
+        if (!resposta.ok) throw new Error(`Catálogo visual retornou ${resposta.status}`);
+        const produtos = await resposta.json();
+        state.catalogoVisual = new Map((produtos || []).map((produto) => [String(produto.id), {
+          imagem: urlImagem(produto.imagem),
+          descricao: produto.descricao || '',
+          precoEntrega: numero(produto.preco_entrega),
+          precoRetira: numero(produto.preco_retira),
+          categoriaId: produto.id_categoria,
+          subcategoriaId: produto.id_subcategoria,
+          destaque: Boolean(produto.destaque),
+        }]));
+      } catch (erro) {
+        console.warn('[campaign-builder] catálogo visual indisponível', erro);
+        state.catalogoVisual = state.catalogoVisual || new Map();
+      } finally {
+        state.catalogoVisualPromise = null;
+      }
+      return state.catalogoVisual;
+    })();
+
+    return state.catalogoVisualPromise;
+  }
+
+  function enriquecerProdutosSelecionados() {
+    state.grupos.forEach((grupo) => {
+      grupo.produtos = grupo.produtos.map((produto) => {
+        const visual = state.catalogoVisual.get(String(produto.codigo));
+        return visual ? { ...produto, ...visual, imagem: visual.imagem || produto.imagem || '' } : produto;
+      });
+    });
   }
 
   function criarGrupo(parcial = {}) {
@@ -72,6 +129,9 @@
           grupo: regra.grupoProduto || '',
           subgrupo: regra.subgrupoProduto || '',
           unidade: regra.unidadeProduto || '',
+          imagem: regra.imagemProduto || '',
+          descricao: regra.descricaoProduto || '',
+          precoEntrega: numero(regra.precoProduto),
         });
       });
 
@@ -118,6 +178,7 @@
            draggable="true"
            data-codigo="${esc(produto.codigo)}"
            ondragstart="cbDragCatalogo(event, '${esc(produto.codigo)}')">
+        ${htmlImagemProduto(produto)}
         <span class="cb-product-code">${esc(produto.codigo)}</span>
         <div class="cb-product-main">
           <div class="cb-product-name" title="${esc(produto.nome)}">${esc(produto.nome)}</div>
@@ -134,6 +195,7 @@
            data-codigo="${esc(produto.codigo)}"
            ondragstart="cbDragSelecionado(event, '${esc(produto.codigo)}', '${esc(grupoId)}')">
         <span class="handle">⠿⠿</span>
+        ${htmlImagemProduto(produto)}
         <span class="cb-product-code">${esc(produto.codigo)}</span>
         <div class="cb-product-main">
           <div class="cb-product-name" title="${esc(produto.nome)}">${esc(produto.nome)}</div>
@@ -184,7 +246,7 @@
     const alvo = document.getElementById('cbCatalogoProdutos');
     if (!alvo) return;
     if (state.carregando) {
-      alvo.innerHTML = '<div class="cb-loading">Carregando produtos do SQL Server...</div>';
+      alvo.innerHTML = '<div class="cb-loading">Carregando produtos e imagens da API PMG...</div>';
       return;
     }
     alvo.innerHTML = state.catalogo.length
@@ -247,15 +309,24 @@
         limite: '250',
       });
 
-      const resposta = await fetch('/api/campanhas-data?' + parametros.toString());
+      const [resposta] = await Promise.all([
+        fetch('/api/campanhas-data?' + parametros.toString()),
+        carregarCatalogoVisual(),
+      ]);
       const dados = await resposta.json();
       if (!resposta.ok) throw new Error(dados.erro || 'Falha ao carregar produtos');
 
-      state.catalogo = dados.map((produto) => ({
-        ...produto,
-        id: String(produto.id),
-        codigo: String(produto.codigo),
-      }));
+      state.catalogo = dados.map((produto) => {
+        const visual = state.catalogoVisual.get(String(produto.id ?? produto.codigo)) || {};
+        return {
+          ...produto,
+          ...visual,
+          imagem: visual.imagem || produto.imagem || '',
+          id: String(produto.id),
+          codigo: String(produto.codigo),
+        };
+      });
+      enriquecerProdutosSelecionados();
     } catch (erro) {
       console.error('[campaign-builder] produtos', erro);
       state.catalogo = [];
@@ -281,7 +352,7 @@
       <div class="cb-layout">
         <aside class="cb-panel">
           <div class="cb-panel-title">
-            <span>Catálogo do SQL Server</span>
+            <span>Catálogo integrado PMG</span>
             <button type="button" class="btn btn-ghost btn-sm" onclick="cbBuscarProdutos(true)">Atualizar</button>
           </div>
           <div class="cb-filters">
@@ -306,6 +377,9 @@
   window.abrirDndProdutos = async function () {
     renderizarGrupos();
     try {
+      await carregarCatalogoVisual();
+      enriquecerProdutosSelecionados();
+      renderizarGrupos();
       const filtros = await carregarFiltros();
       preencherSelect('cbFiltroFornecedor', filtros.fornecedores, 'Todos os fornecedores');
       preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
@@ -418,6 +492,9 @@
           grupoProduto: produto.grupo || '',
           subgrupoProduto: produto.subgrupo || '',
           unidadeProduto: produto.unidade || '',
+          imagemProduto: produto.imagem || '',
+          descricaoProduto: produto.descricao || '',
+          precoProduto: numero(produto.precoEntrega || produto.precoRetira),
           grupoId: grupo.id,
           grupoNome: grupo.nome.trim() || 'Categoria sem nome',
           grupoCor: grupo.cor,
