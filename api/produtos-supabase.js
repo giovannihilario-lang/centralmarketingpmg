@@ -24,7 +24,17 @@ export default async function handler(req, res) {
 
     const produtos = await upstream.json();
 
-    const registros = produtos.map((p) => ({
+    const idsRaw = String(req.query?.ids || '').trim();
+    const ids = new Set(idsRaw.split(',').map((v) => String(v).trim()).filter(Boolean).slice(0, 500));
+    const busca = String(req.query?.busca || '').trim().toLocaleLowerCase('pt-BR');
+    const limite = Math.min(Math.max(Number.parseInt(req.query?.limite, 10) || 500, 1), 500);
+    const filtrados = produtos.filter((p) => {
+      if (ids.size && !ids.has(String(p.ID))) return false;
+      if (busca && !`${p.ID} ${p.Nome || ''} ${p.Descricao || ''}`.toLocaleLowerCase('pt-BR').includes(busca)) return false;
+      return true;
+    }).slice(0, limite);
+
+    const registros = filtrados.map((p) => ({
       id: p.ID,
       id_categoria: p.ID_Categoria,
       id_subcategoria: p.ID_SubCategoria,
@@ -38,7 +48,7 @@ export default async function handler(req, res) {
       destaque: p.Produtos_em_destaque === 'Sim',
     }));
 
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=300');
     return res.status(200).json(registros);
   } catch (err) {
     console.error('[PMG /api/produtos-supabase]', err);
