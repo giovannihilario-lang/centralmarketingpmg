@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/demandas-v2.css?v=3.1.0">
+  <link rel="stylesheet" href="/assets/demandas-v2.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
@@ -93,6 +93,52 @@
           <button id="refreshBtn" class="icon-btn subtle" title="Atualizar dados"><i data-lucide="refresh-cw"></i></button>
           <button id="notificationBtn" class="icon-btn subtle notification-trigger" title="Notificações"><i data-lucide="bell"></i><b id="notificationBadge" class="notification-badge hidden">0</b></button>
           <button id="quickAddBtn" class="btn primary"><i data-lucide="plus"></i><span>Adicionar</span></button>
+
+          <div id="userMenuWrapper" class="user-menu-wrapper">
+            <button
+              id="userMenuTrigger"
+              class="user-menu-trigger"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-controls="userDropdown"
+            >
+              <span id="headerUserAvatar" class="user-menu-avatar" aria-hidden="true"></span>
+              <span class="user-menu-info">
+                <strong id="headerUserName">Usuário</strong>
+                <small id="headerUserRole">Marketing</small>
+              </span>
+              <i class="user-menu-chevron" data-lucide="chevron-down"></i>
+            </button>
+
+            <div id="userDropdown" class="user-dropdown hidden" role="menu" aria-label="Menu do usuário">
+              <div class="user-dropdown-header">
+                <span id="dropdownUserAvatar" class="user-dropdown-avatar" aria-hidden="true"></span>
+                <div>
+                  <strong id="dropdownUserName">Usuário</strong>
+                  <small id="dropdownUserEmail">Conta do PMG Connect</small>
+                </div>
+              </div>
+
+              <div class="user-dropdown-divider"></div>
+
+              <button id="userMenuProfileBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="user-round"></i><span>Meu perfil</span>
+              </button>
+              <button id="userMenuTasksBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="list-checks"></i><span>Minhas demandas</span>
+              </button>
+              <button id="userMenuAgendaBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="calendar-days"></i><span>Minha agenda</span>
+              </button>
+
+              <div class="user-dropdown-divider"></div>
+
+              <button id="logoutBtn" class="user-dropdown-item user-dropdown-logout" type="button" role="menuitem">
+                <i data-lucide="log-out"></i><span>Sair</span>
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -196,11 +242,6 @@
             <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
           </section>
 
-          <section class="avatar-filter-panel" aria-label="Filtro rápido por responsável">
-            <div class="avatar-filter-copy"><i data-lucide="user-round-search"></i><span><strong>Filtrar pela equipe</strong><small>Clique em um avatar para ver somente as demandas da pessoa.</small></span></div>
-            <div id="taskAvatarFilters" class="task-avatar-filters"></div>
-          </section>
-
           <div id="taskSmartFilterBar" class="smart-filter-bar hidden"><span id="smartFilterLabel"></span><button id="clearSmartFilter"><i data-lucide="x"></i>Limpar</button></div>
 
           <section id="taskBoard" class="task-board">
@@ -235,7 +276,6 @@
           </div>
 
           <div id="teamSummary" class="team-summary"></div>
-          <div id="teamAvatarStrip" class="team-avatar-strip"></div>
           <div id="teamInsights" class="team-insights manager-only"></div>
 
           <div class="team-controls manager-only">
@@ -359,7 +399,7 @@
 
   <div id="profileModal" class="modal-layer hidden">
     <div class="modal-card small">
-      <div class="modal-head"><div><span class="eyebrow">Seu perfil</span><h2>Como você aparece</h2><p>Sua foto identifica você nas demandas, comentários, atividades e visão da equipe.</p></div><button id="profileCloseBtn" class="icon-btn subtle" data-close-modal="profileModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Seu perfil</span><h2>Como você aparece</h2><p>Depois você pode trocar as iniciais por um avatar personalizado.</p></div><button id="profileCloseBtn" class="icon-btn subtle" data-close-modal="profileModal"><i data-lucide="x"></i></button></div>
       <form id="profileForm">
         <div class="modal-body">
           <div class="profile-preview"><div id="profileAvatar"></div><div><strong id="profilePreviewName">Seu nome</strong><span id="profilePreviewJob">Marketing</span></div></div>
@@ -393,6 +433,6 @@
 
   <div id="toastStack" class="toast-stack"></div>
 
-  <script src="/assets/demandas-v2.js?v=3.1.0"></script>
+  <script src="/assets/demandas-v2.js"></script>
 </body>
 </html>

@@ -310,9 +310,16 @@ const MAPA_CATEGORIAS_API = {
 function categoriaPorIdAPI(idCategoria) {
   return MAPA_CATEGORIAS_API[String(idCategoria)] || '';
 }
-// 'produtos' (cache do catálogo) e 'config' (preferência de tema) continuam
-// no navegador: são dados pessoais, não precisam ser vistos pela equipe toda.
-const STORES_LOCAIS = ['produtos', 'config'];
+// Em localhost/LAN na porta 3001, os dados estruturais usam a API Node local.
+// Na Vercel não existe acesso ao /local-api do computador do usuário, então todos
+// os stores passam a usar IndexedDB. Isso evita o 404 e mantém a plataforma utilizável.
+const API_CAMPANHAS_LOCAL_DISPONIVEL =
+  window.location.port === '3001' ||
+  ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+window.CAMPANHAS_API_LOCAL = API_CAMPANHAS_LOCAL_DISPONIVEL;
+const STORES_LOCAIS = API_CAMPANHAS_LOCAL_DISPONIVEL
+  ? ['produtos', 'config']
+  : [...STORES];
 
 let _db = null;
 
@@ -2362,7 +2369,7 @@ async function limparTudo() {
 }
 
 </script>
-<script src="/assets/campaign-builder-v2.js"></script>
-<script src="/assets/campanhas-v3.js?v=3.1.0"></script>
+<script src="/assets/campaign-builder-v2.js?v=3.2.0"></script>
+<script src="/assets/campanhas-v3.js?v=3.2.0"></script>
 </body>
 </html>

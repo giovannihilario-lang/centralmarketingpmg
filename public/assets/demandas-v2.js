@@ -259,6 +259,7 @@ function renderAll() {
 function renderShell() {
   $('sideUserAvatar').innerHTML = avatarHTML(state.me, 'sm');
   $('sideUserName').textContent = state.me?.nome || 'Colaborador'; $('sideUserRole').textContent = state.me?.role || 'colaborador';
+  renderUserMenu();
   $$('.manager-only').forEach(el => el.classList.toggle('hidden', !isManager()));
   const activeTasks = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
   const mine = activeTasks.filter(task => task.responsavel_id === state.me?.id);
@@ -1014,6 +1015,72 @@ async function handleUrlActions() {
 function openMobileSidebar() { $('sidebar').classList.add('open'); $('sidebarBackdrop').classList.remove('hidden'); }
 function closeMobileSidebar() { $('sidebar').classList.remove('open'); $('sidebarBackdrop').classList.add('hidden'); }
 
+
+/* =========================================================
+   MENU DO USUÁRIO E LOGOUT
+   ========================================================= */
+function renderUserMenu() {
+  if (!state.me) return;
+
+  const name = state.me.nome || 'Usuário';
+  const role = state.me.cargo || (state.me.role === 'gestor' ? 'Gestor' : 'Colaborador');
+  const email = state.session?.user?.email || 'Conta do PMG Connect';
+
+  if ($('headerUserName')) $('headerUserName').textContent = name;
+  if ($('headerUserRole')) $('headerUserRole').textContent = role;
+  if ($('dropdownUserName')) $('dropdownUserName').textContent = name;
+  if ($('dropdownUserEmail')) $('dropdownUserEmail').textContent = email;
+  if ($('headerUserAvatar')) $('headerUserAvatar').innerHTML = avatarHTML(state.me, 'sm');
+  if ($('dropdownUserAvatar')) $('dropdownUserAvatar').innerHTML = avatarHTML(state.me, 'md');
+}
+
+function closeUserMenu() {
+  const trigger = $('userMenuTrigger');
+  const dropdown = $('userDropdown');
+  if (!trigger || !dropdown) return;
+
+  dropdown.classList.add('hidden');
+  trigger.setAttribute('aria-expanded', 'false');
+}
+
+function toggleUserMenu(event) {
+  event?.stopPropagation();
+
+  const trigger = $('userMenuTrigger');
+  const dropdown = $('userDropdown');
+  if (!trigger || !dropdown) return;
+
+  const opening = dropdown.classList.contains('hidden');
+  dropdown.classList.toggle('hidden', !opening);
+  trigger.setAttribute('aria-expanded', String(opening));
+
+  if (opening) refreshIcons();
+}
+
+async function logout() {
+  if (!window.confirm('Deseja realmente sair da sua conta?')) return;
+
+  closeUserMenu();
+  setLoading(true);
+
+  try {
+    if (state.realtime && db) {
+      await db.removeChannel(state.realtime);
+      state.realtime = null;
+    }
+
+    const { error } = await db.auth.signOut();
+    if (error) throw error;
+
+    window.location.replace('/demandas.html');
+  } catch (error) {
+    console.error('[Demandas] Falha ao sair:', error);
+    toast(`Não foi possível sair: ${errorMessage(error)}`, 'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
 function bindEvents() {
   $('authForm').addEventListener('submit', async event => {
     event.preventDefault(); $('authError').classList.add('hidden'); setLoading(true);
@@ -1036,6 +1103,11 @@ function bindEvents() {
   $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
   $('enablePushBtn').addEventListener('click', enablePush); $('disablePushBtn').addEventListener('click', disablePush); $('testPushBtn').addEventListener('click', testPush);
   $('profileBtn').addEventListener('click', () => openProfile(false));
+  $('userMenuTrigger')?.addEventListener('click', toggleUserMenu);
+  $('userMenuProfileBtn')?.addEventListener('click', () => { closeUserMenu(); openProfile(false); });
+  $('userMenuTasksBtn')?.addEventListener('click', () => { closeUserMenu(); applySmartFilter('minhas'); });
+  $('userMenuAgendaBtn')?.addEventListener('click', () => { closeUserMenu(); switchView('agenda'); });
+  $('logoutBtn')?.addEventListener('click', logout);
   $('teamNewDemandBtn')?.addEventListener('click', () => openQuickAdd('demanda'));
   $('teamSearch')?.addEventListener('input', debounce(event => { state.teamSearch = event.target.value; renderEquipe(); }, 120));
   $('teamSort')?.addEventListener('change', event => { state.teamSort = event.target.value; renderEquipe(); });
@@ -1055,6 +1127,7 @@ function bindEvents() {
   $('addOnSelectedDay').addEventListener('click', () => openQuickAdd('lembrete', { date: state.selectedDate }));
   $('openSidebarBtn').addEventListener('click', openMobileSidebar); $('closeSidebarBtn').addEventListener('click', closeMobileSidebar); $('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
   document.addEventListener('click', event => {
+    if (!$('userMenuWrapper')?.contains(event.target)) closeUserMenu();
     const avatarFilter = event.target.closest('[data-avatar-filter]');
     if (avatarFilter) { $('taskAssigneeFilter').value = avatarFilter.dataset.avatarFilter; renderDemandas(); return; }
     const person = event.target.closest('[data-open-person]'); if (person) openPerson(person.dataset.openPerson);
@@ -1075,7 +1148,7 @@ function bindEvents() {
   document.addEventListener('keydown', event => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openSearch(); }
     if ((event.key === 'Enter' || event.key === ' ') && document.activeElement?.matches?.('[data-open-person]')) { event.preventDefault(); openPerson(document.activeElement.dataset.openPerson); }
-    if (event.key === 'Escape') { closeSearch(); $$('.modal-layer:not(.hidden)').forEach(modal => { if (modal.id !== 'profileModal' || modal.dataset.required !== '1') closeModal(modal.id); }); closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); }
+    if (event.key === 'Escape') { closeUserMenu(); closeSearch(); $$('.modal-layer:not(.hidden)').forEach(modal => { if (modal.id !== 'profileModal' || modal.dataset.required !== '1') closeModal(modal.id); }); closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); }
   });
 }
 async function markNotificationAndOpen(element) {
