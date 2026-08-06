@@ -1,244 +1,241 @@
-// PMG Connect — API local de Campanhas V3.6.3
-// Mesmo padrão de conexão do Dashboard Regional: uma conexão por invocação,
-// fechamento garantido e resposta JSON em qualquer falha tratável.
+/**
+ * PMG Connect — Campanhas API local 4.0
+ *
+ * Arquitetura igual ao Dashboard Regional:
+ *   navegador/Vercel -> http://localhost:3001/api/campanhas-data -> SQL Server
+ *
+ * Diferença importante: dimensões estáticas (fornecedores, representantes e
+ * produtos por fornecedor) usam cache em memória + cache em disco. A conexão
+ * SQL é compartilhada pelo src/lib/db.js e é aquecida em segundo plano quando
+ * o servidor inicia. Assim o clique em "Nova campanha" nunca depende do SQL.
+ */
 
-import sql from 'mssql';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getPool, resetPool, sql, diagnosticoConfiguracaoSql } from '../src/lib/db.js';
 
-const CACHE = new Map();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CACHE_PATH = path.resolve(__dirname, '../data/campanhas-sql-cache.json');
+const CACHE_VERSION = 2;
+const TTL_DIMENSOES = 30 * 60 * 1000;
+const TTL_PRODUTOS = 20 * 60 * 1000;
 
-function texto(valor) {
-  return String(valor ?? '').trim();
+const state = {
+  fornecedores: [],
+  representantes: [],
+  produtos: new Map(),
+  atualizadoEm: null,
+  carregadoDoDisco: false,
+  aquecendo: false,
+  ultimoErro: null,
+};
+
+const inflight = new Map();
+let gravacaoPendente = null;
+
+const text = (value) => String(value ?? '').trim();
+const norm = (value) => text(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+const unique = (arr) => [...new Set(arr.filter(Boolean))];
+const nowIso = () => new Date().toISOString();
+
+function numeroInteiro(value, fallback = 50, max = 5000) {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, max);
 }
 
-function env(...nomes) {
-  for (const nome of nomes) {
-    const valor = process.env[nome];
-    if (valor !== undefined && texto(valor)) return texto(valor);
-  }
-  return '';
+function cacheKeyFornecedor(query = {}) {
+  const id = Number.parseInt(query.fornecedorId, 10);
+  if (Number.isFinite(id)) return `id:${id}`;
+  return `nome:${norm(query.fornecedor)}`;
 }
 
-function inteiro(valor, padrao = 100, maximo = 1000) {
-  const numero = Number.parseInt(valor, 10);
-  if (!Number.isFinite(numero) || numero <= 0) return padrao;
-  return Math.min(numero, maximo);
-}
-
-function listaInteiros(valor, maximo = 1000) {
-  const lista = Array.isArray(valor) ? valor : [];
-  return [...new Set(lista.map((item) => Number.parseInt(item, 10)).filter(Number.isFinite))].slice(0, maximo);
-}
-
-function listaTextos(valor, maximo = 300) {
-  const lista = Array.isArray(valor) ? valor : [];
-  return [...new Set(lista.map(texto).filter(Boolean))].slice(0, maximo);
-}
-
-function obterConfigSql() {
-  const server = env('SQL_SERVER', 'AZURE_SQL_SERVER');
-  const database = env('SQL_DATABASE', 'AZURE_SQL_DATABASE');
-  const user = env('SQL_USER', 'AZURE_SQL_USER');
-  const password = env('SQL_PASSWORD', 'AZURE_SQL_PASSWORD');
-
-  const faltando = [];
-  if (!server) faltando.push('SQL_SERVER ou AZURE_SQL_SERVER');
-  if (!database) faltando.push('SQL_DATABASE ou AZURE_SQL_DATABASE');
-  if (!user) faltando.push('SQL_USER ou AZURE_SQL_USER');
-  if (!password) faltando.push('SQL_PASSWORD ou AZURE_SQL_PASSWORD');
-
-  if (faltando.length) {
-    const erro = new Error(`Configuração SQL incompleta: ${faltando.join(', ')}`);
-    erro.code = 'SQL_ENV_MISSING';
-    throw erro;
-  }
-
+function produtoPublico(row) {
   return {
-    server,
-    database,
-    user,
-    password,
-    port: Number(env('SQL_PORT')) || 1433,
-    connectionTimeout: Number(env('SQL_CONNECTION_TIMEOUT')) || 25000,
-    requestTimeout: Number(env('SQL_REQUEST_TIMEOUT')) || 55000,
-    pool: {
-      max: 3,
-      min: 0,
-      idleTimeoutMillis: 10000,
-    },
-    options: {
-      encrypt: env('SQL_ENCRYPT').toLowerCase() !== 'false',
-      trustServerCertificate: env('SQL_TRUST_SERVER_CERTIFICATE').toLowerCase() === 'true',
-      enableArithAbort: true,
-      appName: 'PMG Connect Campanhas Local',
-    },
+    id: Number(row.id ?? row.codigo),
+    codigo: Number(row.codigo ?? row.id),
+    nome: text(row.nome),
+    unidade: text(row.unidade),
+    fatorUnidade: Number(row.fatorUnidade) || 0,
+    master: Number(row.master) || 0,
+    tipoCarga: text(row.tipoCarga),
+    grupo: text(row.grupo),
+    subgrupo: text(row.subgrupo),
+    fornecedorId: Number(row.fornecedorId) || null,
+    fornecedor: text(row.fornecedor),
+    fabricante: text(row.fabricante),
+    status: text(row.status),
   };
 }
 
-async function comPool(executar) {
-  let pool;
+async function carregarCacheDisco() {
   try {
-    pool = new sql.ConnectionPool(obterConfigSql());
-    await pool.connect();
-    return await executar(pool);
-  } finally {
-    if (pool) {
-      try {
-        await pool.close();
-      } catch (erroFechamento) {
-        console.warn('[campanhas-data] Não foi possível fechar o pool:', erroFechamento?.message);
-      }
+    const raw = await fs.readFile(CACHE_PATH, 'utf8');
+    const data = JSON.parse(raw);
+    if (data?.version !== CACHE_VERSION) return;
+    state.fornecedores = Array.isArray(data.fornecedores) ? data.fornecedores : [];
+    state.representantes = Array.isArray(data.representantes) ? data.representantes : [];
+    state.atualizadoEm = data.atualizadoEm || null;
+    state.carregadoDoDisco = true;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.warn('[campanhas] cache em disco:', error.message);
+  }
+}
+
+const discoPronto = carregarCacheDisco();
+
+async function salvarCacheDisco() {
+  if (gravacaoPendente) return gravacaoPendente;
+  gravacaoPendente = (async () => {
+    try {
+      await fs.mkdir(path.dirname(CACHE_PATH), { recursive: true });
+      const payload = {
+        version: CACHE_VERSION,
+        atualizadoEm: state.atualizadoEm,
+        fornecedores: state.fornecedores,
+        representantes: state.representantes,
+      };
+      const temp = `${CACHE_PATH}.tmp`;
+      await fs.writeFile(temp, JSON.stringify(payload), 'utf8');
+      await fs.rename(temp, CACHE_PATH);
+    } catch (error) {
+      console.warn('[campanhas] não foi possível persistir o cache:', error.message);
+    } finally {
+      gravacaoPendente = null;
     }
-  }
+  })();
+  return gravacaoPendente;
 }
 
-function chaveCache(recurso, parametros = {}) {
-  const limpos = {};
-  for (const chave of Object.keys(parametros).sort()) {
-    if (parametros[chave] !== undefined) limpos[chave] = parametros[chave];
-  }
-  return `${recurso}:${JSON.stringify(limpos)}`;
+async function executarSql(chave, fn, { retry = true } = {}) {
+  if (inflight.has(chave)) return inflight.get(chave);
+  const promise = (async () => {
+    try {
+      const pool = await getPool();
+      return await fn(pool);
+    } catch (error) {
+      const code = error?.code || error?.originalError?.code;
+      if (retry && ['ESOCKET', 'ECONNRESET', 'ETIMEOUT', 'ENOTOPEN', 'ECONNCLOSED'].includes(code)) {
+        await resetPool();
+        const pool = await getPool();
+        return fn(pool);
+      }
+      throw error;
+    } finally {
+      inflight.delete(chave);
+    }
+  })();
+  inflight.set(chave, promise);
+  return promise;
 }
 
-async function comCache(recurso, parametros, ttlMs, carregar) {
-  const chave = chaveCache(recurso, parametros);
-  const item = CACHE.get(chave);
-  if (item && Date.now() < item.expiraEm) return item.dados;
-
-  const dados = await carregar();
-  CACHE.set(chave, { dados, expiraEm: Date.now() + ttlMs });
-  return dados;
-}
-
-function dataSql(valor, nome) {
-  const limpo = texto(valor).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(limpo)) {
-    const erro = new Error(`Data inválida em ${nome}`);
-    erro.code = 'DATA_INVALIDA';
-    throw erro;
-  }
-  const [ano, mes, dia] = limpo.split('-').map(Number);
-  const data = new Date(Date.UTC(ano, mes - 1, dia, 12, 0, 0));
-  if (Number.isNaN(data.getTime())) {
-    const erro = new Error(`Data inválida em ${nome}`);
-    erro.code = 'DATA_INVALIDA';
-    throw erro;
-  }
-  return data;
-}
-
-function parametrosInteiros(request, prefixo, valores) {
-  return valores.map((valor, indice) => {
-    const nome = `${prefixo}${indice}`;
-    request.input(nome, sql.Int, valor);
-    return `@${nome}`;
-  }).join(', ');
-}
-
-function parametrosTextos(request, prefixo, valores) {
-  return valores.map((valor, indice) => {
-    const nome = `${prefixo}${indice}`;
-    request.input(nome, sql.NVarChar(200), valor);
-    return `@${nome}`;
-  }).join(', ');
-}
-
-async function listarFornecedores(query = {}) {
-  return comPool(async (pool) => {
-    const request = pool.request();
-    const busca = texto(query.busca);
-    const limite = inteiro(query.limite, 300, 500);
-
-    request.input('limite', sql.Int, limite);
-    request.input('busca', sql.NVarChar(220), busca ? `%${busca}%` : '');
-    request.input('buscaVazia', sql.Bit, busca ? 0 : 1);
-
-    const resultado = await request.query(`
-      WITH ProdutosNormalizados AS (
-        SELECT
-          [ID Fornecedor] AS fornecedorId,
-          [ID Produto] AS produtoId,
-          NULLIF(LTRIM(RTRIM([Fornecedor])), '') AS fornecedor,
-          NULLIF(LTRIM(RTRIM([Grupo])), '') AS grupo,
-          NULLIF(LTRIM(RTRIM([Sub-grupo])), '') AS subgrupo,
-          LTRIM(RTRIM(ISNULL([Status], ''))) AS statusProduto
-        FROM dbo.Produtos
-      )
-      SELECT TOP (@limite)
-        MIN(fornecedorId) AS id,
-        fornecedor AS nome,
-        COUNT(DISTINCT produtoId) AS totalProdutos,
-        COUNT(DISTINCT CASE WHEN UPPER(statusProduto) LIKE '%ATIV%' THEN produtoId END) AS produtosAtivos,
-        COUNT(DISTINCT grupo) AS totalGrupos,
-        COUNT(DISTINCT subgrupo) AS totalSubgrupos
-      FROM ProdutosNormalizados
-      WHERE fornecedor IS NOT NULL
-        AND (
-          @buscaVazia = 1
-          OR fornecedor LIKE @busca
-          OR CAST(fornecedorId AS varchar(30)) LIKE @busca
-        )
-      GROUP BY fornecedor
-      ORDER BY fornecedor;
+async function consultarFornecedoresSql() {
+  return executarSql('sql:fornecedores', async (pool) => {
+    const result = await pool.request().query(`
+      SELECT
+        MIN([ID Fornecedor]) AS id,
+        LTRIM(RTRIM([Fornecedor])) AS nome,
+        COUNT_BIG(*) AS totalProdutos,
+        SUM(CASE WHEN UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE 'ATIV%' THEN 1 ELSE 0 END) AS produtosAtivos
+      FROM dbo.Produtos
+      WHERE NULLIF(LTRIM(RTRIM([Fornecedor])), '') IS NOT NULL
+      GROUP BY LTRIM(RTRIM([Fornecedor]))
+      ORDER BY LTRIM(RTRIM([Fornecedor]));
     `);
-
-    return resultado.recordset.map((item) => ({
-      id: item.id,
-      nome: texto(item.nome),
-      totalProdutos: Number(item.totalProdutos) || 0,
-      produtosAtivos: Number(item.produtosAtivos) || 0,
-      totalGrupos: Number(item.totalGrupos) || 0,
-      totalSubgrupos: Number(item.totalSubgrupos) || 0,
+    return result.recordset.map((row) => ({
+      id: Number(row.id) || null,
+      nome: text(row.nome),
+      totalProdutos: Number(row.totalProdutos) || 0,
+      produtosAtivos: Number(row.produtosAtivos) || 0,
     })).filter((item) => item.nome);
   });
 }
 
-async function listarProdutos(query = {}) {
-  return comPool(async (pool) => {
+async function consultarRepresentantesSql() {
+  return executarSql('sql:representantes', async (pool) => {
+    const result = await pool.request().query(`
+      SELECT
+        LTRIM(RTRIM([Vendedor])) AS nome,
+        COUNT(DISTINCT [ID Cliente]) AS clientesCarteira,
+        COUNT(DISTINCT CASE
+          WHEN UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE 'ATIV%'
+          THEN [ID Cliente]
+        END) AS clientesAtivos
+      FROM dbo.Clientes
+      WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
+      GROUP BY LTRIM(RTRIM([Vendedor]))
+      HAVING COUNT(DISTINCT CASE
+        WHEN UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE 'ATIV%'
+        THEN [ID Cliente]
+      END) > 0
+      ORDER BY LTRIM(RTRIM([Vendedor]));
+    `);
+    return result.recordset.map((row) => ({
+      id: `sql:${text(row.nome)}`,
+      nome: text(row.nome),
+      ativo: true,
+      clientesCarteira: Number(row.clientesCarteira) || 0,
+      clientesAtivos: Number(row.clientesAtivos) || 0,
+      origem: 'dbo.Clientes',
+    })).filter((item) => item.nome);
+  });
+}
+
+async function aquecerDimensoes({ force = false } = {}) {
+  await discoPronto;
+  const atualizado = state.atualizadoEm ? new Date(state.atualizadoEm).getTime() : 0;
+  const fresco = atualizado && Date.now() - atualizado < TTL_DIMENSOES;
+  if (!force && fresco && state.fornecedores.length && state.representantes.length) return state;
+  if (state.aquecendo && inflight.has('warmup')) return inflight.get('warmup');
+
+  state.aquecendo = true;
+  const promise = Promise.all([consultarFornecedoresSql(), consultarRepresentantesSql()])
+    .then(([fornecedores, representantes]) => {
+      state.fornecedores = fornecedores;
+      state.representantes = representantes;
+      state.atualizadoEm = nowIso();
+      state.ultimoErro = null;
+      void salvarCacheDisco();
+      return state;
+    })
+    .catch((error) => {
+      state.ultimoErro = { message: error.message, code: error.code || error.originalError?.code || null, at: nowIso() };
+      if (!state.fornecedores.length && !state.representantes.length) throw error;
+      return state;
+    })
+    .finally(() => {
+      state.aquecendo = false;
+      inflight.delete('warmup');
+    });
+  inflight.set('warmup', promise);
+  return promise;
+}
+
+async function produtosDoFornecedor(query = {}, { force = false } = {}) {
+  await discoPronto;
+  const key = cacheKeyFornecedor(query);
+  if (key === 'nome:' || key === 'id:NaN') {
+    const error = new Error('Selecione um fornecedor antes de consultar produtos.');
+    error.code = 'FORNECEDOR_AUSENTE';
+    throw error;
+  }
+  const cached = state.produtos.get(key);
+  if (!force && cached && Date.now() - cached.time < TTL_PRODUTOS) return cached.items;
+
+  return executarSql(`sql:produtos:${key}`, async (pool) => {
     const request = pool.request();
-    const limite = inteiro(query.limite, 250, 1000);
-    const filtros = ['1 = 1'];
-    const busca = texto(query.busca);
-    const fornecedor = texto(query.fornecedor);
     const fornecedorId = Number.parseInt(query.fornecedorId, 10);
-    const grupo = texto(query.grupo);
-    const subgrupo = texto(query.subgrupo);
-    const status = texto(query.status);
-
-    request.input('limite', sql.Int, limite);
-
-    if (busca) {
-      request.input('busca', sql.NVarChar(220), `%${busca}%`);
-      filtros.push(`(
-        CAST(p.[ID Produto] AS varchar(30)) LIKE @busca
-        OR p.[Produto] LIKE @busca
-        OR p.[Fornecedor] LIKE @busca
-        OR p.[Grupo] LIKE @busca
-        OR p.[Sub-grupo] LIKE @busca
-        OR p.[Fabricante] LIKE @busca
-      )`);
-    }
+    let where;
     if (Number.isFinite(fornecedorId)) {
       request.input('fornecedorId', sql.Int, fornecedorId);
-      filtros.push('p.[ID Fornecedor] = @fornecedorId');
-    } else if (fornecedor) {
-      request.input('fornecedor', sql.NVarChar(220), fornecedor);
-      filtros.push('LTRIM(RTRIM(p.[Fornecedor])) = @fornecedor');
+      where = 'p.[ID Fornecedor] = @fornecedorId';
+    } else {
+      request.input('fornecedor', sql.NVarChar(220), text(query.fornecedor));
+      where = 'LTRIM(RTRIM(p.[Fornecedor])) = @fornecedor';
     }
-    if (grupo) {
-      request.input('grupo', sql.NVarChar(220), grupo);
-      filtros.push('p.[Grupo] = @grupo');
-    }
-    if (subgrupo) {
-      request.input('subgrupo', sql.NVarChar(220), subgrupo);
-      filtros.push('p.[Sub-grupo] = @subgrupo');
-    }
-    if (status) {
-      request.input('status', sql.NVarChar(100), status);
-      filtros.push('p.[Status] = @status');
-    }
-
-    const resultado = await request.query(`
-      SELECT TOP (@limite)
+    const result = await request.query(`
+      SELECT
         p.[ID Produto] AS id,
         p.[ID Produto] AS codigo,
         p.[Produto] AS nome,
@@ -253,349 +250,365 @@ async function listarProdutos(query = {}) {
         p.[Fabricante] AS fabricante,
         p.[Status] AS status
       FROM dbo.Produtos p
-      WHERE ${filtros.join(' AND ')}
-      ORDER BY p.[Grupo], p.[Produto];
+      WHERE ${where}
+      ORDER BY p.[Grupo], p.[Sub-grupo], p.[Produto];
     `);
-
-    return resultado.recordset;
+    const items = result.recordset.map(produtoPublico).filter((item) => Number.isFinite(item.id));
+    state.produtos.set(key, { time: Date.now(), items });
+    return items;
   });
 }
 
-async function listarFiltrosProdutos(query = {}) {
-  return comPool(async (pool) => {
-    const fornecedor = texto(query.fornecedor);
-    const fornecedorId = Number.parseInt(query.fornecedorId, 10);
+function filtrarFornecedores(query = {}) {
+  const busca = norm(query.busca);
+  const limite = numeroInteiro(query.limite, 24, 200);
+  const lista = busca
+    ? state.fornecedores.filter((item) => norm(`${item.nome} ${item.id ?? ''}`).includes(busca))
+    : state.fornecedores;
+  return lista.slice(0, limite);
+}
 
-    const consultar = async (coluna) => {
-      const request = pool.request();
-      const filtros = [`NULLIF(LTRIM(RTRIM(${coluna})), '') IS NOT NULL`];
-      if (Number.isFinite(fornecedorId)) {
-        request.input('fornecedorId', sql.Int, fornecedorId);
-        filtros.push('[ID Fornecedor] = @fornecedorId');
-      } else if (fornecedor) {
-        request.input('fornecedor', sql.NVarChar(220), fornecedor);
-        filtros.push('LTRIM(RTRIM([Fornecedor])) = @fornecedor');
-      }
-      const resultado = await request.query(`
-        SELECT DISTINCT LTRIM(RTRIM(${coluna})) AS valor
-        FROM dbo.Produtos
-        WHERE ${filtros.join(' AND ')}
-        ORDER BY LTRIM(RTRIM(${coluna}));
-      `);
-      return resultado.recordset.map((item) => texto(item.valor)).filter(Boolean);
-    };
+function filtrarRepresentantes(query = {}) {
+  const busca = norm(query.busca);
+  const limite = numeroInteiro(query.limite, 300, 1000);
+  return (busca ? state.representantes.filter((item) => norm(item.nome).includes(busca)) : state.representantes).slice(0, limite);
+}
 
-    return {
-      fornecedores: fornecedor ? [fornecedor] : [],
-      grupos: await consultar('[Grupo]'),
-      subgrupos: await consultar('[Sub-grupo]'),
-      status: await consultar('[Status]'),
-    };
+function filtrarProdutos(items, query = {}) {
+  const busca = norm(query.busca);
+  const grupo = norm(query.grupo);
+  const subgrupo = norm(query.subgrupo);
+  const status = norm(query.status);
+  const somenteAtivos = text(query.ativos).toLowerCase() !== 'false';
+  return items.filter((item) => {
+    if (somenteAtivos && item.status && !norm(item.status).includes('ativ')) return false;
+    if (grupo && norm(item.grupo) !== grupo) return false;
+    if (subgrupo && norm(item.subgrupo) !== subgrupo) return false;
+    if (status && norm(item.status) !== status) return false;
+    if (busca && !norm(`${item.id} ${item.nome} ${item.fabricante} ${item.grupo} ${item.subgrupo}`).includes(busca)) return false;
+    return true;
   });
 }
 
-async function listarRepresentantes(query = {}) {
-  return comPool(async (pool) => {
-    const request = pool.request();
-    const busca = texto(query.busca);
-    const somenteAtivos = texto(query.ativos).toLowerCase() !== 'false';
-    const diasHistorico = inteiro(query.diasHistorico, 365, 3650);
-
-    request.input('diasHistorico', sql.Int, diasHistorico);
-    request.input('busca', sql.NVarChar(220), busca ? `%${busca}%` : '');
-    request.input('buscaVazia', sql.Bit, busca ? 0 : 1);
-    request.input('somenteAtivos', sql.Bit, somenteAtivos ? 1 : 0);
-
-    const resultado = await request.query(`
-      WITH Carteira AS (
-        SELECT
-          LTRIM(RTRIM([Vendedor])) AS vendedor,
-          COUNT(DISTINCT [ID Cliente]) AS clientesCarteira,
-          COUNT(DISTINCT CASE
-            WHEN UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE 'ATIV%'
-            THEN [ID Cliente]
-          END) AS clientesAtivos
-        FROM dbo.Clientes
-        WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
-        GROUP BY LTRIM(RTRIM([Vendedor]))
-      ),
-      Historico AS (
-        SELECT
-          LTRIM(RTRIM([Vendedor])) AS vendedor,
-          COUNT(DISTINCT [ID Cliente]) AS clientesHistoricos,
-          COUNT(DISTINCT [ID Pedido de Venda]) AS pedidosHistoricos,
-          MAX([Data]) AS ultimaVenda,
-          SUM(ISNULL([Valor Total], 0)) AS faturamentoHistorico
-        FROM dbo.Vendas
-        WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
-          AND [Data] >= DATEADD(DAY, -@diasHistorico, GETDATE())
-        GROUP BY LTRIM(RTRIM([Vendedor]))
-      )
-      SELECT
-        c.vendedor,
-        c.clientesCarteira,
-        c.clientesAtivos,
-        ISNULL(h.clientesHistoricos, 0) AS clientesHistoricos,
-        ISNULL(h.pedidosHistoricos, 0) AS pedidosHistoricos,
-        h.ultimaVenda,
-        ISNULL(h.faturamentoHistorico, 0) AS faturamentoHistorico,
-        CAST(CASE WHEN c.clientesAtivos > 0 THEN 1 ELSE 0 END AS bit) AS ativo,
-        'dbo.Clientes.[Status]' AS criterioAtividade
-      FROM Carteira c
-      LEFT JOIN Historico h ON h.vendedor = c.vendedor
-      WHERE (@buscaVazia = 1 OR c.vendedor LIKE @busca)
-        AND (@somenteAtivos = 0 OR c.clientesAtivos > 0)
-      ORDER BY c.vendedor;
-    `);
-
-    return resultado.recordset;
-  });
-}
-
-function adicionarEscopo(request, payload, aliasProduto = 'p') {
-  const filtros = [];
-  const produtos = listaInteiros(payload.produtos, 1000);
-  const fornecedorId = Number.parseInt(payload.fornecedorId, 10);
-  const fornecedor = texto(payload.fornecedor);
-
-  if (produtos.length) {
-    filtros.push(`${aliasProduto}.[ID Produto] IN (${parametrosInteiros(request, 'produto', produtos)})`);
-  } else if (Number.isFinite(fornecedorId)) {
-    request.input('fornecedorId', sql.Int, fornecedorId);
-    filtros.push(`${aliasProduto}.[ID Fornecedor] = @fornecedorId`);
-  } else if (fornecedor) {
-    request.input('fornecedor', sql.NVarChar(220), fornecedor);
-    filtros.push(`LTRIM(RTRIM(${aliasProduto}.[Fornecedor])) = @fornecedor`);
-  } else {
-    const erro = new Error('Selecione um fornecedor ou ao menos um produto para apurar');
-    erro.code = 'ESCOPO_AUSENTE';
-    throw erro;
+function parseDate(value, field) {
+  const raw = text(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const error = new Error(`Data inválida em ${field}.`);
+    error.code = 'DATA_INVALIDA';
+    throw error;
   }
+  const [year, month, day] = raw.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
 
-  return { filtros, produtos };
+function uniqueIntegers(values, max = 1500) {
+  return [...new Set((Array.isArray(values) ? values : []).map(Number).filter(Number.isFinite))].slice(0, max);
+}
+
+function uniqueTexts(values, max = 500) {
+  return [...new Set((Array.isArray(values) ? values : []).map(text).filter(Boolean))].slice(0, max);
+}
+
+function addIntParams(request, prefix, values) {
+  return values.map((value, index) => {
+    const name = `${prefix}${index}`;
+    request.input(name, sql.Int, value);
+    return `@${name}`;
+  }).join(',');
+}
+
+function addTextParams(request, prefix, values) {
+  return values.map((value, index) => {
+    const name = `${prefix}${index}`;
+    request.input(name, sql.NVarChar(200), value);
+    return `@${name}`;
+  }).join(',');
 }
 
 async function consultarApuracao(payload = {}) {
-  return comPool(async (pool) => {
-    const inicioExecucao = Date.now();
-    const campanhaInicio = dataSql(payload.campanhaInicio, 'campanhaInicio');
-    const campanhaFim = dataSql(payload.campanhaFim, 'campanhaFim');
-    const anteriorInicio = dataSql(payload.anteriorInicio, 'anteriorInicio');
-    const anteriorFim = dataSql(payload.anteriorFim, 'anteriorFim');
+  const startedAt = Date.now();
+  const campanhaInicio = parseDate(payload.campanhaInicio, 'campanhaInicio');
+  const campanhaFim = parseDate(payload.campanhaFim, 'campanhaFim');
+  const anteriorInicio = parseDate(payload.anteriorInicio, 'anteriorInicio');
+  const anteriorFim = parseDate(payload.anteriorFim, 'anteriorFim');
+  const produtos = uniqueIntegers(payload.produtos);
+  const vendedores = uniqueTexts(payload.vendedores);
+  const fornecedorId = Number.parseInt(payload.fornecedorId, 10);
+  const fornecedor = text(payload.fornecedor);
 
+  if (!produtos.length && !Number.isFinite(fornecedorId) && !fornecedor) {
+    const error = new Error('Selecione o fornecedor ou os produtos participantes.');
+    error.code = 'ESCOPO_AUSENTE';
+    throw error;
+  }
+
+  return executarSql(`sql:apuracao:${Date.now()}`, async (pool) => {
     const request = pool.request();
     request.input('campanhaInicio', sql.DateTime2, campanhaInicio);
     request.input('campanhaFim', sql.DateTime2, campanhaFim);
     request.input('anteriorInicio', sql.DateTime2, anteriorInicio);
     request.input('anteriorFim', sql.DateTime2, anteriorFim);
 
-    const { filtros, produtos } = adicionarEscopo(request, payload, 'p');
-    const vendedores = listaTextos(payload.vendedores);
-    if (vendedores.length) {
-      filtros.push(`LTRIM(RTRIM(v.[Vendedor])) IN (${parametrosTextos(request, 'vendedor', vendedores)})`);
+    const filters = [];
+    if (produtos.length) {
+      filters.push(`vp.[ID Produto] IN (${addIntParams(request, 'produto', produtos)})`);
+    } else if (Number.isFinite(fornecedorId)) {
+      request.input('fornecedorId', sql.Int, fornecedorId);
+      filters.push('p.[ID Fornecedor] = @fornecedorId');
+    } else {
+      request.input('fornecedor', sql.NVarChar(220), fornecedor);
+      filters.push('LTRIM(RTRIM(p.[Fornecedor])) = @fornecedor');
     }
+    if (vendedores.length) filters.push(`LTRIM(RTRIM(v.[Vendedor])) IN (${addTextParams(request, 'vendedor', vendedores)})`);
 
-    const resultado = await request.query(`
+    const result = await request.query(`
       WITH VendedoresAtivos AS (
         SELECT DISTINCT LTRIM(RTRIM([Vendedor])) AS vendedor
         FROM dbo.Clientes
         WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
           AND UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE 'ATIV%'
-      ),
-      ClientesUnicos AS (
-        SELECT
-          [ID Cliente],
-          MAX([Cliente]) AS cliente,
-          MAX([Nome Fantasia]) AS nomeFantasia
-        FROM dbo.Clientes
-        GROUP BY [ID Cliente]
       )
       SELECT
         CASE WHEN v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim THEN 'campanha' ELSE 'anterior' END AS periodo,
         LTRIM(RTRIM(v.[Vendedor])) AS vendedor,
-        v.[ID Cliente] AS clienteCodigo,
-        MAX(c.cliente) AS cliente,
-        MAX(c.nomeFantasia) AS nomeFantasia,
-        v.[ID Pedido de Venda] AS pedido,
-        vp.[ID Produto] AS codigo,
+        v.[ID Cliente] AS clienteId,
+        vp.[ID Produto] AS produtoId,
         MAX(p.[Produto]) AS produto,
-        MAX(p.[ID Fornecedor]) AS fornecedorId,
-        MAX(LTRIM(RTRIM(p.[Fornecedor]))) AS fornecedor,
         MAX(p.[Grupo]) AS grupo,
         MAX(p.[Sub-grupo]) AS subgrupo,
-        SUM(ISNULL(vp.[Qtde PC], 0)) AS unidades,
+        COUNT(DISTINCT v.[ID Pedido de Venda]) AS pedidos,
+        SUM(ISNULL(vp.[Qtde PC], 0)) AS pecas,
         SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
-        SUM(ISNULL(vp.[Valor], 0)) AS valor,
-        SUM(ISNULL(vp.[Margem], 0)) AS margem
+        SUM(ISNULL(vp.[Valor], 0)) AS valor
       FROM dbo.Vendas v
       INNER JOIN VendedoresAtivos va ON va.vendedor = LTRIM(RTRIM(v.[Vendedor]))
       INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
       INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
-      LEFT JOIN ClientesUnicos c ON c.[ID Cliente] = v.[ID Cliente]
       WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
         AND (
           (v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim)
           OR (v.[Data] >= @anteriorInicio AND v.[Data] < @anteriorFim)
         )
-        AND ${filtros.join(' AND ')}
+        AND ${filters.join(' AND ')}
       GROUP BY
         CASE WHEN v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim THEN 'campanha' ELSE 'anterior' END,
         LTRIM(RTRIM(v.[Vendedor])),
         v.[ID Cliente],
-        v.[ID Pedido de Venda],
         vp.[ID Produto];
+
+      WITH VendedoresAtivos AS (
+        SELECT DISTINCT LTRIM(RTRIM([Vendedor])) AS vendedor
+        FROM dbo.Clientes
+        WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
+          AND UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE 'ATIV%'
+      )
+      SELECT
+        CASE WHEN v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim THEN 'campanha' ELSE 'anterior' END AS periodo,
+        LTRIM(RTRIM(v.[Vendedor])) AS vendedor,
+        COUNT(DISTINCT v.[ID Pedido de Venda]) AS pedidos
+      FROM dbo.Vendas v
+      INNER JOIN VendedoresAtivos va ON va.vendedor = LTRIM(RTRIM(v.[Vendedor]))
+      INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+      INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+      WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
+        AND (
+          (v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim)
+          OR (v.[Data] >= @anteriorInicio AND v.[Data] < @anteriorFim)
+        )
+        AND ${filters.join(' AND ')}
+      GROUP BY
+        CASE WHEN v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim THEN 'campanha' ELSE 'anterior' END,
+        LTRIM(RTRIM(v.[Vendedor]));
     `);
 
-    const linhas = resultado.recordset.map((item) => ({
-      periodo: item.periodo,
-      representanteId: `sql:${item.vendedor}`,
-      vendedor: item.vendedor,
-      clienteCodigo: item.clienteCodigo,
-      cliente: item.nomeFantasia || item.cliente || String(item.clienteCodigo),
-      pedido: item.pedido,
-      codigo: item.codigo,
-      produtoId: item.codigo,
-      produto: item.produto,
-      fornecedorId: item.fornecedorId,
-      fornecedor: item.fornecedor,
-      categoria: item.grupo,
-      grupo: item.grupo,
-      subgrupo: item.subgrupo,
-      unidades: Number(item.unidades) || 0,
-      qtdePc: Number(item.unidades) || 0,
-      kg: Number(item.kg) || 0,
-      valor: Number(item.valor) || 0,
-      margem: Number(item.margem) || 0,
-    }));
+    const linhasRecordset = result.recordsets?.[0] || result.recordset || [];
+    const pedidosRecordset = result.recordsets?.[1] || [];
 
     return {
-      fonte: 'SQL Server · banco Power BI',
+      ok: true,
+      fonte: 'SQL Server · Power BI',
       dataReferencia: 'dbo.Vendas.[Data]',
-      filtroRepresentantes: "Somente vendedores com cliente ativo em dbo.Clientes",
+      vendedoresAtivos: true,
       intervalos: {
-        campanha: { inicio: texto(payload.campanhaInicio), fimExclusivo: texto(payload.campanhaFim) },
-        anterior: { inicio: texto(payload.anteriorInicio), fimExclusivo: texto(payload.anteriorFim) },
+        campanha: { inicio: text(payload.campanhaInicio), fimExclusivo: text(payload.campanhaFim) },
+        anterior: { inicio: text(payload.anteriorInicio), fimExclusivo: text(payload.anteriorFim) },
       },
-      totalProdutosEscopo: produtos.length || null,
-      linhas,
-      resumo: {
-        linhas: linhas.length,
-        vendedores: new Set(linhas.map((item) => item.vendedor)).size,
-        clientes: new Set(linhas.map((item) => item.clienteCodigo)).size,
-        pedidos: new Set(linhas.map((item) => item.pedido)).size,
-        produtos: new Set(linhas.map((item) => item.codigo)).size,
-        duracaoMs: Date.now() - inicioExecucao,
-      },
+      linhas: linhasRecordset.map((row) => ({
+        periodo: row.periodo,
+        vendedor: text(row.vendedor),
+        clienteId: Number(row.clienteId),
+        produtoId: Number(row.produtoId),
+        produto: text(row.produto),
+        grupo: text(row.grupo),
+        subgrupo: text(row.subgrupo),
+        pedidos: Number(row.pedidos) || 0,
+        pecas: Number(row.pecas) || 0,
+        kg: Number(row.kg) || 0,
+        valor: Number(row.valor) || 0,
+      })),
+      pedidosPorVendedor: pedidosRecordset.map((row) => ({
+        periodo: row.periodo,
+        vendedor: text(row.vendedor),
+        pedidos: Number(row.pedidos) || 0,
+      })),
+      duracaoMs: Date.now() - startedAt,
     };
-  });
+  }, { retry: false });
 }
 
-async function diagnostico() {
-  const inicio = Date.now();
-  const config = obterConfigSql();
-  const sqlInfo = await comPool(async (pool) => {
-    const resultado = await pool.request().query(`
-      SELECT
-        DB_NAME() AS banco,
-        SUSER_SNAME() AS usuario,
-        GETDATE() AS dataServidor,
-        (SELECT COUNT_BIG(*) FROM dbo.Produtos) AS produtos,
-        (SELECT COUNT_BIG(*) FROM dbo.Clientes) AS clientes;
-    `);
-    return resultado.recordset[0];
-  });
-
-  return {
-    ok: true,
-    versao: '3.6.3-local',
-    arquitetura: 'Padrão Dashboard Regional: Vercel Function + SQL Server por conexão curta',
-    escritaSupabase: false,
-    sql: sqlInfo,
-    configuracao: {
-      server: config.server,
-      database: config.database,
-      port: config.port,
-      encrypt: config.options.encrypt,
-      connectionTimeout: config.connectionTimeout,
-      requestTimeout: config.requestTimeout,
-    },
-    duracaoMs: Date.now() - inicio,
+function publicError(error) {
+  const code = error?.code || error?.originalError?.code || 'CAMPANHAS_LOCAL_ERROR';
+  const hints = {
+    SQL_ENV_MISSING: 'Confira o arquivo .env do servidor local.',
+    ELOGIN: 'Confira usuário, senha e permissão no banco powerbi.',
+    ETIMEOUT: 'A conexão SQL excedeu o tempo configurado. A interface continuará responsiva; tente novamente.',
+    FORNECEDOR_AUSENTE: 'Escolha um fornecedor antes de abrir o catálogo.',
   };
-}
-
-function erroPublico(erro) {
-  const codigo = erro?.code || erro?.originalError?.code || 'CAMPANHAS_API_ERROR';
-  let dica = 'Consulte os Runtime Logs da função api/campanhas-data na Vercel.';
-  if (codigo === 'SQL_ENV_MISSING') dica = 'Confira as variáveis SQL_* ou AZURE_SQL_* e faça um novo deploy.';
-  if (codigo === 'ELOGIN') dica = 'Confira usuário, senha e permissão de acesso ao banco Power BI.';
-  if (['ETIMEOUT', 'ESOCKET', 'ECONNRESET'].includes(codigo)) dica = 'A conexão com o Azure SQL não foi concluída. Confira firewall, rede e tempo de execução.';
-
   return {
-    erro: erro?.message || 'Falha inesperada na API de campanhas',
-    codigo,
-    origem: 'api/campanhas-data',
-    versao: '3.6.3-local',
-    dica,
+    erro: error?.message || 'Falha inesperada na API local de campanhas.',
+    codigo: code,
+    origem: 'local-api/campanhas-data',
+    versao: '4.0.0',
+    dica: hints[code] || 'Confira o terminal do servidor local para mais detalhes.',
   };
 }
 
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-
-  const inicio = Date.now();
-  const recurso = texto(req.query?.recurso);
+  const startedAt = Date.now();
+  const recurso = text(req.query?.recurso || 'bootstrap');
 
   try {
+    await discoPronto;
     if (req.method === 'OPTIONS') return res.status(204).end();
 
-    if (!recurso) {
-      return res.status(400).json({
-        erro: "Informe o parâmetro 'recurso'",
-        codigo: 'PARAMETRO_AUSENTE',
-        versao: '3.6.3-local',
+    if (recurso === 'diagnostico') {
+      const sqlInfo = await executarSql('sql:diagnostico', async (pool) => {
+        const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
+        return result.recordset[0];
+      });
+      return res.status(200).json({
+        ok: true,
+        versao: '4.0.0',
+        arquitetura: 'Vercel/interface + Node local/cache + SQL Server compartilhado',
+        cache: {
+          fornecedores: state.fornecedores.length,
+          representantes: state.representantes.length,
+          atualizadoEm: state.atualizadoEm,
+          carregadoDoDisco: state.carregadoDoDisco,
+        },
+        sql: sqlInfo,
+        configuracao: diagnosticoConfiguracaoSql(),
+        duracaoMs: Date.now() - startedAt,
       });
     }
 
-    if (recurso === 'diagnostico') {
-      return res.status(200).json(await diagnostico());
+    if (recurso === 'refresh') {
+      if (!['POST', 'GET'].includes(req.method)) return res.status(405).json({ erro: 'Método não permitido.' });
+      await aquecerDimensoes({ force: true });
+      state.produtos.clear();
+      return res.status(200).json({ ok: true, atualizadoEm: state.atualizadoEm });
     }
 
     if (recurso === 'apuracao') {
-      if (req.method !== 'POST') {
-        res.setHeader('Allow', 'POST');
-        return res.status(405).json({ erro: 'Use POST para apuração', codigo: 'METODO_INVALIDO' });
+      if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para a apuração.', codigo: 'METODO_INVALIDO' });
+      const data = await consultarApuracao(req.body || {});
+      return res.status(200).json(data);
+    }
+
+    if (req.method !== 'GET') return res.status(405).json({ erro: 'Método não permitido.', codigo: 'METODO_INVALIDO' });
+
+    if (recurso === 'bootstrap') {
+      // Nunca segura a resposta esperando o Azure SQL. O aquecimento continua em
+      // segundo plano e o frontend consulta novamente sem travar o modal.
+      void aquecerDimensoes().catch((error) => console.warn('[campanhas] atualização de fundo:', error.message));
+      const ready = Boolean(state.fornecedores.length && state.representantes.length);
+      return res.status(200).json({
+        ok: true,
+        ready,
+        warming: state.aquecendo || !ready,
+        fornecedores: state.fornecedores,
+        representantes: state.representantes,
+        atualizadoEm: state.atualizadoEm,
+        stale: Boolean(state.ultimoErro),
+        ultimoErro: state.ultimoErro,
+        duracaoMs: Date.now() - startedAt,
+      });
+    }
+
+    if (recurso === 'fornecedores') {
+      void aquecerDimensoes().catch(() => {});
+      return res.status(200).json({
+        items: filtrarFornecedores(req.query),
+        total: state.fornecedores.length,
+        ready: Boolean(state.fornecedores.length),
+        warming: state.aquecendo || !state.fornecedores.length,
+        atualizadoEm: state.atualizadoEm,
+        stale: Boolean(state.ultimoErro),
+        duracaoMs: Date.now() - startedAt,
+      });
+    }
+
+    if (['representantes', 'vendedores'].includes(recurso)) {
+      void aquecerDimensoes().catch(() => {});
+      return res.status(200).json({
+        items: filtrarRepresentantes(req.query),
+        total: state.representantes.length,
+        ready: Boolean(state.representantes.length),
+        warming: state.aquecendo || !state.representantes.length,
+        atualizadoEm: state.atualizadoEm,
+        stale: Boolean(state.ultimoErro),
+        duracaoMs: Date.now() - startedAt,
+      });
+    }
+
+    if (recurso === 'produtos' || recurso === 'filtros-produtos') {
+      const all = await produtosDoFornecedor(req.query);
+      if (recurso === 'filtros-produtos') {
+        return res.status(200).json({
+          grupos: unique(all.map((item) => item.grupo)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+          subgrupos: unique(all.map((item) => item.subgrupo)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+          status: unique(all.map((item) => item.status)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+          total: all.length,
+          duracaoMs: Date.now() - startedAt,
+        });
       }
-      const dados = await consultarApuracao(req.body || {});
-      return res.status(200).json(dados);
+      const filtered = filtrarProdutos(all, req.query);
+      const total = filtered.length;
+      const page = numeroInteiro(req.query.pagina, 1, 10000);
+      const limit = text(req.query.todos).toLowerCase() === 'true' ? 5000 : numeroInteiro(req.query.limite, 60, 300);
+      const start = (page - 1) * limit;
+      return res.status(200).json({
+        items: filtered.slice(start, start + limit),
+        total,
+        pagina: page,
+        limite: limit,
+        temMais: start + limit < total,
+        filtros: {
+          grupos: unique(all.map((item) => item.grupo)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+          subgrupos: unique(all.map((item) => item.subgrupo)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+          status: unique(all.map((item) => item.status)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        },
+        cache: state.produtos.has(cacheKeyFornecedor(req.query)),
+        duracaoMs: Date.now() - startedAt,
+      });
     }
 
-    if (req.method !== 'GET') {
-      res.setHeader('Allow', 'GET');
-      return res.status(405).json({ erro: 'Método não permitido', codigo: 'METODO_INVALIDO' });
-    }
-
-    const rotas = {
-      fornecedores: () => comCache('fornecedores', req.query, 15 * 60 * 1000, () => listarFornecedores(req.query)),
-      produtos: () => comCache('produtos', req.query, 10 * 60 * 1000, () => listarProdutos(req.query)),
-      'filtros-produtos': () => comCache('filtros-produtos', req.query, 20 * 60 * 1000, () => listarFiltrosProdutos(req.query)),
-      representantes: () => comCache('representantes', req.query, 10 * 60 * 1000, () => listarRepresentantes(req.query)),
-      vendedores: () => comCache('vendedores', req.query, 10 * 60 * 1000, () => listarRepresentantes(req.query)),
-    };
-
-    const executar = rotas[recurso];
-    if (!executar) {
-      return res.status(404).json({ erro: `Recurso desconhecido: ${recurso}`, codigo: 'RECURSO_DESCONHECIDO' });
-    }
-
-    const dados = await executar();
-    res.setHeader('X-PMG-API-Version', '3.6.2');
-    res.setHeader('X-PMG-Duration-Ms', String(Date.now() - inicio));
-    return res.status(200).json(dados);
-  } catch (erro) {
-    console.error(`[api/campanhas-data:${recurso || 'sem-recurso'}]`, erro);
-    const publico = erroPublico(erro);
-    const status = publico.codigo === 'SQL_ENV_MISSING' ? 503 : 500;
-    return res.status(status).json(publico);
+    return res.status(404).json({ erro: `Recurso desconhecido: ${recurso}`, codigo: 'RECURSO_DESCONHECIDO' });
+  } catch (error) {
+    console.error(`[campanhas:${recurso}]`, error);
+    const data = publicError(error);
+    const status = ['SQL_ENV_MISSING', 'ETIMEOUT'].includes(data.codigo) ? 503 : 500;
+    return res.status(status).json(data);
   }
 }
+
+// Aquecimento assíncrono. Não bloqueia o início do servidor Express.
+setTimeout(() => {
+  void aquecerDimensoes().then(() => {
+    console.log(`[campanhas] cache pronto: ${state.fornecedores.length} fornecedores, ${state.representantes.length} representantes ativos.`);
+  }).catch((error) => {
+    console.warn('[campanhas] aquecimento inicial falhou:', error.message);
+  });
+}, 120);
