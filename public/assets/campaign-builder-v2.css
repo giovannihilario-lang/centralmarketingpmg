@@ -217,6 +217,39 @@
   .cb-filters .cb-wide { grid-column: auto; }
 }
 
-/* Imagens reais do catálogo PMG */
-.cb-product-image { user-select: none; }
-.cb-product-image img { pointer-events: none; }
+/* V3.1 — imagens do catálogo PMG */
+.cb-product-image {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  flex: 0 0 62px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #e2e9e4;
+  border-radius: 12px;
+  background: #fff;
+  user-select: none;
+}
+.cb-product-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  padding: 5px;
+  pointer-events: none;
+}
+.cb-product-image .cb-image-fallback {
+  display: none;
+  font-size: 24px;
+  opacity: .55;
+}
+.cb-product-image.is-empty .cb-image-fallback,
+.cb-product-image.has-error .cb-image-fallback { display: block; }
+.cb-product-image.has-error img { display: none; }
+.cb-group-product .cb-product-image {
+  width: 48px;
+  height: 48px;
+  flex-basis: 48px;
+  border-radius: 10px;
+}

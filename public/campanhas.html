@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PMG Connect — Campanhas Comerciais</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -232,31 +236,55 @@ table.data-table tr:hover td { background: var(--green-pale); }
 
 </style>
 <link rel="stylesheet" href="/assets/campaign-builder-v2.css">
-<link rel="stylesheet" href="/assets/campanhas-v4.css">
+<link rel="stylesheet" href="/assets/campanhas-v3.css?v=3.1.0">
 </head>
 <body>
 
-<div class="hdr">
-  <div class="hdr-left">
-    <div class="hdr-badge">PMG</div>
-    <h1>Gestão de Campanhas Comerciais</h1>
-  </div>
-  <div class="hdr-right">
-    <span class="hdr-pill" id="hdrCampanhaAtiva">nenhuma campanha ativa</span>
-    <span class="hdr-pill" id="themeToggle" style="cursor:pointer;">🌙 Tema</span>
-  </div>
-</div>
+<div class="app-shell" id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-brand">
+      <div class="side-logo"><img src="/imagenssite/pmglogo.png" alt="PMG"></div>
+      <div><strong>PMG Connect</strong><span>Campaign Studio</span></div>
+      <button id="closeSidebarBtn" class="icon-btn mobile-only" type="button" aria-label="Fechar menu"><i data-lucide="x"></i></button>
+    </div>
+    <nav id="sidebarNav" class="side-nav" aria-label="Navegação de campanhas"></nav>
+    <div class="side-insight">
+      <div class="side-insight-head"><i data-lucide="database-zap"></i><strong>Dados comerciais</strong></div>
+      <p>Produtos e resultados conectados à base PMG. Configurações das campanhas ficam no servidor local.</p>
+      <div class="side-live"><span class="live-dot"></span><span id="hdrCampanhaAtiva">verificando campanhas...</span></div>
+    </div>
+    <div class="side-user">
+      <div class="side-user-avatar">PMG</div>
+      <div class="side-user-copy"><strong>Equipe de Marketing</strong><span>Gerenciamento de campanhas</span></div>
+      <a class="icon-btn" href="/central.html" title="Voltar ao PMG Connect"><i data-lucide="house"></i></a>
+    </div>
+  </aside>
 
-<div class="body-layout">
-  <aside class="sidebar" id="sidebar"></aside>
-  <main class="main" id="pageRoot"></main>
+  <main class="main-shell">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="openSidebarBtn" class="icon-btn mobile-only" type="button" aria-label="Abrir menu"><i data-lucide="menu"></i></button>
+        <div><span id="topbarPageEyebrow" class="page-eyebrow">Central comercial</span><h1 id="topbarPageTitle">Visão geral</h1></div>
+      </div>
+      <div class="topbar-center">
+        <button id="globalSearchBtn" class="global-search" type="button"><i data-lucide="search"></i><span>Buscar campanha, página ou ação</span><kbd>Ctrl K</kbd></button>
+      </div>
+      <div class="topbar-actions">
+        <button id="refreshPageBtn" class="icon-btn" type="button" title="Atualizar página"><i data-lucide="refresh-cw"></i></button>
+        <button id="themeToggle" class="icon-btn" type="button" title="Alternar tema"><i data-lucide="moon"></i></button>
+        <button class="btn btn-primary" type="button" onclick="openCampanhaModal(null)"><i data-lucide="plus"></i><span>Nova campanha</span></button>
+      </div>
+    </header>
+    <div class="view-stack"><main class="main" id="pageRoot"></main></div>
+  </main>
 </div>
+<div id="sidebarBackdrop" class="sidebar-backdrop"></div>
 
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" id="modalBox">
     <div class="modal-hdr">
       <h3 id="modalTitle">Título</h3>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="closeModal()" aria-label="Fechar"></button>
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-foot" id="modalFoot"></div>
@@ -1610,7 +1638,7 @@ function desenharProdutos(lista) {
   tbody.innerHTML = lista.length ? lista.map(p => `
     <tr style="opacity:${p.ativo === false ? .45 : 1}">
       <td><input type="checkbox" ${p.ativo !== false ? 'checked' : ''} onchange="toggleProdutoAtivo('${p.id}', this.checked)"></td>
-      <td>${p.imagem ? `<img src="${imagemCatalogoUrl(p.imagem)}" alt="${p.nome || ''}" class="product-thumb-large" loading="lazy" onerror="this.style.display='none'">` : '—'}</td>
+      <td>${p.imagem ? `<img src="${imagemCatalogoUrl(p.imagem)}" alt="${p.nome || 'Produto'}" class="product-thumb-large" loading="lazy" onerror="this.style.display='none'">` : '—'}</td>
       <td>${p.codigo}</td>
       <td>${p.nome}</td>
       <td>${p.categoria || '—'}</td>
@@ -2335,5 +2363,6 @@ async function limparTudo() {
 
 </script>
 <script src="/assets/campaign-builder-v2.js"></script>
+<script src="/assets/campanhas-v3.js?v=3.1.0"></script>
 </body>
 </html>
