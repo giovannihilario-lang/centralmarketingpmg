@@ -150,6 +150,8 @@
         if (!hasContentType) headers['Content-Type'] = 'application/json';
       }
 
+      const isLocalNetworkRequest = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(url);
+
       let response;
       try {
         response = await fetch(url, {
@@ -159,13 +161,17 @@
           signal: controller.signal,
           cache: 'no-store',
           credentials: 'omit',
+          mode: 'cors',
+          ...(isLocalNetworkRequest ? { targetAddressSpace: 'local' } : {}),
         });
       } catch (error) {
-        const detail = error?.name === 'AbortError'
-          ? 'A API local demorou para responder.'
-          : 'O navegador não conseguiu acessar a API local.';
-        const networkError = new Error(`${detail} Confirme que npm start está aberto e permita o acesso à rede local para este site.`);
-        networkError.code = error?.name === 'AbortError' ? 'LOCAL_API_TIMEOUT' : 'LOCAL_API_NETWORK';
+        const aborted = error?.name === 'AbortError';
+        const networkError = new Error(
+          aborted
+            ? 'A API local demorou para responder.'
+            : 'O Chrome bloqueou o acesso deste site à API local. Clique em “Permitir acesso local” e aceite a permissão de rede local.'
+        );
+        networkError.code = aborted ? 'LOCAL_API_TIMEOUT' : 'LOCAL_NETWORK_PERMISSION';
         networkError.cause = error;
         throw networkError;
       } finally {
@@ -221,9 +227,19 @@
       if (icon) icon.setAttribute('data-lucide', node.classList.contains('is-done') ? 'circle-check' : node.classList.contains('is-active') ? 'loader-circle' : 'circle');
     });
     const isError = status.status === 'error';
+    const errorCode = status.error?.code || status.code || '';
+    const isPermissionError = errorCode === 'LOCAL_NETWORK_PERMISSION';
+
     $('#contextError').hidden = !isError;
-    $('#contextError').textContent = isError ? `${status.error?.message || status.message || 'Falha ao preparar o contexto.'}${status.error?.code ? ` · ${status.error.code}` : ''}` : '';
+    $('#contextError').textContent = isError
+      ? `${status.error?.message || status.message || 'Falha ao preparar o contexto.'}${errorCode ? ` · ${errorCode}` : ''}`
+      : '';
+
     $('#retryContext').hidden = !isError;
+    $('#retryContext').innerHTML = isPermissionError
+      ? '<i data-lucide="router"></i>Permitir acesso local'
+      : '<i data-lucide="refresh-cw"></i>Tentar novamente';
+
     $('#useCachedContext').hidden = !(isError && app.useCachedAllowed);
     icons($('#contextOverlay'));
   }
@@ -1339,7 +1355,11 @@
     if (action === 'theme') { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; localStorage.setItem(THEME_KEY, next); return; }
     if (action === 'settings') { const value = prompt('Endereço da API local', SQL_BASE); if (value) { localStorage.setItem(SQL_BASE_KEY, value.replace(/\/$/, '')); alert('Endereço salvo. Recarregue a página.'); } return; }
     if (action === 'refresh-context') { $('#contextOverlay').hidden = false; document.body.style.overflow = 'hidden'; return pollContext({ force:true, blocking:true }).catch(() => {}); }
-    if (action === 'retry-context') return pollContext({ force:true, blocking:true }).catch(() => {});
+    if (action === 'retry-context') {
+      // O clique do usuário permite que o Chrome apresente o aviso de acesso à rede local.
+      app.apiCache.clear();
+      return pollContext({ force:true, blocking:true }).catch(() => {});
+    }
     if (action === 'use-cached-context') { if (app.contextCached) { app.contextReady = true; $('#contextOverlay').hidden = true; document.body.style.overflow = ''; renderView(); toast('Usando o último contexto salvo.', 'warning'); } return; }
 
     if (action === 'wizard-step') {

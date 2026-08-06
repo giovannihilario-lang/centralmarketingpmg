@@ -27,6 +27,11 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
   }
 
+  // Identificação amigável exibida por navegadores que implementam
+  // a permissão de acesso à rede local.
+  res.setHeader('Private-Network-Access-Name', 'API Local PMG Connect');
+  res.setHeader('Private-Network-Access-ID', 'pmg-connect-local-api');
+
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
