@@ -418,6 +418,20 @@
   let fornecedoresCache = [];
   let fornecedorBuscaTimer = null;
   let fornecedorCarregando = false;
+  const FORNECEDORES_CACHE_KEY = 'pmg-campanhas-fornecedores-v1';
+  const FORNECEDORES_CACHE_TTL = 30 * 60 * 1000;
+
+  function lerFornecedoresCacheLocal() {
+    try {
+      const item = JSON.parse(sessionStorage.getItem(FORNECEDORES_CACHE_KEY) || 'null');
+      if (!item || !Array.isArray(item.dados) || Date.now() - Number(item.salvoEm || 0) > FORNECEDORES_CACHE_TTL) return [];
+      return item.dados;
+    } catch (_) { return []; }
+  }
+
+  function salvarFornecedoresCacheLocal(lista) {
+    try { sessionStorage.setItem(FORNECEDORES_CACHE_KEY, JSON.stringify({ salvoEm: Date.now(), dados: lista })); } catch (_) {}
+  }
 
   function normalizarListaFornecedores(dados) {
     const lista = Array.isArray(dados) ? dados : (Array.isArray(dados?.dados) ? dados.dados : []);
@@ -435,13 +449,17 @@
 
   async function carregarFornecedores({ busca = '', forcar = false } = {}) {
     const termo = String(busca || '').trim();
+    if (!termo && !fornecedoresCache.length && !forcar) fornecedoresCache = lerFornecedoresCacheLocal();
     if (!termo && fornecedoresCache.length && !forcar) return fornecedoresCache;
 
     const params = new URLSearchParams({ recurso: 'fornecedores', limite: '500' });
     if (termo) params.set('busca', termo);
     const dados = await fetchJsonSeguro(`${CAMPANHAS_SQL_ENDPOINT}?${params.toString()}`);
     const lista = normalizarListaFornecedores(dados);
-    if (!termo) fornecedoresCache = lista;
+    if (!termo) {
+      fornecedoresCache = lista;
+      salvarFornecedoresCacheLocal(lista);
+    }
     return lista;
   }
 
@@ -490,7 +508,7 @@
     }
   }
 
-  async function instalarSeletorFornecedor() {
+  function instalarSeletorFornecedor() {
     const input = document.getElementById('cf_fornecedor');
     if (!input || document.getElementById('csFornecedorStudio')) return;
     const campo = input.closest('.field');
@@ -501,7 +519,17 @@
       <div class="cs-supplier-search">${icon('search')}<input id="csFornecedorBusca" placeholder="Buscar fornecedor pelo nome" oninput="csFiltrarFornecedores(this.value)"><button type="button" class="cs-supplier-refresh" onclick="csRecarregarFornecedores()" title="Recarregar fornecedores">${icon('refresh-cw')}</button></div>
       <div class="cs-supplier-grid" id="csFornecedorGrade"></div>
     </section>`);
-    await consultarFornecedoresNaTela('', false);
+
+    const cache = fornecedoresCache.length ? fornecedoresCache : lerFornecedoresCacheLocal();
+    if (cache.length) {
+      fornecedoresCache = cache;
+      renderFornecedorCards(cache);
+      // Atualiza silenciosamente sem bloquear o modal.
+      setTimeout(() => consultarFornecedoresNaTela('', true), 50);
+    } else {
+      renderFornecedorCards([], { carregando: true });
+      setTimeout(() => consultarFornecedoresNaTela('', false), 0);
+    }
   }
 
   window.csFiltrarFornecedores = function (termo) {
@@ -537,12 +565,23 @@
   const abrirCampanhaOriginal = window.openCampanhaModal;
   window.openCampanhaModal = async function abrirCampanhaStudio(id) {
     await abrirCampanhaOriginal(id);
-    await instalarSeletorFornecedor();
+    instalarSeletorFornecedor();
     window.csAtualizarTipoResultado();
     window.csAtualizarDesempates();
     document.querySelectorAll('#regrasList [data-row]').forEach(window.csAtualizarRegra);
     atualizarIcones();
   };
+
+  const trocarEtapaOriginal = window.switchCampTab;
+  window.switchCampTab = function trocarEtapaCampanha(i) {
+    trocarEtapaOriginal(i);
+    if (Number(i) === 2) window.cbAtivarEtapaProdutos?.();
+  };
+
+  // Pré-aquece somente a lista leve de fornecedores quando o navegador estiver ocioso.
+  const preaquecerFornecedores = () => carregarFornecedores().catch(() => {});
+  if ('requestIdleCallback' in window) requestIdleCallback(preaquecerFornecedores, { timeout: 2500 });
+  else setTimeout(preaquecerFornecedores, 1800);
 
   const previewPeriodoOriginal = window.atualizarPreviewPeriodo;
   window.atualizarPreviewPeriodo = function previewPeriodoStudio() {

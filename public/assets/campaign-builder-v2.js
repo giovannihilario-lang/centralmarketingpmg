@@ -17,6 +17,9 @@
     catalogoVisualPromise: null,
     fornecedorAtivo: { id: '', nome: '' },
     semFornecedor: false,
+    etapaProdutosAtiva: false,
+    carregamentoEtapaPromise: null,
+    enriquecimentoVisualPromise: null,
   };
 
   function id() {
@@ -377,7 +380,6 @@
     const fornecedorId = String(document.getElementById('cf_fornecedorId')?.value || state.fornecedorAtivo.id || '').trim();
     const chave = `${fornecedorId}|${fornecedor}`;
     if (!forcar && state.filtros && state.filtrosChave === chave) return state.filtros;
-    await carregarCatalogoVisual();
 
     try {
       const parametros = new URLSearchParams({ recurso: 'filtros-produtos' });
@@ -389,6 +391,7 @@
       return dados;
     } catch (erro) {
       console.warn('[campaign-builder] filtros SQL indisponíveis; usando catálogo PMG', erro);
+      await carregarCatalogoVisual();
       const listaFornecedor = fornecedor
         ? state.catalogoVisualLista.filter((produto) => normalizeKey(produto.fornecedor) === normalizeKey(fornecedor))
         : state.catalogoVisualLista;
@@ -419,6 +422,7 @@
     state.carregando = true;
     renderizarCatalogo();
 
+    let usouFallbackVisual = false;
     try {
       const fornecedor = String(document.getElementById('cf_fornecedor')?.value || state.fornecedorAtivo.nome || '').trim();
       const fornecedorId = String(document.getElementById('cf_fornecedorId')?.value || state.fornecedorAtivo.id || '').trim();
@@ -440,20 +444,17 @@
         limite: '1000',
       });
 
-      await carregarCatalogoVisual();
       let dados = null;
-
       try {
         dados = await fetchJson(CAMPANHAS_SQL_ENDPOINT + '?' + parametros.toString());
       } catch (erro) {
         console.warn('[campaign-builder] produtos SQL indisponíveis; usando catálogo PMG', erro);
-      }
-
-      if (!Array.isArray(dados)) {
+        await carregarCatalogoVisual();
+        usouFallbackVisual = true;
         dados = produtosDoCatalogoVisual().filter((produto) => !fornecedor || normalizeKey(produto.fornecedor) === normalizeKey(fornecedor));
       }
 
-      state.catalogo = dados.map((produto) => {
+      state.catalogo = (Array.isArray(dados) ? dados : []).map((produto) => {
         const visual = state.catalogoVisual.get(String(produto.id ?? produto.codigo)) || {};
         return {
           ...produto,
@@ -471,6 +472,23 @@
     } finally {
       state.carregando = false;
       renderizarCatalogo();
+      renderizarGrupos();
+    }
+
+    // As imagens não bloqueiam o catálogo. Produtos aparecem primeiro e são enriquecidos depois.
+    if (!usouFallbackVisual && !state.catalogoVisual.size && !state.enriquecimentoVisualPromise) {
+      state.enriquecimentoVisualPromise = carregarCatalogoVisual()
+        .then(() => {
+          state.catalogo = state.catalogo.map((produto) => {
+            const visual = state.catalogoVisual.get(String(produto.id ?? produto.codigo)) || {};
+            return { ...produto, ...visual, imagem: visual.imagem || produto.imagem || '' };
+          });
+          enriquecerProdutosSelecionados();
+          renderizarCatalogo();
+          renderizarGrupos();
+        })
+        .catch((erro) => console.warn('[campaign-builder] enriquecimento visual', erro))
+        .finally(() => { state.enriquecimentoVisualPromise = null; });
     }
   }
 
@@ -521,25 +539,52 @@
   };
 
   window.abrirDndProdutos = async function () {
+    // Abertura do modal deve ser instantânea. Nada de consultar catálogo enquanto a etapa está escondida.
     renderizarGrupos();
-    try {
-      await carregarCatalogoVisual();
-      enriquecerProdutosSelecionados();
-      renderizarGrupos();
-      const fornecedorCampanha = document.getElementById('cf_fornecedor')?.value?.trim() || '';
-      const fornecedorId = document.getElementById('cf_fornecedorId')?.value || '';
-      state.fornecedorAtivo = { id: fornecedorId, nome: fornecedorCampanha };
-      const nomeFornecedor = document.getElementById('cbFornecedorNome');
-      if (nomeFornecedor) nomeFornecedor.textContent = fornecedorCampanha || 'Selecione na etapa Informações';
-      const filtros = await carregarFiltros(true);
-      preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
-      preencherSelect('cbFiltroSubgrupo', filtros.subgrupos, 'Todos os subgrupos');
-      preencherSelect('cbFiltroStatus', filtros.status, 'Todos os status');
-      await buscarProdutos();
-    } catch (erro) {
-      console.error('[campaign-builder] filtros', erro);
-      if (typeof showToast === 'function') showToast('Não foi possível carregar o catálogo: ' + erro.message, true);
-    }
+    const fornecedorCampanha = document.getElementById('cf_fornecedor')?.value?.trim() || '';
+    const fornecedorId = document.getElementById('cf_fornecedorId')?.value || '';
+    state.fornecedorAtivo = { id: fornecedorId, nome: fornecedorCampanha };
+    state.etapaProdutosAtiva = false;
+    const nomeFornecedor = document.getElementById('cbFornecedorNome');
+    if (nomeFornecedor) nomeFornecedor.textContent = fornecedorCampanha || 'Selecione na etapa Informações';
+    renderizarCatalogo();
+  };
+
+  window.cbAtivarEtapaProdutos = async function (forcar = false) {
+    if (state.carregamentoEtapaPromise && !forcar) return state.carregamentoEtapaPromise;
+    if (state.etapaProdutosAtiva && !forcar) return;
+
+    state.carregamentoEtapaPromise = (async () => {
+      try {
+        const fornecedorCampanha = document.getElementById('cf_fornecedor')?.value?.trim() || '';
+        const fornecedorId = document.getElementById('cf_fornecedorId')?.value || '';
+        state.fornecedorAtivo = { id: fornecedorId, nome: fornecedorCampanha };
+        state.semFornecedor = !fornecedorCampanha && !fornecedorId;
+        const nomeFornecedor = document.getElementById('cbFornecedorNome');
+        if (nomeFornecedor) nomeFornecedor.textContent = fornecedorCampanha || 'Selecione na etapa Informações';
+
+        if (state.semFornecedor) {
+          state.catalogo = [];
+          renderizarCatalogo();
+          state.etapaProdutosAtiva = true;
+          return;
+        }
+
+        const filtros = await carregarFiltros(forcar);
+        preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
+        preencherSelect('cbFiltroSubgrupo', filtros.subgrupos, 'Todos os subgrupos');
+        preencherSelect('cbFiltroStatus', filtros.status, 'Todos os status');
+        await buscarProdutos();
+        state.etapaProdutosAtiva = true;
+      } catch (erro) {
+        console.error('[campaign-builder] filtros', erro);
+        if (typeof showToast === 'function') showToast('Não foi possível carregar o catálogo: ' + erro.message, true);
+      } finally {
+        state.carregamentoEtapaPromise = null;
+      }
+    })();
+
+    return state.carregamentoEtapaPromise;
   };
 
   window.cbBuscarProdutos = buscarProdutos;
@@ -632,15 +677,14 @@
     state.filtros = null;
     state.filtrosChave = '';
     state.catalogo = [];
+    state.etapaProdutosAtiva = false;
     const contexto = document.getElementById('cbFornecedorNome');
     if (contexto) contexto.textContent = state.fornecedorAtivo.nome || 'Selecione na etapa Informações';
-    if (document.getElementById('cbCatalogoProdutos')) {
-      const filtros = await carregarFiltros(true);
-      preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
-      preencherSelect('cbFiltroSubgrupo', filtros.subgrupos, 'Todos os subgrupos');
-      preencherSelect('cbFiltroStatus', filtros.status, 'Todos os status');
-      await buscarProdutos();
-    }
+    renderizarCatalogo();
+
+    // Só consulta produtos se o usuário já estiver na etapa Produtos e categorias.
+    const etapaVisivel = document.getElementById('campTab2') && document.getElementById('campTab2').style.display !== 'none';
+    if (etapaVisivel) await window.cbAtivarEtapaProdutos(true);
   };
 
   window.cbAdicionarFiltrados = function () {
