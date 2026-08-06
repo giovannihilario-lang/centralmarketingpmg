@@ -1208,83 +1208,338 @@ function closeMobileSidebar() { $('sidebar').classList.remove('open'); $('sideba
 
 
 /* =========================================================
-   TUTORIAL DE PRIMEIRO ACESSO
+   TUTORIAL DE PRIMEIRO ACESSO — GESTOR E COLABORADOR
    ========================================================= */
-const ONBOARDING_VERSION = '2026-08-demandas-v1';
+const ONBOARDING_VERSION = '2026-08-demandas-v2-detalhado';
 
 function onboardingStorageKey() {
   return `pmg-demandas-onboarding:${ONBOARDING_VERSION}:${state.me?.id || 'usuario'}`;
 }
 
-function onboardingDemoWindow(title, content) {
-  return `<div class="onboarding-demo-window"><div class="onboarding-demo-head"><i></i><i></i><i></i><span class="onboarding-demo-title">${escapeHtml(title)}</span></div>${content}</div>`;
+function onboardingDemoWindow(title, content, subtitle = '') {
+  return `<div class="onboarding-demo-window">
+    <div class="onboarding-demo-head"><i></i><i></i><i></i><div><span class="onboarding-demo-title">${escapeHtml(title)}</span>${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ''}</div></div>
+    ${content}
+  </div>`;
+}
+
+function onboardingMetricsDemo(manager) {
+  return onboardingDemoWindow(
+    manager ? 'Painel gerencial' : 'Minha rotina',
+    `<div class="onboarding-demo-metrics">
+      <div class="onboarding-demo-metric danger"><strong>${manager ? '3' : '1'}</strong><span>Atrasadas</span></div>
+      <div class="onboarding-demo-metric amber"><strong>${manager ? '7' : '2'}</strong><span>Para hoje</span></div>
+      <div class="onboarding-demo-metric"><strong>${manager ? '18' : '4'}</strong><span>Próximos 7 dias</span></div>
+      <div class="onboarding-demo-metric"><strong>${manager ? '26' : '6'}</strong><span>${manager ? 'Em aberto' : 'Minhas demandas'}</span></div>
+    </div>`,
+    manager ? 'Visão do setor' : 'Visão individual'
+  );
+}
+
+function onboardingTaskFormDemo() {
+  return onboardingDemoWindow('Criar demanda', `<div class="onboarding-form-demo">
+    <label><span>Título</span><strong>Finalizar campanha de agosto</strong></label>
+    <div class="onboarding-form-demo-grid"><label><span>Responsável</span><b>FM Francielly</b></label><label><span>Prazo</span><b>12 ago · 17h</b></label></div>
+    <div class="onboarding-option-demo"><i class="urgent"></i><div><strong>Prioridade alta</strong><small>Precisa de atenção antes das tarefas normais</small></div></div>
+    <div class="onboarding-option-demo"><i class="medium"></i><div><strong>Tamanho médio</strong><small>Algumas horas de trabalho</small></div></div>
+  </div>`, 'Briefing, responsabilidade e prazo');
+}
+
+function onboardingAssigneeDemo() {
+  return onboardingDemoWindow('Escolher responsável', `<div class="onboarding-assignee-demo">
+    <div class="onboarding-assignee-row selected"><span class="onboarding-person-avatar">FM</span><div><strong>Francielly</strong><small>4 abertas · 0 atrasadas · 8h estimadas</small></div><b>Equilibrada</b></div>
+    <div class="onboarding-assignee-row"><span class="onboarding-person-avatar">GH</span><div><strong>Giovanni</strong><small>7 abertas · 2 atrasadas · 19h estimadas</small></div><b class="attention">Atenção</b></div>
+    <div class="onboarding-assignee-row"><span class="onboarding-person-avatar">HS</span><div><strong>Henrique</strong><small>2 abertas · 0 atrasadas · 4h estimadas</small></div><b>Disponível</b></div>
+  </div>`, 'Distribuição consciente da carga');
+}
+
+function onboardingStatusDemo(active = 'andamento', action = 'Enviar para revisão') {
+  const stages = [
+    ['nova', 'circle-dot-dashed', 'Nova', 'Aguardando início'],
+    ['andamento', 'loader-circle', 'Em andamento', 'Trabalho sendo executado'],
+    ['revisao', 'scan-eye', 'Em revisão', 'Pronta para validação'],
+    ['concluida', 'circle-check-big', 'Concluída', 'Entrega encerrada']
+  ];
+  return onboardingDemoWindow('Fluxo da demanda', `<div class="onboarding-status-flow">${stages.map(([key, icon, label, desc], index) => `<div class="onboarding-status-step ${key === active ? 'active' : ''}"><span><i data-lucide="${icon}"></i></span><div><strong>${label}</strong><small>${desc}</small></div><b>${index + 1}</b></div>`).join('')}</div><button class="onboarding-demo-action" type="button" tabindex="-1">${escapeHtml(action)}<i data-lucide="arrow-right"></i></button>`, 'Cada mudança fica registrada');
+}
+
+function onboardingTeamDemo() {
+  return onboardingDemoWindow('Equipe', `<div class="onboarding-team-demo">
+    <div class="onboarding-team-summary"><span><strong>5</strong><small>Pessoas</small></span><span><strong>26</strong><small>Em aberto</small></span><span><strong>3</strong><small>Atrasadas</small></span></div>
+    <div class="onboarding-assignee-row"><span class="onboarding-person-avatar">FM</span><div><strong>Francielly</strong><small>8h em aberto · movimento hoje</small><div class="onboarding-load"><i style="width:36%"></i></div></div><b>Equilibrada</b></div>
+    <div class="onboarding-assignee-row"><span class="onboarding-person-avatar">GH</span><div><strong>Giovanni</strong><small>19h em aberto · 2 atrasadas</small><div class="onboarding-load"><i class="warning" style="width:82%"></i></div></div><b class="attention">Atenção</b></div>
+  </div>`, 'Carga, prazo e risco no mesmo lugar');
+}
+
+function onboardingReviewDemo() {
+  return onboardingDemoWindow('Revisar entrega', `<div class="onboarding-review-demo">
+    <div class="onboarding-review-head"><span><i data-lucide="scan-eye"></i></span><div><strong>Campanha pronta para validação</strong><small>Em revisão · enviada por Francielly</small></div></div>
+    <div class="onboarding-comment-demo"><span class="onboarding-person-avatar">FM</span><div><strong>Francielly</strong><p>Artes e texto finalizados. A versão aprovada está anexada no briefing.</p></div></div>
+    <div class="onboarding-review-actions"><button type="button" tabindex="-1">Pedir ajuste</button><button class="primary" type="button" tabindex="-1">Concluir</button></div>
+  </div>`, 'Valide antes de encerrar');
+}
+
+function onboardingTodayDemo() {
+  return onboardingDemoWindow('Hoje', `<div class="onboarding-demo-list">
+    <div class="onboarding-demo-row"><span><i data-lucide="triangle-alert"></i></span><div><strong>Revisar campanha</strong><small>Atrasada desde ontem</small></div><b>Urgente</b></div>
+    <div class="onboarding-demo-row"><span><i data-lucide="play"></i></span><div><strong>Editar vídeo institucional</strong><small>Em andamento · prazo 14h</small></div><b>Minha</b></div>
+    <div class="onboarding-demo-row"><span><i data-lucide="bell"></i></span><div><strong>Enviar aprovação</strong><small>Lembrete às 16h</small></div><b>Aviso</b></div>
+  </div>`, 'O que merece atenção agora');
+}
+
+function onboardingTaskDetailDemo() {
+  return onboardingDemoWindow('Detalhes da demanda', `<div class="onboarding-detail-demo">
+    <div class="onboarding-detail-title"><span class="priority-pill alta">Alta</span><strong>Editar vídeo institucional</strong></div>
+    <p>Produzir versão vertical de até 45 segundos com abertura, depoimentos e encerramento da PMG.</p>
+    <div class="onboarding-detail-grid"><span><small>Responsável</small><b>GV Giovanni</b></span><span><small>Prazo</small><b>Hoje · 17h</b></span><span><small>Estimativa</small><b>4 horas</b></span><span><small>Status</small><b>Em andamento</b></span></div>
+  </div>`, 'Leia o briefing antes de começar');
+}
+
+function onboardingCommunicationDemo() {
+  return onboardingDemoWindow('Comentários e histórico', `<div class="onboarding-history-demo">
+    <div><span class="onboarding-person-avatar">GV</span><p><strong>Giovanni comentou</strong><small>“Preciso do logo em alta para finalizar.”</small></p><time>09:12</time></div>
+    <div><span class="onboarding-history-icon"><i data-lucide="user-round-check"></i></span><p><strong>Responsável alterado</strong><small>Francielly → Giovanni</small></p><time>08:45</time></div>
+    <div><span class="onboarding-history-icon"><i data-lucide="refresh-cw"></i></span><p><strong>Status atualizado</strong><small>Nova → Em andamento</small></p><time>08:31</time></div>
+  </div>`, 'Contexto preservado na própria demanda');
+}
+
+function onboardingCalendarDemo() {
+  return onboardingDemoWindow('Agenda e alertas', `<div class="onboarding-calendar"><div class="onboarding-calendar-day">04<div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day active">05<div class="onboarding-calendar-event purple"></div><div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day">06<div class="onboarding-calendar-event amber"></div></div><div class="onboarding-calendar-day">07<div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day">08</div></div><div class="onboarding-alert-demo"><i data-lucide="bell-ring"></i><div><strong>Prazo em 30 minutos</strong><small>Editar vídeo institucional · hoje, 17h</small></div></div>`, 'Demandas, compromissos e lembretes');
+}
+
+function onboardingCompleteDemo(manager) {
+  return `<div class="onboarding-complete"><div class="onboarding-complete-icon"><i data-lucide="${manager ? 'clipboard-check' : 'badge-check'}"></i></div><strong>${manager ? 'Sua gestão começa aqui' : 'Sua rotina está pronta'}</strong><span>${manager ? 'Crie a primeira demanda com briefing, responsável e prazo claros.' : 'Abra suas demandas, atualize o status e registre impedimentos no próprio item.'}</span></div>`;
+}
+
+function getManagerOnboardingSteps(userName) {
+  return [
+    {
+      icon: 'shield-check', eyebrow: 'Tutorial do gestor', title: `Bem-vindo, ${userName}. Você organiza o fluxo do setor.`,
+      description: 'Como gestor, sua função na Central não é apenas criar tarefas. Você transforma pedidos em demandas claras, distribui o trabalho com responsabilidade, acompanha riscos e valida entregas. As telas e permissões abaixo foram pensadas para essa rotina.',
+      points: [
+        ['clipboard-plus', 'Criar com clareza', 'Toda demanda deve explicar o resultado esperado, o contexto necessário e o prazo real.'],
+        ['users-round', 'Distribuir sem sobrecarregar', 'Use carga, atrasos e estimativas antes de escolher o responsável.'],
+        ['scan-search', 'Acompanhar sem microgerenciar', 'Observe status, prazos e bloqueios; não dependa de cobrar atualização por mensagem.'],
+        ['badge-check', 'Validar e encerrar', 'Uma entrega só deve ser concluída depois da revisão ou confirmação necessária.']
+      ],
+      tip: ['compass', 'Seu ponto de partida', 'Use Hoje para enxergar urgências e Equipe para decidir onde novas demandas devem entrar.'],
+      demo: onboardingMetricsDemo(true)
+    },
+    {
+      icon: 'clipboard-plus', eyebrow: 'Criação de demandas', title: 'Transforme um pedido em uma demanda executável',
+      description: 'Ao clicar em “Nova demanda”, registre informações suficientes para que o responsável consiga começar sem precisar reconstruir o pedido em uma conversa paralela. Título genérico, prazo sem contexto e prioridade “urgente” em tudo anulam o valor do sistema. Surpreendente, eu sei.',
+      points: [
+        ['text-cursor-input', 'Título orientado à entrega', 'Prefira “Criar carrossel da campanha X” a “Ver campanha”.'],
+        ['file-text', 'Descrição com contexto', 'Inclua objetivo, formato, materiais disponíveis, aprovador e restrições importantes.'],
+        ['calendar-clock', 'Prazo completo', 'Defina data e horário considerando revisão, aprovação e dependências.'],
+        ['tags', 'Prioridade, tamanho e tags', 'Esses dados ajudam a ordenar a fila, estimar carga e localizar o trabalho depois.']
+      ],
+      tip: ['check-circle-2', 'Antes de criar', 'Pergunte: outra pessoa conseguiria executar essa demanda lendo apenas o que está registrado aqui?'],
+      demo: onboardingTaskFormDemo()
+    },
+    {
+      icon: 'user-round-search', eyebrow: 'Delegação', title: 'Escolha o responsável pelo trabalho, não apenas quem respondeu primeiro',
+      description: 'O seletor visual mostra avatar, cargo, demandas abertas, atrasos e esforço estimado. Esses indicadores não substituem conversa e contexto, mas impedem que a distribuição seja feita às cegas, tradição administrativa que ninguém pediu para preservar.',
+      points: [
+        ['gauge', 'Considere a carga estimada', 'Horas e volume em aberto ajudam a identificar quem já está perto do limite.'],
+        ['triangle-alert', 'Observe atrasos e prazos próximos', 'Uma pessoa com poucas tarefas pode estar concentrada em entregas críticas.'],
+        ['badge-info', 'Use cargo e contexto', 'Delegue para quem possui domínio ou responsabilidade sobre aquela frente.'],
+        ['repeat-2', 'Reatribua quando necessário', 'Se a responsabilidade mudar, atualize no sistema para manter histórico e clareza.']
+      ],
+      tip: ['scale', 'Boa distribuição', 'Equilibre capacidade, competência, urgência e continuidade do trabalho. Nenhum número isolado decide tudo.'],
+      demo: onboardingAssigneeDemo()
+    },
+    {
+      icon: 'workflow', eyebrow: 'Fluxo e status', title: 'Use o status como informação real, não decoração colorida',
+      description: 'O status indica em que ponto a demanda está. O responsável normalmente move o trabalho conforme executa. O gestor acompanha, remove impedimentos e pode corrigir o fluxo quando necessário, sem transformar cada mudança em uma cerimônia corporativa.',
+      points: [
+        ['circle-dot-dashed', 'Nova', 'A demanda foi criada e ainda não começou. Briefing e responsabilidade devem estar definidos.'],
+        ['loader-circle', 'Em andamento', 'O responsável iniciou a execução e o trabalho está ativo.'],
+        ['scan-eye', 'Em revisão', 'A entrega está pronta para análise, aprovação ou ajustes finais.'],
+        ['circle-check-big', 'Concluída', 'O resultado foi aceito e o ciclo foi encerrado. Se houver nova necessidade, reabra ou crie outra demanda.']
+      ],
+      tip: ['hand', 'Evite antecipar status', 'Não marque como concluída apenas para limpar o painel. O histórico precisa representar o trabalho de verdade.'],
+      demo: onboardingStatusDemo('revisao', 'Validar entrega')
+    },
+    {
+      icon: 'users-round', eyebrow: 'Painel da equipe', title: 'Encontre gargalos antes que virem urgência coletiva',
+      description: 'A tela Equipe consolida carga estimada, atrasos, entregas da semana, atividade recente e risco por colaborador. Ela serve para orientar priorização, redistribuição e conversas de alinhamento, não para fabricar ranking de produtividade com três números e confiança excessiva.',
+      points: [
+        ['siren', 'Riscos e gargalos', 'Pessoas com atrasos, urgências ou carga elevada aparecem em destaque.'],
+        ['clock-4', 'Carga estimada', 'O cálculo usa tamanho e horas registradas nas demandas abertas.'],
+        ['activity', 'Movimentações recentes', 'Veja se o trabalho está avançando e onde não houve atualização.'],
+        ['list-filter', 'Visão individual', 'Abra um colaborador para consultar fila, prazos, conclusões e histórico.']
+      ],
+      tip: ['message-circle', 'Indicador não é sentença', 'Use o painel para fazer perguntas melhores e ajustar prioridades, não para substituir conversa com a equipe.'],
+      demo: onboardingTeamDemo()
+    },
+    {
+      icon: 'scan-eye', eyebrow: 'Revisão e aprovação', title: 'A etapa de revisão protege a qualidade e o histórico',
+      description: 'Quando uma demanda chega em “Em revisão”, abra o item, confira briefing, entrega, comentários e contexto. Aprove, peça ajustes com orientação objetiva ou devolva ao fluxo. O responsável precisa entender o que muda e por quê.',
+      points: [
+        ['file-check-2', 'Compare com o briefing', 'Valide o resultado esperado, formato, prazo e critérios registrados.'],
+        ['message-square-text', 'Peça ajustes no comentário', 'Registre correções de forma específica para manter o contexto acessível.'],
+        ['circle-check-big', 'Conclua após validar', 'Encerrar confirma que a entrega foi aceita e alimenta os indicadores.'],
+        ['rotate-ccw', 'Reabra quando necessário', 'Se houver mudança relevante ou erro após a conclusão, devolva a demanda ao fluxo correto.']
+      ],
+      tip: ['history', 'Tudo fica registrado', 'Comentários, responsáveis e mudanças de status formam o histórico da demanda.'],
+      demo: onboardingReviewDemo()
+    },
+    {
+      icon: 'calendar-days', eyebrow: 'Planejamento', title: 'Use agenda, prazos e alertas para reduzir cobranças manuais',
+      description: 'A Agenda reúne demandas, compromissos e lembretes. Prazos aparecem automaticamente; lembretes podem ser pessoais ou da equipe conforme a permissão. Ative as notificações no navegador para receber avisos neste computador.',
+      points: [
+        ['calendar-range', 'Visão mensal', 'Abra um dia para conferir tudo que vence ou acontece naquela data.'],
+        ['alarm-clock', 'Lembretes programados', 'Defina quando o sistema deve avisar antes de um prazo ou compromisso.'],
+        ['bell-ring', 'Notificações', 'Novas atribuições, comentários e mudanças importantes aparecem na central de alertas.'],
+        ['refresh-cw', 'Recorrência', 'Use repetição para rotinas reais, evitando recriar o mesmo lembrete toda semana.']
+      ],
+      tip: ['monitor-check', 'Permissão do navegador', 'Os alertas dependem da autorização deste computador. Cada usuário precisa ativá-los no próprio navegador.'],
+      demo: onboardingCalendarDemo()
+    },
+    {
+      icon: 'messages-square', eyebrow: 'Governança do trabalho', title: 'Mantenha decisões e cobranças dentro da demanda',
+      description: 'Comentários, histórico, busca e notificações existem para que o contexto não fique espalhado entre WhatsApp, memória e arqueologia de caixa de entrada. Quando uma decisão altera o trabalho, registre no item correspondente.',
+      points: [
+        ['message-circle', 'Comentários objetivos', 'Registre impedimentos, decisões, aprovações e orientações que afetam a entrega.'],
+        ['history', 'Histórico automático', 'Criação, edição, responsável, status e arquivamento ficam documentados.'],
+        ['search', 'Busca global', 'Use Ctrl + K para localizar rapidamente demandas e lembretes.'],
+        ['archive', 'Arquivamento', 'Arquive itens que não devem permanecer no fluxo ativo, preservando o registro.']
+      ],
+      tip: ['ban', 'Evite duplicidade', 'Não crie uma nova demanda para cada comentário ou pequeno ajuste do mesmo trabalho. Atualize o item existente quando o escopo continuar sendo o mesmo.'],
+      demo: onboardingCommunicationDemo()
+    },
+    {
+      icon: 'clipboard-check', eyebrow: 'Checklist do gestor', title: 'Você está pronto para criar a primeira demanda',
+      description: 'Comece com uma entrega real e simples. Preencha o briefing, escolha o responsável com base em contexto e carga, defina o prazo e acompanhe o fluxo sem retirar da equipe a responsabilidade de atualizar o próprio trabalho.',
+      points: [
+        ['check', 'Demanda clara', 'Título, descrição, prioridade, tamanho e prazo representam a necessidade real.'],
+        ['check', 'Responsável correto', 'A pessoa escolhida sabe que recebeu a demanda e possui contexto para começar.'],
+        ['check', 'Revisão combinada', 'Está claro quem valida a entrega e quando ela pode ser concluída.'],
+        ['circle-help', 'Tutorial disponível', 'Abra novamente em Avatar → Ver tutorial sempre que precisar revisar o fluxo.']
+      ],
+      tip: ['rocket', 'Próxima ação', 'Feche o tutorial e clique em “Nova demanda” para iniciar o fluxo oficial da equipe.'],
+      demo: onboardingCompleteDemo(true)
+    }
+  ];
+}
+
+function getCollaboratorOnboardingSteps(userName) {
+  return [
+    {
+      icon: 'badge-check', eyebrow: 'Tutorial do colaborador', title: `Bem-vindo, ${userName}. Esta é a sua fila de trabalho.`,
+      description: 'Como colaborador, você usa a Central para entender o que precisa fazer, organizar o dia, atualizar o andamento das entregas e registrar impedimentos. Seu papel é manter a demanda fiel ao trabalho real, sem depender de alguém perguntar a cada três horas se “já saiu”.',
+      points: [
+        ['sun', 'Planeje o dia', 'A tela Hoje reúne atrasos, prazos, agenda e lembretes que pedem atenção.'],
+        ['clipboard-check', 'Leia antes de começar', 'Abra a demanda e confirme briefing, prazo, prioridade e resultado esperado.'],
+        ['workflow', 'Atualize o status', 'Mova a demanda quando iniciar, enviar para revisão ou concluir.'],
+        ['message-circle', 'Registre impedimentos', 'Use comentários para avisar dependências, dúvidas e decisões importantes.']
+      ],
+      tip: ['compass', 'Seu ponto de partida', 'Comece pela tela Hoje e depois abra Minhas demandas para enxergar toda a sua fila.'],
+      demo: onboardingMetricsDemo(false)
+    },
+    {
+      icon: 'sun', eyebrow: 'Rotina diária', title: 'A tela Hoje mostra o que merece sua atenção primeiro',
+      description: 'A página reúne demandas atrasadas, entregas do dia, próximos prazos, lembretes e compromissos. Use essa visão para montar sua ordem de execução antes de abrir novas frentes. Trabalhar em tudo simultaneamente continua não sendo um método, apesar do entusiasmo coletivo.',
+      points: [
+        ['triangle-alert', 'Atrasadas', 'Revise imediatamente e registre o motivo ou impedimento dentro da demanda.'],
+        ['clock-3', 'Para hoje', 'Confira horário, prioridade e esforço antes de decidir a ordem.'],
+        ['calendar-range', 'Próximos 7 dias', 'Antecipe entregas maiores e dependências que exigem preparação.'],
+        ['bell', 'Lembretes e agenda', 'Compromissos pessoais e avisos aparecem junto da sua linha do tempo.']
+      ],
+      tip: ['list-ordered', 'Priorize com contexto', 'Urgência, prazo, dependência e esforço importam mais do que a ordem em que as mensagens chegaram.'],
+      demo: onboardingTodayDemo()
+    },
+    {
+      icon: 'file-search-2', eyebrow: 'Entendimento da demanda', title: 'Abra o item e confirme o que precisa ser entregue',
+      description: 'Antes de iniciar, confira descrição, prazo, prioridade, tamanho, tags, responsável e histórico. Se faltar material ou houver dúvida sobre o resultado, comente no item. Começar com briefing incompleto costuma economizar cinco minutos e desperdiçar duas horas, um negócio brilhante.',
+      points: [
+        ['file-text', 'Leia o briefing inteiro', 'Entenda objetivo, formato, público, materiais, restrições e aprovação esperada.'],
+        ['calendar-clock', 'Confirme o prazo', 'Observe data e horário, especialmente quando existir revisão antes da entrega final.'],
+        ['badge-alert', 'Entenda a prioridade', 'Urgente interrompe prioridades; alta exige atenção; média e baixa seguem o fluxo normal.'],
+        ['circle-help', 'Pergunte no próprio item', 'Registre dúvidas para que a resposta permaneça junto da demanda.']
+      ],
+      tip: ['hand', 'Não adivinhe o briefing', 'Quando a informação necessária não estiver registrada, sinalize antes de executar.'],
+      demo: onboardingTaskDetailDemo()
+    },
+    {
+      icon: 'workflow', eyebrow: 'Atualização do trabalho', title: 'Mude o status no momento em que o trabalho realmente muda',
+      description: 'O botão principal da demanda indica a próxima ação do fluxo. Atualizar o status permite que gestor e equipe acompanhem o andamento sem interromper você para pedir notícia. É uma troca bastante razoável: um clique por menos cobrança.',
+      points: [
+        ['play', 'Iniciar demanda', 'Ao começar a execução, mova de Nova para Em andamento.'],
+        ['scan-eye', 'Enviar para revisão', 'Quando a entrega estiver pronta para validação, mova para Em revisão e registre observações.'],
+        ['circle-check-big', 'Concluir', 'Finalize somente quando o resultado tiver sido aceito ou quando o fluxo não exigir revisão.'],
+        ['rotate-ccw', 'Reabrir', 'Caso surja ajuste relevante após conclusão, devolva a demanda ao estágio adequado.']
+      ],
+      tip: ['timer-reset', 'Status desatualizado gera ruído', 'Não deixe “Nova” quando já começou nem “Em andamento” quando está aguardando revisão.'],
+      demo: onboardingStatusDemo('andamento', 'Enviar para revisão')
+    },
+    {
+      icon: 'message-circle', eyebrow: 'Comunicação e impedimentos', title: 'Registre o que afeta a entrega dentro da demanda',
+      description: 'Comentários servem para dúvidas, bloqueios, decisões, aprovações e atualizações que mudam o trabalho. O histórico registra automaticamente alterações de status e responsável. Assim, qualquer pessoa consegue entender o que aconteceu sem reconstruir a história em mensagens soltas.',
+      points: [
+        ['message-square-warning', 'Sinalize bloqueios cedo', 'Informe o que está impedindo o avanço e de quem depende a solução.'],
+        ['paperclip', 'Referencie materiais', 'Indique links, arquivos ou locais onde os insumos estão disponíveis.'],
+        ['history', 'Consulte o histórico', 'Veja quem alterou status, prazo, responsável ou detalhes da demanda.'],
+        ['at-sign', 'Contexto objetivo', 'Escreva o suficiente para orientar a próxima ação, evitando comentários vagos como “ver isso”.']
+      ],
+      tip: ['message-square-more', 'Modelo útil de comentário', '“Estou aguardando o arquivo X de Y. Sem ele, o prazo estimado muda para Z.”'],
+      demo: onboardingCommunicationDemo()
+    },
+    {
+      icon: 'calendar-days', eyebrow: 'Prazos e organização pessoal', title: 'Use agenda e lembretes para proteger seu foco',
+      description: 'Demandas com prazo aparecem na Agenda automaticamente. Você também pode criar lembretes pessoais e compromissos, escolher recorrência e ativar notificações neste computador. O objetivo é lembrar no momento certo, não decorar cada obrigação como se sua memória fosse um servidor corporativo.',
+      points: [
+        ['calendar-range', 'Planeje a semana', 'Abra datas futuras para identificar picos de entrega e organizar tarefas maiores.'],
+        ['alarm-clock', 'Crie lembretes pessoais', 'Use avisos para revisões, retornos e pequenas ações que não precisam virar demanda.'],
+        ['bell-ring', 'Ative notificações', 'Permita alertas no navegador para receber avisos de prazo e atribuição.'],
+        ['repeat', 'Use recorrência com cuidado', 'Repita apenas rotinas reais, evitando encher a agenda de alertas ignorados.']
+      ],
+      tip: ['clock-alert', 'Prazo em risco', 'Se perceber que não conseguirá cumprir, comente na demanda antes do vencimento e explique o impedimento.'],
+      demo: onboardingCalendarDemo()
+    },
+    {
+      icon: 'circle-user-round', eyebrow: 'Responsabilidade e avatares', title: 'Os avatares identificam pessoas, não substituem informação',
+      description: 'Seu avatar aparece nas demandas atribuídas a você, nos comentários, atividades, filtros e visão da equipe. Ele ajuda a reconhecer rapidamente quem é responsável por cada item. Cores e pequenos indicadores mostram contexto, mas o nome e o status continuam visíveis para evitar hieróglifos corporativos.',
+      points: [
+        ['user-round-check', 'Responsável principal', 'A pessoa exibida no item é quem responde pela condução daquela demanda.'],
+        ['list-filter', 'Filtro por pessoa', 'Na tela Demandas, use os avatares para mostrar sua fila ou a de outro colaborador.'],
+        ['messages-square', 'Identidade nos comentários', 'Cada atualização fica associada a quem a registrou.'],
+        ['users-round', 'Visão da equipe', 'Consulte disponibilidade estimada para entender prioridades e possíveis apoios.']
+      ],
+      tip: ['arrow-right-left', 'Mudança de responsável', 'Se outra pessoa assumir o trabalho, o gestor deve reatribuir a demanda para manter a responsabilidade correta.'],
+      demo: onboardingAssigneeDemo()
+    },
+    {
+      icon: 'search-check', eyebrow: 'Boas práticas', title: 'Mantenha sua fila limpa, atualizada e compreensível',
+      description: 'Use busca, filtros e histórico para localizar itens. Evite duplicar demandas, concluir trabalho incompleto ou deixar decisões importantes fora do sistema. O valor da Central depende da qualidade das atualizações, fenômeno irritante em que software algum consegue compensar totalmente a criatividade humana.',
+      points: [
+        ['search', 'Busque antes de criar contexto novo', 'Use Ctrl + K para encontrar demandas e lembretes existentes.'],
+        ['copy-x', 'Evite duplicidades', 'Quando o ajuste pertence ao mesmo resultado, continue no item existente.'],
+        ['badge-check', 'Conclua com responsabilidade', 'Verifique se a entrega está pronta e se observações finais foram registradas.'],
+        ['shield-alert', 'Não esconda atrasos', 'Atualize o item e sinalize o risco; status correto ajuda a equipe a reagir.']
+      ],
+      tip: ['refresh-cw', 'Atualização mínima saudável', 'Ao iniciar, bloquear, enviar para revisão ou concluir, atualize o status ou deixe um comentário.'],
+      demo: onboardingTaskDetailDemo()
+    },
+    {
+      icon: 'badge-check', eyebrow: 'Checklist do colaborador', title: 'Você está pronto para assumir suas primeiras demandas',
+      description: 'Quando uma demanda for atribuída a você, ela aparecerá em Hoje e em Minhas demandas. Leia o briefing, organize o prazo, inicie o trabalho, registre impedimentos e envie para revisão quando estiver pronto. Esse fluxo simples evita boa parte do caos artesanal que empresas chamam de alinhamento.',
+      points: [
+        ['check', 'Entendi a entrega', 'Sei qual resultado é esperado, quais materiais existem e quem valida.'],
+        ['check', 'Planejei o prazo', 'Considerei esforço, dependências e outras demandas da minha fila.'],
+        ['check', 'Vou atualizar o fluxo', 'Mudarei o status e registrarei bloqueios no momento adequado.'],
+        ['circle-help', 'Tutorial disponível', 'Abra novamente em Avatar → Ver tutorial sempre que precisar.']
+      ],
+      tip: ['rocket', 'Próxima ação', 'Feche o tutorial, abra Minhas demandas e confira se existe algum item atribuído a você.'],
+      demo: onboardingCompleteDemo(false)
+    }
+  ];
 }
 
 function getOnboardingSteps() {
-  const manager = isManager();
   const userName = firstName(state.me?.nome || 'você');
-  return [
-    {
-      icon: 'rocket', eyebrow: 'Primeiro acesso', title: `Bem-vindo, ${userName}.`,
-      description: 'A Central organiza demandas, prazos, responsáveis, agenda e notificações do Marketing. Este passeio mostra o essencial para você não precisar descobrir tudo por tentativa, erro e mensagens perdidas.',
-      points: [
-        ['layout-dashboard', 'Uma rotina centralizada', 'Hoje, Agenda, Demandas e Equipe ficam no mesmo lugar.'],
-        ['users-round', 'Responsabilidade visível', 'Cada demanda mostra claramente quem está cuidando dela.'],
-        ['bell-ring', 'Prazos que avisam', 'Lembretes e notificações ajudam a evitar entregas esquecidas.']
-      ],
-      demo: onboardingDemoWindow('Sua rotina', `<div class="onboarding-demo-metrics"><div class="onboarding-demo-metric"><strong>0</strong><span>Atrasadas</span></div><div class="onboarding-demo-metric"><strong>0</strong><span>Para hoje</span></div><div class="onboarding-demo-metric"><strong>0</strong><span>Próximos 7 dias</span></div><div class="onboarding-demo-metric"><strong>0</strong><span>Minhas demandas</span></div></div>`)
-    },
-    {
-      icon: 'sun', eyebrow: 'Sua visão diária', title: 'Comece pela tela Hoje',
-      description: 'Aqui você encontra o que precisa de atenção agora: atrasos, entregas do dia, próximos prazos, lembretes e movimentações recentes.',
-      points: [
-        ['triangle-alert', 'Prioridade primeiro', 'Itens atrasados e com prazo próximo aparecem em destaque.'],
-        ['calendar-clock', 'Agenda do dia', 'Demandas, compromissos e lembretes entram na mesma linha do tempo.'],
-        ['sparkles', 'Captura rápida', 'Escreva algo e transforme em lembrete sem atravessar um formulário gigantesco.']
-      ],
-      demo: onboardingDemoWindow('Hoje', `<div class="onboarding-demo-list"><div class="onboarding-demo-row"><span><i data-lucide="triangle-alert"></i></span><div><strong>Revisar campanha</strong><small>Prazo hoje, 14:00</small></div><b>Urgente</b></div><div class="onboarding-demo-row"><span><i data-lucide="calendar-clock"></i></span><div><strong>Reunião de alinhamento</strong><small>Hoje, 15:30</small></div><b>Agenda</b></div><div class="onboarding-demo-row"><span><i data-lucide="bell"></i></span><div><strong>Enviar aprovação</strong><small>Lembrete, 16:00</small></div><b>Aviso</b></div></div>`)
-    },
-    {
-      icon: 'workflow', eyebrow: 'Fluxo de trabalho', title: 'O status conta a história da demanda',
-      description: manager ? 'Gestores criam e distribuem demandas. Depois, o responsável move o trabalho pelas etapas até a conclusão.' : 'Você recebe demandas criadas pelo gestor e move cada trabalho pelas etapas conforme avança.',
-      points: [
-        ['play', 'Inicie quando começar', 'Nova passa para Em andamento quando o trabalho realmente começou.'],
-        ['scan-eye', 'Envie para revisão', 'Use Em revisão quando a entrega estiver pronta para validação.'],
-        ['circle-check-big', 'Conclua no final', 'Concluída encerra o fluxo e registra a entrega no histórico.']
-      ],
-      demo: onboardingDemoWindow('Status da demanda', `<div class="onboarding-status-flow"><div class="onboarding-status-step"><span><i data-lucide="circle-dot-dashed"></i></span><div><strong>Nova</strong><small>Aguardando início</small></div><b>1</b></div><div class="onboarding-status-step active"><span><i data-lucide="loader-circle"></i></span><div><strong>Em andamento</strong><small>Sendo executada</small></div><b>2</b></div><div class="onboarding-status-step"><span><i data-lucide="scan-eye"></i></span><div><strong>Em revisão</strong><small>Aguardando validação</small></div><b>3</b></div><div class="onboarding-status-step"><span><i data-lucide="circle-check-big"></i></span><div><strong>Concluída</strong><small>Entrega encerrada</small></div><b>4</b></div></div>`)
-    },
-    {
-      icon: 'circle-user-round', eyebrow: 'Pessoas e avatares', title: 'Os avatares mostram quem está com o quê',
-      description: manager ? 'Ao criar ou editar uma demanda, escolha o responsável pelo seletor visual. Carga, atrasos e disponibilidade ajudam a distribuir melhor o trabalho.' : 'Seu avatar identifica as demandas atribuídas a você. Os avatares também aparecem nos comentários, atividades e filtros da equipe.',
-      points: [
-        ['user-round-check', 'Responsável definido', 'Uma demanda deve ter uma pessoa claramente encarregada.'],
-        ['gauge', 'Carga visível', 'A tela Equipe estima volume e horas em aberto para cada pessoa.'],
-        ['list-filter', 'Filtro por pessoa', 'Na tela Demandas, clique em um avatar para ver a fila daquele colaborador.']
-      ],
-      demo: onboardingDemoWindow('Equipe', `<div class="onboarding-avatar-grid"><div class="onboarding-person"><div class="onboarding-person-top"><span class="onboarding-person-avatar">${escapeHtml(initials(state.me?.nome || 'GV'))}</span><div><strong>${escapeHtml(firstName(state.me?.nome || 'Giovanni'))}</strong><small>${manager ? 'Gestor' : 'Colaborador'}</small></div></div><div class="onboarding-load"><i style="width:42%"></i></div></div><div class="onboarding-person"><div class="onboarding-person-top"><span class="onboarding-person-avatar">FM</span><div><strong>Equipe</strong><small>4 demandas abertas</small></div></div><div class="onboarding-load"><i style="width:68%"></i></div></div></div>`)
-    },
-    {
-      icon: 'calendar-days', eyebrow: 'Agenda e alertas', title: 'Prazos, compromissos e lembretes juntos',
-      description: 'A Agenda mostra o mês inteiro. Você pode abrir qualquer dia, criar lembretes pessoais e ativar alertas do navegador neste computador.',
-      points: [
-        ['calendar-range', 'Calendário único', 'Demandas, compromissos e lembretes usam cores diferentes.'],
-        ['alarm-clock', 'Lembretes pessoais', 'Crie avisos que só você vê ou, quando permitido, compartilhe com a equipe.'],
-        ['monitor-smartphone', 'Notificações no computador', 'Ative os alertas no menu lateral para receber avisos de prazo.']
-      ],
-      demo: onboardingDemoWindow('Agenda', `<div class="onboarding-calendar"><div class="onboarding-calendar-day">04<div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day active">05<div class="onboarding-calendar-event purple"></div><div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day">06</div><div class="onboarding-calendar-day">07<div class="onboarding-calendar-event"></div></div><div class="onboarding-calendar-day">08</div></div>`)
-    },
-    {
-      icon: 'badge-check', eyebrow: 'Tudo pronto', title: 'A Central começa vazia e organizada',
-      description: manager ? 'Crie a primeira demanda, escolha um responsável e acompanhe o fluxo. O tutorial pode ser aberto novamente no menu do seu perfil.' : 'Quando uma demanda for atribuída a você, ela aparecerá em Hoje e em Minhas demandas. O tutorial pode ser aberto novamente no menu do seu perfil.',
-      points: [
-        ['mouse-pointer-click', 'Abra qualquer item', 'Clique numa demanda para ver briefing, prazo, comentários e histórico.'],
-        ['message-circle', 'Registre o contexto', 'Use comentários para manter decisões ligadas à própria demanda.'],
-        ['circle-help', 'Reveja quando precisar', 'No menu do usuário, clique em Ver tutorial.']
-      ],
-      demo: `<div class="onboarding-complete"><div class="onboarding-complete-icon"><i data-lucide="check-check"></i></div><strong>Pronto para começar</strong><span>Um sistema vazio é estranhamente pacífico. Vamos tentar mantê-lo organizado.</span></div>`
-    }
-  ];
+  return isManager() ? getManagerOnboardingSteps(userName) : getCollaboratorOnboardingSteps(userName);
 }
 
 function renderOnboardingStep() {
@@ -1292,17 +1547,22 @@ function renderOnboardingStep() {
   const index = Math.max(0, Math.min(state.onboardingStep, steps.length - 1));
   state.onboardingStep = index;
   const step = steps[index];
+  const manager = isManager();
 
   $('onboardingProgressText').textContent = `Passo ${index + 1} de ${steps.length}`;
+  $('onboardingRoleBadge').textContent = manager ? 'Tutorial do gestor' : 'Tutorial do colaborador';
+  $('onboardingRoleBadge').classList.toggle('manager', manager);
   $('onboardingEyebrow').textContent = step.eyebrow;
   $('onboardingTitle').textContent = step.title;
   $('onboardingDescription').textContent = step.description;
   $('onboardingIcon').innerHTML = `<i data-lucide="${step.icon}"></i>`;
   $('onboardingDemo').innerHTML = step.demo;
-  $('onboardingPoints').innerHTML = step.points.map(([icon, title, text]) => `<div class="onboarding-point"><span><i data-lucide="${icon}"></i></span><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(text)}</small></div></div>`).join('');
+  $('onboardingPoints').innerHTML = step.points.map(([icon, title, detail]) => `<div class="onboarding-point"><span><i data-lucide="${icon}"></i></span><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></div></div>`).join('');
+  const [tipIcon, tipTitle, tipText] = step.tip || ['lightbulb', 'Dica', 'Use o tutorial como referência sempre que precisar.'];
+  $('onboardingTip').innerHTML = `<span><i data-lucide="${tipIcon}"></i></span><div><strong>${escapeHtml(tipTitle)}</strong><p>${escapeHtml(tipText)}</p></div>`;
   $('onboardingStepDots').innerHTML = steps.map((_, dotIndex) => `<button type="button" class="${dotIndex === index ? 'active' : dotIndex < index ? 'done' : ''}" data-onboarding-step="${dotIndex}" aria-label="Ir para o passo ${dotIndex + 1}"></button>`).join('');
   $('onboardingBackBtn').classList.toggle('hidden', index === 0);
-  $('onboardingNextBtn').innerHTML = index === steps.length - 1 ? `Começar a usar<i data-lucide="check"></i>` : `Continuar<i data-lucide="arrow-right"></i>`;
+  $('onboardingNextBtn').innerHTML = index === steps.length - 1 ? `Entrar na Central<i data-lucide="check"></i>` : `Continuar<i data-lucide="arrow-right"></i>`;
   refreshIcons();
 }
 

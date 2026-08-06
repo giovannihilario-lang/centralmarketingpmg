@@ -237,7 +237,7 @@ table.data-table tr:hover td { background: var(--green-pale); }
 </style>
 <link rel="stylesheet" href="/assets/campaign-builder-v2.css">
 <link rel="stylesheet" href="/assets/campanhas-v3.css?v=3.1.0">
-<link rel="stylesheet" href="/assets/campaign-studio-v3-3.css?v=3.3.0">
+<link rel="stylesheet" href="/assets/campaign-studio-v3-3.css?v=3.4.0">
 </head>
 <body>
 
@@ -251,7 +251,7 @@ table.data-table tr:hover td { background: var(--green-pale); }
     <nav id="sidebarNav" class="side-nav" aria-label="Navegação de campanhas"></nav>
     <div class="side-insight">
       <div class="side-insight-head"><i data-lucide="database-zap"></i><strong>Dados comerciais</strong></div>
-      <p>Produtos e resultados conectados à base PMG. Configurações das campanhas ficam no servidor local.</p>
+      <p>Produtos e resultados conectados à base PMG. Na Vercel, o cadastro fica neste navegador; no localhost, fica no servidor local.</p>
       <div class="side-live"><span class="live-dot"></span><span id="hdrCampanhaAtiva">verificando campanhas...</span></div>
     </div>
     <div class="side-user">
@@ -696,11 +696,12 @@ function calcularPeriodos(dataInicioISO, dataFimISO) {
 
   const diffMs = fim - ini;
   const diffDias = Math.round(diffMs / 86400000);
-  const numSemanas = Math.round(diffDias / 7);
+  if (diffDias % 7 !== 0) return null;
+  const numSemanas = diffDias / 7;
   if (numSemanas < 1) return null;
 
-  // segundas-feiras contadas: da inicial até a final, inclusive (numSemanas + 1)
-  const numSegundas = numSemanas + 1;
+  // Quantidade de ciclos comerciais completos. A segunda final é apenas o fechamento exclusivo.
+  const numSegundas = numSemanas;
 
   const avisoNaoSegunda = !isMonday(ini) || !isMonday(fim);
 
@@ -795,9 +796,17 @@ function infoHojeCampanha(periodosCalc, dataRef = new Date()) {
   );
   const diasRestantes = Math.max(0, Math.round((periodosCalc.fim - hoje) / 86400000));
 
-  // próximo fechamento: próxima segunda-feira a partir de hoje (inclusive se hoje for segunda e ainda dentro da campanha)
-  let proximoFechamento = segundaDaSemana(hoje);
-  if (proximoFechamento <= hoje) proximoFechamento = addDays(proximoFechamento, 7);
+  // Fechamento coerente com a campanha. Nunca aponta para uma segunda após o encerramento.
+  let proximoFechamento;
+  if (hoje < periodosCalc.ini) {
+    proximoFechamento = new Date(periodosCalc.ini);
+  } else if (hoje >= periodosCalc.fim) {
+    proximoFechamento = new Date(periodosCalc.fim);
+  } else {
+    proximoFechamento = segundaDaSemana(hoje);
+    if (proximoFechamento <= hoje) proximoFechamento = addDays(proximoFechamento, 7);
+    if (proximoFechamento > periodosCalc.fim) proximoFechamento = new Date(periodosCalc.fim);
+  }
 
   const ultimaFechada = ultimaSemanaFechada(semanasComStatus);
 
@@ -843,8 +852,8 @@ const CAMPOS_METRICA = [
   { valor: 'clientesAnterior', label: 'Nº de clientes (anterior)' },
   { valor: 'pedidos', label: 'Nº de pedidos' },
   { valor: 'produtosDistintos', label: 'Produtos distintos vendidos' },
-  { valor: 'mix', label: 'Mix (%)' },
-  { valor: 'positivacao', label: 'Positivação (nº de clientes)' },
+  { valor: 'mix', label: 'Mix de categorias (%)' },
+  { valor: 'positivacao', label: 'Positivação líquida (clientes atuais − anteriores)' },
   { valor: 'crescimentoClientes', label: 'Crescimento de clientes (%)' },
   { valor: 'crescimentoKg', label: 'Crescimento de KG (%)' },
   { valor: 'crescimentoFaturamento', label: 'Crescimento de faturamento (%)' },
@@ -1763,16 +1772,16 @@ async function desenharPeriodos(campanhaId) {
         <div class="box-hdr"><div class="box-title">Campanha</div><span class="tag">${campanha.nome}</span></div>
         <div class="periodo-kpi-row">
           <div class="kpi-card" style="--accent-color:var(--green-dark); --accent-soft:var(--green-pale);">
-            <div class="kpi-label">Data Inicial</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(pc.ini)}</div>
+            <div class="kpi-label">Início das vendas</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(pc.ini)}</div>
           </div>
           <div class="kpi-card" style="--accent-color:var(--green-dark); --accent-soft:var(--green-pale);">
-            <div class="kpi-label">Data Final</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(pc.fim)}</div>
+            <div class="kpi-label">Segunda de fechamento</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(pc.fim)}</div>
           </div>
           <div class="kpi-card" style="--accent-color:var(--blue); --accent-soft:var(--blue-pale);">
-            <div class="kpi-label">Nº de Semanas</div><div class="kpi-value">${pc.numSemanas}</div>
+            <div class="kpi-label">Semanas comerciais</div><div class="kpi-value">${pc.numSemanas}</div>
           </div>
           <div class="kpi-card" style="--accent-color:var(--blue); --accent-soft:var(--blue-pale);">
-            <div class="kpi-label">Nº de Segundas-feiras</div><div class="kpi-value">${pc.numSegundas}</div>
+            <div class="kpi-label">Último dia de venda</div><div class="kpi-value" style="font-size:15px;">${fmtDataBR(addDays(pc.fim, -1))}</div>
           </div>
         </div>
         ${pc.avisoNaoSegunda ? '<div style="margin-top:10px; font-size:11.5px; color:#9b2c1d;">⚠ A data inicial ou final desta campanha não cai numa segunda-feira.</div>' : ''}
@@ -1785,10 +1794,10 @@ async function desenharPeriodos(campanhaId) {
           </div>
           <div class="periodo-compare-arrow">→</div>
           <div class="periodo-compare-col">
-            <h4>Fim</h4><div class="range">${fmtDataBR(pc.periodoAnteriorFim)}</div>
+            <h4>Último dia de venda</h4><div class="range">${fmtDataBR(addDays(pc.periodoAnteriorFim, -1))}</div>
           </div>
         </div>
-        <div style="font-size:11px; color:var(--gray-text); margin-top:10px;">Calculado automaticamente: mesmo número de semanas da campanha, terminando exatamente onde ela começa.</div>
+        <div style="font-size:11px; color:var(--gray-text); margin-top:10px;">Calculado automaticamente com o mesmo número de semanas completas. O fechamento do período anterior é a mesma segunda em que a campanha começa.</div>
       </div>
     </div>
 
@@ -1808,7 +1817,7 @@ async function desenharPeriodos(campanhaId) {
           <div class="kpi-icon">⏳</div><div class="kpi-label">Dias Restantes</div><div class="kpi-value">${info.diasRestantes}</div>
         </div>
         <div class="kpi-card" style="--accent-color:var(--green-mid); --accent-soft:var(--green-pale);">
-          <div class="kpi-icon">🔒</div><div class="kpi-label">Próximo Fechamento</div><div class="kpi-value" style="font-size:14px;">${fmtDataBR(info.proximoFechamento)}</div>
+          <div class="kpi-icon">🔒</div><div class="kpi-label">${info.campanhaEncerrada ? 'Fechamento da campanha' : 'Próximo fechamento'}</div><div class="kpi-value" style="font-size:14px;">${fmtDataBR(info.proximoFechamento)}</div>
         </div>
       </div>
       ${info.ultimaSemanaFechada > 0 ? `
@@ -2370,8 +2379,8 @@ async function limparTudo() {
 }
 
 </script>
-<script src="/assets/campaign-builder-v2.js?v=3.3.0"></script>
-<script src="/assets/campanhas-v3.js?v=3.2.0"></script>
-<script src="/assets/campaign-studio-v3-3.js?v=3.3.0"></script>
+<script src="/assets/campaign-builder-v2.js?v=3.4.0"></script>
+<script src="/assets/campanhas-v3.js?v=3.4.0"></script>
+<script src="/assets/campaign-studio-v3-3.js?v=3.4.0"></script>
 </body>
 </html>

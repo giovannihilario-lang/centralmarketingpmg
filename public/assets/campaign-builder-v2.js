@@ -34,6 +34,21 @@
   }
 
 
+
+  async function fetchJson(url, options = {}) {
+    const resposta = await fetch(url, options);
+    const textoResposta = await resposta.text();
+    let dados = null;
+    try {
+      dados = textoResposta ? JSON.parse(textoResposta) : null;
+    } catch (_) {
+      const trecho = textoResposta.trim().slice(0, 180) || 'resposta vazia';
+      throw new Error(`A API respondeu ${resposta.status} sem JSON: ${trecho}`);
+    }
+    if (!resposta.ok) throw new Error(dados?.erro || dados?.message || `Falha HTTP ${resposta.status}`);
+    return dados;
+  }
+
   function urlImagem(valor) {
     const limpa = String(valor || '').trim().replace(/\\/g, '/');
     if (!limpa) return '';
@@ -55,9 +70,7 @@
 
     state.catalogoVisualPromise = (async () => {
       try {
-        const resposta = await fetch('/api/produtos-supabase');
-        if (!resposta.ok) throw new Error(`Catálogo visual retornou ${resposta.status}`);
-        const produtos = await resposta.json();
+        const produtos = await fetchJson('/api/produtos-supabase');
         const normalizados = (produtos || []).map((produto) => {
           const categoria = typeof window.categoriaPorId === 'function'
             ? window.categoriaPorId(produto.id_categoria)
@@ -110,6 +123,9 @@
       cor: parcial.cor || CORES[state.grupos.length % CORES.length],
       criterio: parcial.criterio || 'SEM_PONTOS',
       valorPontos: numero(parcial.valorPontos),
+      participaMix: parcial.participaMix !== false,
+      obrigatoriaMix: parcial.obrigatoriaMix !== false,
+      minimoProdutosMix: Math.max(1, numero(parcial.minimoProdutosMix) || 1),
       produtos: Array.isArray(parcial.produtos) ? parcial.produtos : [],
     };
   }
@@ -136,6 +152,9 @@
             nome: regra.grupoNome || 'Produtos participantes',
             cor: regra.grupoCor || CORES[porGrupo.size % CORES.length],
             ...pontos,
+            participaMix: regra.participaMix !== false,
+            obrigatoriaMix: regra.obrigatoriaMix !== false,
+            minimoProdutosMix: Math.max(1, numero(regra.minimoProdutosMix) || 1),
           }));
         }
 
@@ -180,12 +199,13 @@
 
   function montarResumo() {
     const comPontos = state.grupos.filter((grupo) => grupo.criterio !== 'SEM_PONTOS').length;
+    const obrigatoriasMix = state.grupos.filter((grupo) => grupo.participaMix && grupo.obrigatoriaMix).length;
     return `
       <div class="cb-summary">
         <span><b>${state.grupos.length}</b> categoria(s)</span>
         <span><b>${totalProdutos()}</b> produto(s) participante(s)</span>
         <span><b>${comPontos}</b> categoria(s) com pontuação</span>
-        <span>Mix calculado sobre os produtos selecionados</span>
+        <span><b>${obrigatoriasMix}</b> categoria(s) obrigatória(s) no mix</span>
       </div>`;
   }
 
@@ -255,6 +275,11 @@
           <div style="display:flex;align-items:center;font-size:10px;color:var(--gray-text);padding:0 4px;">
             ${grupo.criterio === 'PONTOS_PC' ? 'por PC' : grupo.criterio === 'PONTOS_KG' ? 'por KG' : grupo.criterio === 'PONTOS_REAL' ? 'por R$' : grupo.criterio === 'PONTOS_FIXOS' ? 'por linha' : 'sem pontos'}
           </div>
+        </div>
+        <div class="cb-mix-config">
+          <label class="cb-check"><input type="checkbox" ${grupo.participaMix ? 'checked' : ''} onchange="cbAtualizarGrupo('${esc(grupo.id)}', 'participaMix', this.checked)"> Participa do mix</label>
+          <label class="cb-check"><input type="checkbox" ${grupo.obrigatoriaMix ? 'checked' : ''} ${grupo.participaMix ? '' : 'disabled'} onchange="cbAtualizarGrupo('${esc(grupo.id)}', 'obrigatoriaMix', this.checked)"> Categoria obrigatória</label>
+          <label class="cb-mix-min">Mínimo de produtos distintos vendidos <input type="number" min="1" step="1" value="${grupo.minimoProdutosMix || 1}" ${grupo.participaMix ? '' : 'disabled'} oninput="cbAtualizarGrupo('${esc(grupo.id)}', 'minimoProdutosMix', this.value)"></label>
         </div>
         <div class="cb-group-products">${produtos}</div>
       </section>`;
@@ -349,9 +374,7 @@
       const parametros = new URLSearchParams({ recurso: 'filtros-produtos' });
       if (fornecedorId) parametros.set('fornecedorId', fornecedorId);
       if (fornecedor) parametros.set('fornecedor', fornecedor);
-      const resposta = await fetch('/api/campanhas-data?' + parametros.toString());
-      const dados = await resposta.json();
-      if (!resposta.ok) throw new Error(dados.erro || 'Falha ao carregar filtros de produtos');
+      const dados = await fetchJson('/api/campanhas-data?' + parametros.toString());
       state.filtros = dados;
       state.filtrosChave = chave;
       return dados;
@@ -412,10 +435,7 @@
       let dados = null;
 
       try {
-        const resposta = await fetch('/api/campanhas-data?' + parametros.toString());
-        const corpo = await resposta.json();
-        if (!resposta.ok) throw new Error(corpo.erro || 'Falha ao carregar produtos');
-        dados = corpo;
+        dados = await fetchJson('/api/campanhas-data?' + parametros.toString());
       } catch (erro) {
         console.warn('[campaign-builder] produtos SQL indisponíveis; usando catálogo PMG', erro);
       }
@@ -527,8 +547,11 @@
   window.cbAtualizarGrupo = function (grupoId, campo, valor) {
     const grupo = state.grupos.find((item) => item.id === grupoId);
     if (!grupo) return;
-    grupo[campo] = campo === 'valorPontos' ? numero(valor) : valor;
-    if (campo === 'criterio' || campo === 'cor') renderizarGrupos();
+    if (campo === 'valorPontos') grupo[campo] = numero(valor);
+    else if (campo === 'minimoProdutosMix') grupo[campo] = Math.max(1, numero(valor) || 1);
+    else if (campo === 'participaMix' || campo === 'obrigatoriaMix') grupo[campo] = Boolean(valor);
+    else grupo[campo] = valor;
+    if (campo === 'criterio' || campo === 'cor' || campo === 'participaMix') renderizarGrupos();
   };
 
   window.cbExcluirGrupo = function (grupoId) {
@@ -650,6 +673,9 @@
           grupoNome: grupo.nome.trim() || 'Categoria sem nome',
           grupoCor: grupo.cor,
           criterio: grupo.criterio,
+          participaMix: grupo.participaMix !== false,
+          obrigatoriaMix: grupo.obrigatoriaMix !== false,
+          minimoProdutosMix: Math.max(1, numero(grupo.minimoProdutosMix) || 1),
           ordemGrupo,
           ordemProduto,
           pontosPorKg: grupo.criterio === 'PONTOS_KG' ? numero(grupo.valorPontos) : 0,

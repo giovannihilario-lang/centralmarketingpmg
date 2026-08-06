@@ -8,17 +8,17 @@
     { valor: 'pontosFinal', label: 'Pontos', icon: 'sparkles', descricao: 'Pontuação configurada por produtos e regras' },
     { valor: 'faturamentoCampanha', label: 'Faturamento', icon: 'badge-dollar-sign', descricao: 'Maior valor vendido no período' },
     { valor: 'kgCampanha', label: 'Volume', icon: 'weight', descricao: 'Maior quantidade em quilogramas' },
-    { valor: 'positivacao', label: 'Positivação', icon: 'users-round', descricao: 'Maior número de clientes únicos' },
-    { valor: 'mix', label: 'Mix', icon: 'boxes', descricao: 'Maior cobertura de produtos participantes' },
+    { valor: 'positivacao', label: 'Positivação líquida', icon: 'users-round', descricao: 'Saldo de clientes: campanha menos período anterior' },
+    { valor: 'mix', label: 'Mix de categorias', icon: 'boxes', descricao: 'Categorias obrigatórias cumpridas pelo vendedor' },
     { valor: 'crescimentoFaturamento', label: 'Crescimento', icon: 'trending-up', descricao: 'Maior evolução sobre o período anterior' },
   ];
 
   const TEMPLATES_REGRAS = {
-    POSITIVACAO_MINIMA: { nome: 'Positivação mínima', campo: 'positivacao', operador: '>=', valor: 5, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'user-round-check', texto: 'Exigir um número mínimo de clientes únicos' },
+    POSITIVACAO_MINIMA: { nome: 'Positivação líquida mínima', campo: 'positivacao', operador: '>=', valor: 3, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'user-round-check', texto: 'Exigir saldo positivo de clientes contra o período anterior' },
     FATURAMENTO_MINIMO: { nome: 'Faturamento mínimo', campo: 'faturamentoCampanha', operador: '>=', valor: 10000, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'circle-dollar-sign', texto: 'Exigir um valor mínimo vendido' },
     VOLUME_MINIMO: { nome: 'Volume mínimo', campo: 'kgCampanha', operador: '>=', valor: 100, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'weight', texto: 'Exigir um volume mínimo em KG' },
     PONTOS_MINIMOS: { nome: 'Pontuação mínima', campo: 'pontosProdutos', operador: '>=', valor: 400, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'sparkles', texto: 'Exigir pontuação mínima nos produtos' },
-    MIX_MINIMO: { nome: 'Mix mínimo', campo: 'mix', operador: '>=', valor: 30, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'boxes', texto: 'Exigir cobertura mínima do mix selecionado' },
+    MIX_MINIMO: { nome: 'Mix de categorias completo', campo: 'mix', operador: '>=', valor: 100, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'boxes', texto: 'Exigir cobertura mínima do mix selecionado' },
     CRESCIMENTO_FATURAMENTO: { nome: 'Crescimento de faturamento', campo: 'crescimentoFaturamento', operador: '>=', valor: 8, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'trending-up', texto: 'Comparar com as semanas anteriores equivalentes' },
     CRESCIMENTO_VOLUME: { nome: 'Crescimento de volume', campo: 'crescimentoKg', operador: '>=', valor: 8, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'chart-no-axes-combined', texto: 'Comparar KG com o período anterior' },
     SALDO_CLIENTES: { nome: 'Saldo de clientes', campo: 'saldoClientes', operador: '>=', valor: 3, escopo: 'principal', obrigatoria: true, acao: 'elegivel', acaoValor: '', icon: 'user-round-plus', texto: 'Exigir crescimento líquido de clientes' },
@@ -44,6 +44,24 @@
 
   const icon = (nome) => `<i data-lucide="${nome}"></i>`;
   const atualizarIcones = () => window.lucide?.createIcons({ attrs: { 'stroke-width': 1.9 } });
+  async function fetchJsonSeguro(url, options = {}) {
+    const resposta = await fetch(url, options);
+    const textoResposta = await resposta.text();
+    let dados;
+    try {
+      dados = textoResposta ? JSON.parse(textoResposta) : {};
+    } catch (_) {
+      const trecho = textoResposta.trim().slice(0, 220) || 'resposta vazia';
+      throw new Error(`A API respondeu HTTP ${resposta.status} sem JSON: ${trecho}`);
+    }
+    if (!resposta.ok) {
+      const erro = new Error(dados.erro || dados.message || `Falha HTTP ${resposta.status}`);
+      erro.codigo = dados.codigo;
+      erro.dica = dados.dica;
+      throw erro;
+    }
+    return dados;
+  }
   const estadoModal = () => (typeof _campanhaModalState !== 'undefined' ? _campanhaModalState : null);
   const campoLabel = (valor) => (window.CAMPOS_METRICA || CAMPOS_METRICA).find((item) => item.valor === valor)?.label || valor;
   const acaoLabel = (valor) => (window.ACOES || ACOES).find((item) => item.valor === valor)?.label || valor;
@@ -282,9 +300,7 @@
   let fornecedoresCache = [];
   async function carregarFornecedores() {
     if (fornecedoresCache.length) return fornecedoresCache;
-    const resposta = await fetch('/api/campanhas-data?recurso=fornecedores&limite=500');
-    const dados = await resposta.json();
-    if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível consultar fornecedores');
+    const dados = await fetchJsonSeguro('/api/campanhas-data?recurso=fornecedores&limite=500');
     fornecedoresCache = dados;
     return dados;
   }
@@ -425,38 +441,39 @@
   };
 
   async function consultarVendedoresSql(busca = '') {
-    const parametros = new URLSearchParams({ recurso: 'vendedores' });
+    const parametros = new URLSearchParams({ recurso: 'vendedores', ativos: 'true', diasHistorico: '365' });
     if (busca) parametros.set('busca', busca);
-    const resposta = await fetch('/api/campanhas-data?' + parametros.toString());
-    const dados = await resposta.json();
-    if (!resposta.ok) throw new Error(dados.erro || 'Falha ao consultar vendedores');
-    return dados;
+    return fetchJsonSeguro('/api/campanhas-data?' + parametros.toString());
   }
 
   async function sincronizarRepresentantes(dados) {
-    const representantes = dados.map((item) => ({
-      id: `sql:${item.vendedor}`,
-      nome: item.vendedor,
-      clientesCarteira: Number(item.clientesCarteira) || 0,
-      clientesHistoricos: Number(item.clientesHistoricos) || 0,
-      pedidosHistoricos: Number(item.pedidosHistoricos) || 0,
-      ultimaVenda: item.ultimaVenda,
-      faturamentoHistorico: Number(item.faturamentoHistorico) || 0,
-      origem: 'SQL Server Power BI',
-      ativo: true,
-    }));
+    const representantes = (dados || [])
+      .filter((item) => item.ativo !== false && Number(item.clientesAtivos || 0) > 0)
+      .map((item) => ({
+        id: `sql:${item.vendedor}`,
+        nome: item.vendedor,
+        clientesCarteira: Number(item.clientesCarteira) || 0,
+        clientesAtivos: Number(item.clientesAtivos) || 0,
+        clientesHistoricos: Number(item.clientesHistoricos) || 0,
+        pedidosHistoricos: Number(item.pedidosHistoricos) || 0,
+        ultimaVenda: item.ultimaVenda,
+        faturamentoHistorico: Number(item.faturamentoHistorico) || 0,
+        criterioAtividade: item.criterioAtividade || 'dbo.Clientes.[Status]',
+        origem: 'SQL Server Power BI',
+        ativo: true,
+      }));
     if (representantes.length) await DB.putMany('representantes', representantes);
     return representantes;
   }
 
   window.renderRepresentantes = async function renderRepresentantesSql() {
-    root().innerHTML = pageHeader('Representantes', 'Vendedores identificados diretamente nas tabelas Vendas e Clientes',
+    root().innerHTML = pageHeader('Representantes', 'Vendedores ativos identificados pela carteira de clientes do Power BI',
       `<button class="btn btn-primary" onclick="renderRepresentantes()">${icon('refresh-cw')} Atualizar do SQL</button>`) + `
       <div class="cs-data-source-panel">
-        <span>${icon('database')}</span><div><strong>Fonte oficial: banco Power BI</strong><small>Lista unificada de dbo.Vendas.[Vendedor] e dbo.Clientes.[Vendedor].</small></div>
+        <span>${icon('database')}</span><div><strong>Somente vendedores ativos</strong><small>O vendedor entra na lista quando possui ao menos um cliente cujo dbo.Clientes.[Status] contém “ATIV”. O histórico considera os últimos 365 dias.</small></div>
         <span class="cs-source-status">Consulta ao vivo</span>
       </div>
-      <div class="box"><div class="cs-list-toolbar"><div class="global-search">${icon('search')}<input id="csRepBusca" placeholder="Buscar vendedor" oninput="csFiltrarRepresentantes(this.value)"></div><span id="csRepTotal"></span></div><div id="csRepresentantesResultado"><div class="cs-loading-state">Consultando vendedores...</div></div></div>`;
+      <div class="box"><div class="cs-list-toolbar"><div class="global-search">${icon('search')}<input id="csRepBusca" placeholder="Buscar vendedor" oninput="csFiltrarRepresentantes(this.value)"></div><span id="csRepTotal"></span></div><div id="csRepresentantesResultado"><div class="cs-loading-state">Consultando vendedores ativos...</div></div></div>`;
     atualizarIcones();
     try {
       const dados = await consultarVendedoresSql();
@@ -464,9 +481,9 @@
       window.__CS_REPRESENTANTES = representantes;
       desenharRepresentantes(representantes);
     } catch (erro) {
-      const locais = await DB.getAll('representantes');
+      const locais = (await DB.getAll('representantes')).filter((item) => item.ativo !== false);
       window.__CS_REPRESENTANTES = locais;
-      desenharRepresentantes(locais, erro.message);
+      desenharRepresentantes(locais, `${erro.message}${erro.dica ? ` · ${erro.dica}` : ''}`);
     }
   };
 
@@ -474,10 +491,10 @@
     const alvo = document.getElementById('csRepresentantesResultado');
     const total = document.getElementById('csRepTotal');
     if (!alvo) return;
-    if (total) total.textContent = `${representantes.length} vendedor(es)`;
-    alvo.innerHTML = `${aviso ? `<div class="cs-inline-warning">${esc(aviso)} · mostrando cache local.</div>` : ''}
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>Vendedor</th><th>Clientes em carteira</th><th>Clientes com histórico</th><th>Pedidos históricos</th><th>Última venda</th><th>Origem</th></tr></thead><tbody>
-      ${representantes.map((rep) => `<tr data-rep-search="${esc(normalizeKey(rep.nome))}"><td><div class="cs-rep-name"><span>${esc(rep.nome.slice(0, 2).toUpperCase())}</span><strong>${esc(rep.nome)}</strong></div></td><td>${fmtNum(rep.clientesCarteira || 0)}</td><td>${fmtNum(rep.clientesHistoricos || 0)}</td><td>${fmtNum(rep.pedidosHistoricos || 0)}</td><td>${rep.ultimaVenda ? fmtDate(rep.ultimaVenda) : '—'}</td><td><span class="cs-source-badge">SQL</span></td></tr>`).join('')}
+    if (total) total.textContent = `${representantes.length} vendedor(es) ativo(s)`;
+    alvo.innerHTML = `${aviso ? `<div class="cs-inline-warning"><strong>Consulta SQL indisponível.</strong><span>${esc(aviso)}</span><small>O cache local abaixo pode estar desatualizado.</small></div>` : ''}
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Vendedor</th><th>Status</th><th>Clientes ativos</th><th>Carteira total</th><th>Clientes com compra recente</th><th>Pedidos recentes</th><th>Última venda</th></tr></thead><tbody>
+      ${representantes.map((rep) => `<tr data-rep-search="${esc(normalizeKey(rep.nome))}"><td><div class="cs-rep-name"><span>${esc(rep.nome.slice(0, 2).toUpperCase())}</span><strong>${esc(rep.nome)}</strong></div></td><td><span class="badge-eleg sim">Ativo</span></td><td><strong>${fmtNum(rep.clientesAtivos || 0)}</strong></td><td>${fmtNum(rep.clientesCarteira || 0)}</td><td>${fmtNum(rep.clientesHistoricos || 0)}</td><td>${fmtNum(rep.pedidosHistoricos || 0)}</td><td>${rep.ultimaVenda ? fmtDate(rep.ultimaVenda) : '—'}</td></tr>`).join('') || '<tr><td colspan="7" class="cs-table-empty">Nenhum vendedor ativo foi encontrado.</td></tr>'}
       </tbody></table></div>`;
   }
 
@@ -486,18 +503,65 @@
     document.querySelectorAll('[data-rep-search]').forEach((linha) => linha.style.display = !busca || linha.dataset.repSearch.includes(busca) ? '' : 'none');
   };
 
-  function metricasRepresentante(vendas, regrasProduto, totalProdutosAtivos) {
+  function calcularMixCategorias(atuais, regrasProduto) {
+    const grupos = new Map();
+    (regrasProduto || []).filter((regra) => regra.escopo === 'produto' && regra.ativa !== false).forEach((regra) => {
+      const grupoId = regra.grupoId || 'grupo_principal';
+      if (!grupos.has(grupoId)) grupos.set(grupoId, {
+        id: grupoId,
+        nome: regra.grupoNome || 'Produtos participantes',
+        participaMix: regra.participaMix !== false,
+        obrigatoria: regra.obrigatoriaMix !== false,
+        minimoProdutos: Math.max(1, Number(regra.minimoProdutosMix) || 1),
+        produtos: new Set(),
+      });
+      grupos.get(grupoId).produtos.add(String(regra.valor));
+    });
+
+    const vendidos = new Set(atuais.map((venda) => String(venda.codigo ?? venda.produtoId ?? '')));
+    const detalhes = [...grupos.values()].filter((grupo) => grupo.participaMix).map((grupo) => {
+      const produtosVendidos = [...grupo.produtos].filter((codigo) => vendidos.has(codigo));
+      return {
+        id: grupo.id,
+        nome: grupo.nome,
+        obrigatoria: grupo.obrigatoria,
+        minimoProdutos: grupo.minimoProdutos,
+        produtosVendidos: produtosVendidos.length,
+        atingida: produtosVendidos.length >= grupo.minimoProdutos,
+      };
+    });
+    const obrigatorias = detalhes.filter((grupo) => grupo.obrigatoria);
+    const base = obrigatorias.length ? obrigatorias : detalhes;
+    const atingidas = base.filter((grupo) => grupo.atingida).length;
+    const total = base.length;
+    return {
+      mix: total ? (atingidas / total) * 100 : 0,
+      mixCategoriasAtingidas: atingidas,
+      mixCategoriasTotal: total,
+      mixCompleto: total ? atingidas === total : true,
+      mixDetalhes: detalhes,
+    };
+  }
+
+  function metricasRepresentante(vendas, regrasProduto) {
     const atuais = vendas.filter((venda) => venda.periodo === 'campanha');
     const anteriores = vendas.filter((venda) => venda.periodo === 'anterior');
     const somar = (lista, campo) => lista.reduce((total, item) => total + (Number(item[campo]) || 0), 0);
-    const clientesAtuais = new Set(atuais.map((venda) => venda.clienteCodigo || normalizeKey(venda.cliente))).size;
-    const clientesAnteriores = new Set(anteriores.map((venda) => venda.clienteCodigo || normalizeKey(venda.cliente))).size;
+    const chaveCliente = (venda) => String(venda.clienteCodigo || normalizeKey(venda.cliente));
+    const clientesAtuaisSet = new Set(atuais.map(chaveCliente).filter(Boolean));
+    const clientesAnterioresSet = new Set(anteriores.map(chaveCliente).filter(Boolean));
+    const clientesGanhos = [...clientesAtuaisSet].filter((id) => !clientesAnterioresSet.has(id)).length;
+    const clientesPerdidos = [...clientesAnterioresSet].filter((id) => !clientesAtuaisSet.has(id)).length;
+    const clientesAtuais = clientesAtuaisSet.size;
+    const clientesAnteriores = clientesAnterioresSet.size;
     const kgCampanha = somar(atuais, 'kg');
     const kgAnterior = somar(anteriores, 'kg');
     const faturamentoCampanha = somar(atuais, 'valor');
     const faturamentoAnterior = somar(anteriores, 'valor');
-    const produtosDistintos = new Set(atuais.map((venda) => venda.codigo)).size;
+    const produtosDistintos = new Set(atuais.map((venda) => String(venda.codigo))).size;
     const crescimento = (atual, anterior) => anterior > 0 ? ((atual - anterior) / anterior) * 100 : (atual > 0 ? 100 : 0);
+    const mix = calcularMixCategorias(atuais, regrasProduto);
+    const positivacao = clientesAtuais - clientesAnteriores;
     return {
       kgCampanha,
       kgAnterior,
@@ -505,15 +569,17 @@
       faturamentoAnterior,
       clientesCampanha: clientesAtuais,
       clientesAnterior: clientesAnteriores,
+      clientesGanhos,
+      clientesPerdidos,
       pedidos: new Set(atuais.map((venda) => venda.pedido)).size,
       produtosDistintos,
-      mix: Math.min(100, totalProdutosAtivos ? (produtosDistintos / totalProdutosAtivos) * 100 : 0),
-      positivacao: clientesAtuais,
-      saldoClientes: clientesAtuais - clientesAnteriores,
+      positivacao,
+      saldoClientes: positivacao,
       crescimentoClientes: crescimento(clientesAtuais, clientesAnteriores),
       crescimentoKg: crescimento(kgCampanha, kgAnterior),
       crescimentoFaturamento: crescimento(faturamentoCampanha, faturamentoAnterior),
       pontosProdutos: calcularPontosProdutos(atuais, regrasProduto),
+      ...mix,
     };
   }
 
@@ -535,10 +601,10 @@
     const regrasProduto = todasRegrasProduto.filter((regra) => regra.campanhaId === campanhaId && regra.ativa !== false);
     const produtos = regrasProduto.map((regra) => Number(regra.valor)).filter(Number.isFinite);
     const resultadoAlvo = document.getElementById('apuracaoResultado');
-    if (resultadoAlvo) resultadoAlvo.innerHTML = '<div class="cs-loading-state">Consultando vendas e produtos no SQL Server Power BI...</div>';
+    if (resultadoAlvo) resultadoAlvo.innerHTML = '<div class="cs-loading-state">Consultando vendas, produtos, clientes e vendedores ativos no SQL Server Power BI...</div>';
 
     try {
-      const resposta = await fetch('/api/campanhas-data?recurso=apuracao', {
+      const dados = await fetchJsonSeguro('/api/campanhas-data?recurso=apuracao', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           campanhaInicio: corte.campanhaInicioISO,
@@ -550,27 +616,26 @@
           produtos,
         }),
       });
-      const dados = await resposta.json();
-      if (!resposta.ok) throw new Error(dados.erro || 'Falha ao consultar o SQL Server');
 
       const linhas = dados.linhas || [];
       const nomes = [...new Set(linhas.map((linha) => linha.vendedor).filter(Boolean))];
       const repIds = nomes.map((nome) => `sql:${nome}`);
-      await sincronizarRepresentantes(nomes.map((vendedor) => ({ vendedor })));
-      const totalProdutos = Number(dados.totalProdutosEscopo) || Math.max(1, produtos.length);
       const resultados = repIds.map((repId) => {
         const nome = repId.slice(4);
         const vendas = linhas.filter((linha) => linha.representanteId === repId);
-        const metricas = metricasRepresentante(vendas, regrasProduto, totalProdutos);
+        const metricas = metricasRepresentante(vendas, regrasProduto);
         const regraResultado = aplicarRegras(regras, metricas, metricas.pontosProdutos);
-        return { representanteId: repId, nome, regiao: '—', ...metricas, ...regraResultado };
+        return { representanteId: repId, nome, regiao: '—', ativo: true, ...metricas, ...regraResultado };
       });
 
       const metaCampo = campanha.metaColetivaCampo === 'valor' ? 'valor' : 'kg';
       const meta = calcularMetaColetiva(linhas, metaCampo);
+      const possuiMetaColetiva = campanha.metaColetivaPct !== null && campanha.metaColetivaPct !== undefined && campanha.metaColetivaPct !== '';
       const apuracao = {
         id: parcial ? `ap_${campanhaId}_parcial_s${corte.numSemanas}` : `ap_${campanhaId}`,
         campanhaId,
+        campanhaNome: campanha.nome,
+        fornecedor: campanha.fornecedor,
         geradoEm: new Date().toISOString(),
         resultados,
         parcial,
@@ -583,19 +648,24 @@
         quantidadeClassificados: campanha.quantidadeClassificados,
         fonte: dados.fonte,
         dataReferencia: dados.dataReferencia,
+        filtroRepresentantes: dados.filtroRepresentantes,
         diagnostico: dados.resumo,
-        totalProdutosEscopo: totalProdutos,
+        totalProdutosEscopo: Number(dados.totalProdutosEscopo) || produtos.length,
         metaColetiva: {
-          campo: metaCampo, totalAtual: meta.totalAtual, totalAnterior: meta.totalAnterior,
-          pctAtingido: meta.crescimentoPct, pctExigido: campanha.metaColetivaPct,
-          batida: campanha.metaColetivaPct == null ? null : meta.crescimentoPct >= campanha.metaColetivaPct,
+          configurada: possuiMetaColetiva,
+          campo: metaCampo,
+          totalAtual: meta.totalAtual,
+          totalAnterior: meta.totalAnterior,
+          pctAtingido: meta.crescimentoPct,
+          pctExigido: possuiMetaColetiva ? Number(campanha.metaColetivaPct) : null,
+          batida: possuiMetaColetiva ? meta.crescimentoPct >= Number(campanha.metaColetivaPct) : null,
         },
       };
       await DB.put('apuracoes', apuracao);
-      showToast(`Apuração SQL concluída para ${resultados.length} vendedor(es).`);
+      showToast(`Apuração SQL concluída para ${resultados.length} vendedor(es) ativo(s).`);
       window.desenharApuracao(apuracao);
     } catch (erro) {
-      if (resultadoAlvo) resultadoAlvo.innerHTML = `<div class="cs-apuration-error"><strong>Não foi possível consultar o SQL Server.</strong><span>${esc(erro.message)}</span><small>Os números não foram substituídos por dados simulados ou cache antigo.</small></div>`;
+      if (resultadoAlvo) resultadoAlvo.innerHTML = `<div class="cs-apuration-error"><strong>Não foi possível consultar o SQL Server.</strong><span>${esc(erro.message)}</span>${erro.dica ? `<small>${esc(erro.dica)}</small>` : ''}<div><a class="btn btn-ghost btn-sm" href="/api/campanhas-data?recurso=diagnostico" target="_blank">Abrir diagnóstico da API</a></div></div>`;
       showToast(erro.message, true);
     }
   };
@@ -605,37 +675,67 @@
     if (metrica.toLowerCase().includes('faturamento')) return fmtMoney(valor);
     if (metrica.toLowerCase().includes('crescimento') || metrica === 'mix') return fmtPct(valor);
     if (metrica.toLowerCase().includes('kg')) return fmtKg(valor);
+    if (metrica === 'positivacao' || metrica === 'saldoClientes') return `${valor > 0 ? '+' : ''}${fmtNum(valor)}`;
     return fmtNum(valor);
+  }
+
+  function statusMetaHtml(meta) {
+    if (!meta?.configurada) return `<article class="cs-result-kpi neutral"><small>Meta coletiva</small><strong>Não configurada</strong><span>A campanha não exige meta coletiva.</span></article>`;
+    const nome = meta.campo === 'valor' ? 'Faturamento' : 'Volume em KG';
+    return `<article class="cs-result-kpi ${meta.batida ? 'success' : 'danger'}"><small>Meta coletiva · ${nome}</small><strong>${meta.batida ? 'BATIDA' : 'NÃO BATIDA'}</strong><span>${fmtPct(meta.pctAtingido)} de ${fmtPct(meta.pctExigido)} exigidos</span></article>`;
   }
 
   window.desenharApuracao = function desenharApuracaoSql(apuracao) {
     const alvo = document.getElementById('apuracaoResultado');
     if (!alvo) return;
     const metrica = apuracao.metricaPrincipal || 'pontosFinal';
-    let ordenados = window.ordenarComDesempate(apuracao.resultados, apuracao.desempate, metrica);
-    if (apuracao.tipoResultado === 'TOP_N_ENTRE_ELEGIVEIS') ordenados = ordenados.filter((item) => item.elegivel);
-    if (apuracao.tipoResultado !== 'TODOS_QUE_ATINGIREM' && apuracao.quantidadeClassificados) ordenados = ordenados.slice(0, apuracao.quantidadeClassificados);
-    if (apuracao.tipoResultado === 'TODOS_QUE_ATINGIREM') ordenados = ordenados.filter((item) => item.elegivel);
+    const todosOrdenados = window.ordenarComDesempate(apuracao.resultados || [], apuracao.desempate, metrica);
+    let classificados = apuracao.tipoResultado === 'TOP_N_ENTRE_ELEGIVEIS' ? todosOrdenados.filter((item) => item.elegivel) : [...todosOrdenados];
+    if (apuracao.tipoResultado === 'TODOS_QUE_ATINGIREM') classificados = todosOrdenados.filter((item) => item.elegivel);
+    else if (apuracao.quantidadeClassificados) classificados = classificados.slice(0, apuracao.quantidadeClassificados);
+    const classificadosIds = new Set(classificados.map((item) => item.representanteId));
     const fimCampanha = addDays(parseISODate(apuracao.intervaloCampanha.fim), -1);
     const fimAnterior = addDays(parseISODate(apuracao.intervaloAnterior.fim), -1);
     const metricaInfo = METRICAS_RANKING.find((item) => item.valor === metrica) || { label: metrica, icon: 'trophy' };
+    const totais = (apuracao.resultados || []).reduce((acc, item) => {
+      acc.faturamentoCampanha += Number(item.faturamentoCampanha) || 0;
+      acc.faturamentoAnterior += Number(item.faturamentoAnterior) || 0;
+      acc.kgCampanha += Number(item.kgCampanha) || 0;
+      acc.kgAnterior += Number(item.kgAnterior) || 0;
+      acc.positivacao += Number(item.positivacao) || 0;
+      return acc;
+    }, { faturamentoCampanha: 0, faturamentoAnterior: 0, kgCampanha: 0, kgAnterior: 0, positivacao: 0 });
+    const crescimento = (atual, anterior) => anterior > 0 ? ((atual - anterior) / anterior) * 100 : (atual > 0 ? 100 : 0);
 
     alvo.innerHTML = `<div class="cs-apuration-source">
-      <div>${icon('database')}<span><strong>${esc(apuracao.fonte || 'SQL Server Power BI')}</strong><small>Data utilizada: ${esc(apuracao.dataReferencia || 'dbo.Vendas.[Data]')} · consulta em ${apuracao.diagnostico?.duracaoMs || 0} ms</small></span></div>
+      <div>${icon('database')}<span><strong>${esc(apuracao.fonte || 'SQL Server Power BI')}</strong><small>${esc(apuracao.dataReferencia || 'dbo.Vendas.[Data]')} · somente vendedores ativos · consulta em ${apuracao.diagnostico?.duracaoMs || 0} ms</small></span></div>
       <span class="cs-source-status">Dados consultados agora</span>
     </div>
     <div class="cs-apuration-periods">
       <article><small>Campanha${apuracao.parcial ? ` · até semana ${apuracao.ateSemana}` : ''}</small><strong>${fmtDataBR(parseISODate(apuracao.intervaloCampanha.inicio))} → ${fmtDataBR(fimCampanha)}</strong></article>
       <span>${icon('arrow-left-right')}</span>
       <article><small>Período anterior equivalente</small><strong>${fmtDataBR(parseISODate(apuracao.intervaloAnterior.inicio))} → ${fmtDataBR(fimAnterior)}</strong></article>
-      <article><small>Escopo consultado</small><strong>${apuracao.totalProdutosEscopo || 0} produtos · ${apuracao.diagnostico?.vendedores || 0} vendedores</strong></article>
+      <article><small>Escopo consultado</small><strong>${apuracao.totalProdutosEscopo || 0} produtos · ${apuracao.diagnostico?.vendedores || 0} vendedores ativos</strong></article>
     </div>
-    <div class="cs-apuration-heading"><div><span>${icon(metricaInfo.icon)}</span><div><small>Ranking por</small><strong>${esc(metricaInfo.label)}</strong></div></div><span>${ordenados.length} classificado(s)</span></div>
-    <div class="table-wrap"><table class="data-table cs-ranking-table"><thead><tr><th>#</th><th>Vendedor</th><th>${esc(metricaInfo.label)}</th><th>Faturamento</th><th>KG</th><th>Clientes</th><th>Mix</th><th>Período anterior</th><th>Elegível</th></tr></thead><tbody>
-      ${ordenados.map((resultado, indice) => `<tr><td><span class="rank-pos">${indice + 1}</span></td><td><strong>${esc(resultado.nome)}</strong></td><td><strong>${valorMetrica(resultado, metrica)}</strong></td><td>${fmtMoney(resultado.faturamentoCampanha)}</td><td>${fmtKg(resultado.kgCampanha)}</td><td>${fmtNum(resultado.clientesCampanha)}</td><td>${fmtPct(resultado.mix)}</td><td>${fmtMoney(resultado.faturamentoAnterior)}</td><td><span class="badge-eleg ${resultado.elegivel ? 'sim' : 'nao'}">${resultado.elegivel ? 'Sim' : 'Não'}</span></td></tr>`).join('') || '<tr><td colspan="9" class="cs-table-empty">Nenhum vendedor cumpriu os critérios selecionados.</td></tr>'}
+    <div class="cs-results-kpis">
+      ${statusMetaHtml(apuracao.metaColetiva)}
+      <article class="cs-result-kpi"><small>Faturamento da campanha</small><strong>${fmtMoney(totais.faturamentoCampanha)}</strong><span>Anterior: ${fmtMoney(totais.faturamentoAnterior)} · ${fmtPct(crescimento(totais.faturamentoCampanha, totais.faturamentoAnterior))}</span></article>
+      <article class="cs-result-kpi"><small>Volume da campanha</small><strong>${fmtKg(totais.kgCampanha)}</strong><span>Anterior: ${fmtKg(totais.kgAnterior)} · ${fmtPct(crescimento(totais.kgCampanha, totais.kgAnterior))}</span></article>
+      <article class="cs-result-kpi"><small>Positivação líquida</small><strong>${totais.positivacao > 0 ? '+' : ''}${fmtNum(totais.positivacao)}</strong><span>Saldo agregado de clientes por vendedor</span></article>
+    </div>
+    <div class="cs-apuration-heading"><div><span>${icon(metricaInfo.icon)}</span><div><small>Performance e ranking da campanha</small><strong>${esc(metricaInfo.label)}</strong></div></div><span>${classificados.length} classificado(s)</span></div>
+    <div class="table-wrap"><table class="data-table cs-ranking-table cs-performance-table"><thead><tr><th>#</th><th>Vendedor</th><th>${esc(metricaInfo.label)}</th><th>R$ campanha</th><th>R$ anterior</th><th>Δ R$</th><th>KG campanha</th><th>KG anterior</th><th>Δ KG</th><th>Clientes campanha</th><th>Clientes anterior</th><th>Positivação</th><th>Mix</th><th>Status</th></tr></thead><tbody>
+      ${todosOrdenados.map((resultado, indice) => {
+        const faltantes = (resultado.mixDetalhes || []).filter((item) => item.obrigatoria && !item.atingida).map((item) => item.nome).join(', ');
+        const classificado = classificadosIds.has(resultado.representanteId);
+        const status = !resultado.elegivel ? 'Inelegível' : classificado ? 'Classificado' : 'Elegível';
+        const statusClass = !resultado.elegivel ? 'nao' : classificado ? 'sim' : 'warn';
+        return `<tr><td><span class="rank-pos">${indice + 1}</span></td><td><strong>${esc(resultado.nome)}</strong></td><td><strong>${valorMetrica(resultado, metrica)}</strong></td><td>${fmtMoney(resultado.faturamentoCampanha)}</td><td>${fmtMoney(resultado.faturamentoAnterior)}</td><td>${fmtPct(resultado.crescimentoFaturamento)}</td><td>${fmtKg(resultado.kgCampanha)}</td><td>${fmtKg(resultado.kgAnterior)}</td><td>${fmtPct(resultado.crescimentoKg)}</td><td>${fmtNum(resultado.clientesCampanha)}</td><td>${fmtNum(resultado.clientesAnterior)}</td><td><strong class="${resultado.positivacao >= 0 ? 'cs-positive' : 'cs-negative'}">${resultado.positivacao > 0 ? '+' : ''}${fmtNum(resultado.positivacao)}</strong></td><td title="${esc(faltantes ? `Faltam: ${faltantes}` : 'Todas as categorias obrigatórias foram cumpridas')}"><strong>${fmtNum(resultado.mixCategoriasAtingidas)}/${fmtNum(resultado.mixCategoriasTotal)}</strong><small class="cs-cell-sub">${fmtPct(resultado.mix)}</small></td><td><span class="badge-eleg ${statusClass}">${status}</span></td></tr>`;
+      }).join('') || '<tr><td colspan="14" class="cs-table-empty">Nenhuma venda encontrada no escopo e período selecionados.</td></tr>'}
     </tbody></table></div>`;
     atualizarIcones();
   };
+
 
   const renderApuracaoOriginal = window.renderApuracao;
   window.renderApuracao = async function renderApuracaoStudio() {
@@ -644,6 +744,8 @@
     if (box && !box.querySelector('.cs-apuration-intro')) box.insertAdjacentHTML('afterbegin', `<div class="cs-apuration-intro">${icon('database')}<div><strong>Apuração automática pelo SQL Server</strong><span>O sistema consulta Vendas, VendasProdutos, Produtos e Clientes. Não é necessário importar planilhas para calcular a campanha.</span></div></div>`);
     atualizarIcones();
   };
+
+  if (typeof ROUTES !== 'undefined') ROUTES.rankings = () => renderApuracao();
 
   document.addEventListener('DOMContentLoaded', atualizarIcones);
 })();

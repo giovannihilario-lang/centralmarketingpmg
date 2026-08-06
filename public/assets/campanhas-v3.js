@@ -8,15 +8,14 @@
     produtos: { eyebrow: 'Catálogo', title: 'Produtos' },
     representantes: { eyebrow: 'Equipe comercial', title: 'Representantes' },
     importacao: { eyebrow: 'Dados', title: 'Importação' },
-    apuracao: { eyebrow: 'Performance', title: 'Apuração' },
-    rankings: { eyebrow: 'Resultados', title: 'Rankings' },
+    apuracao: { eyebrow: 'Resultados', title: 'Performance' },
     configuracoes: { eyebrow: 'Sistema', title: 'Configurações' },
   };
 
   const ICONS = {
     dashboard: 'layout-dashboard', campanhas: 'megaphone', periodos: 'calendar-range',
     produtos: 'package-search', representantes: 'users-round', importacao: 'file-up',
-    apuracao: 'chart-no-axes-combined', rankings: 'trophy', configuracoes: 'settings-2',
+    apuracao: 'chart-no-axes-combined', configuracoes: 'settings-2',
   };
 
   const html = (value = '') => String(value)
@@ -61,7 +60,7 @@
     const groups = [
       { label: 'Gestão', keys: ['dashboard', 'campanhas', 'periodos'] },
       { label: 'Cadastros', keys: ['produtos', 'representantes'] },
-      { label: 'Operação', keys: ['importacao', 'apuracao', 'rankings'] },
+      { label: 'Operação', keys: ['importacao', 'apuracao'] },
       { label: 'Sistema', keys: ['configuracoes'] },
     ];
     const source = (window.NAV || []).filter((item) => item.key);
@@ -176,7 +175,7 @@
         <div class="campaign-actions">
           <button class="btn btn-primary btn-sm" onclick="openCampanhaModal('${campaign.id}')">${icon('pencil-line')} Editar estrutura</button>
           <button class="btn btn-ghost btn-sm" title="Abrir períodos" onclick="navigate('periodos'); setTimeout(()=>selecionarCampanhaPeriodos('${campaign.id}'), 80)">${icon('calendar-range')}</button>
-          <button class="btn btn-ghost btn-sm" title="Apurar campanha" onclick="STATE.campanhaSelecionada='${campaign.id}'; navigate('apuracao')">${icon('chart-no-axes-combined')}</button>
+          <button class="btn btn-ghost btn-sm" title="Abrir performance" onclick="STATE.campanhaSelecionada='${campaign.id}'; navigate('apuracao')">${icon('chart-no-axes-combined')} Performance</button>
           <button class="btn btn-danger btn-sm" title="Excluir" onclick="excluirCampanha('${campaign.id}')">${icon('trash-2')}</button>
         </div>
       </div>
@@ -212,7 +211,7 @@
           <div class="quick-start-list">
             <button class="quick-start-action" onclick="openCampanhaModal(null)"><span class="quick-start-icon">${icon('wand-sparkles')}</span><span class="quick-start-copy"><strong>Criar estrutura</strong><small>Configure período, regras e produtos.</small></span>${icon('chevron-right')}</button>
             <button class="quick-start-action" onclick="navigate('produtos')"><span class="quick-start-icon">${icon('package-search')}</span><span class="quick-start-copy"><strong>Explorar catálogo</strong><small>Consulte os produtos do SQL Server.</small></span>${icon('chevron-right')}</button>
-            <button class="quick-start-action" onclick="navigate('rankings')"><span class="quick-start-icon">${icon('trophy')}</span><span class="quick-start-copy"><strong>Ver resultados</strong><small>Acesse rankings e elegibilidade.</small></span>${icon('chevron-right')}</button>
+            <button class="quick-start-action" onclick="navigate('apuracao')"><span class="quick-start-icon">${icon('trophy')}</span><span class="quick-start-copy"><strong>Ver performance</strong><small>Apuração, meta coletiva e ranking dentro da campanha.</small></span>${icon('chevron-right')}</button>
           </div>
         </article>
       </div>

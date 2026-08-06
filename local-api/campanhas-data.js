@@ -76,6 +76,7 @@ async function responderSql(req, res, recurso) {
     case 'fornecedores':
       return res.status(200).json(await listarFornecedores(req.query));
     case 'vendedores':
+    case 'representantes':
       return res.status(200).json(await listarVendedores(req.query));
     case 'diagnostico':
       return res.status(200).json({ ...(await diagnosticoSql()), persistenciaCampanhas: DATA_FILE });
@@ -99,6 +100,6 @@ export default async function handler(req, res) {
     return await responderSql(req, res, recurso);
   } catch (erro) {
     console.error('[campanhas-data]', erro);
-    return res.status(500).json({ erro: erro.message });
+    return res.status(500).json({ erro: erro.message || 'Falha ao consultar o SQL Server', codigo: erro.code || erro.originalError?.code || 'SQL_ERROR', origem: 'local-api/campanhas-data' });
   }
 }

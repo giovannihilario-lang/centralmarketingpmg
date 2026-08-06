@@ -1,4 +1,4 @@
-import { getPool, sql } from '../lib/db.js';
+import { getPool, sql, diagnosticoConfiguracaoSql } from '../lib/db.js';
 
 function texto(valor) {
   return String(valor ?? '').trim();
@@ -197,24 +197,32 @@ export async function listarVendedores(query = {}) {
   const pool = await getPool();
   const request = pool.request();
   const busca = texto(query.busca);
-  const filtrosBusca = [];
+  const somenteAtivos = texto(query.ativos).toLowerCase() !== 'false';
+  const diasHistorico = inteiro(query.diasHistorico, 365, 3650);
+  request.input('diasHistorico', sql.Int, diasHistorico);
+
+  const filtros = [];
   if (busca) {
     request.input('busca', sql.NVarChar(200), `%${busca}%`);
-    filtrosBusca.push('n.vendedor LIKE @busca');
+    filtros.push('c.vendedor LIKE @busca');
   }
-  const whereBusca = filtrosBusca.length ? `WHERE ${filtrosBusca.join(' AND ')}` : '';
+  if (somenteAtivos) filtros.push('c.clientesAtivos > 0');
+  const whereSql = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
 
   const resultado = await request.query(`
-    WITH Nomes AS (
-      SELECT DISTINCT LTRIM(RTRIM([Vendedor])) AS vendedor
-      FROM dbo.Vendas
-      WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
-      UNION
-      SELECT DISTINCT LTRIM(RTRIM([Vendedor])) AS vendedor
+    WITH Carteira AS (
+      SELECT
+        LTRIM(RTRIM([Vendedor])) AS vendedor,
+        COUNT(DISTINCT [ID Cliente]) AS clientesCarteira,
+        COUNT(DISTINCT CASE
+          WHEN UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE '%ATIV%'
+          THEN [ID Cliente]
+        END) AS clientesAtivos
       FROM dbo.Clientes
       WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
+      GROUP BY LTRIM(RTRIM([Vendedor]))
     ),
-    Historico AS (
+    HistoricoRecente AS (
       SELECT
         LTRIM(RTRIM([Vendedor])) AS vendedor,
         COUNT(DISTINCT [ID Cliente]) AS clientesHistoricos,
@@ -222,29 +230,25 @@ export async function listarVendedores(query = {}) {
         MAX([Data]) AS ultimaVenda,
         SUM(ISNULL([Valor Total], 0)) AS faturamentoHistorico
       FROM dbo.Vendas
-      WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
-      GROUP BY LTRIM(RTRIM([Vendedor]))
-    ),
-    Carteira AS (
-      SELECT
-        LTRIM(RTRIM([Vendedor])) AS vendedor,
-        COUNT(DISTINCT [ID Cliente]) AS clientesCarteira
-      FROM dbo.Clientes
-      WHERE NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
+      WHERE
+        NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
+        AND [Data] >= DATEADD(DAY, -@diasHistorico, GETDATE())
       GROUP BY LTRIM(RTRIM([Vendedor]))
     )
     SELECT
-      n.vendedor,
-      ISNULL(c.clientesCarteira, 0) AS clientesCarteira,
+      c.vendedor,
+      c.clientesCarteira,
+      c.clientesAtivos,
       ISNULL(h.clientesHistoricos, 0) AS clientesHistoricos,
       ISNULL(h.pedidosHistoricos, 0) AS pedidosHistoricos,
       h.ultimaVenda,
-      ISNULL(h.faturamentoHistorico, 0) AS faturamentoHistorico
-    FROM Nomes n
-    LEFT JOIN Historico h ON h.vendedor = n.vendedor
-    LEFT JOIN Carteira c ON c.vendedor = n.vendedor
-    ${whereBusca}
-    ORDER BY n.vendedor;
+      ISNULL(h.faturamentoHistorico, 0) AS faturamentoHistorico,
+      CAST(CASE WHEN c.clientesAtivos > 0 THEN 1 ELSE 0 END AS bit) AS ativo,
+      'dbo.Clientes.[Status]' AS criterioAtividade
+    FROM Carteira c
+    LEFT JOIN HistoricoRecente h ON h.vendedor = c.vendedor
+    ${whereSql}
+    ORDER BY c.vendedor;
   `);
   return resultado.recordset;
 }
@@ -296,6 +300,13 @@ export async function consultarApuracao(payload = {}) {
   }
 
   const resultado = await request.query(`
+    WITH VendedoresAtivos AS (
+      SELECT DISTINCT LTRIM(RTRIM([Vendedor])) AS vendedor
+      FROM dbo.Clientes
+      WHERE
+        NULLIF(LTRIM(RTRIM([Vendedor])), '') IS NOT NULL
+        AND UPPER(LTRIM(RTRIM(ISNULL([Status], '')))) LIKE '%ATIV%'
+    )
     SELECT
       CASE
         WHEN v.[Data] >= @campanhaInicio AND v.[Data] < @campanhaFim THEN 'campanha'
@@ -317,6 +328,8 @@ export async function consultarApuracao(payload = {}) {
       SUM(ISNULL(vp.[Valor], 0)) AS valor,
       SUM(ISNULL(vp.[Margem], 0)) AS margem
     FROM dbo.Vendas v
+    INNER JOIN VendedoresAtivos va
+      ON va.vendedor = LTRIM(RTRIM(v.[Vendedor]))
     INNER JOIN dbo.VendasProdutos vp
       ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
     INNER JOIN dbo.Produtos p
@@ -381,6 +394,7 @@ export async function consultarApuracao(payload = {}) {
   return {
     fonte: 'SQL Server · banco Power BI',
     dataReferencia: 'dbo.Vendas.[Data]',
+    filtroRepresentantes: "Somente vendedores com ao menos um cliente cujo dbo.Clientes.[Status] contém 'ATIV'",
     intervalos: {
       campanha: { inicio: texto(payload.campanhaInicio), fimExclusivo: texto(payload.campanhaFim) },
       anterior: { inicio: texto(payload.anteriorInicio), fimExclusivo: texto(payload.anteriorFim) },
@@ -399,9 +413,20 @@ export async function consultarApuracao(payload = {}) {
 }
 
 export async function diagnosticoSql() {
+  const inicio = Date.now();
   const pool = await getPool();
   const resultado = await pool.request().query(`
-    SELECT DB_NAME() AS banco, SUSER_SNAME() AS usuario, GETDATE() AS dataServidor;
+    SELECT
+      DB_NAME() AS banco,
+      SUSER_SNAME() AS usuario,
+      GETDATE() AS dataServidor,
+      (SELECT COUNT_BIG(*) FROM dbo.Produtos) AS produtos,
+      (SELECT COUNT_BIG(*) FROM dbo.Clientes) AS clientes;
   `);
-  return { ok: true, sql: resultado.recordset[0] };
+  return {
+    ok: true,
+    sql: resultado.recordset[0],
+    configuracao: diagnosticoConfiguracaoSql(),
+    duracaoMs: Date.now() - inicio,
+  };
 }
