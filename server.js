@@ -48,6 +48,8 @@ app.use(express.json({ limit: '15mb' }));
  * As duas pastas continuam respondendo localmente em /api/<nome>, então o
  * dashboard não precisa saber onde o arquivo físico está guardado.
  */
+const rotasRegistradas = new Map();
+
 async function registrarDiretorioApi(nomeDiretorio) {
   const diretorio = path.join(__dirname, nomeDiretorio);
   if (!fs.existsSync(diretorio)) return;
@@ -58,6 +60,16 @@ async function registrarDiretorioApi(nomeDiretorio) {
     const nomeRota = arquivo.replace(/\.js$/, '');
     const rota = `/api/${nomeRota}`;
 
+    // No servidor local, as rotas de local-api têm prioridade.
+    // Isso impede que o arquivo de contingência da Vercel assuma a mesma URL.
+    if (rotasRegistradas.has(rota)) {
+      console.log(
+        `[api] Ignorada rota duplicada ${nomeDiretorio}/${arquivo}; ` +
+        `já registrada por ${rotasRegistradas.get(rota)}`
+      );
+      continue;
+    }
+
     try {
       const modulo = await import(pathToFileURL(path.join(diretorio, arquivo)));
       const handler = modulo.default;
@@ -67,6 +79,7 @@ async function registrarDiretorioApi(nomeDiretorio) {
       }
 
       app.all(rota, (req, res) => handler(req, res));
+      rotasRegistradas.set(rota, `${nomeDiretorio}/${arquivo}`);
       console.log(`[api] ${rota} <- ${nomeDiretorio}/${arquivo}`);
     } catch (erro) {
       console.error(`[api] Falha ao carregar ${nomeDiretorio}/${arquivo}: ${erro.message}`);
@@ -76,12 +89,15 @@ async function registrarDiretorioApi(nomeDiretorio) {
           detail: erro.message,
         });
       });
+      rotasRegistradas.set(rota, `${nomeDiretorio}/${arquivo} (erro)`);
     }
   }
 }
 
-await registrarDiretorioApi('api');
+// Ordem intencional: tudo que depende do SQL local deve vencer rotas homônimas
+// presentes em /api para publicação na Vercel.
 await registrarDiretorioApi('local-api');
+await registrarDiretorioApi('api');
 
 // Uma rota de API inexistente deve responder JSON, não uma página HTML.
 app.use('/api', (req, res) => {
@@ -107,6 +123,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('\nServidor local do PMG Connect rodando.');
   console.log(`- Neste computador: http://localhost:${PORT}`);
   console.log(`- Dashboard regional: http://localhost:${PORT}/dashboard-regional.html`);
+  console.log(`- Campanhas: http://localhost:${PORT}/campanhas.html`);
   console.log(`- Na rede local: http://<IP-DESTE-PC>:${PORT}`);
   console.log('Mantenha este terminal aberto enquanto usar os relatórios conectados ao SQL Server.\n');
 });
