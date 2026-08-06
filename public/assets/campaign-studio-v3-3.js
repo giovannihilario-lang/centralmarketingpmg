@@ -452,7 +452,7 @@
     if (!termo && !fornecedoresCache.length && !forcar) fornecedoresCache = lerFornecedoresCacheLocal();
     if (!termo && fornecedoresCache.length && !forcar) return fornecedoresCache;
 
-    const params = new URLSearchParams({ recurso: 'fornecedores', limite: '500' });
+    const params = new URLSearchParams({ recurso: 'fornecedores', limite: termo ? '80' : '60' });
     if (termo) params.set('busca', termo);
     const dados = await fetchJsonSeguro(`${CAMPANHAS_SQL_ENDPOINT}?${params.toString()}`);
     const lista = normalizarListaFornecedores(dados);
@@ -486,11 +486,20 @@
       return;
     }
 
-    grade.innerHTML = lista.map((fornecedor) => `<button type="button" class="cs-supplier-card ${normalizeKey(fornecedor.nome) === normalizeKey(selecionado) ? 'active' : ''}" data-id="${esc(String(fornecedor.id ?? ''))}" data-nome="${esc(fornecedor.nome)}" onclick="csSelecionarFornecedor(this.dataset.id, this.dataset.nome)">
+    const limiteVisual = termo ? 40 : 18;
+    let listaVisivel = lista.slice(0, limiteVisual);
+    const fornecedorSelecionado = lista.find((item) => normalizeKey(item.nome) === normalizeKey(selecionado));
+    if (fornecedorSelecionado && !listaVisivel.some((item) => String(item.id) === String(fornecedorSelecionado.id))) {
+      listaVisivel = [fornecedorSelecionado, ...listaVisivel.slice(0, limiteVisual - 1)];
+    }
+    const avisoLimite = lista.length > listaVisivel.length
+      ? `<div class="cs-supplier-limit-note">Mostrando ${listaVisivel.length} de ${lista.length}. Digite o nome para pesquisar diretamente no SQL Server.</div>`
+      : '';
+    grade.innerHTML = listaVisivel.map((fornecedor) => `<button type="button" class="cs-supplier-card ${normalizeKey(fornecedor.nome) === normalizeKey(selecionado) ? 'active' : ''}" data-id="${esc(String(fornecedor.id ?? ''))}" data-nome="${esc(fornecedor.nome)}" onclick="csSelecionarFornecedor(this.dataset.id, this.dataset.nome)">
       <span class="cs-supplier-avatar">${esc(fornecedor.nome.slice(0, 2).toUpperCase())}</span>
       <div><strong>${esc(fornecedor.nome)}</strong><small>${Number(fornecedor.totalProdutos || 0)} produtos · ${Number(fornecedor.totalGrupos || 0)} grupos</small></div>
       <span class="cs-supplier-check">${icon('check')}</span>
-    </button>`).join('') || `<div class="cs-supplier-empty">${termo ? `Nenhum fornecedor encontrado para “${esc(termo)}”.` : 'Nenhum fornecedor foi retornado pelo SQL Server.'}<button type="button" class="btn btn-ghost btn-sm" onclick="csRecarregarFornecedores()">${icon('refresh-cw')} Recarregar</button></div>`;
+    </button>`).join('') + avisoLimite || `<div class="cs-supplier-empty">${termo ? `Nenhum fornecedor encontrado para “${esc(termo)}”.` : 'Nenhum fornecedor foi retornado pelo SQL Server.'}<button type="button" class="btn btn-ghost btn-sm" onclick="csRecarregarFornecedores()">${icon('refresh-cw')} Recarregar</button></div>`;
     atualizarIcones();
   }
 
@@ -578,10 +587,8 @@
     if (Number(i) === 2) window.cbAtivarEtapaProdutos?.();
   };
 
-  // Pré-aquece somente a lista leve de fornecedores quando o navegador estiver ocioso.
-  const preaquecerFornecedores = () => carregarFornecedores().catch(() => {});
-  if ('requestIdleCallback' in window) requestIdleCallback(preaquecerFornecedores, { timeout: 2500 });
-  else setTimeout(preaquecerFornecedores, 1800);
+  // Fornecedores são consultados somente depois que o modal já apareceu.
+  // Não fazemos pré-aquecimento: listas grandes eram renderizadas no clique e bloqueavam a interface.
 
   const previewPeriodoOriginal = window.atualizarPreviewPeriodo;
   window.atualizarPreviewPeriodo = function previewPeriodoStudio() {
@@ -998,6 +1005,188 @@
   };
 
   if (typeof ROUTES !== 'undefined') ROUTES.rankings = () => renderApuracao();
+
+
+  /* ═══════════════════════════════════════════════════════════════
+     MODAL PROGRESSIVO 3.6.5
+     Abre primeiro, monta uma etapa por vez e nunca consulta SQL no clique.
+     ═══════════════════════════════════════════════════════════════ */
+  const csModalLazy = {
+    token: 0,
+    campanha: null,
+    regras: [],
+    regrasProduto: [],
+    carregadas: new Set(),
+  };
+
+  function csCampanhaVazia() {
+    return {
+      id: null,
+      nome: '',
+      fornecedor: '',
+      fornecedorId: null,
+      dataInicio: '',
+      dataFim: '',
+      periodoAnteriorInicio: '',
+      periodoAnteriorFim: '',
+      descricao: '',
+      ativa: true,
+      bannerUrl: '',
+      cor: '#1a4d2e',
+      premiacoes: '',
+      tipos: [],
+      metaModo: 'NENHUMA',
+      metricasPrincipais: ['pontosFinal'],
+      metricaPrincipal: 'pontosFinal',
+      quantidadeClassificados: 5,
+      tipoResultado: 'TOP_N_ENTRE_ELEGIVEIS',
+      desempate: (typeof DESEMPATE_CAMPOS !== 'undefined' ? DESEMPATE_CAMPOS : DESEMPATES_EXTRA).map((item) => item.valor),
+    };
+  }
+
+  function csEditorShell() {
+    const labels = ['Informações gerais', 'Regras e metas', 'Produtos e categorias', 'Desempate'];
+    return `<div class="wizard-steps" id="campTabs">
+      ${labels.map((label, index) => `<div class="wizard-step ${index === 0 ? 'active' : ''}" data-tab="${index}" data-step="${String(index + 1).padStart(2, '0')}" onclick="switchCampTab(${index})">${label}</div>`).join('')}
+    </div>
+    ${labels.map((_, index) => `<div id="campTab${index}" data-lazy-tab="${index}" style="${index ? 'display:none;' : ''}">${index === 0 ? '<div class="cs-modal-boot"><i data-lucide="loader-circle"></i><strong>Preparando o formulário...</strong></div>' : ''}</div>`).join('')}`;
+  }
+
+  function csAplicarChromeEditor() {
+    const modal = document.getElementById('modalBox');
+    modal?.classList.add('campaign-editor');
+    const title = document.getElementById('modalTitle');
+    if (title && !title.parentElement.classList.contains('modal-title-wrap')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'modal-title-wrap';
+      title.parentNode.insertBefore(wrap, title);
+      wrap.appendChild(title);
+      wrap.insertAdjacentHTML('afterbegin', '<span class="modal-kicker">Campaign Studio</span>');
+    }
+    const header = modal?.querySelector('.modal-hdr');
+    if (header && !header.querySelector('.editor-progress')) {
+      header.insertAdjacentHTML('beforeend', '<div class="editor-progress"><span id="campaignEditorProgress" style="width:25%"></span></div>');
+    }
+  }
+
+  function csAtualizarProgressoEtapa(index) {
+    const bar = document.getElementById('campaignEditorProgress');
+    if (bar) bar.style.width = `${((Number(index) + 1) / 4) * 100}%`;
+    document.querySelectorAll('#campTabs .wizard-step').forEach((step, position) => {
+      step.classList.toggle('active', position === Number(index));
+      step.classList.toggle('done', position < Number(index));
+    });
+  }
+
+  function csRenderizarEtapa(index) {
+    const alvo = document.getElementById(`campTab${index}`);
+    if (!alvo || csModalLazy.carregadas.has(Number(index))) return;
+    const campanha = csModalLazy.campanha || csCampanhaVazia();
+
+    if (Number(index) === 0) {
+      alvo.innerHTML = campTabInfoHtml(campanha);
+      csModalLazy.carregadas.add(0);
+      atualizarPreviewPeriodo();
+      // O modal já está pintado. Só agora instalamos e consultamos fornecedores.
+      requestAnimationFrame(() => {
+        instalarSeletorFornecedor();
+        atualizarIcones();
+      });
+      return;
+    }
+
+    if (Number(index) === 1) {
+      alvo.innerHTML = campTabRegrasHtml(csModalLazy.regras || []);
+      csModalLazy.carregadas.add(1);
+      window.csAtualizarTipoResultado?.();
+      window.csSelecionarModoMeta?.(document.getElementById('cf_metaModo')?.value || campanha.metaModo || 'NENHUMA');
+      document.querySelectorAll('#regrasList [data-row]').forEach(window.csAtualizarRegra);
+      atualizarIcones();
+      return;
+    }
+
+    if (Number(index) === 2) {
+      alvo.innerHTML = campTabRegrasProdutoHtml(csModalLazy.regrasProduto || []);
+      csModalLazy.carregadas.add(2);
+      Promise.resolve(window.abrirDndProdutos?.()).finally(() => window.cbAtivarEtapaProdutos?.());
+      atualizarIcones();
+      return;
+    }
+
+    alvo.innerHTML = campTabDesempateHtml(campanha.desempate);
+    csModalLazy.carregadas.add(3);
+    const lista = document.getElementById('desempateList');
+    if (window.Sortable && lista) Sortable.create(lista, { handle: '.handle', animation: 150 });
+    window.csAtualizarDesempates?.();
+    atualizarIcones();
+  }
+
+  async function csCarregarDadosEditor(id, token) {
+    try {
+      if (!id) {
+        csModalLazy.campanha = csCampanhaVazia();
+        csModalLazy.regras = [];
+        csModalLazy.regrasProduto = [];
+      } else {
+        const [campanha, regras, regrasProduto] = await Promise.all([
+          DB.get('campanhas', id),
+          DB.getAll('regras'),
+          DB.getAll('regrasProduto'),
+        ]);
+        if (token !== csModalLazy.token) return;
+        csModalLazy.campanha = campanha || csCampanhaVazia();
+        csModalLazy.regras = (regras || []).filter((item) => item.campanhaId === id);
+        csModalLazy.regrasProduto = (regrasProduto || []).filter((item) => item.campanhaId === id);
+      }
+      if (token !== csModalLazy.token) return;
+      _campanhaModalState = {
+        campanha: csModalLazy.campanha,
+        regras: csModalLazy.regras,
+        regrasProduto: csModalLazy.regrasProduto,
+      };
+      csRenderizarEtapa(0);
+    } catch (erro) {
+      const alvo = document.getElementById('campTab0');
+      if (alvo) alvo.innerHTML = `<div class="cs-supplier-error"><strong>Não foi possível preparar a campanha.</strong><span>${esc(erro.message || erro)}</span></div>`;
+    }
+  }
+
+  window.openCampanhaModal = function abrirCampanhaInstantanea(id) {
+    const token = ++csModalLazy.token;
+    csModalLazy.campanha = null;
+    csModalLazy.regras = [];
+    csModalLazy.regrasProduto = [];
+    csModalLazy.carregadas = new Set();
+
+    // Esta chamada só injeta a casca pequena do modal. Nenhuma consulta acontece aqui.
+    openModal(id ? 'Editar Campanha' : 'Nova Campanha', csEditorShell(),
+      `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" onclick="csSalvarCampanhaProgressiva()">Salvar Campanha</button>`, true);
+    csAplicarChromeEditor();
+    csAtualizarProgressoEtapa(0);
+    atualizarIcones();
+
+    // Dá ao navegador um frame para desenhar o modal antes de montar o formulário.
+    requestAnimationFrame(() => setTimeout(() => csCarregarDadosEditor(id, token), 0));
+  };
+
+  window.switchCampTab = function trocarEtapaProgressiva(index) {
+    const numero = Number(index) || 0;
+    for (let position = 0; position < 4; position++) {
+      const painel = document.getElementById(`campTab${position}`);
+      if (painel) painel.style.display = position === numero ? '' : 'none';
+    }
+    csAtualizarProgressoEtapa(numero);
+    // Renderiza a etapa depois de o clique ter sido visualmente respondido.
+    requestAnimationFrame(() => csRenderizarEtapa(numero));
+  };
+
+  window.csSalvarCampanhaProgressiva = async function salvarCampanhaProgressiva() {
+    // Garante os controles necessários sem consultar produtos ou SQL.
+    [0, 1, 2, 3].forEach(csRenderizarEtapa);
+    await Promise.resolve();
+    return window.salvarCampanha();
+  };
 
   const observerMetas = new MutationObserver(() => {
     if (document.getElementById('cf_metricasPrincipais')) { renderSequenciaRanking(); window.csSelecionarModoMeta(document.getElementById('cf_metaModo')?.value || 'NENHUMA'); }
