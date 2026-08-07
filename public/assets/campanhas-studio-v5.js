@@ -26,6 +26,27 @@
   const dateBR = (value) => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  function sellerIdentity(rawName) {
+    const raw = String(rawName || '').trim();
+    const match = raw.match(/^(.*?)[\s-]+(\d+)$/);
+    return match
+      ? { raw, name:match[1].trim(), code:match[2].trim() }
+      : { raw, name:raw, code:'' };
+  }
+
+  function tooltipAttr(lines) {
+    const text = (Array.isArray(lines) ? lines : [lines]).filter(Boolean).join('\n');
+    return esc(text).replace(/\n/g, '&#10;');
+  }
+
+  function auditValue(valueHtml, lines, extraClass = '') {
+    return `<span class="metric-audit ${extraClass}" tabindex="0" data-audit="${tooltipAttr(lines)}">${valueHtml}<i data-lucide="info"></i></span>`;
+  }
+
+  function auditHeader(label, lines) {
+    return `<span class="metric-header-audit" tabindex="0" data-audit="${tooltipAttr(lines)}">${esc(label)}<i data-lucide="circle-help"></i></span>`;
+  }
+
   const RANKING_METRICS = [
     { id:'points', label:'Pontos', icon:'sparkles', description:'Pontuação total gerada pelas regras da campanha' },
     { id:'revenue', label:'Faturamento', icon:'badge-dollar-sign', description:'Valor vendido no período da campanha' },
@@ -35,6 +56,8 @@
     { id:'mix', label:'Mix de categorias', icon:'boxes', description:'Percentual de categorias obrigatórias cumpridas' },
     { id:'revenueGrowth', label:'Crescimento de R$', icon:'trending-up', description:'Crescimento percentual do faturamento' },
     { id:'kgGrowth', label:'Crescimento de KG', icon:'chart-no-axes-combined', description:'Crescimento percentual do volume' },
+    { id:'activationClients', label:'Ativações de pedido', icon:'badge-check', description:'Clientes ativados pela regra de pedido combinado' },
+    { id:'activationRate', label:'Taxa de ativação', icon:'percent', description:'Pedidos-oportunidade que receberam o produto gatilho' },
   ];
 
   const BASE_METRICS = [
@@ -46,6 +69,9 @@
     ['customers', 'Clientes únicos', 'clientes'],
     ['mix', 'Mix de categorias', '%'],
     ['orders', 'Pedidos', 'pedidos'],
+    ['activationClients', 'Ativações de pedido', 'clientes'],
+    ['activationOrders', 'Pedidos ativados', 'pedidos'],
+    ['activationRate', 'Taxa de ativação', '%'],
   ];
 
   const GROWTH_METRICS = [
@@ -55,12 +81,14 @@
   const POINT_SOURCES = [
     ['positivity', 'Positivação líquida'], ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Peças'],
     ['customers', 'Clientes únicos'], ['orders', 'Pedidos'], ['mixCategories', 'Categorias de mix cumpridas'], ['distinctProducts', 'Produtos distintos'],
+    ['activationClients', 'Ativações de pedido'], ['activationOrders', 'Pedidos ativados'],
   ];
 
   const TIE_OPTIONS = [
     ['positivity', 'Maior positivação'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais peças'],
     ['mix', 'Maior mix'], ['points', 'Maior pontuação'], ['orders', 'Mais pedidos'],
     ['revenueGrowth', 'Maior crescimento de faturamento'], ['kgGrowth', 'Maior crescimento de volume'],
+    ['activationClients', 'Mais ativações de pedido'], ['activationRate', 'Maior taxa de ativação'],
   ];
 
   const STEPS = [
@@ -377,7 +405,7 @@
             error: { message: error.message, code: error.code },
           });
         } else {
-          toast('Não foi possível atualizar o contexto. O último contexto salvo continua em uso.', 'warning');
+          console.debug('[campanhas] atualização de contexto em segundo plano não concluída:', error.message);
         }
         throw error;
       } finally {
@@ -395,9 +423,20 @@
       app.contextReady = true;
       $('#contextOverlay').hidden = true;
       document.body.style.overflow = '';
-      setSideStatus('online', `Contexto local: ${app.context.suppliers.length} códigos · atualização em segundo plano`);
+
+      const updatedAt = cached.updatedAt
+        ? new Date(cached.updatedAt).toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' })
+        : 'data não informada';
+
+      setSideStatus(
+        'online',
+        `Contexto salvo · ${app.context.suppliers.length} códigos · atualizado em ${updatedAt}`
+      );
+
       renderView();
-      void pollContext({ force: false, blocking: false }).catch(() => {});
+
+      // Não atualiza SQL automaticamente ao entrar.
+      // Atualização fica explícita no botão "Atualizar contexto".
       return;
     }
 
@@ -555,7 +594,13 @@
       id:uid('campaign'), name:'', description:'', start:inputDate(start), end:inputDate(end),
       suppliers:[], participantMode:'all', representatives:[], rankingMetrics:['points','positivity'], rankingMode:'TOP_N_ELIGIBLE', topN:5,
       goalMode:'both', collectiveGoals:[defaultGoal('collective')], individualGoals:[defaultGoal('individual')],
-      rules:[], pointRules:[], categories:[], tieBreaks:[{ metric:'positivity', direction:'desc' }, { metric:'revenue', direction:'desc' }], prizes:[],
+      rules:[], pointRules:[], categories:[],
+      orderActivationRule:{
+        enabled:false, name:'Ativação por pedido', baseCategoryId:'', baseMeasure:'distinct_products', baseMin:5,
+        triggerCategoryId:'', triggerMeasure:'distinct_products', triggerMin:1, countMode:'first_per_client',
+        discountType:'pending', discountValue:0,
+      },
+      tieBreaks:[{ metric:'positivity', direction:'desc' }, { metric:'revenue', direction:'desc' }], prizes:[],
       createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
     };
   }
@@ -583,6 +628,7 @@
       rankingMetrics:Array.isArray(raw.rankingMetrics) ? raw.rankingMetrics : Array.isArray(raw.metricasRanking) ? raw.metricasRanking : [raw.metricaRanking || 'points'],
       collectiveGoals:Array.isArray(legacyCollective) ? legacyCollective : [], individualGoals:Array.isArray(legacyIndividual) ? legacyIndividual : [],
       rules:Array.isArray(raw.rules) ? raw.rules : [], pointRules:Array.isArray(raw.pointRules) ? raw.pointRules : [], categories:Array.isArray(raw.categories) ? raw.categories : [],
+      orderActivationRule:{ ...base.orderActivationRule, ...(raw.orderActivationRule || {}) },
       tieBreaks:Array.isArray(raw.tieBreaks) ? raw.tieBreaks : base.tieBreaks, prizes:Array.isArray(raw.prizes) ? raw.prizes : [],
     };
   }
@@ -659,8 +705,22 @@
         <div class="field"><label>Status calculado</label><input value="${campaignStatus(campaign).label}" disabled></div>
         <div class="field full"><label>Descrição ou regulamento</label><textarea id="campaignDescription" placeholder="Objetivo, observações e regras gerais…">${esc(campaign.description)}</textarea></div>
         <div class="field full"><label>Códigos de fornecedor participantes *</label>${supplierSelector()}</div>
-        <div class="field"><label>1ª segunda-feira da campanha *</label><input id="campaignStart" type="date" value="${esc(campaign.start)}"></div>
-        <div class="field"><label>6ª segunda-feira · calculada automaticamente</label><input id="campaignEnd" type="date" value="${esc(campaign.end)}" disabled><small class="hint">Toda campanha utiliza exatamente seis segundas-feiras.</small></div>
+        <div class="field">
+          <label>1ª segunda-feira da campanha *</label>
+          <div class="date-picker-control">
+            <input id="campaignStart" type="date" value="${esc(campaign.start)}" aria-label="Escolher primeira segunda-feira da campanha">
+            <button type="button" class="date-picker-button" data-action="open-date-picker" data-target="campaignStart" title="Abrir calendário"><i data-lucide="calendar-days"></i></button>
+          </div>
+          <small class="hint">Escolha no calendário a primeira segunda-feira. O sistema monta as seis semanas automaticamente.</small>
+        </div>
+        <div class="field">
+          <label>6ª segunda-feira · calculada automaticamente</label>
+          <div class="date-picker-control is-readonly">
+            <input id="campaignEnd" type="date" value="${esc(campaign.end)}" disabled>
+            <span class="date-picker-button is-static"><i data-lucide="calendar-check-2"></i></span>
+          </div>
+          <small class="hint">Fechamento calculado a partir da primeira segunda-feira.</small>
+        </div>
         <div class="period-preview" id="periodPreview">${periodPreview(periods)}</div>
         <div class="field full"><label>Participantes</label><div class="choice-grid">
           ${choiceCard('participant-mode','all','users-round','Todos os representantes ativos','Usa automaticamente todos os vendedores ativos do contexto.',campaign.participantMode === 'all')}
@@ -688,7 +748,10 @@
 
   function representativeSelector() {
     const selected = new Set(app.wizard.campaign.representatives || []);
-    return `<div class="field full"><label>Representantes selecionados (${selected.size})</label><div class="search-field"><i data-lucide="search"></i><input id="wizardRepSearch" placeholder="Buscar representante"></div><div class="table-wrap" id="wizardRepList" style="max-height:280px;margin-top:8px"><table><tbody>${app.context.representatives.map((representative) => `<tr data-rep-row="${esc(norm(representative.name))}"><td><input type="checkbox" data-representative="${esc(representative.name)}" ${selected.has(representative.name) ? 'checked' : ''}></td><td><strong>${esc(representative.name)}</strong></td><td>${number(representative.activeClients)} clientes ativos</td></tr>`).join('')}</tbody></table></div></div>`;
+    return `<div class="field full"><label>Representantes selecionados (${selected.size})</label><div class="search-field"><i data-lucide="search"></i><input id="wizardRepSearch" placeholder="Buscar nome ou ID"></div><div class="table-wrap" id="wizardRepList" style="max-height:280px;margin-top:8px"><table><tbody>${app.context.representatives.map((representative) => {
+      const identity = sellerIdentity(representative.name);
+      return `<tr data-rep-row="${esc(norm(`${identity.name} ${identity.code} ${representative.name}`))}"><td><input type="checkbox" data-representative="${esc(representative.name)}" ${selected.has(representative.name) ? 'checked' : ''}></td><td><strong>${esc(identity.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}</td><td>${number(representative.activeClients)} clientes ativos</td></tr>`;
+    }).join('')}</tbody></table></div></div>`;
   }
 
   function renderRulesStep() {
@@ -810,7 +873,51 @@
           <div class="category-toolbar"><input id="newCategoryName" placeholder="Nome da nova categoria"><button class="primary-btn" type="button" data-action="add-category"><i data-lucide="plus"></i>Nova categoria</button></div>
           ${campaign.categories.length ? `<div class="category-list">${campaign.categories.map(categoryCard).join('')}</div>` : '<div class="empty-state" style="margin:10px"><h3>Nenhuma categoria</h3><p>Crie uma categoria e arraste produtos para ela.</p></div>'}
         </section>
-      </div>`;
+      </div>
+      ${activationRulePanel(campaign)}`;
+  }
+
+
+  function activationRulePanel(campaign) {
+    const rule = campaign.orderActivationRule || {};
+    const optionHtml = (selected) => (campaign.categories || []).map((category) =>
+      `<option value="${esc(category.id)}" ${category.id === selected ? 'selected' : ''}>${esc(category.name)} · ${(category.products || []).length} produto(s)</option>`
+    ).join('');
+
+    const selectedBase = campaign.categories.find((category) => category.id === rule.baseCategoryId);
+    const selectedTrigger = campaign.categories.find((category) => category.id === rule.triggerCategoryId);
+    const discountText = rule.discountType === 'percent'
+      ? `${number(rule.discountValue, 2)}%`
+      : rule.discountType === 'fixed' ? money(rule.discountValue) : 'A definir';
+
+    return `<section class="activation-rule-card ${rule.enabled ? 'is-enabled' : ''}">
+      <div class="activation-rule-head">
+        <div><span class="eyebrow">Mecânica por pedido</span><h4>Ativação por pedido</h4><p>O pedido precisa atingir uma base e receber uma categoria gatilho para virar uma ativação válida.</p></div>
+        <button type="button" class="${rule.enabled ? 'primary-btn' : 'secondary-btn'}" data-action="toggle-activation-rule"><i data-lucide="${rule.enabled ? 'toggle-right' : 'toggle-left'}"></i>${rule.enabled ? 'Regra ativa' : 'Ativar regra'}</button>
+      </div>
+      ${rule.enabled ? `<div class="activation-rule-body">
+        <div class="activation-flow">
+          <div class="activation-flow-card base"><span>1 · Pedido base</span><strong>${esc(selectedBase?.name || 'Escolha uma categoria')}</strong><small>Precisa atingir o mínimo configurado.</small></div>
+          <i data-lucide="plus"></i>
+          <div class="activation-flow-card trigger"><span>2 · Gatilho</span><strong>${esc(selectedTrigger?.name || 'Escolha uma categoria')}</strong><small>Precisa entrar no mesmo pedido.</small></div>
+          <i data-lucide="arrow-right"></i>
+          <div class="activation-flow-card success"><span>3 · Resultado</span><strong>Pedido ativado</strong><small>Desconto: ${esc(discountText)}</small></div>
+        </div>
+        <div class="activation-config-grid">
+          <label>Nome da mecânica<input data-activation-field="name" value="${esc(rule.name || 'Ativação por pedido')}" placeholder="Ex.: Introdução Fortunata"></label>
+          <label>Categoria base<select data-activation-field="baseCategoryId"><option value="">Selecione</option>${optionHtml(rule.baseCategoryId)}</select></label>
+          <label>Contar a base por<select data-activation-field="baseMeasure"><option value="distinct_products" ${rule.baseMeasure === 'distinct_products' ? 'selected' : ''}>Produtos distintos</option><option value="pieces" ${rule.baseMeasure === 'pieces' ? 'selected' : ''}>Peças / unidades</option></select></label>
+          <label>Mínimo da base<input data-activation-field="baseMin" type="number" min="1" step="1" value="${Number(rule.baseMin) || 5}"></label>
+          <label>Categoria gatilho<select data-activation-field="triggerCategoryId"><option value="">Selecione</option>${optionHtml(rule.triggerCategoryId)}</select></label>
+          <label>Contar gatilho por<select data-activation-field="triggerMeasure"><option value="distinct_products" ${rule.triggerMeasure === 'distinct_products' ? 'selected' : ''}>Produtos distintos</option><option value="pieces" ${rule.triggerMeasure === 'pieces' ? 'selected' : ''}>Peças / unidades</option></select></label>
+          <label>Mínimo do gatilho<input data-activation-field="triggerMin" type="number" min="1" step="1" value="${Number(rule.triggerMin) || 1}"></label>
+          <label>Como contar<select data-activation-field="countMode"><option value="first_per_client" ${rule.countMode === 'first_per_client' ? 'selected' : ''}>Somente 1ª ativação por cliente</option><option value="every_order" ${rule.countMode === 'every_order' ? 'selected' : ''}>Todo pedido qualificado</option></select></label>
+          <label>Tipo de desconto<select data-activation-field="discountType"><option value="pending" ${rule.discountType === 'pending' ? 'selected' : ''}>Valor ainda a definir</option><option value="percent" ${rule.discountType === 'percent' ? 'selected' : ''}>Percentual</option><option value="fixed" ${rule.discountType === 'fixed' ? 'selected' : ''}>Valor fixo em R$</option></select></label>
+          <label>Valor do desconto<input data-activation-field="discountValue" type="number" min="0" step="0.01" value="${Number(rule.discountValue) || 0}" ${rule.discountType === 'pending' ? 'disabled' : ''}></label>
+        </div>
+        <div class="activation-explainer"><i data-lucide="lightbulb"></i><div><strong>Exemplo</strong><p>5 produtos distintos da categoria base + 1 produto da categoria gatilho no mesmo pedido = pedido ativado.</p><small>O módulo mede a elegibilidade. Não aplica desconto automaticamente no ERP.</small></div></div>
+      </div>` : `<div class="activation-rule-preview"><i data-lucide="shopping-basket"></i><span><strong>Útil para introdução de novas linhas</strong><small>Ex.: 5 itens Harald + 1 Fortunata no mesmo pedido = ativação.</small></span></div>`}
+    </section>`;
   }
 
   function productCard(product) {
@@ -889,7 +996,7 @@
       campaign.topN = Math.max(1, Number($('#topN')?.value) || 1);
       syncGoals(); syncPointRules(); syncEligibilityRules();
     }
-    if (app.wizard.step === 2) syncCategories();
+    if (app.wizard.step === 2) { syncCategories(); syncActivationRule(); }
     if (app.wizard.step === 3) syncFinalStep();
   }
 
@@ -927,6 +1034,14 @@
       }
     }
   }
+  function syncActivationRule() {
+    if (!app.wizard?.campaign?.orderActivationRule) return;
+    const rule = app.wizard.campaign.orderActivationRule;
+    for (const field of $$('[data-activation-field]')) {
+      const name = field.dataset.activationField;
+      rule[name] = ['baseMin','triggerMin','discountValue'].includes(name) ? Number(field.value) || 0 : field.value;
+    }
+  }
   function syncFinalStep() {
     for (const field of $$('[data-tie-field]')) {
       const item = app.wizard.campaign.tieBreaks[Number(field.dataset.index)];
@@ -949,6 +1064,17 @@
       if (campaign.participantMode === 'specific' && !campaign.representatives.length) return 'Selecione os representantes participantes.';
     }
     if (step === 1 && !campaign.rankingMetrics.length) return 'Selecione pelo menos uma métrica de ranking.';
+    if (step === 2 && campaign.orderActivationRule?.enabled) {
+      const rule = campaign.orderActivationRule;
+      const base = campaign.categories.find((category) => category.id === rule.baseCategoryId);
+      const trigger = campaign.categories.find((category) => category.id === rule.triggerCategoryId);
+      if (!base) return 'Na ativação por pedido, selecione a categoria base.';
+      if (!trigger) return 'Na ativação por pedido, selecione a categoria gatilho.';
+      if (base.id === trigger.id) return 'Categoria base e categoria gatilho precisam ser diferentes.';
+      if (!(base.products || []).length) return 'A categoria base da ativação precisa ter produtos.';
+      if (!(trigger.products || []).length) return 'A categoria gatilho da ativação precisa ter produtos.';
+      if (Number(rule.baseMin) <= 0 || Number(rule.triggerMin) <= 0) return 'Os mínimos da ativação precisam ser maiores que zero.';
+    }
     return '';
   }
 
@@ -981,7 +1107,7 @@
   }
 
   function periodBucket() {
-    return { revenue:0, kg:0, pieces:0, orders:0, customers:new Set(), products:new Set(), rows:[] };
+    return { revenue:0, kg:0, pieces:0, orders:0, customers:new Set(), products:new Set(), rows:[], orderLines:[] };
   }
 
   function categoryStats(categories, rows) {
@@ -1053,29 +1179,169 @@
     return Number(currentMetrics[goal.metric] || 0);
   }
 
+  function metricLabel(metric, growthMode = false) {
+    const source = growthMode ? GROWTH_METRICS : BASE_METRICS;
+    return source.find(([id]) => id === metric)?.[1] || metric;
+  }
+
+  function metricDisplay(metric, value) {
+    if (metric === 'revenue') return money(value);
+    if (metric === 'kg') return `${number(value, 1)} KG`;
+    if (metric === 'pieces') return `${number(value, 0)} un.`;
+    if (metric === 'customers') return `${number(value, 0)} clientes`;
+    if (metric === 'orders') return `${number(value, 0)} pedidos`;
+    if (metric === 'positivity') return `${Number(value || 0) >= 0 ? '+' : ''}${number(value, 0)} clientes`;
+    if (metric === 'mix') return `${number(value, 1)}%`;
+    if (metric === 'points') return `${number(value, 1)} pts`;
+    if (metric === 'activationClients') return `${number(value, 0)} ativações`;
+    if (metric === 'activationOrders') return `${number(value, 0)} pedidos`;
+    if (metric === 'activationRate') return `${number(value, 1)}%`;
+    return number(value, 1);
+  }
+
   function goalDescription(goal, value) {
     const label = goal.mode === 'growth_percent'
-      ? `Crescimento de ${GROWTH_METRICS.find(([id]) => id === goal.metric)?.[1] || goal.metric}`
-      : BASE_METRICS.find(([id]) => id === goal.metric)?.[1] || goal.metric;
+      ? `Crescimento de ${metricLabel(goal.metric, true)}`
+      : metricLabel(goal.metric, false);
     const suffix = goal.mode === 'growth_percent' || goal.metric === 'mix' ? '%' : '';
     return `${label}: ${number(value, 1)}${suffix} ${goal.operator} ${number(goal.value, 1)}${suffix}`;
+  }
+
+  function goalAudit(goal, currentMetrics, previousMetrics) {
+    const current = Number(currentMetrics?.[goal.metric] || 0);
+    const previous = Number(previousMetrics?.[goal.metric] || 0);
+    const value = goalValue(goal, currentMetrics || {}, previousMetrics || {});
+    const targetSuffix = goal.mode === 'growth_percent' || goal.metric === 'mix' ? '%' : '';
+
+    return {
+      current,
+      previous,
+      value,
+      label: metricLabel(goal.metric, goal.mode === 'growth_percent'),
+      target: `${goal.operator} ${number(goal.value, 1)}${targetSuffix}`,
+      currentText: metricDisplay(goal.metric, current),
+      previousText: metricDisplay(goal.metric, previous),
+      deltaText: metricDisplay(goal.metric, current - previous),
+      valueText: goal.mode === 'growth_percent' ? pct(value) : metricDisplay(goal.metric, value),
+    };
+  }
+
+  function goalComparisonHtml(goal) {
+    const audit = goal.audit;
+    if (!audit) return `<small>${esc(goalDescription(goal, goal.value))}</small>`;
+
+    if (goal.mode === 'growth_percent') {
+      return `<div class="goal-audit">
+        <div><span>Atual</span><strong>${esc(audit.currentText)}</strong></div>
+        <div><span>Anterior equivalente</span><strong>${esc(audit.previousText)}</strong></div>
+        <div><span>Diferença</span><strong>${esc(audit.deltaText)}</strong></div>
+        <div><span>Crescimento</span><strong>${esc(audit.valueText)}</strong></div>
+      </div>
+      <small class="goal-target">Meta configurada: ${esc(audit.target)}</small>`;
+    }
+
+    return `<div class="goal-audit compact">
+      <div><span>Resultado atual</span><strong>${esc(audit.currentText)}</strong></div>
+      <div><span>Referência anterior</span><strong>${esc(audit.previousText)}</strong></div>
+    </div>
+    <small class="goal-target">Meta configurada: ${esc(audit.target)}</small>`;
+  }
+
+  function individualGoalsHtml(item) {
+    if (!item.individualGoals?.length) return '';
+    return `<div class="individual-goal-audit">${item.individualGoals.map((goal) => {
+      const audit = goal.audit;
+      if (!audit) return '';
+      const line = goal.mode === 'growth_percent'
+        ? `${audit.currentText} vs ${audit.previousText} = ${audit.valueText}`
+        : `${audit.currentText}`;
+      return `<small class="${goal.hit ? 'hit' : 'miss'}">${esc(audit.label)}: ${esc(line)} · meta ${esc(audit.target)}</small>`;
+    }).join('')}</div>`;
+  }
+
+
+  function activationMeasure(order, productIds, measure) {
+    const relevant = order.lines.filter((line) => productIds.has(Number(line.productId)));
+    if (measure === 'pieces') return relevant.reduce((sum, line) => sum + Number(line.pieces || 0), 0);
+    return new Set(relevant.map((line) => Number(line.productId))).size;
+  }
+
+  function activationRuleStats(campaign, orderLines = []) {
+    const rule = campaign.orderActivationRule || {};
+    if (!rule.enabled) return { enabled:false, clients:0, orders:0, opportunities:0, qualifyingOrders:0, withoutTrigger:0, rate:0, clientIds:[], examples:[] };
+
+    const baseCategory = (campaign.categories || []).find((category) => category.id === rule.baseCategoryId);
+    const triggerCategory = (campaign.categories || []).find((category) => category.id === rule.triggerCategoryId);
+    const baseIds = new Set((baseCategory?.products || []).map((product) => Number(product.id)));
+    const triggerIds = new Set((triggerCategory?.products || []).map((product) => Number(product.id)));
+
+    if (!baseIds.size || !triggerIds.size) return { enabled:true, clients:0, orders:0, opportunities:0, qualifyingOrders:0, withoutTrigger:0, rate:0, clientIds:[], examples:[] };
+
+    const orders = new Map();
+    for (const line of orderLines || []) {
+      const id = String(line.orderId);
+      if (!orders.has(id)) orders.set(id, { orderId:id, clientId:String(line.clientId), orderDate:String(line.orderDate || ''), lines:[] });
+      orders.get(id).lines.push(line);
+    }
+
+    const sorted = [...orders.values()].sort((a,b) => String(a.orderDate).localeCompare(String(b.orderDate)) || String(a.orderId).localeCompare(String(b.orderId)));
+    const activatedClients = new Set();
+    const examples = [];
+    let opportunities = 0, qualifyingOrders = 0, activationOrders = 0, withoutTrigger = 0;
+
+    for (const order of sorted) {
+      if (rule.countMode === 'first_per_client' && activatedClients.has(order.clientId)) continue;
+      const baseValue = activationMeasure(order, baseIds, rule.baseMeasure);
+      if (baseValue < Math.max(1, Number(rule.baseMin) || 1)) continue;
+
+      opportunities += 1;
+      const triggerValue = activationMeasure(order, triggerIds, rule.triggerMeasure);
+      if (triggerValue < Math.max(1, Number(rule.triggerMin) || 1)) { withoutTrigger += 1; continue; }
+
+      qualifyingOrders += 1;
+      activationOrders += 1;
+      activatedClients.add(order.clientId);
+      if (examples.length < 8) examples.push({ orderId:order.orderId, clientId:order.clientId, orderDate:order.orderDate, baseValue, triggerValue });
+    }
+
+    return {
+      enabled:true, clients:activatedClients.size, orders:activationOrders, opportunities, qualifyingOrders, withoutTrigger,
+      rate:opportunities ? (activationOrders / opportunities) * 100 : 0,
+      clientIds:[...activatedClients], examples,
+      baseCategoryName:baseCategory?.name || 'Base', triggerCategoryName:triggerCategory?.name || 'Gatilho',
+      baseMeasure:rule.baseMeasure, triggerMeasure:rule.triggerMeasure,
+      baseMin:Number(rule.baseMin) || 1, triggerMin:Number(rule.triggerMin) || 1, countMode:rule.countMode,
+    };
   }
 
   function sellerMetrics(campaign, seller) {
     const currentMix = categoryStats(campaign.categories, seller.current.rows);
     const previousMix = categoryStats(campaign.categories, seller.previous.rows);
-    const positivity = seller.current.customers.size - seller.previous.customers.size;
+
+    const currentCustomerIds = seller.current.customers;
+    const previousCustomerIds = seller.previous.customers;
+    const retainedCustomers = [...currentCustomerIds].filter((id) => previousCustomerIds.has(id)).length;
+    const newCustomers = [...currentCustomerIds].filter((id) => !previousCustomerIds.has(id)).length;
+    const lostCustomers = [...previousCustomerIds].filter((id) => !currentCustomerIds.has(id)).length;
+
+    // Regra PMG: positivação líquida = clientes únicos atuais - clientes únicos anteriores.
+    // Equivalentemente: clientes novos - clientes que estavam no anterior e não aparecem no atual.
+    const positivity = currentCustomerIds.size - previousCustomerIds.size;
     const previousPositivity = 0;
 
+    const currentActivation = activationRuleStats(campaign, seller.current.orderLines);
+    const previousActivation = activationRuleStats(campaign, seller.previous.orderLines);
     const currentBasePoints = categoryPoints(campaign.categories, seller.current.rows);
     const previousBasePoints = categoryPoints(campaign.categories, seller.previous.rows);
     const currentRaw = {
       revenue:seller.current.revenue, kg:seller.current.kg, pieces:seller.current.pieces, customers:seller.current.customers.size,
       orders:seller.current.orders, distinctProducts:seller.current.products.size, positivity, mix:currentMix.percent, mixCategories:currentMix.fulfilled,
+      activationClients:currentActivation.clients, activationOrders:currentActivation.orders, activationRate:currentActivation.rate,
     };
     const previousRaw = {
       revenue:seller.previous.revenue, kg:seller.previous.kg, pieces:seller.previous.pieces, customers:seller.previous.customers.size,
       orders:seller.previous.orders, distinctProducts:seller.previous.products.size, positivity:previousPositivity, mix:previousMix.percent, mixCategories:previousMix.fulfilled,
+      activationClients:previousActivation.clients, activationOrders:previousActivation.orders, activationRate:previousActivation.rate,
     };
     const currentPoints = currentBasePoints + performanceRulePoints(campaign.pointRules, currentRaw);
     const previousPoints = previousBasePoints + performanceRulePoints(campaign.pointRules, previousRaw);
@@ -1093,6 +1359,16 @@
       positivity, mix:current.mix, mixDone:currentMix.fulfilled, mixTotal:currentMix.total, mixMissing:currentMix.missing,
       points:current.points, previousPoints:previous.points, pointsGrowth:growth(current.points, previous.points),
       distinctProducts:current.distinctProducts,
+      activationClients:currentActivation.clients, activationOrders:currentActivation.orders, activationRate:currentActivation.rate,
+      activationAudit:currentActivation, previousActivationAudit:previousActivation,
+      customerAudit:{
+        current:currentCustomerIds.size,
+        previous:previousCustomerIds.size,
+        retained:retainedCustomers,
+        new:newCustomers,
+        lost:lostCustomers,
+        positivity,
+      },
       eligible:true, reasons:[], individualGoals:[],
     };
   }
@@ -1112,6 +1388,17 @@
       mix:mix.percent,
       mixCategories:mix.fulfilled,
       points:results.reduce((sum, item) => sum + Number(item[period].points || 0), 0),
+      activationClients:(() => {
+        const ids = new Set();
+        for (const item of results) for (const id of ((period === 'current' ? item.activationAudit : item.previousActivationAudit)?.clientIds || [])) ids.add(String(id));
+        return ids.size;
+      })(),
+      activationOrders:results.reduce((sum, item) => sum + Number((period === 'current' ? item.activationAudit : item.previousActivationAudit)?.orders || 0), 0),
+      activationRate:(() => {
+        const opportunities = results.reduce((sum, item) => sum + Number((period === 'current' ? item.activationAudit : item.previousActivationAudit)?.opportunities || 0), 0);
+        const activations = results.reduce((sum, item) => sum + Number((period === 'current' ? item.activationAudit : item.previousActivationAudit)?.orders || 0), 0);
+        return opportunities ? (activations / opportunities) * 100 : 0;
+      })(),
       positivity:0,
     };
   }
@@ -1146,6 +1433,11 @@
       bucket.products.add(Number(row.productId));
       bucket.rows.push(row);
     }
+    for (const row of data.orderLines || []) {
+      if (!sellers.has(row.seller)) sellers.set(row.seller, { name:row.seller, current:periodBucket(), previous:periodBucket() });
+      const seller = sellers.get(row.seller);
+      (row.period === 'current' ? seller.current : seller.previous).orderLines.push(row);
+    }
     for (const seller of sellers.values()) {
       seller.current.orders = orderMap.get(`current|${seller.name}`) || 0;
       seller.previous.orders = orderMap.get(`previous|${seller.name}`) || 0;
@@ -1164,7 +1456,7 @@
         for (const goal of campaign.individualGoals || []) {
           const value = goalValue(goal, item.current, item.previous);
           const hit = compareOp(value, goal.operator, Number(goal.value) || 0);
-          item.individualGoals.push({ ...goal, value, hit });
+          item.individualGoals.push({ ...goal, value, hit, audit:goalAudit(goal, item.current, item.previous) });
           if (!hit) {
             item.eligible = false;
             item.reasons.push(goalDescription(goal, value));
@@ -1181,7 +1473,12 @@
     const collectiveGoals = ['collective','both'].includes(campaign.goalMode)
       ? (campaign.collectiveGoals || []).map((goal) => {
           const value = goalValue(goal, collectiveCurrent, collectivePrevious);
-          return { ...goal, value, hit:compareOp(value, goal.operator, Number(goal.value) || 0) };
+          return {
+            ...goal,
+            value,
+            hit:compareOp(value, goal.operator, Number(goal.value) || 0),
+            audit:goalAudit(goal, collectiveCurrent, collectivePrevious),
+          };
         })
       : [];
     const collectiveHit = collectiveGoals.every((goal) => goal.hit);
@@ -1205,64 +1502,382 @@
         revenue:collectiveCurrent.revenue, previousRevenue:collectivePrevious.revenue,
         kg:collectiveCurrent.kg, previousKg:collectivePrevious.kg,
         pieces:collectiveCurrent.pieces, previousPieces:collectivePrevious.pieces,
+        customers:collectiveCurrent.customers, previousCustomers:collectivePrevious.customers,
+        orders:collectiveCurrent.orders, previousOrders:collectivePrevious.orders,
         positivity:collectiveCurrent.positivity,
         points:collectiveCurrent.points,
+        activationClients:collectiveCurrent.activationClients,
+        activationOrders:collectiveCurrent.activationOrders,
+        activationRate:collectiveCurrent.activationRate,
         eligible:eligible.length, classified:classified.length,
       },
     };
   }
 
-  async function openPerformance(id) {
+  async function openPerformance(id, { force = false } = {}) {
     const campaign = normalizeCampaign(await DB.get('campanhas', id));
     if (!campaign?.id) return;
+
     $('#drawerBackdrop').hidden = false;
     document.body.style.overflow = 'hidden';
     $('#performanceTitle').textContent = campaign.name;
-    $('#performanceBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Consultando vendas reais</h3><p>A apuração compara seis segundas-feiras da campanha com as seis segundas-feiras anteriores.</p></div></div>`;
+
     const periods = calculatePeriods(campaign.start);
-    if (!periods.valid) { $('#performanceBody').innerHTML = `<div class="context-error">${esc(periods.error)}</div>`; return; }
-    const productIds = [...new Set((campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite))];
-    const supplierIds = (campaign.suppliers || []).map((supplier) => Number(supplier.id)).filter(Number.isFinite);
+    if (!periods.valid) {
+      $('#performanceBody').innerHTML = `<div class="context-error">${esc(periods.error)}</div>`;
+      return;
+    }
+
+    const cacheId = `performance:${campaign.id}`;
+    const saved = await DB.get('apuracoes', cacheId);
+
+    if (saved?.result && !force) {
+      const fallbackData = saved.data || {
+        source:'Última apuração salva',
+        durationMs:0,
+        partial:true,
+        asOfDate:saved.generatedAt?.slice(0,10),
+        periodsUsed:{
+          currentStart:saved.result.periods?.currentStart,
+          currentLastInclusive:saved.result.periods?.currentLast,
+          previousStart:saved.result.periods?.previousStart,
+          previousLastInclusive:saved.result.periods?.previousLast,
+        },
+      };
+      $('#performanceBody').innerHTML =
+        `<div class="saved-performance-banner"><span><i data-lucide="database-zap"></i><strong>Mostrando a última apuração salva</strong><small>${saved.generatedAt ? `Gerada em ${new Date(saved.generatedAt).toLocaleString('pt-BR')}. ` : ''}Atualizando os dados em segundo plano…</small></span><span class="mini-spinner"></span></div>`
+        + performanceHtml(campaign, saved.result, { ...fallbackData, browserCache:true });
+      icons($('#performanceBody'));
+    } else {
+      $('#performanceBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Consultando vendas reais</h3><p>Primeiro acesso pode levar alguns segundos. As próximas aberturas usam cache local e cache da API.</p></div></div>`;
+    }
+
+    const productIds = [...new Set(
+      (campaign.categories || [])
+        .flatMap((category) => (category.products || []).map((product) => Number(product.id)))
+        .filter(Number.isFinite)
+    )];
+
+    const supplierIds = (campaign.suppliers || [])
+      .map((supplier) => Number(supplier.id))
+      .filter(Number.isFinite);
+
+    const activationRule = campaign.orderActivationRule || {};
+    const activationCategoryIds = new Set([activationRule.baseCategoryId, activationRule.triggerCategoryId].filter(Boolean));
+    const activationProductIds = [...new Set(
+      (campaign.categories || []).filter((category) => activationCategoryIds.has(category.id))
+        .flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite)
+    )];
+
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=apuracao`, {
         method:'POST',
+        force,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
-          currentStart:periods.currentStart, currentEnd:periods.currentEnd,
-          previousStart:periods.previousStart, previousEnd:periods.previousEnd,
-          supplierIds, productIds,
+          asOfDate:inputDate(new Date()),
+          currentStart:periods.currentStart,
+          currentEnd:periods.currentEnd,
+          previousStart:periods.previousStart,
+          previousEnd:periods.previousEnd,
+          supplierIds,
+          productIds,
           sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
+          orderActivationEnabled:Boolean(activationRule.enabled),
+          activationProductIds,
+          forceRefresh:force,
         }),
       });
+
       const result = calculatePerformance(campaign, data, periods);
-      await DB.put('apuracoes', { id:`performance:${campaign.id}`, campaignId:campaign.id, generatedAt:new Date().toISOString(), result });
+
+      await DB.put('apuracoes', {
+        id:cacheId,
+        campaignId:campaign.id,
+        generatedAt:new Date().toISOString(),
+        result,
+        data:{
+          source:data.source,
+          dateReference:data.dateReference,
+          durationMs:data.durationMs,
+          partial:data.partial,
+          asOfDate:data.asOfDate,
+          elapsedDays:data.elapsedDays,
+          periodsUsed:data.periodsUsed,
+          nominalPeriods:data.nominalPeriods,
+          cache:data.cache || null,
+        },
+      });
+
       $('#performanceBody').innerHTML = performanceHtml(campaign, result, data);
       icons($('#performanceBody'));
     } catch (error) {
+      if (saved?.result && !force) {
+        const warning = document.createElement('div');
+        warning.className = 'saved-performance-warning';
+        warning.innerHTML = `<i data-lucide="triangle-alert"></i><span>Não foi possível atualizar agora. A apuração salva continua visível.<small>${esc(error.message)}</small></span><button class="secondary-btn" data-action="retry-performance" data-id="${esc(id)}">Tentar novamente</button>`;
+        $('#performanceBody').prepend(warning);
+        icons(warning);
+        return;
+      }
+
       $('#performanceBody').innerHTML = `<div class="context-error"><strong>Não foi possível consultar o SQL Server.</strong><br>${esc(error.message)}${error.hint ? `<br>${esc(error.hint)}` : ''}<br><button class="secondary-btn" data-action="retry-performance" data-id="${esc(id)}" style="margin-top:10px">Tentar novamente</button></div>`;
     }
   }
 
+  function performanceAuditContext(campaign, data, result) {
+    const used = data.periodsUsed || {};
+    const currentStart = used.currentStart || result.periods.currentStart;
+    const currentLast = used.currentLastInclusive || result.periods.currentLast;
+    const previousStart = used.previousStart || result.periods.previousStart;
+    const previousLast = used.previousLastInclusive || result.periods.previousLast;
+
+    return {
+      currentStart,
+      currentLast,
+      previousStart,
+      previousLast,
+      scopeSuppliers:(campaign.suppliers || []).map((s) => `${s.name} (${s.id})`).join(', '),
+      scopeProducts:[...new Set((campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite))].length,
+    };
+  }
+
+  function metricCellAudit(metric, period, item, audit) {
+    const isCurrent = period === 'current';
+    const periodLabel = isCurrent ? 'Campanha' : 'Anterior equivalente';
+    const start = isCurrent ? audit.currentStart : audit.previousStart;
+    const last = isCurrent ? audit.currentLast : audit.previousLast;
+
+    const common = [
+      `${periodLabel}: ${dateBR(start)} a ${dateBR(last)}`,
+      `Vendedor: dbo.Vendas.[Vendedor]`,
+      `Data: dbo.Vendas.[Data]`,
+      `Escopo: produtos/fornecedores configurados nesta campanha`,
+    ];
+
+    if (metric === 'revenue') {
+      return [
+        `Faturamento = soma de dbo.VendasProdutos.[Valor]`,
+        ...common,
+        `Resultado: ${money(isCurrent ? item.revenue : item.previousRevenue)}`,
+      ];
+    }
+    if (metric === 'kg') {
+      return [
+        `Volume = soma de dbo.VendasProdutos.[Qtde Kg]`,
+        ...common,
+        `Resultado: ${number(isCurrent ? item.kg : item.previousKg, 1)} KG`,
+      ];
+    }
+    if (metric === 'customers') {
+      const value = isCurrent ? item.customers : item.previousCustomers;
+      return [
+        `Clientes = quantidade de IDs de cliente únicos com venda no escopo`,
+        `Cálculo: COUNT DISTINCT dbo.Vendas.[ID Cliente]`,
+        ...common,
+        `Resultado: ${number(value)} clientes únicos`,
+      ];
+    }
+    if (metric === 'orders') {
+      const value = isCurrent ? item.orders : item.previousOrders;
+      return [
+        `Pedidos = quantidade de pedidos únicos com produto do escopo`,
+        `Cálculo: COUNT DISTINCT dbo.Vendas.[ID Pedido de Venda]`,
+        ...common,
+        `Resultado: ${number(value)} pedidos`,
+      ];
+    }
+    return common;
+  }
+
+  function growthCellAudit(metric, item, audit) {
+    const current = metric === 'revenue' ? item.revenue : item.kg;
+    const previous = metric === 'revenue' ? item.previousRevenue : item.previousKg;
+    const label = metric === 'revenue' ? 'faturamento' : 'volume';
+    const formattedCurrent = metric === 'revenue' ? money(current) : `${number(current,1)} KG`;
+    const formattedPrevious = metric === 'revenue' ? money(previous) : `${number(previous,1)} KG`;
+    return [
+      `Crescimento de ${label}`,
+      `Atual: ${formattedCurrent}`,
+      `Anterior equivalente: ${formattedPrevious}`,
+      previous
+        ? `Fórmula: (Atual − Anterior) ÷ |Anterior| × 100`
+        : `Sem base anterior: quando o anterior é zero, a regra operacional atual considera 100% se houver venda e 0% se também não houver venda.`,
+      `Resultado: ${pct(metric === 'revenue' ? item.revenueGrowth : item.kgGrowth)}`,
+      `Períodos: ${dateBR(audit.currentStart)}–${dateBR(audit.currentLast)} vs ${dateBR(audit.previousStart)}–${dateBR(audit.previousLast)}`,
+    ];
+  }
+
+  function positivityAuditLines(item, audit) {
+    const customerAudit = item.customerAudit || {};
+    return [
+      `Positivação líquida = clientes únicos atuais − clientes únicos anteriores`,
+      `Atual: ${number(item.customers)} clientes`,
+      `Anterior: ${number(item.previousCustomers)} clientes`,
+      `Cálculo: ${number(item.customers)} − ${number(item.previousCustomers)} = ${item.positivity >= 0 ? '+' : ''}${number(item.positivity)}`,
+      `Detalhamento: ${number(customerAudit.new)} só no atual · ${number(customerAudit.retained)} nos dois períodos · ${number(customerAudit.lost)} só no anterior`,
+      `Equivalência: novos (${number(customerAudit.new)}) − perdidos (${number(customerAudit.lost)}) = ${item.positivity >= 0 ? '+' : ''}${number(item.positivity)}`,
+      `Fonte: clientes únicos por dbo.Vendas.[ID Cliente]`,
+      `Períodos: ${dateBR(audit.currentStart)}–${dateBR(audit.currentLast)} vs ${dateBR(audit.previousStart)}–${dateBR(audit.previousLast)}`,
+    ];
+  }
+
+
+  function activationAuditLines(item, campaign, audit) {
+    const rule = campaign.orderActivationRule || {};
+    const data = item.activationAudit || {};
+    const measureLabel = (measure) => measure === 'pieces' ? 'peças/unidades' : 'produtos distintos';
+    const lines = [
+      `${rule.name || 'Ativação por pedido'}`,
+      `Base: ${data.baseCategoryName || '—'} · mínimo ${number(data.baseMin || rule.baseMin)} ${measureLabel(data.baseMeasure || rule.baseMeasure)}`,
+      `Gatilho: ${data.triggerCategoryName || '—'} · mínimo ${number(data.triggerMin || rule.triggerMin)} ${measureLabel(data.triggerMeasure || rule.triggerMeasure)}`,
+      `Pedidos-oportunidade: ${number(data.opportunities)}`,
+      `Pedidos ativados: ${number(data.orders)}`,
+      `Sem gatilho: ${number(data.withoutTrigger)}`,
+      `Clientes ativados: ${number(data.clients)}`,
+      `Taxa: ${number(data.rate,1)}%`,
+      `Contagem: ${rule.countMode === 'first_per_client' ? 'somente a primeira ativação de cada cliente na campanha' : 'todos os pedidos qualificados'}`,
+      `Período: ${dateBR(audit.currentStart)} a ${dateBR(audit.currentLast)}`,
+    ];
+    if (data.examples?.length) lines.push(`Exemplos: ${data.examples.map((row) => `pedido #${row.orderId} / cliente ${row.clientId}`).join(' · ')}`);
+    return lines;
+  }
+
   function performanceHtml(campaign, result, data) {
     const summary = result.summary;
-    return `<div class="performance-kpis">
-      ${performanceMeta('Faturamento', money(summary.revenue), `${pct(growth(summary.revenue, summary.previousRevenue))} vs anterior`)}
-      ${performanceMeta('Volume', `${number(summary.kg,1)} KG`, `${pct(growth(summary.kg, summary.previousKg))} vs anterior`)}
-      ${performanceMeta('Positivação', `${summary.positivity >= 0 ? '+' : ''}${number(summary.positivity)}`, 'clientes atuais − anteriores')}
+    const used = data.periodsUsed || {};
+    const nominal = data.nominalPeriods || {};
+    const isPartial = Boolean(data.partial);
+    const audit = performanceAuditContext(campaign, data, result);
+    const apiCache = data.cache || {};
+
+    const currentUsedStart = used.currentStart || result.periods.currentStart;
+    const currentUsedLast = used.currentLastInclusive || result.periods.currentLast;
+    const previousUsedStart = used.previousStart || result.periods.previousStart;
+    const previousUsedLast = used.previousLastInclusive || result.periods.previousLast;
+
+    const periodAudit = isPartial
+      ? `<div class="period-audit partial">
+          <div class="period-audit-icon"><i data-lucide="calendar-clock"></i></div>
+          <div>
+            <strong>Apuração parcial até ${dateBR(data.asOfDate || currentUsedLast)}</strong>
+            <p>Comparação equivalente: campanha ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · anterior ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
+            <small>A janela completa continua sendo ${dateBR(nominal.currentStart || result.periods.currentStart)} a ${dateBR(nominal.currentLastInclusive || result.periods.currentLast)}.</small>
+          </div>
+        </div>`
+      : `<div class="period-audit">
+          <div class="period-audit-icon"><i data-lucide="calendar-check-2"></i></div>
+          <div>
+            <strong>Apuração do período completo</strong>
+            <p>Campanha ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · anterior ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
+          </div>
+        </div>`;
+
+    return `${periodAudit}
+    <div class="performance-kpis">
+      ${performanceMeta('Faturamento', money(summary.revenue), `Anterior ${money(summary.previousRevenue)} · ${pct(growth(summary.revenue, summary.previousRevenue))}`)}
+      ${performanceMeta('Volume', `${number(summary.kg,1)} KG`, `Anterior ${number(summary.previousKg,1)} KG · ${pct(growth(summary.kg, summary.previousKg))}`)}
+      ${performanceMeta('Clientes', number(summary.customers), `Anterior ${number(summary.previousCustomers)} · ${pct(growth(summary.customers, summary.previousCustomers))}`)}
+      ${performanceMeta('Positivação', `${summary.positivity >= 0 ? '+' : ''}${number(summary.positivity)}`, `${number(summary.customers)} atuais − ${number(summary.previousCustomers)} anteriores`)}
       ${performanceMeta('Pontos', number(summary.points,1), 'total da campanha')}
+      ${campaign.orderActivationRule?.enabled ? performanceMeta('Ativações', number(summary.activationClients), `${number(summary.activationOrders)} pedido(s) ativado(s)`) : ''}
+      ${campaign.orderActivationRule?.enabled ? performanceMeta('Taxa de ativação', `${number(summary.activationRate,1)}%`, 'ativados ÷ oportunidades') : ''}
       ${performanceMeta('Elegíveis', number(summary.eligible), `${summary.classified} classificado(s)`)}
     </div>
-    ${result.collectiveGoals.length ? `<div class="goal-status-grid">${result.collectiveGoals.map((goal) => `<div class="goal-status ${goal.hit ? 'success' : 'danger'}"><strong>${goal.hit ? 'Meta coletiva atingida' : 'Meta coletiva não atingida'}</strong><small>${esc(goalDescription(goal, goal.value))}</small></div>`).join('')}</div>` : '<div class="goal-status-grid"><div class="goal-status"><strong>Meta coletiva não configurada</strong><small>O ranking depende apenas das metas individuais, elegibilidade e métricas selecionadas.</small></div></div>'}
-    <section class="section-card" style="margin-top:12px"><div class="section-head"><div><span class="eyebrow">Performance</span><h3>Ranking e comparativo por vendedor</h3></div><span class="hint">${esc(data.source || 'SQL Server')} · ${number(data.durationMs || 0)} ms</span></div>
-      <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>#</th><th>Representante</th><th>R$ campanha</th><th>R$ anterior</th><th>Δ R$</th><th>KG campanha</th><th>KG anterior</th><th>Δ KG</th><th>Clientes</th><th>Anterior</th><th>Positivação</th><th>Mix</th><th>Pontos</th><th>Situação</th></tr></thead><tbody>${result.results.map((item) => performanceRow(item, result.collectiveHit)).join('') || '<tr><td colspan="14">Nenhuma venda encontrada no período.</td></tr>'}</tbody></table></div>
+
+    ${result.collectiveGoals.length
+      ? `<div class="goal-status-grid">${result.collectiveGoals.map((goal) => `
+          <div class="goal-status ${goal.hit ? 'success' : 'danger'}">
+            <div class="goal-status-title">
+              <strong>${goal.hit ? 'Meta coletiva atingida' : 'Meta coletiva não atingida'}</strong>
+              <span class="badge ${goal.hit ? 'active' : 'danger'}">${goal.hit ? 'Atingida' : 'Pendente'}</span>
+            </div>
+            <h4>${esc(goal.mode === 'growth_percent' ? `Crescimento de ${metricLabel(goal.metric, true)}` : metricLabel(goal.metric))}</h4>
+            ${goalComparisonHtml(goal)}
+          </div>`).join('')}</div>`
+      : '<div class="goal-status-grid"><div class="goal-status"><strong>Meta coletiva não configurada</strong><small>O ranking depende apenas das metas individuais, elegibilidade e métricas selecionadas.</small></div></div>'}
+
+    <section class="section-card" style="margin-top:12px">
+      <div class="section-head">
+        <div><span class="eyebrow">Performance</span><h3>Ranking e comparativo por vendedor</h3></div>
+        <span class="hint">${esc(data.source || 'SQL Server')} · ${number(data.durationMs || 0)} ms${apiCache.hit ? ` · cache API ${number((apiCache.ageMs || 0) / 1000, 1)}s` : ''}</span>
+      </div>
+      <div class="table-wrap" style="margin-top:12px">
+        <table>
+          <thead><tr>
+            <th>#</th>
+            <th>${auditHeader('Representante', ['Nome e ID são lidos do campo dbo.Vendas.[Vendedor].', 'Ex.: NATALIA ALBIERI-988 → nome NATALIA ALBIERI · ID 988.'])}</th>
+            <th>${auditHeader('R$ campanha', ['Soma de dbo.VendasProdutos.[Valor] no período atual.', 'Passe o mouse nos valores para ver período e cálculo.'])}</th>
+            <th>${auditHeader('R$ anterior', ['Soma de dbo.VendasProdutos.[Valor] no período anterior equivalente.'])}</th>
+            <th>${auditHeader('Δ R$', ['(Faturamento atual − anterior) ÷ |anterior| × 100.'])}</th>
+            <th>${auditHeader('KG campanha', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período atual.'])}</th>
+            <th>${auditHeader('KG anterior', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período anterior equivalente.'])}</th>
+            <th>${auditHeader('Δ KG', ['(KG atual − KG anterior) ÷ |KG anterior| × 100.'])}</th>
+            <th>${auditHeader('Clientes', ['Clientes únicos no período atual.', 'COUNT DISTINCT dbo.Vendas.[ID Cliente].'])}</th>
+            <th>${auditHeader('Anterior', ['Clientes únicos no período anterior equivalente.'])}</th>
+            <th>${auditHeader('Positivação', ['Positivação líquida = clientes atuais − clientes anteriores.', 'O hover também mostra novos, recorrentes e perdidos.'])}</th>
+            <th>${auditHeader('Mix', ['Percentual de categorias obrigatórias cumpridas pelo vendedor.'])}</th>
+            ${campaign.orderActivationRule?.enabled ? `<th>${auditHeader('Ativações', ['Clientes ativados pela regra de pedido combinado.'])}</th><th>${auditHeader('Taxa ativação', ['Pedidos ativados ÷ pedidos-oportunidade × 100.'])}</th>` : ''}
+            <th>${auditHeader('Pontos', ['Pontos de categorias + regras de desempenho configuradas na campanha.'])}</th>
+            <th>Situação / meta individual</th>
+          </tr></thead>
+          <tbody>${result.results.map((item) => performanceRow(item, result.collectiveHit, audit, campaign)).join('') || `<tr><td colspan="${campaign.orderActivationRule?.enabled ? 16 : 14}">Nenhuma venda encontrada no período.</td></tr>`}</tbody>
+        </table>
+      </div>
     </section>
-    <div class="meta-block"><strong>Períodos utilizados:</strong> campanha ${dateBR(result.periods.currentStart)} a ${dateBR(result.periods.currentLast)} · anterior ${dateBR(result.periods.previousStart)} a ${dateBR(result.periods.previousLast)} · referência ${esc(data.dateReference || 'dbo.Vendas.[Data]')}.</div>`;
+
+    <div class="meta-block period-meta">
+      <strong>Regra de período PMG:</strong>
+      janela completa da campanha ${dateBR(result.periods.currentStart)} a ${dateBR(result.periods.currentLast)}
+      · referência completa ${dateBR(result.periods.previousStart)} a ${dateBR(result.periods.previousLast)}
+      · referência SQL ${esc(data.dateReference || 'dbo.Vendas.[Data]')}.
+    </div>`;
   }
 
   function performanceMeta(label, value, detail) { return `<div class="meta-card"><span>${label}</span><strong>${value}</strong><small>${detail}</small></div>`; }
-  function performanceRow(item, collectiveHit) {
+  function performanceRow(item, collectiveHit, audit, campaign) {
     const status = !item.eligible ? 'Inelegível' : !collectiveHit ? 'Meta coletiva pendente' : item.classified ? 'Classificado' : 'Elegível';
-    return `<tr><td><span class="rank-badge">${item.position}</span></td><td><strong>${esc(item.name)}</strong>${item.reasons.length ? `<small style="display:block;color:var(--danger);margin-top:3px" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}</td><td>${money(item.revenue)}</td><td>${money(item.previousRevenue)}</td><td><span class="delta ${item.revenueGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.revenueGrowth)}</span></td><td>${number(item.kg,1)}</td><td>${number(item.previousKg,1)}</td><td><span class="delta ${item.kgGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.kgGrowth)}</span></td><td>${number(item.customers)}</td><td>${number(item.previousCustomers)}</td><td><strong class="delta ${item.positivity >= 0 ? 'positive' : 'negative'}">${item.positivity >= 0 ? '+' : ''}${number(item.positivity)}</strong></td><td>${number(item.mix)}% <small>(${item.mixDone}/${item.mixTotal})</small></td><td>${number(item.points,1)}</td><td><span class="badge ${item.classified && collectiveHit ? 'active' : !item.eligible ? 'danger' : 'scheduled'}">${status}</span></td></tr>`;
+    const identity = sellerIdentity(item.name);
+
+    const sellerAudit = [
+      `Representante: ${identity.name || item.name}`,
+      identity.code ? `ID: ${identity.code}` : '',
+      `Valor original do SQL: ${identity.raw}`,
+      `Fonte: dbo.Vendas.[Vendedor]`,
+      `Somente vendedores considerados ativos pela carteira em dbo.Clientes entram na apuração.`,
+    ];
+
+    const mixAudit = [
+      `Mix = categorias obrigatórias cumpridas ÷ categorias obrigatórias × 100`,
+      `Cumpridas: ${number(item.mixDone)} de ${number(item.mixTotal)}`,
+      item.mixMissing?.length ? `Faltando: ${item.mixMissing.join(', ')}` : `Todas as categorias obrigatórias foram cumpridas.`,
+      `Resultado: ${number(item.mix,1)}%`,
+    ];
+
+    const pointsAudit = [
+      `Pontos totais calculados pelas regras configuradas nesta campanha.`,
+      `Inclui pontuação das categorias e regras por desempenho.`,
+      `Resultado atual: ${number(item.points,1)} pontos`,
+      `Para auditar a fórmula, consulte a etapa “Ranking e metas” da campanha.`,
+    ];
+
+    return `<tr>
+      <td><span class="rank-badge">${item.position}</span></td>
+      <td>${auditValue(`<strong class="rep-name">${esc(identity.name || item.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}`, sellerAudit, 'rep-audit')}${item.reasons.length ? `<small style="display:block;color:var(--danger);margin-top:3px" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}</td>
+      <td>${auditValue(money(item.revenue), metricCellAudit('revenue','current',item,audit))}</td>
+      <td>${auditValue(money(item.previousRevenue), metricCellAudit('revenue','previous',item,audit))}</td>
+      <td>${auditValue(`<span class="delta ${item.revenueGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.revenueGrowth)}</span>`, growthCellAudit('revenue',item,audit))}</td>
+      <td>${auditValue(number(item.kg,1), metricCellAudit('kg','current',item,audit))}</td>
+      <td>${auditValue(number(item.previousKg,1), metricCellAudit('kg','previous',item,audit))}</td>
+      <td>${auditValue(`<span class="delta ${item.kgGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.kgGrowth)}</span>`, growthCellAudit('kg',item,audit))}</td>
+      <td>${auditValue(number(item.customers), metricCellAudit('customers','current',item,audit))}</td>
+      <td>${auditValue(number(item.previousCustomers), metricCellAudit('customers','previous',item,audit))}</td>
+      <td>${auditValue(`<strong class="delta ${item.positivity >= 0 ? 'positive' : 'negative'}">${item.positivity >= 0 ? '+' : ''}${number(item.positivity)}</strong>`, positivityAuditLines(item,audit))}</td>
+      <td>${auditValue(`${number(item.mix)}% <small>(${item.mixDone}/${item.mixTotal})</small>`, mixAudit)}</td>
+      ${campaign.orderActivationRule?.enabled ? `<td>${auditValue(`<strong>${number(item.activationClients)}</strong>`, activationAuditLines(item,campaign,audit), 'activation-audit')}</td><td>${auditValue(`${number(item.activationRate,1)}%`, activationAuditLines(item,campaign,audit), 'activation-audit')}</td>` : ''}
+      <td>${auditValue(number(item.points,1), pointsAudit)}</td>
+      <td><span class="badge ${item.classified && collectiveHit ? 'active' : !item.eligible ? 'danger' : 'scheduled'}">${status}</span>${individualGoalsHtml(item)}</td>
+    </tr>`;
   }
 
   function closePerformance() {
@@ -1341,6 +1956,7 @@
     if (event.target.matches('[data-goal-field]')) syncGoals();
     if (event.target.matches('[data-point-field]')) syncPointRules();
     if (event.target.matches('[data-rule-field]')) syncEligibilityRules();
+    if (event.target.matches('[data-activation-field]')) syncActivationRule();
   });
 
   document.addEventListener('change', (event) => {
@@ -1361,6 +1977,7 @@
     }
     if (event.target.matches('[data-goal-field="mode"]')) renderWizard();
     if (event.target.matches('[data-point-field="mode"]')) renderWizard();
+    if (event.target.matches('[data-activation-field="discountType"]')) { syncActivationRule(); renderWizard(); }
   });
 
   document.addEventListener('click', async (event) => {
@@ -1378,6 +1995,13 @@
     if (action === 'close-sidebar') { $('#sidebar').classList.remove('is-open'); $('.sidebar-backdrop').classList.remove('is-open'); return; }
     if (action === 'theme') { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; localStorage.setItem(THEME_KEY, next); return; }
     if (action === 'settings') { const value = prompt('Endereço da API local', SQL_BASE); if (value) { localStorage.setItem(SQL_BASE_KEY, value.replace(/\/$/, '')); alert('Endereço salvo. Recarregue a página.'); } return; }
+    if (action === 'open-date-picker') {
+      const input = document.getElementById(node.dataset.target);
+      if (!input) return;
+      try { input.showPicker?.(); }
+      catch (_) { input.focus(); input.click(); }
+      return;
+    }
     if (action === 'refresh-context') { $('#contextOverlay').hidden = false; document.body.style.overflow = 'hidden'; return pollContext({ force:true, blocking:true }).catch(() => {}); }
     if (action === 'retry-context') {
       // O clique do usuário permite que o Chrome apresente o aviso de acesso à rede local.
@@ -1435,6 +2059,13 @@
     if (action === 'add-rule-template') { app.wizard.campaign.rules.push({ id:uid('rule'), name:node.dataset.label, metric:node.dataset.metric, operator:'>=', value:Number(node.dataset.value) || 0 }); renderWizard(); return; }
     if (action === 'remove-rule') { app.wizard.campaign.rules = app.wizard.campaign.rules.filter((item) => item.id !== node.dataset.id); renderWizard(); return; }
 
+    if (action === 'toggle-activation-rule') {
+      syncCategories();
+      app.wizard.campaign.orderActivationRule.enabled = !app.wizard.campaign.orderActivationRule.enabled;
+      renderWizard();
+      return;
+    }
+
     if (action === 'add-category') {
       const name = $('#newCategoryName')?.value.trim();
       if (!name) return toast('Informe o nome da categoria.', 'warning');
@@ -1466,7 +2097,7 @@
     if (action === 'add-prize') { app.wizard.campaign.prizes.push({ position:app.wizard.campaign.prizes.length + 1, type:'money', description:'' }); renderWizard(); return; }
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
     if (action === 'performance') return openPerformance(node.dataset.id);
-    if (action === 'retry-performance') { closePerformance(); return openPerformance(node.dataset.id); }
+    if (action === 'retry-performance') { return openPerformance(node.dataset.id, { force:true }); }
   });
 
   document.addEventListener('click', (event) => {

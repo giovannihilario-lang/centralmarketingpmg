@@ -17,6 +17,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_PATH = path.resolve(__dirname, '../data/campanhas-contexto-v5.json');
 const CACHE_VERSION = 5;
 const CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
+const PERFORMANCE_CACHE_TTL_MS = 2 * 60 * 1000;
+const performanceCache = new Map();
+
+function stablePerformanceKey({ currentStart, currentEnd, previousStart, previousEnd, productIds, supplierIds, sellers, activationProductIds = [] }) {
+  return JSON.stringify({
+    currentStart:String(currentStart),
+    currentEnd:String(currentEnd),
+    previousStart:String(previousStart),
+    previousEnd:String(previousEnd),
+    productIds:[...productIds].sort((a,b) => a-b),
+    supplierIds:[...supplierIds].sort((a,b) => a-b),
+    sellers:[...sellers].sort((a,b) => a.localeCompare(b, 'pt-BR')),
+    activationProductIds:[...activationProductIds].sort((a,b) => a-b),
+  });
+}
+
+function prunePerformanceCache() {
+  const now = Date.now();
+  for (const [key, entry] of performanceCache.entries()) {
+    if (!entry || now - entry.createdAt > PERFORMANCE_CACHE_TTL_MS) performanceCache.delete(key);
+  }
+}
 
 const state = {
   status: 'idle',
@@ -62,7 +84,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.1.0',
+    version: '5.4.0',
   };
 }
 
@@ -279,28 +301,60 @@ function parseDate(value, field) {
   return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
-function fixedSixMondayPeriods(startRaw) {
+function addUtcDays(date, days) {
+  const copy = new Date(date);
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+}
+
+function localTodayAsUtcDate() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function fixedSixMondayPeriods(startRaw, asOfRaw = null) {
   const start = parseDate(startRaw, 'campaignStart');
   if (start.getUTCDay() !== 1) {
     const error = new Error('A primeira data da campanha precisa ser uma segunda-feira.');
     error.code = 'PERIODO_INVALIDO';
     throw error;
   }
-  const addDays = (date, days) => {
-    const copy = new Date(date);
-    copy.setUTCDate(copy.getUTCDate() + days);
-    return copy;
-  };
-  const currentLast = addDays(start, 35);
-  const previousStart = addDays(start, -42);
-  const previousLast = addDays(start, -7);
+
+  // Janela PMG completa: 6 segundas-feiras.
+  const nominalCurrentLast = addUtcDays(start, 35);
+  const nominalPreviousStart = addUtcDays(start, -42);
+  const nominalPreviousLast = addUtcDays(start, -7);
+
+  // Em apuração parcial, nunca usa dias futuros.
+  // O anterior é cortado no mesmo número de dias transcorridos.
+  const requestedAsOf = asOfRaw ? parseDate(asOfRaw, 'asOfDate') : localTodayAsUtcDate();
+
+  if (requestedAsOf < start) {
+    const error = new Error('A campanha ainda não iniciou; não há apuração parcial disponível.');
+    error.code = 'CAMPANHA_NAO_INICIADA';
+    throw error;
+  }
+
+  const effectiveCurrentLast = requestedAsOf < nominalCurrentLast ? requestedAsOf : nominalCurrentLast;
+  const elapsedDays = Math.floor((effectiveCurrentLast - start) / 86400000) + 1;
+  const effectivePreviousLast = addUtcDays(nominalPreviousStart, elapsedDays - 1);
+
   return {
     currentStart: start,
-    currentEnd: addDays(currentLast, 1),
-    currentLast,
-    previousStart,
-    previousEnd: addDays(previousLast, 1),
-    previousLast,
+    currentEnd: addUtcDays(effectiveCurrentLast, 1),
+    currentLast: effectiveCurrentLast,
+    previousStart: nominalPreviousStart,
+    previousEnd: addUtcDays(effectivePreviousLast, 1),
+    previousLast: effectivePreviousLast,
+
+    nominalCurrentStart: start,
+    nominalCurrentLast,
+    nominalPreviousStart,
+    nominalPreviousLast,
+
+    asOfDate: effectiveCurrentLast,
+    partial: effectiveCurrentLast < nominalCurrentLast,
+    elapsedDays,
   };
 }
 
@@ -330,7 +384,7 @@ function addTextParams(request, prefix, values) {
 
 async function queryPerformance(payload = {}) {
   const startedAt = Date.now();
-  const fixedPeriods = payload.campaignStart ? fixedSixMondayPeriods(payload.campaignStart) : null;
+  const fixedPeriods = payload.campaignStart ? fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate) : null;
   const currentStart = fixedPeriods?.currentStart || parseDate(payload.currentStart, 'currentStart');
   const currentEnd = fixedPeriods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
   const previousStart = fixedPeriods?.previousStart || parseDate(payload.previousStart, 'previousStart');
@@ -338,11 +392,32 @@ async function queryPerformance(payload = {}) {
   const productIds = uniqueIntegers(payload.productIds);
   const supplierIds = uniqueIntegers(payload.supplierIds);
   const sellers = uniqueTexts(payload.sellers);
+  const activationProductIds = payload.orderActivationEnabled ? uniqueIntegers(payload.activationProductIds) : [];
 
   if (!productIds.length && !supplierIds.length) {
     const error = new Error('Selecione pelo menos um código de fornecedor ou produto participante.');
     error.code = 'ESCOPO_AUSENTE';
     throw error;
+  }
+
+  prunePerformanceCache();
+  const cacheKey = stablePerformanceKey({
+    currentStart, currentEnd, previousStart, previousEnd, productIds, supplierIds, sellers, activationProductIds,
+  });
+
+  if (!payload.forceRefresh) {
+    const cached = performanceCache.get(cacheKey);
+    if (cached && Date.now() - cached.createdAt <= PERFORMANCE_CACHE_TTL_MS) {
+      return {
+        ...cached.value,
+        durationMs:Date.now() - startedAt,
+        cache:{
+          hit:true,
+          ageMs:Date.now() - cached.createdAt,
+          ttlMs:PERFORMANCE_CACHE_TTL_MS,
+        },
+      };
+    }
   }
 
   const pool = await getPool();
@@ -353,12 +428,24 @@ async function queryPerformance(payload = {}) {
   request.input('previousEnd', sql.DateTime2, previousEnd);
 
   const filters = [];
-  // IDs foram normalizados como inteiros; usar literais evita o limite de 2.100 parâmetros do SQL Server.
-  if (productIds.length) filters.push(`vp.[ID Produto] IN (${productIds.join(',')})`);
-  else filters.push(`p.[ID Fornecedor] IN (${supplierIds.join(',')})`);
-  if (sellers.length) filters.push(`LTRIM(RTRIM(v.[Vendedor])) IN (${addTextParams(request, 'seller', sellers)})`);
+  const joins = [];
+
+  // IDs já normalizados como inteiros; literais evitam o limite de 2.100 parâmetros.
+  // Se há IDs de produto explícitos, não precisamos juntar dbo.Produtos na apuração.
+  if (productIds.length) {
+    filters.push(`vp.[ID Produto] IN (${productIds.join(',')})`);
+  } else {
+    joins.push(`INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]`);
+    filters.push(`p.[ID Fornecedor] IN (${supplierIds.join(',')})`);
+  }
+
+  if (sellers.length) {
+    filters.push(`LTRIM(RTRIM(v.[Vendedor])) IN (${addTextParams(request, 'seller', sellers)})`);
+  }
 
   const result = await request.query(`
+    SET NOCOUNT ON;
+
     WITH ActiveSellers AS (
       SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
       FROM dbo.Clientes c
@@ -369,54 +456,60 @@ async function queryPerformance(payload = {}) {
       CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END AS period,
       LTRIM(RTRIM(v.[Vendedor])) AS seller,
       v.[ID Cliente] AS clientId,
+      v.[ID Pedido de Venda] AS orderId,
+      v.[Data] AS orderDate,
       vp.[ID Produto] AS productId,
-      MAX(p.[Produto]) AS productName,
-      MAX(p.[Grupo]) AS groupName,
-      MAX(p.[Sub-grupo]) AS subgroupName,
-      MAX(p.[ID Fornecedor]) AS supplierId,
-      COUNT(DISTINCT v.[ID Pedido de Venda]) AS orders,
-      SUM(ISNULL(vp.[Qtde PC], 0)) AS pieces,
-      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
-      SUM(ISNULL(vp.[Valor], 0)) AS revenue
+      ISNULL(vp.[Qtde PC], 0) AS pieces,
+      ISNULL(vp.[Qtde Kg], 0) AS kg,
+      ISNULL(vp.[Valor], 0) AS revenue
+    INTO #CampaignBase
     FROM dbo.Vendas v
     INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
     INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+    ${joins.join('\n    ')}
     WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
       AND (
         (v.[Data] >= @currentStart AND v.[Data] < @currentEnd)
         OR (v.[Data] >= @previousStart AND v.[Data] < @previousEnd)
       )
-      AND ${filters.join(' AND ')}
-    GROUP BY
-      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END,
-      LTRIM(RTRIM(v.[Vendedor])),
-      v.[ID Cliente],
-      vp.[ID Produto];
+      AND ${filters.join(' AND ')};
 
-    WITH ActiveSellers AS (
-      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
-      FROM dbo.Clientes c
-      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    )
     SELECT
-      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END AS period,
-      LTRIM(RTRIM(v.[Vendedor])) AS seller,
-      COUNT(DISTINCT v.[ID Pedido de Venda]) AS orders
-    FROM dbo.Vendas v
-    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
-    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
-    WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
-      AND (
-        (v.[Data] >= @currentStart AND v.[Data] < @currentEnd)
-        OR (v.[Data] >= @previousStart AND v.[Data] < @previousEnd)
-      )
-      AND ${filters.join(' AND ')}
-    GROUP BY
-      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END,
-      LTRIM(RTRIM(v.[Vendedor]));
+      period,
+      seller,
+      clientId,
+      productId,
+      COUNT(DISTINCT orderId) AS orders,
+      SUM(pieces) AS pieces,
+      SUM(kg) AS kg,
+      SUM(revenue) AS revenue
+    FROM #CampaignBase
+    GROUP BY period, seller, clientId, productId;
+
+    SELECT
+      period,
+      seller,
+      COUNT(DISTINCT orderId) AS orders
+    FROM #CampaignBase
+    GROUP BY period, seller;
+
+    ${activationProductIds.length ? `
+    SELECT
+      period,
+      seller,
+      clientId,
+      orderId,
+      MIN(orderDate) AS orderDate,
+      productId,
+      SUM(pieces) AS pieces,
+      SUM(kg) AS kg,
+      SUM(revenue) AS revenue
+    FROM #CampaignBase
+    WHERE productId IN (${activationProductIds.join(',')})
+    GROUP BY period, seller, clientId, orderId, productId;
+    ` : ''}
+
+    DROP TABLE #CampaignBase;
   `);
 
   const lines = (result.recordsets?.[0] || []).map((row) => ({
@@ -424,10 +517,6 @@ async function queryPerformance(payload = {}) {
     seller: text(row.seller),
     clientId: Number(row.clientId),
     productId: Number(row.productId),
-    productName: text(row.productName),
-    group: text(row.groupName),
-    subgroup: text(row.subgroupName),
-    supplierId: Number(row.supplierId) || null,
     orders: Number(row.orders) || 0,
     pieces: Number(row.pieces) || 0,
     kg: Number(row.kg) || 0,
@@ -440,22 +529,60 @@ async function queryPerformance(payload = {}) {
     orders: Number(row.orders) || 0,
   }));
 
-  return {
+  const orderLines = activationProductIds.length
+    ? (result.recordsets?.[2] || []).map((row) => ({
+        period:row.period,
+        seller:text(row.seller),
+        clientId:Number(row.clientId),
+        orderId:String(row.orderId),
+        orderDate:row.orderDate || null,
+        productId:Number(row.productId),
+        pieces:Number(row.pieces) || 0,
+        kg:Number(row.kg) || 0,
+        revenue:Number(row.revenue) || 0,
+      }))
+    : [];
+
+  const response = {
     ok: true,
     source: 'SQL Server · Power BI',
     dateReference: 'dbo.Vendas.[Data]',
     activeSellersOnly: true,
-    periodPolicy: 'SEIS_SEGUNDAS_FIXAS',
+    periodPolicy: fixedPeriods?.partial ? 'SEIS_SEGUNDAS_FIXAS_PARCIAL_EQUIVALENTE' : 'SEIS_SEGUNDAS_FIXAS',
+    partial: Boolean(fixedPeriods?.partial),
+    asOfDate: fixedPeriods?.asOfDate || null,
+    elapsedDays: fixedPeriods?.elapsedDays || null,
     periodsUsed: {
       currentStart,
       currentEndExclusive: currentEnd,
+      currentLastInclusive: fixedPeriods?.currentLast || addUtcDays(currentEnd, -1),
       previousStart,
       previousEndExclusive: previousEnd,
+      previousLastInclusive: fixedPeriods?.previousLast || addUtcDays(previousEnd, -1),
     },
+    nominalPeriods: fixedPeriods ? {
+      currentStart: fixedPeriods.nominalCurrentStart,
+      currentLastInclusive: fixedPeriods.nominalCurrentLast,
+      previousStart: fixedPeriods.nominalPreviousStart,
+      previousLastInclusive: fixedPeriods.nominalPreviousLast,
+    } : null,
     lines,
     ordersBySeller,
+    orderLines,
     durationMs: Date.now() - startedAt,
+    cache:{
+      hit:false,
+      ageMs:0,
+      ttlMs:PERFORMANCE_CACHE_TTL_MS,
+    },
   };
+
+  performanceCache.set(cacheKey, {
+    createdAt:Date.now(),
+    value:response,
+  });
+
+  return response;
 }
 
 function publicError(error) {
@@ -465,12 +592,13 @@ function publicError(error) {
     ELOGIN: 'Confira usuário, senha e permissão de acesso ao banco powerbi.',
     ETIMEOUT: 'O SQL Server demorou para responder. Tente preparar o contexto novamente.',
     ESCOPO_AUSENTE: 'Selecione fornecedores ou produtos participantes.',
+    CAMPANHA_NAO_INICIADA: 'A apuração ficará disponível a partir da primeira segunda-feira da campanha.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.1.0',
+    versao: '5.4.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -502,7 +630,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.1.0',
+        version: '5.4.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
