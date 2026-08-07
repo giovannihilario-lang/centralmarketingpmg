@@ -4,7 +4,11 @@
   const SQL_BASE_KEY = 'pmg_campaigns_sql_base';
   const THEME_KEY = 'pmg_theme';
   const CONTEXT_ID = 'commercial-context-v5';
-  const SQL_BASE = String(localStorage.getItem(SQL_BASE_KEY) || window.PMG_SQL_API_BASE || 'http://localhost:3001/api').replace(/\/$/, '');
+  const PAGE_IS_LOOPBACK = ['localhost', '127.0.0.1'].includes(location.hostname);
+  const configuredSqlBase = localStorage.getItem(SQL_BASE_KEY) || window.PMG_SQL_API_BASE || 'http://localhost:3001/api';
+  const SQL_BASE = String(
+    PAGE_IS_LOOPBACK ? `${location.origin}/api` : configuredSqlBase
+  ).replace(/\/$/, '');
   const SQL_ENDPOINT = `${SQL_BASE}/campanhas-data`;
   const VISUAL_ENDPOINT = '/api/produtos-supabase';
   const DB_NAME = 'pmg_campanhas_db';
@@ -150,7 +154,12 @@
         if (!hasContentType) headers['Content-Type'] = 'application/json';
       }
 
-      const isLocalNetworkRequest = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(url);
+      const isLoopbackRequest = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(url);
+      const isPrivateLanRequest = /^http:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(url);
+      const isSameOriginRequest = (() => {
+        try { return new URL(url, location.href).origin === location.origin; }
+        catch { return false; }
+      })();
 
       let response;
       try {
@@ -161,17 +170,32 @@
           signal: controller.signal,
           cache: 'no-store',
           credentials: 'omit',
-          mode: 'cors',
-          ...(isLocalNetworkRequest ? { targetAddressSpace: 'local' } : {}),
+          mode: isSameOriginRequest ? 'same-origin' : 'cors',
+          ...(!isSameOriginRequest && isLoopbackRequest ? { targetAddressSpace: 'loopback' } : {}),
+          ...(!isSameOriginRequest && isPrivateLanRequest ? { targetAddressSpace: 'local' } : {}),
         });
       } catch (error) {
         const aborted = error?.name === 'AbortError';
+        let permissionState = '';
+
+        if (!aborted && !PAGE_IS_LOOPBACK && navigator.permissions?.query) {
+          try {
+            const permission = await navigator.permissions.query({ name: 'loopback-network' });
+            permissionState = permission?.state ? ` Permissão de loopback: ${permission.state}.` : '';
+          } catch (_) {}
+        }
+
         const networkError = new Error(
           aborted
             ? 'A API local demorou para responder.'
-            : 'O Chrome bloqueou o acesso deste site à API local. Clique em “Permitir acesso local” e aceite a permissão de rede local.'
+            : PAGE_IS_LOOPBACK
+              ? 'A página local não conseguiu acessar a API do próprio servidor. Confirme se o npm start continua aberto.'
+              : `O navegador não conseguiu acessar o localhost da PMG.${permissionState} Autorize o acesso ao computador local para este site.`
         );
-        networkError.code = aborted ? 'LOCAL_API_TIMEOUT' : 'LOCAL_NETWORK_PERMISSION';
+
+        networkError.code = aborted
+          ? 'LOCAL_API_TIMEOUT'
+          : (PAGE_IS_LOOPBACK ? 'LOCAL_API_SAME_ORIGIN' : 'LOOPBACK_NETWORK_PERMISSION');
         networkError.cause = error;
         throw networkError;
       } finally {
@@ -228,7 +252,7 @@
     });
     const isError = status.status === 'error';
     const errorCode = status.error?.code || status.code || '';
-    const isPermissionError = errorCode === 'LOCAL_NETWORK_PERMISSION';
+    const isPermissionError = ['LOCAL_NETWORK_PERMISSION', 'LOOPBACK_NETWORK_PERMISSION'].includes(errorCode);
 
     $('#contextError').hidden = !isError;
     $('#contextError').textContent = isError
