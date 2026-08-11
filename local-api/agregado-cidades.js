@@ -15,7 +15,7 @@ export default async function handler(req, res) {
       ${CTE_BASE_REGIONAL}
       SELECT
         MAX(c.Cidade) AS cidade,
-        UPPER(LTRIM(RTRIM(c.UF))) AS uf,
+        UPPER(LTRIM(RTRIM(c.UF))) COLLATE Latin1_General_CI_AI AS uf,
         SUM(vp.Valor) AS valor,
         SUM(vp.[Qtde Kg]) AS kg
       ${FROM_BASE_REGIONAL}
