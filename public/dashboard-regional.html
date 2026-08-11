@@ -113,30 +113,39 @@
   .export-menu button svg { width:14px; height:14px; opacity:.7; flex-shrink:0; }
   .export-menu .export-hint { padding:8px 12px 4px; font-size:10px; color:#9ca3af; letter-spacing:.02em; }
 
-  .body-layout { display: grid; grid-template-columns: 280px 1fr; flex: 1; overflow: hidden; position: relative; }
-    .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 2; box-shadow: 6px 0 24px -20px rgba(17,24,39,.15); }
+  .body-layout { display: grid; grid-template-columns: 330px 1fr; flex: 1; overflow: hidden; position: relative; }
+    .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 18px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 2; box-shadow: 6px 0 24px -20px rgba(17,24,39,.15); }
   .sidebar > * { animation: sidebarEnter .5s var(--ease-out) both; }
   .sidebar > *:nth-child(1) { animation-delay: .03s; }
   .sidebar > *:nth-child(2) { animation-delay: .07s; }
   .sidebar > *:nth-child(3) { animation-delay: .11s; }
   .sidebar > *:nth-child(4) { animation-delay: .15s; }
   .sidebar > *:nth-child(5) { animation-delay: .19s; }
-  .sb-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; display:flex; align-items:center; gap:6px; }
+  .sb-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; display:flex; align-items:center; gap:6px; }
   .sb-section-title:not(:first-child) { margin-top: 16px; }
   .chip-group { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
 
   /* ── Abas de filtro (Localização / Catálogo) ── */
-.filter-tabs { background: var(--gray-0); border: 1px solid var(--gray-1); border-radius: 12px; padding: 10px; display:flex; flex-direction:column; }
+.filter-tabs { background: linear-gradient(180deg, #f9fbfa, var(--gray-0)); border: 1px solid var(--gray-1); border-radius: 14px; padding: 12px; box-shadow: 0 8px 22px -20px rgba(17,24,39,.35); display:flex; flex-direction:column; }
 .filter-tabs-nav { display:flex; gap:2px; background: var(--white); border: 1px solid var(--gray-1); border-radius: 9px; padding: 2px; margin-bottom: 12px; position: relative; }
-.filter-tab { flex:1; min-width:0; position:relative; z-index:2; border:none; background:transparent; padding:7px 5px; font-size:10.5px; font-weight:600; color: var(--gray-text); border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; transition: color .2s ease; }
-  .filter-tab svg { width:11px; height:11px; flex-shrink:0; }
+.filter-tab { flex:1; min-width:0; position:relative; z-index:2; border:none; background:transparent; padding:10px 7px; font-size:12px; font-weight:600; color: var(--gray-text); border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; transition: color .2s ease; }
+  .filter-tab svg { width:14px; height:14px; flex-shrink:0; }
   .filter-tab .tab-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .filter-tab .tab-count { flex-shrink:0; font-size:8.5px; background: rgba(0,0,0,.06); padding:1px 4px; border-radius: 8px; font-weight:700; }
+  .filter-tab .tab-count { flex-shrink:0; font-size:9.5px; background: rgba(0,0,0,.06); padding:1px 4px; border-radius: 8px; font-weight:700; }
   .filter-tab.active { color: var(--green-dark); }
   .filter-tab.active .tab-count { background: var(--green-pale); color: var(--green-dark); }
   .filter-tab-indicator { position:absolute; top:3px; bottom:3px; left:3px; width: calc(50% - 3px); background: linear-gradient(135deg, var(--green-pale), #f2faf5); border: 1px solid var(--green-border); border-radius:7px; transition: transform .32s var(--ease-spring); box-shadow: 0 2px 6px -2px rgba(26,77,46,.2); z-index: 1; }
   .filter-tab-panel { display:none; animation: floatUp .3s var(--ease-out) both; max-height: 640px; overflow-y: auto; padding-right: 4px; }
-  .filter-tab-panel.active { display:flex; flex-direction: column; gap: 12px; }
+  .filter-tab-panel.active { display:flex; flex-direction: column; gap: 14px; }
+  .sidebar-filter-title { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; padding:2px 2px 0; }
+  .sidebar-filter-title strong { font-size:17px; line-height:1; color:var(--text-dark); letter-spacing:-.2px; }
+  .sidebar-filter-title span { font-size:10.5px; color:var(--gray-text); text-align:right; }
+  .filter-block { border:1px solid transparent; border-radius:11px; padding:8px; margin:-8px; transition:border-color .18s ease, background .18s ease; }
+  .filter-block.featured { background:linear-gradient(135deg, #f0f8f3, #fbfdfc); border-color:var(--green-border); padding:10px; margin:-6px; box-shadow:0 7px 18px -17px rgba(26,77,46,.7); }
+  .filter-block.featured .sb-section-title { color:var(--green-dark); font-size:11.5px; font-weight:800; }
+  .filter-helper { font-size:10.5px; color:var(--gray-text); line-height:1.35; margin:-2px 0 2px; }
+  .catalogo-callout { display:flex; align-items:center; gap:7px; padding:7px 9px; border-radius:9px; background:var(--green-pale); color:var(--green-dark); font-size:10.5px; font-weight:650; border:1px solid var(--green-border); }
+  .catalogo-callout svg { width:13px; height:13px; flex-shrink:0; }
 
   /* ── Resumo de filtros aplicados ── */
   .fam-box { display:none; flex-direction:column; gap:7px; background: linear-gradient(135deg, var(--green-pale), #f4faf6); border:1px solid var(--green-border); border-radius:12px; padding:10px 11px; }
@@ -149,15 +158,15 @@
   .fam-pill { display:inline-flex; align-items:center; gap:5px; background:white; border:1px solid var(--green-border); color: var(--green-dark); font-size:10.5px; font-weight:600; padding:3px 6px 3px 9px; border-radius: 20px; animation: pillIn .28s var(--ease-spring) both; }
   .fam-pill button { border:none; background: var(--green-pale); color: var(--green-dark); width:14px; height:14px; border-radius:50%; font-size:10px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition: background .15s ease, transform .15s ease; }
   .fam-pill button:hover { background: var(--green-dark); color:white; transform: scale(1.12); }
-  .chip-search { width:100%; padding:6px 9px; font-size:11.5px; border:1px solid var(--gray-1); border-radius:7px; background:var(--gray-0); margin-bottom:6px; outline:none; transition: border-color .18s ease, box-shadow .18s ease; }
+  .chip-search { width:100%; padding:9px 11px; font-size:12.5px; border:1px solid var(--gray-1); border-radius:7px; background:var(--gray-0); margin-bottom:6px; outline:none; transition: border-color .18s ease, box-shadow .18s ease; }
   .chip-search:focus { border-color: var(--green-mid); background: var(--white); box-shadow: 0 0 0 3px var(--green-pale); }
   .chip-empty { font-size:11px; color:var(--gray-text); padding:6px 4px; }
-  .chip { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--gray-1); background: var(--white); font-size: 12px; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .15s var(--ease-spring), box-shadow .16s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
+  .chip { padding: 8px 11px; border-radius: 9px; border: 1px solid var(--gray-1); background: var(--white); font-size: 12.5px; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .15s var(--ease-spring), box-shadow .16s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
   .chip:hover { border-color: var(--green-mid); background: var(--green-pale); transform: translateX(2px); }
   .chip.active { background: var(--green-dark); color: white; border-color: var(--green-dark); box-shadow: 0 3px 10px -3px rgba(26,77,46,.5); animation: tabPop .3s var(--ease-spring); }
   .chip:active { transform: scale(0.96); }
   .chip .badge { font-size: 10px; opacity: .65; font-variant-numeric: tabular-nums; }
-  .btn-apply { padding: 10px; background: var(--green-dark); background-size: 200% 100%; color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; width: 100%; transition: background-position .35s ease, transform .15s var(--ease-spring), box-shadow .2s ease; background-image: linear-gradient(100deg, var(--green-dark) 0%, var(--green-mid) 50%, var(--green-dark) 100%); }
+  .btn-apply { padding: 12px; background: var(--green-dark); background-size: 200% 100%; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%; transition: background-position .35s ease, transform .15s var(--ease-spring), box-shadow .2s ease; background-image: linear-gradient(100deg, var(--green-dark) 0%, var(--green-mid) 50%, var(--green-dark) 100%); }
   .btn-apply:hover { background-position: 100% 0; box-shadow: 0 8px 20px -8px rgba(26,77,46,.55); transform: translateY(-1px); }
   .btn-apply:active { transform: scale(.97); }
   .btn-reset { padding: 8px; background: transparent; color: var(--gray-text); border: 1px solid var(--gray-1); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; transition: border-color .16s ease, color .16s ease; }
@@ -357,7 +366,7 @@
     .row-4 { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 980px) {
-    .body-layout { grid-template-columns: 248px 1fr; }
+    .body-layout { grid-template-columns: 285px 1fr; }
     .row-2 { grid-template-columns: 1fr; }
     .row-2-even { grid-template-columns: 1fr; }
   }
@@ -428,6 +437,11 @@
 <div class="body-layout">
   <aside class="sidebar">
 
+    <div class="sidebar-filter-title">
+      <strong>Filtros</strong>
+      <span>Refine o dashboard<br>em poucos cliques</span>
+    </div>
+
     <div class="periodo-filter" id="periodoFilter">
       <button class="periodo-trigger" type="button" onclick="togglePeriodoPanel()" aria-haspopup="true" aria-expanded="false">
         <svg class="cal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
@@ -468,13 +482,20 @@
       </div>
 
       <div class="filter-tab-panel active" data-panel="local">
-        <div>
-          <div class="sb-section-title">Região</div>
-          <input type="text" class="chip-search" placeholder="Buscar região…" oninput="filtrarChips('regiaoChips', this.value)">
-          <div class="chip-group" id="regiaoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
+        <div class="filter-block featured">
+          <div class="sb-section-title">Cidade</div>
+          <div class="filter-helper">Encontre diretamente a praça que deseja analisar.</div>
+          <input type="text" class="chip-search" placeholder="Buscar cidade…" oninput="filtrarChips('cidadeChips', this.value)">
+          <div class="chip-group" id="cidadeChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todas as cidades <span class="badge">–</span></div></div>
         </div>
 
-        <div>
+        <div class="filter-block">
+          <div class="sb-section-title">Região comercial</div>
+          <input type="text" class="chip-search" placeholder="Buscar região / zona…" oninput="filtrarChips('regiaoChips', this.value)">
+          <div class="chip-group" id="regiaoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todas <span class="badge">–</span></div></div>
+        </div>
+
+        <div class="filter-block">
           <div class="sb-section-title">UF</div>
           <input type="text" class="chip-search" placeholder="Buscar UF…" oninput="filtrarChips('ufChips', this.value)">
           <div class="chip-group" id="ufChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
@@ -482,19 +503,23 @@
       </div>
 
       <div class="filter-tab-panel" data-panel="catalogo">
-        <div>
+        <div class="catalogo-callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
+          Filtre o catálogo por segmento, grupo ou fornecedor
+        </div>
+        <div class="filter-block featured">
           <div class="sb-section-title">Segmento</div>
           <input type="text" class="chip-search" placeholder="Buscar segmento…" oninput="filtrarChips('segmentoChips', this.value)">
           <div class="chip-group" id="segmentoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
         </div>
 
-        <div>
+        <div class="filter-block featured">
           <div class="sb-section-title">Grupo</div>
           <input type="text" class="chip-search" placeholder="Buscar grupo…" oninput="filtrarChips('grupoChips', this.value)">
           <div class="chip-group" id="grupoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
         </div>
 
-        <div>
+        <div class="filter-block featured">
           <div class="sb-section-title">Fornecedor</div>
           <input type="text" class="chip-search" placeholder="Buscar fornecedor…" oninput="filtrarChips('fornecedorChips', this.value)">
           <div class="chip-group" id="fornecedorChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
@@ -737,7 +762,7 @@ function fmtNum(n){ return n.toLocaleString('pt-BR'); }
 
 /* ══════════════════ ESTADO GLOBAL ══════════════════ */
 
-let filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='';
+let filtroCidade='', filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='';
 let mapMode = 'valor';
 let rankMode = 'valor';
 let charts = {};
@@ -746,6 +771,7 @@ let cidadesCache = [];
 
 function getFiltrosParams() {
   return {
+    p_cidade: filtroCidade || null,
     p_regiao: filtroRegiao || null,
     p_uf: filtroUF || null,
     p_segmento: filtroSegmento || null,
@@ -913,7 +939,7 @@ function switchFilterTab(tab) {
 }
 
 const FAM_LABELS = {
-  regiaoChips: 'Região', ufChips: 'UF', segmentoChips: 'Segmento',
+  cidadeChips: 'Cidade', regiaoChips: 'Região comercial', ufChips: 'UF', segmentoChips: 'Segmento',
   grupoChips: 'Grupo', fornecedorChips: 'Fornecedor'
 };
 
@@ -936,7 +962,7 @@ function updateFiltrosAplicadosMini() {
   }
 
   document.getElementById('tabCountLocal').textContent =
-    [filtroRegiao, filtroUF].filter(Boolean).length || '–';
+    [filtroCidade, filtroRegiao, filtroUF].filter(Boolean).length || '–';
   document.getElementById('tabCountCatalogo').textContent =
     [filtroSegmento, filtroGrupo, filtroFornecedor].filter(Boolean).length || '–';
 
@@ -963,7 +989,11 @@ async function buildChipsRPC(containerId, coluna) {
   // mas ignora a si própria para que a opção selecionada continue removível.
   const params = getFiltrosParams();
   const colunaParaParam = {
+<<<<<<< HEAD
     Regiao: 'p_regiao', UF: 'p_uf', Segmento: 'p_segmento',
+=======
+    Cidade: 'p_cidade', Regiao: 'p_regiao', UF: 'p_uf', Segmento: 'p_segmento',
+>>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
     Grupo: 'p_grupo', Fornecedor: 'p_fornecedor'
   };
   delete params[colunaParaParam[coluna]];
@@ -973,7 +1003,12 @@ async function buildChipsRPC(containerId, coluna) {
 
   const rows = data || [];
   const totalPedidos = Number(rows[0]?.total_pedidos) || 0;
+<<<<<<< HEAD
   container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">Todos <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
+=======
+  const labelTodos = coluna === 'Cidade' ? 'Todas as cidades' : 'Todos';
+  container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">${labelTodos} <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
+>>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
 
   rows.forEach(row => {
     const v = row.valor;
@@ -1009,6 +1044,10 @@ async function buildChipsRPC(containerId, coluna) {
 
 async function atualizarFiltrosContextuais() {
   await Promise.all([
+<<<<<<< HEAD
+=======
+    buildChipsRPC('cidadeChips', 'Cidade'),
+>>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
     buildChipsRPC('regiaoChips', 'Regiao'),
     buildChipsRPC('ufChips', 'UF'),
     buildChipsRPC('segmentoChips', 'Segmento'),
@@ -1257,6 +1296,7 @@ async function aplicarFiltros() {
   try {
     pararModoDiretoria();
     if (replayAtivo) toggleReplay(); // muda o período/filtros: encerra o replay para não ficar com dado desatualizado
+    filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
     filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
     filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
     filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
@@ -1267,7 +1307,7 @@ async function aplicarFiltros() {
     document.getElementById('periodoAtual').textContent =
       (periodoDe || periodoAte) ? `${periodoDe || '…'} → ${periodoAte || '…'}` : 'Todo o histórico';
 
-    const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
+    const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
     document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
 
     document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
@@ -1286,6 +1326,7 @@ function reselecionarChipsAtuais() {
   // aqui reaplicamos os valores de filtro que já estavam em vigor antes da atualização,
   // para que "Atualizar dados" nunca resete silenciosamente os filtros do usuário.
   const mapa = [
+    ['cidadeChips', filtroCidade],
     ['regiaoChips', filtroRegiao],
     ['ufChips', filtroUF],
     ['segmentoChips', filtroSegmento],
@@ -1344,12 +1385,13 @@ async function atualizarDadosForcado() {
 // para que o estado do dashboard possa ser compartilhado por link e
 // restaurado com o botão voltar/avançar do navegador.
 const URL_PARAM_MAP = {
-  regiao: 'regiaoChips', uf: 'ufChips', segmento: 'segmentoChips',
+  cidade: 'cidadeChips', regiao: 'regiaoChips', uf: 'ufChips', segmento: 'segmentoChips',
   grupo: 'grupoChips', fornecedor: 'fornecedorChips'
 };
 
 function montarSearchParamsDosFiltrosAtuais() {
   const params = new URLSearchParams();
+  if (filtroCidade) params.set('cidade', filtroCidade);
   if (filtroRegiao) params.set('regiao', filtroRegiao);
   if (filtroUF) params.set('uf', filtroUF);
   if (filtroSegmento) params.set('segmento', filtroSegmento);
@@ -1388,13 +1430,17 @@ function restaurarFiltrosDaURL() {
 
   // O estado real vem do chip que de fato pôde ser selecionado. Assim uma URL antiga
   // com valor inexistente cai de verdade em "Todos", sem filtro invisível na consulta.
+<<<<<<< HEAD
+=======
+  filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
+>>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
   filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
   filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
   filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
   filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
   filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
 
-  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || params.get('de') || params.get('ate');
+  const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || params.get('de') || params.get('ate');
   document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
   document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
   updateFiltrosAplicadosMini();
@@ -2309,6 +2355,7 @@ async function inicializar() {
   // em vez de esperar carregarCidadesCanonicas() terminar antes de começar o resto.
   await Promise.all([
     carregarCidadesCanonicas(),
+    buildChipsRPC('cidadeChips', 'Cidade'),
     buildChipsRPC('regiaoChips', 'Regiao'),
     buildChipsRPC('ufChips', 'UF'),
     buildChipsRPC('segmentoChips', 'Segmento'),
@@ -2345,6 +2392,7 @@ document.addEventListener('click', (e) => {
 // Nome de arquivo descritivo, refletindo os filtros aplicados no momento da exportação.
 function nomeArquivoExport(extensao) {
   const partes = ['vendas-por-cidade'];
+  if (filtroCidade) partes.push(filtroCidade);
   if (filtroRegiao) partes.push(filtroRegiao);
   if (filtroUF) partes.push(filtroUF);
   const de = document.getElementById('periodoDe').value;

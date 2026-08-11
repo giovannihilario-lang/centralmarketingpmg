@@ -112,9 +112,19 @@ export function aplicarFiltrosRegionais(request, query = {}, { ignorar = [] } = 
   const skip = new Set(ignorar);
   const filtros = ['1=1'];
   const {
+<<<<<<< HEAD
     p_regiao, p_uf, p_segmento, p_grupo, p_fornecedor, p_subgrupo, p_de, p_ate,
   } = query;
 
+=======
+    p_cidade, p_regiao, p_uf, p_segmento, p_grupo, p_fornecedor, p_subgrupo, p_de, p_ate,
+  } = query;
+
+  if (p_cidade && !skip.has('p_cidade')) {
+    filtros.push("CONCAT(c.Cidade, ' / ', c.UF) = @cidade");
+    request.input('cidade', sql.NVarChar(200), p_cidade);
+  }
+>>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
   if (p_regiao && !skip.has('p_regiao')) {
     filtros.push('c.Zona = @regiao');
     request.input('regiao', sql.NVarChar(200), p_regiao);
