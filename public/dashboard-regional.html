@@ -6,7 +6,7 @@
   // O Regional depende do SQL acessível pela API local. A cópia hospedada
   // apenas encaminha a navegação para o Node da própria máquina.
   (() => {
-    const estaNoNodeLocal = window.location.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const estaNoNodeLocal = window.location.protocol === 'http:' && (window.location.port === '3001' || ['localhost', '127.0.0.1'].includes(window.location.hostname));
     if (estaNoNodeLocal) return;
 
     const destino = new URL('http://localhost:3001/dashboard-regional.html');
@@ -572,8 +572,15 @@
       <div class="filter-tab-panel" data-panel="catalogo">
         <div class="catalogo-callout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
-          Filtre o catálogo por segmento, grupo ou fornecedor
+          Filtre o catálogo por produto, segmento, grupo ou fornecedor
         </div>
+        <div class="filter-block featured">
+          <div class="sb-section-title">Produto</div>
+          <div class="filter-helper">Busque pelo código ou pela descrição do produto.</div>
+          <input id="produtoSearch" type="text" class="chip-search" placeholder="Buscar código ou produto…" oninput="buscarProdutosCatalogo(this.value)">
+          <div class="chip-group" id="produtoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos os produtos <span class="badge">–</span></div></div>
+        </div>
+
         <div class="filter-block featured">
           <div class="sb-section-title">Segmento</div>
           <input type="text" class="chip-search" placeholder="Buscar segmento…" oninput="filtrarChips('segmentoChips', this.value)">
@@ -855,7 +862,7 @@ function fmtNum(n){ return n.toLocaleString('pt-BR'); }
 
 /* ══════════════════ ESTADO GLOBAL ══════════════════ */
 
-let filtroCidade='', filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='';
+let filtroCidade='', filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='', filtroProduto='';
 let mapMode = 'valor';
 let rankMode = 'valor';
 let charts = {};
@@ -870,6 +877,7 @@ function getFiltrosParams() {
     p_segmento: filtroSegmento || null,
     p_grupo: filtroGrupo || null,
     p_fornecedor: filtroFornecedor || null,
+    p_produto: filtroProduto || null,
     p_de: document.getElementById('periodoDe').value || null,
     p_ate: document.getElementById('periodoAte').value || null,
   };
@@ -1068,7 +1076,7 @@ function switchFilterTab(tab) {
 
 const FAM_LABELS = {
   cidadeChips: 'Cidade', regiaoChips: 'Região comercial', ufChips: 'UF', segmentoChips: 'Segmento',
-  grupoChips: 'Grupo', fornecedorChips: 'Fornecedor'
+  grupoChips: 'Grupo', fornecedorChips: 'Fornecedor', produtoChips: 'Produto'
 };
 
 function updateFiltrosAplicadosMini() {
@@ -1080,7 +1088,8 @@ function updateFiltrosAplicadosMini() {
   grupos.forEach(containerId => {
     const chipAtivo = document.querySelector(`#${containerId} .chip.active`);
     const val = chipAtivo?.dataset.val || '';
-    if (val) ativos.push({ containerId, label: FAM_LABELS[containerId], val });
+    const display = chipAtivo?.dataset.label || val;
+    if (val) ativos.push({ containerId, label: FAM_LABELS[containerId], val: display });
   });
 
   const periodoDe = document.getElementById('periodoDe').value;
@@ -1092,7 +1101,7 @@ function updateFiltrosAplicadosMini() {
   document.getElementById('tabCountLocal').textContent =
     [filtroCidade, filtroRegiao, filtroUF].filter(Boolean).length || '–';
   document.getElementById('tabCountCatalogo').textContent =
-    [filtroSegmento, filtroGrupo, filtroFornecedor].filter(Boolean).length || '–';
+    [filtroProduto, filtroSegmento, filtroGrupo, filtroFornecedor].filter(Boolean).length || '–';
 
   if (!ativos.length) { famBox.classList.remove('show'); famChips.innerHTML = ''; return; }
   famBox.classList.add('show');
@@ -1109,34 +1118,58 @@ function removerFiltroChip(containerId) {
   aplicarFiltros();
 }
 
-async function buildChipsRPC(containerId, coluna) {
+async function buildChipsRPC(containerId, coluna, { busca = '' } = {}) {
   const container = document.getElementById(containerId);
-  const selecionadoAntes = container?.querySelector('.chip.active')?.dataset.val || '';
+  const chipSelecionadoAntes = container?.querySelector('.chip.active');
+  const selecionadoAntes = chipSelecionadoAntes?.dataset.val || '';
+  const rotuloSelecionadoAntes = chipSelecionadoAntes?.dataset.label || chipSelecionadoAntes?.querySelector('span')?.textContent || selecionadoAntes;
 
   // Filtros são contextuais: cada lista respeita os demais filtros e o período,
   // mas ignora a si própria para que a opção selecionada continue removível.
   const params = getFiltrosParams();
   const colunaParaParam = {
     Cidade: 'p_cidade', Regiao: 'p_regiao', UF: 'p_uf', Segmento: 'p_segmento',
-    Grupo: 'p_grupo', Fornecedor: 'p_fornecedor'
+    Grupo: 'p_grupo', Fornecedor: 'p_fornecedor', Produto: 'p_produto'
   };
   delete params[colunaParaParam[coluna]];
+  const produtoDaUrl = coluna === 'Produto' && !selecionadoAntes
+    ? new URLSearchParams(window.location.search).get('produto') || ''
+    : '';
+  const produtoAlvo = coluna === 'Produto' ? (selecionadoAntes || produtoDaUrl) : '';
+  if (coluna === 'Produto') {
+    params.p_limit = 120;
+    if (String(busca || '').trim()) params.p_busca = String(busca).trim();
+  }
 
   const { data, error } = await apiGet('/valores-distintos', { p_coluna: coluna, ...params });
   if (error) { console.error(error); showToast('Erro ao carregar filtros: ' + error.message); return; }
 
-  const rows = data || [];
+  let rows = data || [];
+  // Os 120 produtos mais relevantes mantêm a lista leve. Se o produto selecionado
+  // estiver fora desse TOP, buscamos apenas ele e o anexamos para preservar rótulo
+  // e contagem corretos (inclusive ao restaurar um link compartilhado).
+  if (produtoAlvo && !rows.some(row => String(row.valor) === String(produtoAlvo))) {
+    const exact = await apiGet('/valores-distintos', {
+      p_coluna: 'Produto',
+      ...params,
+      p_busca: String(produtoAlvo),
+      p_limit: 30,
+    });
+    const rowExata = (exact.data || []).find(row => String(row.valor) === String(produtoAlvo));
+    if (rowExata) rows = [...rows, rowExata];
+  }
   const totalPedidos = Number(rows[0]?.total_pedidos) || 0;
-  const labelTodos = coluna === 'Cidade' ? 'Todas as cidades' : 'Todos';
+  const labelTodos = coluna === 'Cidade' ? 'Todas as cidades' : coluna === 'Produto' ? 'Todos os produtos' : 'Todos';
   container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">${labelTodos} <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
 
   rows.forEach(row => {
-    const v = row.valor;
+    const v = String(row.valor ?? '');
+    const rotulo = String(row.rotulo ?? v);
     const div = document.createElement('div');
-    div.className = 'chip'; div.dataset.val = v;
+    div.className = 'chip'; div.dataset.val = v; div.dataset.label = rotulo;
     div.tabIndex = 0; div.setAttribute('role', 'button'); div.setAttribute('aria-pressed', 'false');
     div.title = `${fmtNum(Number(row.qtd) || 0)} pedidos distintos nos filtros atuais`;
-    div.innerHTML = `<span>${escapeHtml(v)}</span><span class="badge">${fmtNum(Number(row.qtd) || 0)}</span>`;
+    div.innerHTML = `<span>${escapeHtml(rotulo)}</span><span class="badge">${fmtNum(Number(row.qtd) || 0)}</span>`;
     div.onclick = () => selecionarChip(container, div);
     container.appendChild(div);
   });
@@ -1145,10 +1178,10 @@ async function buildChipsRPC(containerId, coluna) {
   // para o usuário enxergar e remover o filtro, em vez de fazê-lo desaparecer misteriosamente.
   if (selecionadoAntes && !container.querySelector(`.chip[data-val="${CSS.escape(selecionadoAntes)}"]`)) {
     const div = document.createElement('div');
-    div.className = 'chip'; div.dataset.val = selecionadoAntes;
+    div.className = 'chip'; div.dataset.val = selecionadoAntes; div.dataset.label = rotuloSelecionadoAntes;
     div.tabIndex = 0; div.setAttribute('role', 'button'); div.setAttribute('aria-pressed', 'false');
     div.title = '0 pedidos com a combinação atual de filtros';
-    div.innerHTML = `<span>${escapeHtml(selecionadoAntes)}</span><span class="badge">0</span>`;
+    div.innerHTML = `<span>${escapeHtml(rotuloSelecionadoAntes)}</span><span class="badge">0</span>`;
     div.onclick = () => selecionarChip(container, div);
     container.appendChild(div);
   }
@@ -1162,6 +1195,17 @@ async function buildChipsRPC(containerId, coluna) {
   chipTodos.onclick = () => selecionarChip(container, chipTodos);
 }
 
+let produtoSearchTimer = null;
+function buscarProdutosCatalogo(termo) {
+  clearTimeout(produtoSearchTimer);
+  produtoSearchTimer = setTimeout(() => {
+    buildChipsRPC('produtoChips', 'Produto', { busca: termo }).catch((erro) => {
+      console.error(erro);
+      showToast('Erro ao buscar produtos: ' + erro.message);
+    });
+  }, 260);
+}
+
 async function atualizarFiltrosContextuais() {
   await Promise.all([
     buildChipsRPC('cidadeChips', 'Cidade'),
@@ -1170,6 +1214,7 @@ async function atualizarFiltrosContextuais() {
     buildChipsRPC('segmentoChips', 'Segmento'),
     buildChipsRPC('grupoChips', 'Grupo'),
     buildChipsRPC('fornecedorChips', 'Fornecedor'),
+    buildChipsRPC('produtoChips', 'Produto', { busca: document.getElementById('produtoSearch')?.value || '' }),
   ]);
 }
 
@@ -1420,12 +1465,13 @@ async function aplicarFiltros() {
     filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
     filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
     filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+    filtroProduto = document.querySelector('#produtoChips .chip.active')?.dataset.val || '';
     const periodoDe = document.getElementById('periodoDe').value;
     const periodoAte = document.getElementById('periodoAte').value;
     document.getElementById('periodoAtual').textContent =
       (periodoDe || periodoAte) ? `${periodoDe || '…'} → ${periodoAte || '…'}` : 'Todo o histórico';
 
-    const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
+    const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || filtroProduto || periodoDe || periodoAte;
     document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
 
     document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
@@ -1451,6 +1497,7 @@ function reselecionarChipsAtuais() {
     ['segmentoChips', filtroSegmento],
     ['grupoChips', filtroGrupo],
     ['fornecedorChips', filtroFornecedor],
+    ['produtoChips', filtroProduto],
   ];
   mapa.forEach(([containerId, valorAtual]) => {
     if (!valorAtual) return;
@@ -1486,6 +1533,7 @@ async function atualizarDadosForcado() {
       buildChipsRPC('segmentoChips', 'Segmento'),
       buildChipsRPC('grupoChips', 'Grupo'),
       buildChipsRPC('fornecedorChips', 'Fornecedor'),
+      buildChipsRPC('produtoChips', 'Produto'),
       buildPeriodoOptionsRPC()
     ]);
     reselecionarChipsAtuais();
@@ -1510,7 +1558,7 @@ async function atualizarDadosForcado() {
 // restaurado com o botão voltar/avançar do navegador.
 const URL_PARAM_MAP = {
   cidade: 'cidadeChips', regiao: 'regiaoChips', uf: 'ufChips', segmento: 'segmentoChips',
-  grupo: 'grupoChips', fornecedor: 'fornecedorChips'
+  grupo: 'grupoChips', fornecedor: 'fornecedorChips', produto: 'produtoChips'
 };
 
 function montarSearchParamsDosFiltrosAtuais() {
@@ -1521,6 +1569,7 @@ function montarSearchParamsDosFiltrosAtuais() {
   if (filtroSegmento) params.set('segmento', filtroSegmento);
   if (filtroGrupo) params.set('grupo', filtroGrupo);
   if (filtroFornecedor) params.set('fornecedor', filtroFornecedor);
+  if (filtroProduto) params.set('produto', filtroProduto);
   const de = document.getElementById('periodoDe')?.value;
   const ate = document.getElementById('periodoAte')?.value;
   if (de) params.set('de', de);
@@ -1560,8 +1609,9 @@ function restaurarFiltrosDaURL() {
   filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
   filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
   filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+  filtroProduto = document.querySelector('#produtoChips .chip.active')?.dataset.val || '';
 
-  const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || params.get('de') || params.get('ate');
+  const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || filtroProduto || params.get('de') || params.get('ate');
   document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
   document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
   updateFiltrosAplicadosMini();
@@ -2485,6 +2535,7 @@ async function inicializar() {
     buildChipsRPC('segmentoChips', 'Segmento'),
     buildChipsRPC('grupoChips', 'Grupo'),
     buildChipsRPC('fornecedorChips', 'Fornecedor'),
+    buildChipsRPC('produtoChips', 'Produto'),
     buildPeriodoOptionsRPC()
   ]);
   restaurarFiltrosDaURL(); // aplica filtros vindos de um link compartilhado, se houver
@@ -2522,6 +2573,7 @@ function nomeArquivoExport(extensao) {
   if (filtroCidade) partes.push(filtroCidade);
   if (filtroRegiao) partes.push(filtroRegiao);
   if (filtroUF) partes.push(filtroUF);
+  if (filtroProduto) partes.push(`produto-${filtroProduto}`);
   const de = document.getElementById('periodoDe').value;
   const ate = document.getElementById('periodoAte').value;
   if (de || ate) partes.push(`${de || 'inicio'}_a_${ate || 'fim'}`);

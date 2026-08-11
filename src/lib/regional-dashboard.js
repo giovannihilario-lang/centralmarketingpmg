@@ -81,21 +81,23 @@ ClientesUnicos AS (
 ProdutosRank AS (
   SELECT
     [ID Produto],
+    NULLIF(LTRIM(RTRIM([Produto])), '') AS [Produto],
     NULLIF(LTRIM(RTRIM([Grupo])), '') AS [Grupo],
     NULLIF(LTRIM(RTRIM([Sub-grupo])), '') AS [Sub-grupo],
     NULLIF(LTRIM(RTRIM([Fornecedor])), '') AS [Fornecedor],
     ROW_NUMBER() OVER (
       PARTITION BY [ID Produto]
       ORDER BY
-        (CASE WHEN NULLIF(LTRIM(RTRIM([Grupo])), '') IS NULL THEN 0 ELSE 1 END +
+        (CASE WHEN NULLIF(LTRIM(RTRIM([Produto])), '') IS NULL THEN 0 ELSE 1 END +
+         CASE WHEN NULLIF(LTRIM(RTRIM([Grupo])), '') IS NULL THEN 0 ELSE 1 END +
          CASE WHEN NULLIF(LTRIM(RTRIM([Sub-grupo])), '') IS NULL THEN 0 ELSE 1 END +
          CASE WHEN NULLIF(LTRIM(RTRIM([Fornecedor])), '') IS NULL THEN 0 ELSE 1 END) DESC,
-        [Fornecedor], [Grupo], [Sub-grupo]
+        [Produto], [Fornecedor], [Grupo], [Sub-grupo]
     ) AS rn
   FROM dbo.Produtos
 ),
 ProdutosUnicos AS (
-  SELECT [ID Produto], [Grupo], [Sub-grupo], [Fornecedor]
+  SELECT [ID Produto], [Produto], [Grupo], [Sub-grupo], [Fornecedor]
   FROM ProdutosRank
   WHERE rn = 1
 )
@@ -112,7 +114,7 @@ export function aplicarFiltrosRegionais(request, query = {}, { ignorar = [] } = 
   const skip = new Set(ignorar);
   const filtros = ['1=1'];
   const {
-    p_cidade, p_regiao, p_uf, p_segmento, p_grupo, p_fornecedor, p_subgrupo, p_de, p_ate,
+    p_cidade, p_regiao, p_uf, p_segmento, p_grupo, p_fornecedor, p_subgrupo, p_produto, p_de, p_ate,
   } = query;
 
   if (p_cidade && !skip.has('p_cidade')) {
@@ -142,6 +144,14 @@ export function aplicarFiltrosRegionais(request, query = {}, { ignorar = [] } = 
   if (p_fornecedor && !skip.has('p_fornecedor')) {
     filtros.push('p.Fornecedor = @fornecedor');
     request.input('fornecedor', sql.NVarChar(200), p_fornecedor);
+  }
+  if (p_produto && !skip.has('p_produto')) {
+    const produtoRaw = String(p_produto).trim();
+    const produtoId = /^\d+$/.test(produtoRaw) ? Number(produtoRaw) : NaN;
+    if (Number.isSafeInteger(produtoId) && produtoId > 0) {
+      filtros.push('p.[ID Produto] = @produto');
+      request.input('produto', sql.Int, produtoId);
+    }
   }
 
   if (p_de && !skip.has('p_de')) {

@@ -4,9 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script>
+    // Campanhas depende do SQL acessível pelo Node local. A cópia hospedada
+    // apenas encaminha a navegação para a aplicação servida na porta 3001.
+    (() => {
+      const estaNoNodeLocal = window.location.protocol === 'http:' &&
+        (window.location.port === '3001' || ['localhost', '127.0.0.1'].includes(window.location.hostname));
+      if (estaNoNodeLocal) return;
+
+      const destino = new URL('http://localhost:3001/campanhas.html');
+      destino.search = window.location.search;
+      destino.hash = window.location.hash;
+      window.location.replace(destino.toString());
+    })();
+  </script>
   <title>PMG Connect — Campanhas</title>
-  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.7.0">
-  <script defer src="/assets/campanhas-studio-v5.js?v=5.7.0"></script>
+  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.8.0">
+  <script defer src="/assets/campanhas-studio-v5.js?v=5.8.0"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
 </head>
 <body>

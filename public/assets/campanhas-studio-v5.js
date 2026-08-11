@@ -3,8 +3,8 @@
 
   const SQL_BASE_KEY = 'pmg_campaigns_sql_base';
   const THEME_KEY = 'pmg_theme';
-  const CONTEXT_ID = 'commercial-context-v5';
-  const PAGE_IS_LOOPBACK = ['localhost', '127.0.0.1'].includes(location.hostname);
+  const CONTEXT_ID = 'commercial-context-v6';
+  const PAGE_IS_LOOPBACK = location.protocol === 'http:' && (location.port === '3001' || ['localhost', '127.0.0.1'].includes(location.hostname));
   const configuredSqlBase = localStorage.getItem(SQL_BASE_KEY) || window.PMG_SQL_API_BASE || 'http://localhost:3001/api';
   const SQL_BASE = String(
     PAGE_IS_LOOPBACK ? `${location.origin}/api` : configuredSqlBase

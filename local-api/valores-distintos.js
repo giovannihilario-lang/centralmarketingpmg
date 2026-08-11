@@ -13,6 +13,12 @@ const COLUNAS = {
   Grupo: { col: 'p.Grupo', param: 'p_grupo' },
   Fornecedor: { col: 'p.Fornecedor', param: 'p_fornecedor' },
   SubGrupo: { col: 'p.[Sub-grupo]', param: 'p_subgrupo' },
+  Produto: {
+    col: 'CAST(p.[ID Produto] AS NVARCHAR(30))',
+    label: "CONCAT(CAST(p.[ID Produto] AS NVARCHAR(30)), ' — ', COALESCE(p.[Produto], 'Produto sem descrição'))",
+    search: "CONCAT(CAST(p.[ID Produto] AS NVARCHAR(30)), ' ', COALESCE(p.[Produto], ''))",
+    param: 'p_produto',
+  },
 };
 
 export default async function handler(req, res) {
@@ -24,20 +30,37 @@ export default async function handler(req, res) {
     const pool = await getPool();
     const request = pool.request();
     const where = aplicarFiltrosRegionais(request, req.query, { ignorar: [item.param] });
+    const busca = String(req.query.p_busca || '').trim();
+    const limite = Math.min(Math.max(Number.parseInt(req.query.p_limit || (req.query.p_coluna === 'Produto' ? '120' : '5000'), 10) || 120, 1), 5000);
+    request.input('limite', sql.Int, limite);
+    if (busca && item.search) request.input('busca', sql.NVarChar(220), `%${busca}%`);
+
+    const labelCol = item.label || item.col;
+    const searchWhere = busca && item.search ? 'WHERE busca_texto LIKE @busca' : '';
     const query = `
       ${CTE_BASE_REGIONAL},
       BaseFiltrada AS (
-        SELECT ${item.col} AS valor, vp.[ID Pedido de Venda] AS pedido_id
+        SELECT
+          ${item.col} AS valor,
+          ${labelCol} AS rotulo,
+          ${item.search || item.col} AS busca_texto,
+          vp.[ID Pedido de Venda] AS pedido_id
         ${FROM_BASE_REGIONAL}
         WHERE ${where} AND ${item.col} IS NOT NULL AND ${item.col} <> ''
+      ),
+      BasePesquisada AS (
+        SELECT valor, rotulo, pedido_id
+        FROM BaseFiltrada
+        ${searchWhere}
       )
-      SELECT
+      SELECT TOP (@limite)
         valor,
+        MAX(rotulo) AS rotulo,
         COUNT(DISTINCT pedido_id) AS qtd,
         (SELECT COUNT(DISTINCT pedido_id) FROM BaseFiltrada) AS total_pedidos
-      FROM BaseFiltrada
+      FROM BasePesquisada
       GROUP BY valor
-      ORDER BY qtd DESC, valor ASC
+      ORDER BY qtd DESC, rotulo ASC
     `;
     const result = await request.query(query);
     const data = result.recordset;

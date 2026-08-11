@@ -84,7 +84,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.7.0',
+    version: '5.8.0',
   };
 }
 
@@ -95,7 +95,7 @@ async function loadDiskCache() {
     const raw = await fs.readFile(CACHE_PATH, 'utf8');
     const parsed = JSON.parse(raw);
     if (parsed?.version !== CACHE_VERSION || !parsed?.context) return;
-    state.context = parsed.context;
+    state.context = sanitizeContext(parsed.context);
     state.updatedAt = parsed.updatedAt || null;
     state.fromDisk = true;
     state.stale = !state.updatedAt || Date.now() - new Date(state.updatedAt).getTime() > CONTEXT_TTL_MS;
@@ -179,9 +179,65 @@ function deriveSuppliers(products) {
   }).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || Number(a.id || 0) - Number(b.id || 0));
 }
 
+function sanitizeContext(context = {}) {
+  const productMap = new Map();
+  for (const raw of Array.isArray(context.products) ? context.products : []) {
+    const id = Number(raw?.id);
+    if (!Number.isFinite(id)) continue;
+    const candidate = { ...raw, id };
+    const current = productMap.get(id);
+    const score = (item) =>
+      (norm(item?.status).includes('ativ') ? 8 : 0) +
+      (text(item?.name) ? 4 : 0) +
+      (Number.isFinite(Number(item?.supplierId)) ? 2 : 0) +
+      (text(item?.supplierName) ? 1 : 0);
+    if (!current || score(candidate) > score(current)) productMap.set(id, candidate);
+  }
+
+  const products = [...productMap.values()].sort((a, b) =>
+    Number(a.supplierId || 0) - Number(b.supplierId || 0) ||
+    text(a.group).localeCompare(text(b.group), 'pt-BR') ||
+    text(a.subgroup).localeCompare(text(b.subgroup), 'pt-BR') ||
+    text(a.name).localeCompare(text(b.name), 'pt-BR')
+  );
+
+  const repMap = new Map();
+  for (const raw of Array.isArray(context.representatives) ? context.representatives : []) {
+    const name = text(raw?.name);
+    if (!name) continue;
+    const key = norm(name);
+    const current = repMap.get(key);
+    if (!current || Number(raw?.activeClients || 0) > Number(current?.activeClients || 0)) {
+      repMap.set(key, { ...raw, name });
+    }
+  }
+  const representatives = [...repMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+  return {
+    suppliers: deriveSuppliers(products),
+    products,
+    representatives,
+  };
+}
+
 async function queryContext() {
   const pool = await getPool();
   const result = await pool.request().query(`
+    WITH ProdutosRank AS (
+      SELECT
+        p.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY p.[ID Produto]
+          ORDER BY
+            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
+            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
+            CASE WHEN p.[ID Fornecedor] IS NOT NULL THEN 0 ELSE 1 END,
+            LTRIM(RTRIM(ISNULL(p.[Fornecedor], ''))),
+            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
+        ) AS rn
+      FROM dbo.Produtos p
+      WHERE p.[ID Produto] IS NOT NULL
+    )
     SELECT
       p.[ID Produto] AS id,
       p.[Produto] AS name,
@@ -194,8 +250,8 @@ async function queryContext() {
       LTRIM(RTRIM(p.[Fornecedor])) AS supplierName,
       p.[Fabricante] AS manufacturer,
       p.[Status] AS status
-    FROM dbo.Produtos p
-    WHERE p.[ID Produto] IS NOT NULL
+    FROM ProdutosRank p
+    WHERE p.rn = 1
       AND (
         NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') IS NULL
         OR UPPER(LTRIM(RTRIM(p.[Status]))) LIKE 'ATIV%'
@@ -436,13 +492,18 @@ async function queryPerformance(payload = {}) {
   request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
 
   const scopeFilters = [];
-  const joins = [];
 
   if (productIds.length) {
     scopeFilters.push(`vp.[ID Produto] IN (${productIds.join(',')})`);
   } else {
-    joins.push(`INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]`);
-    scopeFilters.push(`p.[ID Fornecedor] IN (${supplierIds.join(',')})`);
+    // EXISTS evita multiplicar VendasProdutos se dbo.Produtos tiver mais de uma
+    // linha cadastral para o mesmo ID Produto.
+    scopeFilters.push(`EXISTS (
+      SELECT 1
+      FROM dbo.Produtos pScope
+      WHERE pScope.[ID Produto] = vp.[ID Produto]
+        AND pScope.[ID Fornecedor] IN (${supplierIds.join(',')})
+    )`);
   }
 
   const explicitSellerParams = sellers.length
@@ -459,7 +520,26 @@ async function queryPerformance(payload = {}) {
       AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%';
 
     -- Base comercial completa do escopo. O histórico não é cortado pelo
-    -- status atual do representante.
+    -- status atual do representante. Vendas são reduzidas a uma linha por pedido
+    -- e o escopo por fornecedor usa EXISTS, evitando multiplicação cadastral.
+    ;WITH VendasRank AS (
+      SELECT
+        v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
+        ROW_NUMBER() OVER (
+          PARTITION BY v.[ID Pedido de Venda]
+          ORDER BY
+            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
+            v.[Data] DESC,
+            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
+            v.[ID Cliente] DESC
+        ) AS rn
+      FROM dbo.Vendas v
+    ),
+    VendasUnicas AS (
+      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]
+      FROM VendasRank
+      WHERE rn = 1
+    )
     SELECT
       CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
       LTRIM(RTRIM(v.[Vendedor])) AS seller,
@@ -471,9 +551,8 @@ async function queryPerformance(payload = {}) {
       ISNULL(vp.[Qtde Kg], 0) AS kg,
       ISNULL(vp.[Valor], 0) AS revenue
     INTO #ScopeBase
-    FROM dbo.Vendas v
+    FROM VendasUnicas v
     INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    ${joins.join('\n    ')}
     WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
       AND (
         (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
@@ -1059,6 +1138,44 @@ async function querySellerAudit(payload = {}) {
       FROM dbo.Clientes c
       WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
         AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+    ),
+    VendasRank AS (
+      SELECT
+        v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
+        v.[Tipo], v.[Forma de Venda], v.[Valor Total],
+        ROW_NUMBER() OVER (
+          PARTITION BY v.[ID Pedido de Venda]
+          ORDER BY
+            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
+            v.[Data] DESC,
+            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
+            v.[ID Cliente] DESC
+        ) AS rn
+      FROM dbo.Vendas v
+    ),
+    VendasUnicas AS (
+      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor], [Tipo], [Forma de Venda], [Valor Total]
+      FROM VendasRank
+      WHERE rn = 1
+    ),
+    ProdutosRank AS (
+      SELECT
+        p.[ID Produto], p.[Produto], p.[ID Fornecedor], p.[Fornecedor], p.[Status],
+        ROW_NUMBER() OVER (
+          PARTITION BY p.[ID Produto]
+          ORDER BY
+            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
+            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
+            CASE WHEN p.[ID Fornecedor] IS NOT NULL THEN 0 ELSE 1 END,
+            LTRIM(RTRIM(ISNULL(p.[Fornecedor], ''))),
+            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
+        ) AS rn
+      FROM dbo.Produtos p
+    ),
+    ProdutosUnicos AS (
+      SELECT [ID Produto], [Produto], [ID Fornecedor], [Fornecedor]
+      FROM ProdutosRank
+      WHERE rn = 1
     )
     SELECT TOP (1500)
       CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
@@ -1076,10 +1193,10 @@ async function querySellerAudit(payload = {}) {
       SUM(ISNULL(vp.[Qtde PC], 0)) AS pieces,
       SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
       SUM(ISNULL(vp.[Valor], 0)) AS revenue
-    FROM dbo.Vendas v
+    FROM VendasUnicas v
     INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
     INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+    INNER JOIN ProdutosUnicos p ON p.[ID Produto] = vp.[ID Produto]
     WHERE LTRIM(RTRIM(v.[Vendedor])) = @sellerAudit
       AND (
         (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
@@ -1177,7 +1294,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.7.0',
+    versao: '5.8.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -1209,7 +1326,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.7.0',
+        version: '5.8.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
