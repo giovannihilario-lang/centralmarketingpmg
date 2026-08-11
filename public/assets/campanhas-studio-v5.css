@@ -454,3 +454,21 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
   .diagnostic-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}
   .diagnostic-cause{grid-template-columns:1fr}
 }
+
+
+/* V5.7 — separação entre base coletiva e ranking */
+.collective-base-banner{
+  display:flex;
+  align-items:flex-start;
+  gap:11px;
+  margin-bottom:12px;
+  padding:12px 14px;
+  border:1px solid color-mix(in srgb,var(--brand) 22%,var(--line));
+  border-radius:12px;
+  background:color-mix(in srgb,var(--brand) 4%,var(--surface));
+}
+.collective-base-banner>svg{
+  width:18px;height:18px;color:var(--brand);flex:0 0 auto;margin-top:1px
+}
+.collective-base-banner strong{display:block;font-size:12.5px;margin-bottom:2px}
+.collective-base-banner span{display:block;color:var(--muted);font-size:10.8px;line-height:1.45}

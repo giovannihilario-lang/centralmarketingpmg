@@ -84,7 +84,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.6.0',
+    version: '5.7.0',
   };
 }
 
@@ -435,31 +435,31 @@ async function queryPerformance(payload = {}) {
   request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
   request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
 
-  const filters = [];
+  const scopeFilters = [];
   const joins = [];
 
-  // IDs já normalizados como inteiros; literais evitam o limite de 2.100 parâmetros.
-  // Se há IDs de produto explícitos, não precisamos juntar dbo.Produtos na apuração.
   if (productIds.length) {
-    filters.push(`vp.[ID Produto] IN (${productIds.join(',')})`);
+    scopeFilters.push(`vp.[ID Produto] IN (${productIds.join(',')})`);
   } else {
     joins.push(`INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]`);
-    filters.push(`p.[ID Fornecedor] IN (${supplierIds.join(',')})`);
+    scopeFilters.push(`p.[ID Fornecedor] IN (${supplierIds.join(',')})`);
   }
 
-  if (sellers.length) {
-    filters.push(`LTRIM(RTRIM(v.[Vendedor])) IN (${addTextParams(request, 'seller', sellers)})`);
-  }
+  const explicitSellerParams = sellers.length
+    ? addTextParams(request, 'seller', sellers)
+    : '';
 
   const result = await request.query(`
     SET NOCOUNT ON;
 
-    WITH ActiveSellers AS (
-      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
-      FROM dbo.Clientes c
-      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    )
+    SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
+    INTO #ActiveSellers
+    FROM dbo.Clientes c
+    WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
+      AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%';
+
+    -- Base comercial completa do escopo. O histórico não é cortado pelo
+    -- status atual do representante.
     SELECT
       CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
       LTRIM(RTRIM(v.[Vendedor])) AS seller,
@@ -470,9 +470,8 @@ async function queryPerformance(payload = {}) {
       ISNULL(vp.[Qtde PC], 0) AS pieces,
       ISNULL(vp.[Qtde Kg], 0) AS kg,
       ISNULL(vp.[Valor], 0) AS revenue
-    INTO #CampaignBase
+    INTO #ScopeBase
     FROM dbo.Vendas v
-    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
     INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
     ${joins.join('\n    ')}
     WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
@@ -480,7 +479,15 @@ async function queryPerformance(payload = {}) {
         (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
         OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
       )
-      AND ${filters.join(' AND ')};
+      AND ${scopeFilters.join(' AND ')};
+
+    -- Base individual do ranking.
+    SELECT b.*
+    INTO #CampaignBase
+    FROM #ScopeBase b
+    ${sellers.length
+      ? `WHERE b.seller IN (${explicitSellerParams})`
+      : `INNER JOIN #ActiveSellers a ON a.seller = b.seller`};
 
     SELECT
       period,
@@ -501,6 +508,21 @@ async function queryPerformance(payload = {}) {
     FROM #CampaignBase
     GROUP BY period, seller;
 
+    -- KPIs e metas coletivas:
+    -- campanha aberta = escopo comercial total;
+    -- campanha específica = apenas os representantes escolhidos.
+    SELECT
+      period,
+      SUM(revenue) AS revenue,
+      SUM(kg) AS kg,
+      SUM(pieces) AS pieces,
+      COUNT(DISTINCT clientId) AS customers,
+      COUNT(DISTINCT orderId) AS orders,
+      COUNT(DISTINCT productId) AS products,
+      COUNT(DISTINCT seller) AS sellers
+    FROM ${sellers.length ? '#CampaignBase' : '#ScopeBase'}
+    GROUP BY period;
+
     ${activationProductIds.length ? `
     SELECT
       period,
@@ -518,6 +540,8 @@ async function queryPerformance(payload = {}) {
     ` : ''}
 
     DROP TABLE #CampaignBase;
+    DROP TABLE #ScopeBase;
+    DROP TABLE #ActiveSellers;
   `);
 
   const lines = (result.recordsets?.[0] || []).map((row) => ({
@@ -537,8 +561,19 @@ async function queryPerformance(payload = {}) {
     orders: Number(row.orders) || 0,
   }));
 
+  const collectiveSummary = (result.recordsets?.[2] || []).map((row) => ({
+    period:text(row.period),
+    revenue:Number(row.revenue) || 0,
+    kg:Number(row.kg) || 0,
+    pieces:Number(row.pieces) || 0,
+    customers:Number(row.customers) || 0,
+    orders:Number(row.orders) || 0,
+    products:Number(row.products) || 0,
+    sellers:Number(row.sellers) || 0,
+  }));
+
   const orderLines = activationProductIds.length
-    ? (result.recordsets?.[2] || []).map((row) => ({
+    ? (result.recordsets?.[3] || []).map((row) => ({
         period:row.period,
         seller:text(row.seller),
         clientId:Number(row.clientId),
@@ -561,7 +596,7 @@ async function queryPerformance(payload = {}) {
     tables: [
       { name:'dbo.Vendas', role:'pedido, vendedor, cliente e data', columns:['ID Pedido de Venda','ID Cliente','Vendedor','Data','Tipo','Forma de Venda','Valor Total'] },
       { name:'dbo.VendasProdutos', role:'valores e quantidades dos produtos participantes', columns:['ID Pedido de Venda','ID Produto','Qtde PC','Qtde Kg','Valor'] },
-      { name:'dbo.Clientes', role:'validação de representantes ativos', columns:['Vendedor','Status'] },
+      { name:'dbo.Clientes', role:'define quem aparece no ranking quando a campanha é aberta; não corta a base coletiva histórica', columns:['Vendedor','Status'] },
       ...(productIds.length ? [] : [{ name:'dbo.Produtos', role:'filtro por código de fornecedor', columns:['ID Produto','ID Fornecedor','Fornecedor'] }]),
     ],
     metrics: {
@@ -574,6 +609,8 @@ async function queryPerformance(payload = {}) {
     },
     scope: {
       mode: productIds.length ? 'LISTA_DE_PRODUTOS' : 'FORNECEDOR',
+      collectiveMode:sellers.length ? 'REPRESENTANTES_ESPECIFICOS' : 'ESCOPO_COMERCIAL_TOTAL',
+      rankingMode:sellers.length ? 'REPRESENTANTES_ESPECIFICOS' : 'REPRESENTANTES_ATIVOS_ATUAIS',
       productIds,
       supplierIds,
       sellers,
@@ -625,6 +662,7 @@ async function queryPerformance(payload = {}) {
     } : null,
     lines,
     ordersBySeller,
+    collectiveSummary,
     orderLines,
     durationMs: Date.now() - startedAt,
     cache:{
@@ -915,10 +953,22 @@ async function queryConsistencyDiagnostic(payload = {}) {
   }
 
   if (grossCurrent.kg > 0 && activeCurrent.kg + 0.001 < grossCurrent.kg) {
+    const loss = pctLoss(grossCurrent.kg, activeCurrent.kg);
     causes.push({
-      code:'ACTIVE_SELLER_FILTER',
-      severity:'medium',
-      message:`O filtro de representantes ativos reduz o KG atual em ${pctLoss(grossCurrent.kg, activeCurrent.kg).toFixed(1)}% contra o fornecedor bruto.`,
+      code:'ACTIVE_SELLER_FILTER_CURRENT',
+      severity:loss >= 10 ? 'high' : 'medium',
+      message:`O filtro de representantes ativos reduz o KG atual em ${loss.toFixed(1)}% contra o fornecedor bruto.`,
+    });
+  }
+
+  const grossPrevious = get('FORNECEDOR_BRUTO', 'previous');
+  const activePrevious = get('FORNECEDOR_VENDEDORES_ATIVOS', 'previous');
+  if (grossPrevious.kg > 0 && activePrevious.kg + 0.001 < grossPrevious.kg) {
+    const loss = pctLoss(grossPrevious.kg, activePrevious.kg);
+    causes.push({
+      code:'ACTIVE_SELLER_FILTER_PREVIOUS',
+      severity:loss >= 10 ? 'high' : 'medium',
+      message:`A carteira ativa de hoje reduz o KG do período anterior em ${loss.toFixed(1)}%. Essa base não pode ser usada para crescimento coletivo histórico.`,
     });
   }
 
@@ -1127,7 +1177,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.6.0',
+    versao: '5.7.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -1159,7 +1209,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.6.0',
+        version: '5.7.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),

@@ -1482,6 +1482,29 @@
 
     const collectiveCurrent = teamMetrics(campaign, sellers, results, 'current');
     const collectivePrevious = teamMetrics(campaign, sellers, results, 'previous');
+
+    const sqlCollective = new Map((data.collectiveSummary || []).map((row) => [row.period, row]));
+    const sqlCurrent = sqlCollective.get('current');
+    const sqlPrevious = sqlCollective.get('previous');
+
+    if (sqlCurrent) {
+      collectiveCurrent.revenue = Number(sqlCurrent.revenue) || 0;
+      collectiveCurrent.kg = Number(sqlCurrent.kg) || 0;
+      collectiveCurrent.pieces = Number(sqlCurrent.pieces) || 0;
+      collectiveCurrent.customers = Number(sqlCurrent.customers) || 0;
+      collectiveCurrent.orders = Number(sqlCurrent.orders) || 0;
+      collectiveCurrent.distinctProducts = Number(sqlCurrent.products) || 0;
+    }
+
+    if (sqlPrevious) {
+      collectivePrevious.revenue = Number(sqlPrevious.revenue) || 0;
+      collectivePrevious.kg = Number(sqlPrevious.kg) || 0;
+      collectivePrevious.pieces = Number(sqlPrevious.pieces) || 0;
+      collectivePrevious.customers = Number(sqlPrevious.customers) || 0;
+      collectivePrevious.orders = Number(sqlPrevious.orders) || 0;
+      collectivePrevious.distinctProducts = Number(sqlPrevious.products) || 0;
+    }
+
     collectiveCurrent.positivity = collectiveCurrent.customers - collectivePrevious.customers;
     // Positivação anterior exigiria um terceiro período-base; não é usada como crescimento percentual.
     collectivePrevious.positivity = 0;
@@ -1621,6 +1644,7 @@
           dateReference:data.dateReference,
           comparisonPolicy:data.comparisonPolicy,
           provenance:data.provenance || null,
+          collectiveSummary:data.collectiveSummary || [],
           durationMs:data.durationMs,
           partial:data.partial,
           asOfDate:data.asOfDate,
@@ -1822,7 +1846,7 @@
           <div><span>Produtos enviados à API</span><strong>${esc(sourceList(scope.productIds, 30))}</strong></div>
           <div><span>Fornecedores enviados à API</span><strong>${esc(sourceList(scope.supplierIds, 30))}</strong></div>
           <div><span>Representantes específicos</span><strong>${scope.sellerCount ? esc(sourceList(scope.sellers, 12)) : 'Todos os representantes ativos'}</strong></div>
-          <div><span>Filtro de representante ativo</span><strong>${esc(filters.activeSeller || "dbo.Clientes.[Status] LIKE 'ATIV%'")}</strong></div>
+          <div><span>Filtro de representante ativo</span><strong>${scope.rankingMode === 'REPRESENTANTES_ATIVOS_ATUAIS' ? esc(filters.activeSeller || "Somente no ranking: dbo.Clientes.[Status] LIKE 'ATIV%'") : 'Não se aplica; representantes específicos'}</strong></div>
           <div><span>Tipo de venda</span><strong>${esc(filters.saleType || 'Sem filtro explícito')}</strong></div>
           <div><span>Forma de venda</span><strong>${esc(filters.saleForm || 'Sem filtro explícito')}</strong></div>
         </div>
@@ -1832,7 +1856,7 @@
         <div class="source-actions">
           <button class="secondary-btn" type="button" data-action="retry-performance" data-id="${esc(campaign.id)}"><i data-lucide="refresh-cw"></i>Reprocessar sem cache</button>
           <button class="secondary-btn" type="button" data-action="consistency-diagnostic" data-id="${esc(campaign.id)}"><i data-lucide="stethoscope"></i>Diagnóstico de consistência</button>
-          <small>Contexto de produtos/representantes: <code>/api/campanhas-data?recurso=contexto</code>. Imagens do catálogo são apenas visuais e não entram nas métricas.</small>
+          <small>Base coletiva: ${scope.collectiveMode === 'REPRESENTANTES_ESPECIFICOS' ? 'representantes selecionados' : 'escopo comercial total, sem excluir histórico pelo status atual do vendedor'} · Ranking: ${scope.rankingMode === 'REPRESENTANTES_ESPECIFICOS' ? 'representantes selecionados' : 'representantes ativos atuais'}.</small>
         </div>
         <div id="consistencyDiagnostic" class="consistency-diagnostic-slot"></div>
       </div>
@@ -2114,8 +2138,19 @@
           </div>
         </div>`;
 
+    const collectiveBaseBanner = `<div class="collective-base-banner">
+      <i data-lucide="scale"></i>
+      <div>
+        <strong>Base coletiva separada do ranking</strong>
+        <span>${campaign.participantMode === 'specific'
+          ? 'KPIs, meta coletiva e ranking usam os representantes selecionados.'
+          : 'KPIs e meta coletiva usam o escopo comercial total; o ranking continua nos representantes ativos atuais.'}</span>
+      </div>
+    </div>`;
+
     return `${periodAudit}
     ${provenancePanel(campaign, data, result)}
+    ${collectiveBaseBanner}
     <div class="performance-kpis">
       ${performanceMeta('Faturamento', money(summary.revenue), `Anterior ${money(summary.previousRevenue)} · ${pct(growth(summary.revenue, summary.previousRevenue))}`)}
       ${performanceMeta('Volume', `${number(summary.kg,1)} KG`, `Anterior ${number(summary.previousKg,1)} KG · ${pct(growth(summary.kg, summary.previousKg))}`)}
