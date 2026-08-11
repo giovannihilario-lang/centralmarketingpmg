@@ -413,3 +413,44 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
 .sales-scope-options{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:11px}.scope-choice{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;text-align:left;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--ink);cursor:pointer}.scope-choice>svg{width:18px;height:18px;color:var(--muted);flex:0 0 auto}.scope-choice strong,.scope-choice small{display:block}.scope-choice strong{font-size:11.5px}.scope-choice small{margin-top:3px;font-size:9.5px;line-height:1.4;color:var(--muted)}.scope-choice.selected{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 6%,var(--surface));box-shadow:0 0 0 1px color-mix(in srgb,var(--brand) 20%,transparent)}.scope-choice.selected>svg{color:var(--brand)}
 .legacy-scope-warning{display:flex;align-items:flex-start;gap:9px;margin-top:9px;padding:9px 10px;border-radius:10px;background:rgba(181,117,0,.07);color:#875c00}.legacy-scope-warning svg{width:16px;height:16px;flex:0 0 auto}.legacy-scope-warning strong,.legacy-scope-warning small{display:block}.legacy-scope-warning strong{font-size:10.5px}.legacy-scope-warning small{margin-top:2px;font-size:9.5px;line-height:1.4}
 @media(max-width:760px){.sales-scope-options{grid-template-columns:1fr}}
+
+
+/* V5.6 — Diagnóstico de fidelidade */
+.consistency-diagnostic-slot{margin-top:14px}
+.diagnostic-loading{
+  display:flex;align-items:center;gap:10px;padding:14px;border:1px solid var(--line);
+  border-radius:13px;background:var(--surface-2)
+}
+.diagnostic-loading span:last-child{display:block}
+.diagnostic-loading strong{display:block;font-size:12.5px}
+.diagnostic-loading small{display:block;color:var(--muted);font-size:10.5px;margin-top:2px}
+.consistency-diagnostic{border:1px solid var(--line);border-radius:15px;padding:16px;background:var(--surface)}
+.consistency-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}
+.consistency-head h3{margin:3px 0;font-size:16px}
+.consistency-head p{margin:0;color:var(--muted);font-size:11.5px}
+.diagnostic-periods{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px}
+.diagnostic-periods span{padding:7px 9px;border-radius:9px;background:var(--surface-2);font-size:10.5px;color:var(--muted)}
+.diagnostic-periods b{color:var(--ink)}
+.diagnostic-catalog{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.diagnostic-catalog>div{padding:10px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2)}
+.diagnostic-catalog span{display:block;color:var(--muted);font-size:9.5px}
+.diagnostic-catalog strong{display:block;margin-top:4px;font-size:15px}
+.diagnostic-table td:first-child{min-width:260px;white-space:normal}
+.diagnostic-table td:first-child small{display:block;color:var(--muted);font-size:9.5px;line-height:1.4;margin-top:3px}
+.diagnostic-causes{margin-top:12px;padding:12px;border-radius:12px;background:var(--surface-2)}
+.diagnostic-causes>strong{display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:8px}
+.diagnostic-causes>strong svg{width:16px;height:16px}
+.diagnostic-cause{display:grid;grid-template-columns:190px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:10.5px}
+.diagnostic-cause:first-of-type{border-top:0}
+.diagnostic-cause b{font-size:9.5px;letter-spacing:.03em}
+.diagnostic-cause.high b{color:var(--danger)}
+.diagnostic-cause.medium b{color:var(--warning,#b7791f)}
+.diagnostic-ok{margin-top:12px;display:flex;align-items:center;gap:8px;padding:11px;border-radius:11px;background:color-mix(in srgb,var(--success,#15803d) 7%,var(--surface));font-size:11px}
+.diagnostic-ok svg{width:16px;height:16px;color:var(--success,#15803d)}
+.diagnostic-details{margin-top:10px;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.diagnostic-details summary{padding:10px 12px;cursor:pointer;font-size:11px;font-weight:800;background:var(--surface-2)}
+.diagnostic-details .table-wrap{border:0;border-radius:0}
+@media(max-width:900px){
+  .diagnostic-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .diagnostic-cause{grid-template-columns:1fr}
+}

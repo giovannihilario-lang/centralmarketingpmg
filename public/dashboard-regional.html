@@ -113,6 +113,38 @@
   .export-menu button svg { width:14px; height:14px; opacity:.7; flex-shrink:0; }
   .export-menu .export-hint { padding:8px 12px 4px; font-size:10px; color:#9ca3af; letter-spacing:.02em; }
 
+
+  /* ── Loading global do dashboard ── */
+  .dashboard-loading {
+    position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
+    padding: 28px; background: rgba(244,245,244,.88); backdrop-filter: blur(12px) saturate(.9);
+    opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .24s ease, visibility .24s ease;
+  }
+  .dashboard-loading.show { opacity: 1; visibility: visible; pointer-events: all; }
+  .dashboard-loading-card {
+    width: min(520px, calc(100vw - 36px)); background: rgba(255,255,255,.96); border: 1px solid rgba(195,224,205,.95);
+    border-radius: 22px; padding: 28px 30px 26px; box-shadow: 0 30px 80px -28px rgba(26,77,46,.38);
+    position: relative; overflow: hidden; animation: loadingCardIn .42s var(--ease-out) both;
+  }
+  .dashboard-loading-card::before { content:''; position:absolute; inset:0 0 auto; height:4px; background:linear-gradient(90deg,var(--green-dark),var(--green-light),var(--amber),var(--green-dark)); background-size:220% 100%; animation: shimmerMove 1.8s linear infinite; }
+  .dashboard-loading-top { display:flex; align-items:center; gap:15px; }
+  .dashboard-loading-mark { width:48px; height:48px; border-radius:15px; display:grid; place-items:center; color:white; background:linear-gradient(145deg,var(--green-dark),var(--green-mid)); box-shadow:0 10px 24px -12px rgba(26,77,46,.7); flex-shrink:0; }
+  .dashboard-loading-mark svg { width:25px; height:25px; }
+  .dashboard-loading-copy { min-width:0; }
+  .dashboard-loading-eyebrow { font-size:10px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--green-mid); margin-bottom:5px; }
+  .dashboard-loading-title { font-family:var(--font-display); font-size:21px; font-weight:750; line-height:1.15; color:var(--text-dark); letter-spacing:-.35px; }
+  .dashboard-loading-detail { margin-top:8px; color:var(--gray-text); font-size:12.5px; line-height:1.45; min-height:18px; }
+  .dashboard-loading-track { height:7px; background:#edf1ee; border-radius:99px; overflow:hidden; margin-top:22px; }
+  .dashboard-loading-fill { height:100%; width:18%; border-radius:inherit; background:linear-gradient(90deg,var(--green-dark),var(--green-light)); transition:width .5s var(--ease-out); position:relative; overflow:hidden; }
+  .dashboard-loading-fill::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent); transform:translateX(-100%); animation:loadingSweep 1.15s ease-in-out infinite; }
+  .dashboard-loading-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:14px; }
+  .dashboard-loading-step { border:1px solid var(--gray-1); background:#fafbfa; color:#8a918d; border-radius:9px; padding:7px 8px; font-size:10px; font-weight:650; text-align:center; transition:.22s ease; }
+  .dashboard-loading-step.active { border-color:var(--green-border); background:var(--green-pale); color:var(--green-dark); }
+  .dashboard-loading-step.done { color:var(--green-mid); background:#f6fbf8; }
+  @keyframes loadingCardIn { from { opacity:0; transform:translateY(14px) scale(.975); } to { opacity:1; transform:none; } }
+  @keyframes loadingSweep { to { transform:translateX(100%); } }
+  @media (max-width: 600px) { .dashboard-loading-card { padding:24px 20px 22px; } .dashboard-loading-title { font-size:18px; } .dashboard-loading-steps { grid-template-columns:1fr; } }
+
   .body-layout { display: grid; grid-template-columns: 330px 1fr; flex: 1; overflow: hidden; position: relative; }
     .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 18px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 2; box-shadow: 6px 0 24px -20px rgba(17,24,39,.15); }
   .sidebar > * { animation: sidebarEnter .5s var(--ease-out) both; }
@@ -381,6 +413,28 @@
 </style>
 </head>
 <body>
+
+
+<div class="dashboard-loading show" id="dashboardLoading" role="status" aria-live="polite" aria-busy="true">
+  <div class="dashboard-loading-card">
+    <div class="dashboard-loading-top">
+      <div class="dashboard-loading-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
+      </div>
+      <div class="dashboard-loading-copy">
+        <div class="dashboard-loading-eyebrow">PMG Connect · Regional</div>
+        <div class="dashboard-loading-title" id="dashboardLoadingTitle">Preparando o Dashboard Regional</div>
+        <div class="dashboard-loading-detail" id="dashboardLoadingDetail">Conectando aos dados e preparando seus filtros.</div>
+      </div>
+    </div>
+    <div class="dashboard-loading-track"><div class="dashboard-loading-fill" id="dashboardLoadingFill"></div></div>
+    <div class="dashboard-loading-steps">
+      <div class="dashboard-loading-step active" id="loadingStep1">Filtros</div>
+      <div class="dashboard-loading-step" id="loadingStep2">Indicadores</div>
+      <div class="dashboard-loading-step" id="loadingStep3">Mapa e gráficos</div>
+    </div>
+  </div>
+</div>
 
 <div class="top-progress" id="topProgress"></div>
 
@@ -819,6 +873,41 @@ let DISTRIBUICAO_CENTRAL = carregarCentroDistribuicao(); // null = ainda não co
 
 const PALETTE = ['#1a4d2e','#4caf70','#f59e0b','#8b5cf6','#3b82f6','#ec4899','#14b8a6','#ef4444','#a855f7','#84cc16'];
 
+
+/* ══════════════════ LOADING GLOBAL ══════════════════ */
+let dashboardLoadingDepth = 0;
+function setDashboardLoadingStage(stage = 1, title, detail) {
+  const overlay = document.getElementById('dashboardLoading');
+  if (!overlay) return;
+  if (title) document.getElementById('dashboardLoadingTitle').textContent = title;
+  if (detail) document.getElementById('dashboardLoadingDetail').textContent = detail;
+  const pct = stage <= 1 ? 28 : stage === 2 ? 62 : 88;
+  document.getElementById('dashboardLoadingFill').style.width = pct + '%';
+  [1,2,3].forEach(i => {
+    const el = document.getElementById('loadingStep' + i);
+    el.classList.toggle('active', i === stage);
+    el.classList.toggle('done', i < stage);
+  });
+}
+function showDashboardLoading(title = 'Atualizando o Dashboard Regional', detail = 'Buscando os dados mais recentes para esta visualização.', stage = 1) {
+  dashboardLoadingDepth++;
+  const overlay = document.getElementById('dashboardLoading');
+  if (!overlay) return;
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-busy', 'true');
+  setDashboardLoadingStage(stage, title, detail);
+}
+function hideDashboardLoading({ force = false } = {}) {
+  dashboardLoadingDepth = force ? 0 : Math.max(0, dashboardLoadingDepth - 1);
+  if (dashboardLoadingDepth > 0) return;
+  const overlay = document.getElementById('dashboardLoading');
+  if (!overlay) return;
+  const fill = document.getElementById('dashboardLoadingFill');
+  if (fill) fill.style.width = '100%';
+  overlay.setAttribute('aria-busy', 'false');
+  setTimeout(() => overlay.classList.remove('show'), 180);
+}
+
 /* ══════════════════ LOADING HELPERS ══════════════════ */
 let requisicoesAtivas = 0;
 function iniciarProgresso() {
@@ -989,11 +1078,7 @@ async function buildChipsRPC(containerId, coluna) {
   // mas ignora a si própria para que a opção selecionada continue removível.
   const params = getFiltrosParams();
   const colunaParaParam = {
-<<<<<<< HEAD
-    Regiao: 'p_regiao', UF: 'p_uf', Segmento: 'p_segmento',
-=======
     Cidade: 'p_cidade', Regiao: 'p_regiao', UF: 'p_uf', Segmento: 'p_segmento',
->>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
     Grupo: 'p_grupo', Fornecedor: 'p_fornecedor'
   };
   delete params[colunaParaParam[coluna]];
@@ -1003,12 +1088,8 @@ async function buildChipsRPC(containerId, coluna) {
 
   const rows = data || [];
   const totalPedidos = Number(rows[0]?.total_pedidos) || 0;
-<<<<<<< HEAD
-  container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">Todos <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
-=======
   const labelTodos = coluna === 'Cidade' ? 'Todas as cidades' : 'Todos';
   container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">${labelTodos} <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
->>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
 
   rows.forEach(row => {
     const v = row.valor;
@@ -1044,10 +1125,7 @@ async function buildChipsRPC(containerId, coluna) {
 
 async function atualizarFiltrosContextuais() {
   await Promise.all([
-<<<<<<< HEAD
-=======
     buildChipsRPC('cidadeChips', 'Cidade'),
->>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
     buildChipsRPC('regiaoChips', 'Regiao'),
     buildChipsRPC('ufChips', 'UF'),
     buildChipsRPC('segmentoChips', 'Segmento'),
@@ -1292,6 +1370,7 @@ async function aplicarFiltros() {
   const btn = document.getElementById('btnAplicarFiltros');
   const btnTextoOriginal = btn?.textContent;
   if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'wait'; btn.textContent = 'Aplicando…'; }
+  showDashboardLoading('Aplicando filtros', 'Recalculando indicadores, ranking, mapa e gráficos com a seleção atual.', 2);
 
   try {
     pararModoDiretoria();
@@ -1315,6 +1394,7 @@ async function aplicarFiltros() {
     atualizarUrlComFiltros();
     await Promise.all([renderDashboard(), atualizarFiltrosContextuais()]);
   } finally {
+    hideDashboardLoading();
     _aplicandoFiltros = false;
     if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.textContent = btnTextoOriginal; }
   }
@@ -1350,6 +1430,7 @@ async function atualizarDadosForcado() {
   btn.disabled = true;
   btn.classList.add('spinning');
   showToast('Atualizando dados do servidor…', { loading: true });
+  showDashboardLoading('Atualizando dados do servidor', 'Ignorando o cache e consultando novamente a base regional.', 1);
 
   limparCacheApi(); // descarta o cache do navegador
   _forcarRefreshServidor = true; // também ignora o cache de 3 min dos endpoints Node
@@ -1358,7 +1439,9 @@ async function atualizarDadosForcado() {
     // Recarrega também o mapeamento de nomes canônicos de cidade e as opções de
     // filtro (chips/período), pois cadastros novos podem ter surgido desde a última carga.
     await carregarCidadesCanonicas();
+    setDashboardLoadingStage(2, 'Atualizando filtros e indicadores', 'Recarregando cidades, catálogo e métricas com os dados mais recentes.');
     await Promise.all([
+      buildChipsRPC('cidadeChips', 'Cidade'),
       buildChipsRPC('regiaoChips', 'Regiao'),
       buildChipsRPC('ufChips', 'UF'),
       buildChipsRPC('segmentoChips', 'Segmento'),
@@ -1368,12 +1451,14 @@ async function atualizarDadosForcado() {
     ]);
     reselecionarChipsAtuais();
     updateFiltrosAplicadosMini();
+    setDashboardLoadingStage(3, 'Montando a visualização', 'Finalizando mapa, rankings e gráficos regionais.');
     await renderDashboard();
     showToast('Dados atualizados com sucesso.');
   } catch (e) {
     console.error(e);
     showToast('Erro ao atualizar dados: ' + e.message);
   } finally {
+    hideDashboardLoading();
     _forcarRefreshServidor = false;
     btn.disabled = false;
     btn.classList.remove('spinning');
@@ -1430,10 +1515,7 @@ function restaurarFiltrosDaURL() {
 
   // O estado real vem do chip que de fato pôde ser selecionado. Assim uma URL antiga
   // com valor inexistente cai de verdade em "Todos", sem filtro invisível na consulta.
-<<<<<<< HEAD
-=======
   filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
->>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
   filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
   filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
   filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
@@ -1449,10 +1531,11 @@ function restaurarFiltrosDaURL() {
 // Botão voltar/avançar do navegador: restaura os filtros daquele ponto do
 // histórico e re-renderiza — sem empurrar uma nova entrada (senão o back
 // vira um loop).
-window.addEventListener('popstate', () => {
+window.addEventListener('popstate', async () => {
   pararModoDiretoria();
   restaurarFiltrosDaURL();
-  renderDashboard();
+  showDashboardLoading('Restaurando visualização', 'Reaplicando os filtros deste ponto do histórico.', 2);
+  try { await renderDashboard(); } finally { hideDashboardLoading(); }
 });
 
 function resetarFiltros() {
@@ -2347,6 +2430,8 @@ function rodarModoDiretoria() {
 
 /* ══════════════════ INICIALIZAÇÃO ══════════════════ */
 async function inicializar() {
+  dashboardLoadingDepth = 1;
+  setDashboardLoadingStage(1, 'Preparando o Dashboard Regional', 'Carregando cidades, catálogo, períodos e filtros disponíveis.');
   document.getElementById('hdrPeriodoTxt').textContent = 'Todo o histórico';
   renderKpiSkeleton();
   renderRankSkeleton();
@@ -2364,10 +2449,13 @@ async function inicializar() {
     buildPeriodoOptionsRPC()
   ]);
   restaurarFiltrosDaURL(); // aplica filtros vindos de um link compartilhado, se houver
+  setDashboardLoadingStage(2, 'Calculando indicadores', 'Consolidando faturamento, pedidos, volume e cidades atendidas.');
   await Promise.all([
     renderDashboard({ primeiraCarga: true }),
     atualizarFiltrosContextuais()
   ]);
+  setDashboardLoadingStage(3, 'Finalizando mapa e gráficos', 'Organizando ranking, concentração e evolução regional.');
+  hideDashboardLoading();
 }
 
 function staggerEntrance() {

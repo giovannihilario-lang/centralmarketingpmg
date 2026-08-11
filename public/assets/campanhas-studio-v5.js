@@ -626,7 +626,9 @@
       name:raw.name || raw.nome || '', description:raw.description || raw.descricao || '',
       start:normalizedStart, end:normalizedEnd,
       suppliers:Array.isArray(legacySuppliers) ? legacySuppliers.map((supplier) => ({ id:Number(supplier.id ?? supplier.code ?? supplier.fornecedorId) || null, name:supplier.name || supplier.nome || supplier.fornecedor || 'Fornecedor', totalProducts:Number(supplier.totalProducts || supplier.totalProdutos)||0 })) : [],
-      salesScopeMode:['supplier_all','selected_products','legacy_auto'].includes(raw.salesScopeMode) ? raw.salesScopeMode : 'legacy_auto',
+      salesScopeMode:['supplier_all','selected_products'].includes(raw.salesScopeMode)
+        ? raw.salesScopeMode
+        : (Array.isArray(legacySuppliers) && legacySuppliers.length ? 'supplier_all' : 'selected_products'),
       rankingMetrics:Array.isArray(raw.rankingMetrics) ? raw.rankingMetrics : Array.isArray(raw.metricasRanking) ? raw.metricasRanking : [raw.metricaRanking || 'points'],
       collectiveGoals:Array.isArray(legacyCollective) ? legacyCollective : [], individualGoals:Array.isArray(legacyIndividual) ? legacyIndividual : [],
       rules:Array.isArray(raw.rules) ? raw.rules : [], pointRules:Array.isArray(raw.pointRules) ? raw.pointRules : [], categories:Array.isArray(raw.categories) ? raw.categories : [],
@@ -859,13 +861,12 @@
     const options = productFilterOptions(baseProducts);
     const selectedCount = app.wizard.selectedProducts.size;
     return `<div class="step-head"><div><h3>Produtos, categorias e mix</h3><p>O catálogo já está no navegador. Filtrar, pesquisar e adicionar produtos não dispara novas consultas ao SQL.</p></div><span class="badge active">${number(baseProducts.length)} produtos disponíveis</span></div>
-      <div class="sales-scope-card ${campaign.salesScopeMode === 'legacy_auto' ? 'legacy' : ''}">
+      <div class="sales-scope-card">
         <div class="sales-scope-head"><span class="eyebrow">Escopo da apuração</span><h4>O que entra em faturamento, KG e clientes?</h4><p>As categorias podem servir para mix/pontos sem necessariamente limitar toda a venda. Escolha explicitamente.</p></div>
         <div class="sales-scope-options">
           <button type="button" class="scope-choice ${campaign.salesScopeMode === 'supplier_all' ? 'selected' : ''}" data-action="sales-scope" data-value="supplier_all"><i data-lucide="boxes"></i><span><strong>Todos os produtos dos fornecedores</strong><small>Usa todos os produtos ligados aos códigos de fornecedor selecionados.</small></span></button>
           <button type="button" class="scope-choice ${campaign.salesScopeMode === 'selected_products' ? 'selected' : ''}" data-action="sales-scope" data-value="selected_products"><i data-lucide="list-checks"></i><span><strong>Somente produtos das categorias</strong><small>Somente IDs arrastados para as categorias entram nos números.</small></span></button>
         </div>
-        ${campaign.salesScopeMode === 'legacy_auto' ? `<div class="legacy-scope-warning"><i data-lucide="triangle-alert"></i><span><strong>Campanha em modo legado</strong><small>Até a V5.4, qualquer produto em categoria fazia a apuração ignorar o fornecedor inteiro e usar só esses IDs. Escolha um modo acima para eliminar essa ambiguidade.</small></span></div>` : ''}
       </div>
       <div class="product-layout">
         <section class="catalog-panel">
@@ -1533,10 +1534,9 @@
       (campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite)
     )];
     const supplierIds = (campaign.suppliers || []).map((supplier) => Number(supplier.id)).filter(Number.isFinite);
-    const mode = campaign.salesScopeMode || 'legacy_auto';
-    if (mode === 'supplier_all') return { mode, productIds:[], supplierIds };
+    const mode = campaign.salesScopeMode || (supplierIds.length ? 'supplier_all' : 'selected_products');
     if (mode === 'selected_products') return { mode, productIds:categoryProductIds, supplierIds };
-    return { mode:'legacy_auto', productIds:categoryProductIds.length ? categoryProductIds : [], supplierIds };
+    return { mode:'supplier_all', productIds:[], supplierIds };
   }
 
   async function openPerformance(id, { force = false } = {}) {
@@ -1831,11 +1831,124 @@
 
         <div class="source-actions">
           <button class="secondary-btn" type="button" data-action="retry-performance" data-id="${esc(campaign.id)}"><i data-lucide="refresh-cw"></i>Reprocessar sem cache</button>
+          <button class="secondary-btn" type="button" data-action="consistency-diagnostic" data-id="${esc(campaign.id)}"><i data-lucide="stethoscope"></i>Diagnóstico de consistência</button>
           <small>Contexto de produtos/representantes: <code>/api/campanhas-data?recurso=contexto</code>. Imagens do catálogo são apenas visuais e não entram nas métricas.</small>
         </div>
+        <div id="consistencyDiagnostic" class="consistency-diagnostic-slot"></div>
       </div>
     </details>`;
   }
+
+
+  function diagnosticModeLabel(mode) {
+    return ({
+      FORNECEDOR_BRUTO:'Fornecedor bruto',
+      FORNECEDOR_VENDEDORES_ATIVOS:'Fornecedor + vendedores ativos',
+      PRODUTOS_ATIVOS_VENDEDORES_ATIVOS:'Só produtos hoje ativos',
+      ESCOPO_EFETIVO_CAMPANHA:'Escopo efetivo da campanha',
+    })[mode] || mode;
+  }
+
+  function diagnosticRow(data, mode) {
+    const current = (data.totals || []).find((row) => row.mode === mode && row.period === 'current') || {};
+    const previous = (data.totals || []).find((row) => row.mode === mode && row.period === 'previous') || {};
+    return `<tr>
+      <td><strong>${esc(diagnosticModeLabel(mode))}</strong><small>${esc(data.modes?.[mode] || '')}</small></td>
+      <td>${number(previous.kg || 0,1)} KG</td>
+      <td>${number(current.kg || 0,1)} KG</td>
+      <td>${money(previous.revenue || 0)}</td>
+      <td>${money(current.revenue || 0)}</td>
+      <td>${number(previous.customers || 0)}</td>
+      <td>${number(current.customers || 0)}</td>
+      <td>${number(current.products || 0)}</td>
+    </tr>`;
+  }
+
+  function consistencyDiagnosticHtml(data) {
+    const catalogTotal = (data.catalog || []).reduce((sum,row) => sum + Number(row.totalProducts || 0), 0);
+    const catalogActive = (data.catalog || []).reduce((sum,row) => sum + Number(row.activeProducts || 0), 0);
+    const catalogInactive = (data.catalog || []).reduce((sum,row) => sum + Number(row.inactiveProducts || 0), 0);
+    const periods = data.periodsUsed || {};
+    const modes = ['FORNECEDOR_BRUTO','FORNECEDOR_VENDEDORES_ATIVOS','PRODUTOS_ATIVOS_VENDEDORES_ATIVOS','ESCOPO_EFETIVO_CAMPANHA'];
+
+    return `<div class="consistency-diagnostic">
+      <div class="consistency-head">
+        <div><span class="eyebrow">Conferência direta no SQL</span><h3>Onde o número está sendo reduzido?</h3><p>Mesma fonte e mesmo período. O que muda abaixo são apenas os filtros.</p></div>
+        <span class="source-status live">SQL consultado</span>
+      </div>
+
+      <div class="diagnostic-periods">
+        <span><b>Anterior:</b> ${dateBR(periods.previousStart)} a ${dateBR(periods.previousLastInclusive)}</span>
+        <span><b>Campanha:</b> ${dateBR(periods.currentStart)} a ${dateBR(periods.currentLastInclusive)}</span>
+        <span><b>Borda:</b> ${esc(data.dateBoundaryMode || 'data de calendário')}</span>
+      </div>
+
+      <div class="diagnostic-catalog">
+        <div><span>Produtos cadastrados</span><strong>${number(catalogTotal)}</strong></div>
+        <div><span>Ativos hoje</span><strong>${number(catalogActive)}</strong></div>
+        <div><span>Inativos hoje</span><strong>${number(catalogInactive)}</strong></div>
+        <div><span>Produtos usados no escopo</span><strong>${(data.productIds || []).length ? number(data.productIds.length) : 'Fornecedor inteiro'}</strong></div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="diagnostic-table">
+          <thead><tr><th>Modo</th><th>KG anterior</th><th>KG campanha</th><th>R$ anterior</th><th>R$ campanha</th><th>Clientes ant.</th><th>Clientes atual</th><th>Produtos atual</th></tr></thead>
+          <tbody>${modes.map((mode) => diagnosticRow(data, mode)).join('')}</tbody>
+        </table>
+      </div>
+
+      ${(data.causes || []).length ? `<div class="diagnostic-causes">
+        <strong><i data-lucide="scan-line"></i>Diferenças encontradas automaticamente</strong>
+        ${(data.causes || []).map((cause) => `<div class="diagnostic-cause ${esc(cause.severity || 'medium')}"><b>${esc(cause.code)}</b><span>${esc(cause.message)}</span></div>`).join('')}
+      </div>` : '<div class="diagnostic-ok"><i data-lucide="circle-check"></i>Nenhum corte relevante foi detectado entre os modos comparados.</div>'}
+
+      ${(data.statusBreakdown || []).length ? `<details class="diagnostic-details">
+        <summary>Volume por status atual do produto</summary>
+        <div class="table-wrap"><table><thead><tr><th>Período</th><th>Status</th><th>Produtos</th><th>KG</th><th>R$</th></tr></thead>
+        <tbody>${data.statusBreakdown.map((row) => `<tr><td>${row.period === 'current' ? 'Campanha' : 'Anterior'}</td><td>${esc(row.productStatus)}</td><td>${number(row.products)}</td><td>${number(row.kg,1)}</td><td>${money(row.revenue)}</td></tr>`).join('')}</tbody></table></div>
+      </details>` : ''}
+
+      ${(data.saleBreakdown || []).length ? `<details class="diagnostic-details">
+        <summary>Tipos e formas de venda encontrados</summary>
+        <div class="table-wrap"><table><thead><tr><th>Período</th><th>Tipo</th><th>Forma</th><th>Pedidos</th><th>KG</th><th>R$</th></tr></thead>
+        <tbody>${data.saleBreakdown.map((row) => `<tr><td>${row.period === 'current' ? 'Campanha' : 'Anterior'}</td><td>${esc(row.saleType)}</td><td>${esc(row.saleForm)}</td><td>${number(row.orders)}</td><td>${number(row.kg,1)}</td><td>${money(row.revenue)}</td></tr>`).join('')}</tbody></table></div>
+      </details>` : ''}
+    </div>`;
+  }
+
+  async function runConsistencyDiagnostic(campaignId) {
+    const slot = $('#consistencyDiagnostic');
+    if (!slot) return;
+
+    const campaign = normalizeCampaign(await DB.get('campanhas', campaignId));
+    if (!campaign?.id) return;
+
+    const periods = calculatePeriods(campaign.start);
+    const scope = effectiveSalesScope(campaign);
+
+    slot.innerHTML = `<div class="diagnostic-loading"><span class="mini-spinner"></span><span><strong>Comparando diretamente no SQL…</strong><small>Fornecedor bruto × vendedores ativos × produtos ativos × escopo efetivo.</small></span></div>`;
+
+    try {
+      const data = await api(`${SQL_ENDPOINT}?recurso=diagnostico-consistencia`, {
+        method:'POST',
+        force:true,
+        timeout:120000,
+        body:JSON.stringify({
+          campaignStart:periods.currentStart,
+          asOfDate:inputDate(new Date()),
+          supplierIds:scope.supplierIds,
+          productIds:scope.productIds,
+          sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
+        }),
+      });
+
+      slot.innerHTML = consistencyDiagnosticHtml(data);
+      icons(slot);
+    } catch (error) {
+      slot.innerHTML = `<div class="context-error"><strong>Não foi possível executar o diagnóstico.</strong><br>${esc(error.message)}</div>`;
+    }
+  }
+
 
   function auditSummaryCard(label, current, previous, formatter = (value) => number(value)) {
     return `<div class="audit-summary-card"><span>${esc(label)}</span><strong>${formatter(current)}</strong><small>Anterior: ${formatter(previous)}</small></div>`;
@@ -2330,6 +2443,7 @@
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
     if (action === 'performance') return openPerformance(node.dataset.id);
     if (action === 'retry-performance') { return openPerformance(node.dataset.id, { force:true }); }
+    if (action === 'consistency-diagnostic') { return runConsistencyDiagnostic(node.dataset.id); }
     if (action === 'audit-seller') return openSellerAudit(node.dataset.campaignId, node.dataset.seller);
     if (action === 'copy-seller-audit') return copySellerAudit();
   });

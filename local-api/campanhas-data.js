@@ -84,7 +84,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.5.0',
+    version: '5.6.0',
   };
 }
 
@@ -298,7 +298,12 @@ function parseDate(value, field) {
     throw error;
   }
   const [year, month, day] = raw.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day, 12));
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+}
+
+function isoDate(value) {
+  if (typeof value === 'string') return text(value).slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 function addUtcDays(date, days) {
@@ -425,10 +430,10 @@ async function queryPerformance(payload = {}) {
 
   const pool = await getPool();
   const request = pool.request();
-  request.input('currentStart', sql.DateTime2, currentStart);
-  request.input('currentEnd', sql.DateTime2, currentEnd);
-  request.input('previousStart', sql.DateTime2, previousStart);
-  request.input('previousEnd', sql.DateTime2, previousEnd);
+  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
+  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
+  request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
+  request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
 
   const filters = [];
   const joins = [];
@@ -456,7 +461,7 @@ async function queryPerformance(payload = {}) {
         AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
     )
     SELECT
-      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END AS period,
+      CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
       LTRIM(RTRIM(v.[Vendedor])) AS seller,
       v.[ID Cliente] AS clientId,
       v.[ID Pedido de Venda] AS orderId,
@@ -472,8 +477,8 @@ async function queryPerformance(payload = {}) {
     ${joins.join('\n    ')}
     WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
       AND (
-        (v.[Data] >= @currentStart AND v.[Data] < @currentEnd)
-        OR (v.[Data] >= @previousStart AND v.[Data] < @previousEnd)
+        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
+        OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
       )
       AND ${filters.join(' AND ')};
 
@@ -552,6 +557,7 @@ async function queryPerformance(payload = {}) {
     source: 'SQL Server',
     database: 'powerbi',
     dateReference: 'dbo.Vendas.[Data]',
+    dateBoundaryMode: 'YYYY-MM-DD convertido para DATE no SQL',
     tables: [
       { name:'dbo.Vendas', role:'pedido, vendedor, cliente e data', columns:['ID Pedido de Venda','ID Cliente','Vendedor','Data','Tipo','Forma de Venda','Valor Total'] },
       { name:'dbo.VendasProdutos', role:'valores e quantidades dos produtos participantes', columns:['ID Pedido de Venda','ID Produto','Qtde PC','Qtde Kg','Valor'] },
@@ -586,7 +592,8 @@ async function queryPerformance(payload = {}) {
     },
     warnings: [
       'Faturamento usa o valor das linhas participantes em dbo.VendasProdutos.[Valor], não dbo.Vendas.[Valor Total] do pedido inteiro.',
-      'A data usada é dbo.Vendas.[Data]. Se outro relatório usa faturamento, nota ou entrega, os números podem divergir.',
+      'A data usada é dbo.Vendas.[Data], com YYYY-MM-DD convertido diretamente para DATE no SQL, sem deslocamento de horário/timezone.',
+      'Se outro relatório usa faturamento, nota fiscal ou entrega, os números podem divergir.',
       'Tipo, forma de venda, devoluções e cancelamentos ainda não possuem filtro corporativo explícito nesta consulta. Audite um vendedor para ver quais registros entraram.',
     ],
   };
@@ -636,6 +643,327 @@ async function queryPerformance(payload = {}) {
 }
 
 
+
+async function queryConsistencyDiagnostic(payload = {}) {
+  const startedAt = Date.now();
+  const periods = payload.campaignStart
+    ? fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate)
+    : null;
+
+  const currentStart = periods?.currentStart || parseDate(payload.currentStart, 'currentStart');
+  const currentEnd = periods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
+  const previousStart = periods?.previousStart || parseDate(payload.previousStart, 'previousStart');
+  const previousEnd = periods?.previousEnd || parseDate(payload.previousEnd, 'previousEnd');
+
+  const supplierIds = uniqueIntegers(payload.supplierIds);
+  const productIds = uniqueIntegers(payload.productIds);
+  const sellers = uniqueTexts(payload.sellers);
+
+  if (!supplierIds.length) {
+    const error = new Error('O diagnóstico de consistência precisa de pelo menos um código de fornecedor.');
+    error.code = 'FORNECEDOR_AUSENTE';
+    throw error;
+  }
+
+  const pool = await getPool();
+  const request = pool.request();
+  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
+  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
+  request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
+  request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
+
+  const specificSellerFilter = sellers.length
+    ? `AND LTRIM(RTRIM(b.seller)) IN (${addTextParams(request, 'diagSeller', sellers)})`
+    : '';
+
+  const selectedProductFilter = productIds.length
+    ? `AND b.productId IN (${productIds.join(',')})`
+    : '';
+
+  const result = await request.query(`
+    SET NOCOUNT ON;
+
+    WITH ActiveSellers AS (
+      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
+      FROM dbo.Clientes c
+      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
+        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+    ),
+    Base AS (
+      SELECT
+        CASE
+          WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
+           AND v.[Data] < CONVERT(date, @currentEnd, 23)
+          THEN 'current' ELSE 'previous'
+        END AS period,
+        LTRIM(RTRIM(v.[Vendedor])) AS seller,
+        CASE WHEN a.seller IS NULL THEN 0 ELSE 1 END AS activeSeller,
+        v.[ID Cliente] AS clientId,
+        v.[ID Pedido de Venda] AS orderId,
+        NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), '') AS saleType,
+        NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), '') AS saleForm,
+        vp.[ID Produto] AS productId,
+        p.[ID Fornecedor] AS supplierId,
+        NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') AS productStatus,
+        ISNULL(vp.[Qtde Kg], 0) AS kg,
+        ISNULL(vp.[Qtde PC], 0) AS pieces,
+        ISNULL(vp.[Valor], 0) AS revenue
+      FROM dbo.Vendas v
+      INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+      INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+      LEFT JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
+      WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
+        AND (
+          (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
+          OR
+          (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
+        )
+    ),
+    Modes AS (
+      SELECT 'FORNECEDOR_BRUTO' AS mode, * FROM Base
+
+      UNION ALL
+      SELECT 'FORNECEDOR_VENDEDORES_ATIVOS' AS mode, *
+      FROM Base b WHERE b.activeSeller = 1
+
+      UNION ALL
+      SELECT 'PRODUTOS_ATIVOS_VENDEDORES_ATIVOS' AS mode, *
+      FROM Base b
+      WHERE b.activeSeller = 1
+        AND (
+          b.productStatus IS NULL
+          OR UPPER(LTRIM(RTRIM(b.productStatus))) LIKE 'ATIV%'
+        )
+
+      UNION ALL
+      SELECT 'ESCOPO_EFETIVO_CAMPANHA' AS mode, *
+      FROM Base b
+      WHERE b.activeSeller = 1
+        ${selectedProductFilter}
+        ${specificSellerFilter}
+    )
+    SELECT
+      mode,
+      period,
+      SUM(kg) AS kg,
+      SUM(pieces) AS pieces,
+      SUM(revenue) AS revenue,
+      COUNT(DISTINCT clientId) AS customers,
+      COUNT(DISTINCT orderId) AS orders,
+      COUNT(DISTINCT productId) AS products,
+      COUNT(DISTINCT seller) AS sellers
+    FROM Modes
+    GROUP BY mode, period
+    ORDER BY mode, period;
+
+    SELECT
+      p.[ID Fornecedor] AS supplierId,
+      MAX(LTRIM(RTRIM(p.[Fornecedor]))) AS supplierName,
+      COUNT(DISTINCT p.[ID Produto]) AS totalProducts,
+      COUNT(DISTINCT CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') IS NULL
+          OR UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%'
+        THEN p.[ID Produto]
+      END) AS activeProducts,
+      COUNT(DISTINCT CASE
+        WHEN NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') IS NOT NULL
+          AND UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) NOT LIKE 'ATIV%'
+        THEN p.[ID Produto]
+      END) AS inactiveProducts
+    FROM dbo.Produtos p
+    WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
+    GROUP BY p.[ID Fornecedor]
+    ORDER BY p.[ID Fornecedor];
+
+    WITH ActiveSellers AS (
+      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
+      FROM dbo.Clientes c
+      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
+        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+    )
+    SELECT
+      CASE
+        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
+         AND v.[Data] < CONVERT(date, @currentEnd, 23)
+        THEN 'current' ELSE 'previous'
+      END AS period,
+      COALESCE(NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), ''), '(vazio)') AS productStatus,
+      COUNT(DISTINCT vp.[ID Produto]) AS products,
+      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
+      SUM(ISNULL(vp.[Valor], 0)) AS revenue
+    FROM dbo.Vendas v
+    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
+    WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
+      AND (
+        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
+        OR
+        (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
+      )
+    GROUP BY
+      CASE
+        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
+         AND v.[Data] < CONVERT(date, @currentEnd, 23)
+        THEN 'current' ELSE 'previous'
+      END,
+      COALESCE(NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), ''), '(vazio)')
+    ORDER BY period, kg DESC;
+
+    WITH ActiveSellers AS (
+      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
+      FROM dbo.Clientes c
+      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
+        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+    )
+    SELECT TOP (60)
+      CASE
+        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
+         AND v.[Data] < CONVERT(date, @currentEnd, 23)
+        THEN 'current' ELSE 'previous'
+      END AS period,
+      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), ''), '(vazio)') AS saleType,
+      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), ''), '(vazio)') AS saleForm,
+      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
+      SUM(ISNULL(vp.[Valor], 0)) AS revenue,
+      COUNT(DISTINCT v.[ID Pedido de Venda]) AS orders
+    FROM dbo.Vendas v
+    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
+    WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
+      AND (
+        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
+        OR
+        (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
+      )
+    GROUP BY
+      CASE
+        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
+         AND v.[Data] < CONVERT(date, @currentEnd, 23)
+        THEN 'current' ELSE 'previous'
+      END,
+      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), ''), '(vazio)'),
+      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), ''), '(vazio)')
+    ORDER BY period, kg DESC;
+  `);
+
+  const totals = (result.recordsets?.[0] || []).map((row) => ({
+    mode:text(row.mode),
+    period:text(row.period),
+    kg:Number(row.kg) || 0,
+    pieces:Number(row.pieces) || 0,
+    revenue:Number(row.revenue) || 0,
+    customers:Number(row.customers) || 0,
+    orders:Number(row.orders) || 0,
+    products:Number(row.products) || 0,
+    sellers:Number(row.sellers) || 0,
+  }));
+
+  const catalog = (result.recordsets?.[1] || []).map((row) => ({
+    supplierId:Number(row.supplierId),
+    supplierName:text(row.supplierName),
+    totalProducts:Number(row.totalProducts) || 0,
+    activeProducts:Number(row.activeProducts) || 0,
+    inactiveProducts:Number(row.inactiveProducts) || 0,
+  }));
+
+  const statusBreakdown = (result.recordsets?.[2] || []).map((row) => ({
+    period:text(row.period),
+    productStatus:text(row.productStatus),
+    products:Number(row.products) || 0,
+    kg:Number(row.kg) || 0,
+    revenue:Number(row.revenue) || 0,
+  }));
+
+  const saleBreakdown = (result.recordsets?.[3] || []).map((row) => ({
+    period:text(row.period),
+    saleType:text(row.saleType),
+    saleForm:text(row.saleForm),
+    kg:Number(row.kg) || 0,
+    revenue:Number(row.revenue) || 0,
+    orders:Number(row.orders) || 0,
+  }));
+
+  const get = (mode, period) => totals.find((row) => row.mode === mode && row.period === period) || {
+    kg:0, pieces:0, revenue:0, customers:0, orders:0, products:0, sellers:0,
+  };
+
+  const causes = [];
+  const grossCurrent = get('FORNECEDOR_BRUTO', 'current');
+  const activeCurrent = get('FORNECEDOR_VENDEDORES_ATIVOS', 'current');
+  const activeProductsCurrent = get('PRODUTOS_ATIVOS_VENDEDORES_ATIVOS', 'current');
+  const effectiveCurrent = get('ESCOPO_EFETIVO_CAMPANHA', 'current');
+  const pctLoss = (full, part) => full ? ((full - part) / Math.abs(full)) * 100 : 0;
+
+  if (productIds.length && effectiveCurrent.kg + 0.001 < activeCurrent.kg) {
+    causes.push({
+      code:'PRODUCT_SCOPE_CUT',
+      severity:'high',
+      message:`A lista de ${productIds.length} produto(s) usada pela campanha deixa de fora ${pctLoss(activeCurrent.kg, effectiveCurrent.kg).toFixed(1)}% do KG que existe no fornecedor entre os vendedores ativos.`,
+    });
+  }
+
+  const catalogTotal = catalog.reduce((sum, row) => sum + row.totalProducts, 0);
+  const catalogActive = catalog.reduce((sum, row) => sum + row.activeProducts, 0);
+  if (catalogTotal > catalogActive) {
+    causes.push({
+      code:'INACTIVE_PRODUCTS_EXIST',
+      severity:'medium',
+      message:`Há ${catalogTotal} produtos cadastrados no(s) fornecedor(es), mas só ${catalogActive} estão ativos hoje. Produtos inativos podem ter vendas históricas e precisam permanecer numa apuração por fornecedor.`,
+    });
+  }
+
+  if (grossCurrent.kg > 0 && activeCurrent.kg + 0.001 < grossCurrent.kg) {
+    causes.push({
+      code:'ACTIVE_SELLER_FILTER',
+      severity:'medium',
+      message:`O filtro de representantes ativos reduz o KG atual em ${pctLoss(grossCurrent.kg, activeCurrent.kg).toFixed(1)}% contra o fornecedor bruto.`,
+    });
+  }
+
+  if (activeCurrent.kg > 0 && activeProductsCurrent.kg + 0.001 < activeCurrent.kg) {
+    causes.push({
+      code:'PRODUCT_STATUS_FILTER_RISK',
+      severity:'high',
+      message:`Se fossem considerados apenas produtos hoje ativos, o KG atual cairia ${pctLoss(activeCurrent.kg, activeProductsCurrent.kg).toFixed(1)}%.`,
+    });
+  }
+
+  return {
+    ok:true,
+    source:'SQL Server · Power BI',
+    endpoint:'/api/campanhas-data?recurso=diagnostico-consistencia',
+    handler:'local-api/campanhas-data.js → queryConsistencyDiagnostic()',
+    supplierIds,
+    productIds,
+    sellers,
+    periodsUsed:{
+      currentStart:isoDate(currentStart),
+      currentEndExclusive:isoDate(currentEnd),
+      currentLastInclusive:isoDate(addUtcDays(currentEnd, -1)),
+      previousStart:isoDate(previousStart),
+      previousEndExclusive:isoDate(previousEnd),
+      previousLastInclusive:isoDate(addUtcDays(previousEnd, -1)),
+    },
+    dateBoundaryMode:'YYYY-MM-DD convertido para DATE no SQL',
+    modes:{
+      FORNECEDOR_BRUTO:'Todas as linhas do fornecedor, sem filtro de representante ativo.',
+      FORNECEDOR_VENDEDORES_ATIVOS:'Fornecedor inteiro, somente vendedores que possuem carteira ativa hoje.',
+      PRODUTOS_ATIVOS_VENDEDORES_ATIVOS:'Fornecedor, vendedores ativos e somente produtos cujo status atual é ativo/vazio.',
+      ESCOPO_EFETIVO_CAMPANHA:productIds.length
+        ? 'Exatamente a lista de produtos usada pela campanha, com vendedor ativo.'
+        : 'Fornecedor inteiro, com vendedor ativo.',
+    },
+    totals,
+    catalog,
+    statusBreakdown,
+    saleBreakdown,
+    causes,
+    durationMs:Date.now() - startedAt,
+  };
+}
+
 async function querySellerAudit(payload = {}) {
   const startedAt = Date.now();
   const seller = text(payload.seller);
@@ -664,10 +992,10 @@ async function querySellerAudit(payload = {}) {
   const pool = await getPool();
   const request = pool.request();
   request.input('sellerAudit', sql.NVarChar(200), seller);
-  request.input('currentStart', sql.DateTime2, currentStart);
-  request.input('currentEnd', sql.DateTime2, currentEnd);
-  request.input('previousStart', sql.DateTime2, previousStart);
-  request.input('previousEnd', sql.DateTime2, previousEnd);
+  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
+  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
+  request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
+  request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
 
   const scopeFilter = productIds.length
     ? `vp.[ID Produto] IN (${productIds.join(',')})`
@@ -683,7 +1011,7 @@ async function querySellerAudit(payload = {}) {
         AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
     )
     SELECT TOP (1500)
-      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END AS period,
+      CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
       LTRIM(RTRIM(v.[Vendedor])) AS seller,
       v.[ID Pedido de Venda] AS orderId,
       v.[Data] AS orderDate,
@@ -704,12 +1032,12 @@ async function querySellerAudit(payload = {}) {
     INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
     WHERE LTRIM(RTRIM(v.[Vendedor])) = @sellerAudit
       AND (
-        (v.[Data] >= @currentStart AND v.[Data] < @currentEnd)
-        OR (v.[Data] >= @previousStart AND v.[Data] < @previousEnd)
+        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
+        OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
       )
       AND ${scopeFilter}
     GROUP BY
-      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END,
+      CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END,
       LTRIM(RTRIM(v.[Vendedor])),
       v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Tipo], v.[Forma de Venda], v.[Valor Total],
       vp.[ID Produto], p.[Produto], p.[ID Fornecedor], p.[Fornecedor]
@@ -793,12 +1121,13 @@ function publicError(error) {
     ESCOPO_AUSENTE: 'Selecione fornecedores ou produtos participantes.',
     CAMPANHA_NAO_INICIADA: 'A apuração ficará disponível a partir da primeira segunda-feira da campanha.',
     VENDEDOR_AUSENTE: 'Escolha um representante para abrir a auditoria.',
+    FORNECEDOR_AUSENTE: 'Selecione ao menos um fornecedor para executar o diagnóstico de consistência.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.5.0',
+    versao: '5.6.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -830,7 +1159,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.5.0',
+        version: '5.6.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
@@ -845,6 +1174,11 @@ export default async function handler(req, res) {
     if (resource === 'auditoria-vendedor') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para auditoria do vendedor.', codigo: 'METODO_INVALIDO' });
       return res.status(200).json(await querySellerAudit(req.body || {}));
+    }
+
+    if (resource === 'diagnostico-consistencia') {
+      if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para diagnóstico.', codigo: 'METODO_INVALIDO' });
+      return res.status(200).json(await queryConsistencyDiagnostic(req.body || {}));
     }
 
     return res.status(404).json({ erro: `Recurso desconhecido: ${resource}`, codigo: 'RECURSO_DESCONHECIDO' });
