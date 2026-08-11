@@ -1,70 +1,43 @@
-import sql from "mssql";
-const config = {
-  server: process.env.SQL_SERVER,
-  database: process.env.SQL_DATABASE,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  options: {
-    encrypt: process.env.SQL_ENCRYPT === "false" ? false : true,
-    trustServerCertificate: false,
-  },
-  connectionTimeout: 30000,
-  requestTimeout: 60000,
-};
+import {
+  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  responderCache, salvarCache, erroApi,
+} from '../src/lib/regional-dashboard.js';
 
 const cache = new Map();
-const CACHE_TTL_MS = 180000; // 3 min
 
 export default async function handler(req, res) {
   try {
-    const cacheKey = JSON.stringify(req.query);
-    const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
-      return res.status(200).json(cached.data);
-    }
+    if (responderCache(req, res, cache)) return;
 
-    const pool = new sql.ConnectionPool(config);
-    await pool.connect();
+    const pool = await getPool();
     const request = pool.request();
-    let where = "1=1";
-    const { p_regiao, p_uf, p_segmento, p_grupo, p_fornecedor, p_subgrupo, p_de, p_ate } = req.query;
-    if (p_regiao) { where += " AND c.Zona = @regiao"; request.input("regiao", p_regiao); }
-    if (p_uf) { where += " AND c.UF = @uf"; request.input("uf", p_uf); }
-    if (p_segmento) { where += " AND c.Segmento = @segmento"; request.input("segmento", p_segmento); }
-    if (p_grupo) { where += " AND p.Grupo = @grupo"; request.input("grupo", p_grupo); }
-    if (p_subgrupo) { where += " AND p.[Sub-grupo] = @subgrupo"; request.input("subgrupo", p_subgrupo); }
-    if (p_fornecedor) { where += " AND p.Fornecedor = @fornecedor"; request.input("fornecedor", p_fornecedor); }
-    if (p_de) {
-      const [anoDe, mesDe] = p_de.split("-").map(Number);
-      where += " AND v.Data >= @de";
-      request.input("de", sql.DateTime2, new Date(Date.UTC(anoDe, mesDe - 1, 1)));
-    }
-    if (p_ate) {
-      const [anoAte, mesAte] = p_ate.split("-").map(Number);
-      where += " AND v.Data < @ate";
-      request.input("ate", sql.DateTime2, new Date(Date.UTC(anoAte, mesAte, 1)));
-    }
-
+    const where = aplicarFiltrosRegionais(request, req.query);
     const query = `
+      ${CTE_BASE_REGIONAL}
       SELECT
-        SUM(vp.Valor) AS total_valor,
-        SUM(vp.[Qtde Kg]) AS total_kg,
-        COUNT(*) AS n_registros,
+        COALESCE(SUM(vp.Valor), 0) AS total_valor,
+        COALESCE(SUM(vp.[Qtde Kg]), 0) AS total_kg,
+        COUNT_BIG(*) AS n_registros,
         COUNT(DISTINCT vp.[ID Pedido de Venda]) AS n_pedidos,
-        COUNT(DISTINCT CONCAT(c.Cidade, '|', c.UF)) AS n_cidades,
-        COUNT(DISTINCT c.UF) AS n_ufs,
-        COUNT(DISTINCT p.Fornecedor) AS n_fornecedores
-      FROM VendasProdutos vp
-      JOIN Vendas v ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-      JOIN Clientes c ON v.[ID Cliente] = c.[ID Cliente]
-      JOIN Produtos p ON vp.[ID Produto] = p.[ID Produto]
+        COUNT(DISTINCT CONCAT(
+          UPPER(LTRIM(RTRIM(c.Cidade))) COLLATE Latin1_General_CI_AI,
+          '|', UPPER(LTRIM(RTRIM(c.UF))) COLLATE Latin1_General_CI_AI
+        )) AS n_cidades,
+        COUNT(DISTINCT UPPER(LTRIM(RTRIM(c.UF))) COLLATE Latin1_General_CI_AI) AS n_ufs,
+        COUNT(DISTINCT p.Fornecedor) AS n_fornecedores,
+        CAST(
+          COALESCE(SUM(vp.Valor), 0) /
+          NULLIF(CAST(COUNT(DISTINCT vp.[ID Pedido de Venda]) AS decimal(19,4)), 0)
+          AS decimal(19,2)
+        ) AS ticket_medio
+      ${FROM_BASE_REGIONAL}
       WHERE ${where}
     `;
     const result = await request.query(query);
-    await pool.close();
-    cache.set(cacheKey, { time: Date.now(), data: result.recordset });
-    return res.status(200).json(result.recordset);
+    const data = result.recordset;
+    salvarCache(req, res, cache, data);
+    return res.status(200).json(data);
   } catch (err) {
-    return res.status(500).json({ message: err.message, code: err.code || null });
+    return erroApi(res, err);
   }
 }

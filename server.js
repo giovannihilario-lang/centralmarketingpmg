@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -8,27 +7,51 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// Autoriza a página HTTPS da Vercel a conversar com a API local.
-// Navegadores recentes fazem um preflight específico para acesso à rede local.
+// A API local é poderosa demais para aceitar qualquer site da internet.
+// Permitimos localhost, o projeto PMG na Vercel e origens adicionais configuradas
+// explicitamente em PMG_ALLOWED_ORIGINS (separadas por vírgula).
+const ORIGENS_EXTRAS = new Set(
+  String(process.env.PMG_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(v => v.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+);
+
+function origemPermitida(origin) {
+  if (!origin) return true; // curl/Postman e navegação direta
+  let url;
+  try { url = new URL(origin); } catch { return false; }
+  const normalized = origin.replace(/\/$/, '');
+  if (ORIGENS_EXTRAS.has(normalized)) return true;
+  if (['localhost', '127.0.0.1'].includes(url.hostname)) return true;
+  if (url.protocol === 'https:' && (url.hostname === 'pmg-marketing.vercel.app' || /^pmg-marketing-[a-z0-9-]+\.vercel\.app$/i.test(url.hostname))) return true;
+  return false;
+}
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+  let mesmaOrigem = false;
+  if (origin) {
+    try { mesmaOrigem = new URL(origin).host === req.headers.host; } catch { mesmaOrigem = false; }
+  }
+
+  // Rejeita a requisição antes de qualquer rota. Requisições da própria página
+  // servida por este Node são aceitas mesmo quando o acesso ocorre pelo IP da LAN.
+  if (origin && !mesmaOrigem && !origemPermitida(origin)) {
+    return res.status(403).json({ message: 'Origin não autorizada para a API local.' });
+  }
+
   if (origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
-
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    req.headers['access-control-request-headers'] || 'Content-Type, Authorization'
-  );
+  res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || 'Content-Type, Authorization');
 
   if (req.headers['access-control-request-private-network'] === 'true') {
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
   }
 
-  // Identificação amigável exibida por navegadores que implementam
-  // a permissão de acesso à rede local.
   res.setHeader('Private-Network-Access-Name', 'API Local PMG Connect');
   res.setHeader('Private-Network-Access-ID', 'pmg-connect-local-api');
 
@@ -36,7 +59,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors({ origin: true }));
 app.use(express.json({ limit: '15mb' }));
 
 /**

@@ -3,7 +3,8 @@
   "name": "pmg-marketing",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "diagnostico:regional": "node scripts/diagnosticar-dashboard-regional.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

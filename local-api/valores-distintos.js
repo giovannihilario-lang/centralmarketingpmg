@@ -1,61 +1,48 @@
-import sql from "mssql";
-const config = {
-  server: process.env.SQL_SERVER,
-  database: process.env.SQL_DATABASE,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  options: {
-    encrypt: process.env.SQL_ENCRYPT === "false" ? false : true,
-    trustServerCertificate: false,
-  },
-  connectionTimeout: 30000,
-  requestTimeout: 60000,
-};
+import {
+  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  responderCache, salvarCache, erroApi, CACHE_TTL_CATALOGO_MS,
+} from '../src/lib/regional-dashboard.js';
 
 const cache = new Map();
-const CACHE_TTL_MS = 1800000; // 30 min
 
-// whitelist: nunca usar o valor do usuário direto na query (evita SQL injection)
 const COLUNAS = {
-  Regiao: "c.Zona",
-  UF: "c.UF",
-  Segmento: "c.Segmento",
-  Grupo: "p.Grupo",
-  Fornecedor: "p.Fornecedor",
-  SubGrupo: "p.[Sub-grupo]",
+  Regiao: { col: 'c.Zona', param: 'p_regiao' },
+  UF: { col: 'c.UF', param: 'p_uf' },
+  Segmento: { col: 'c.Segmento', param: 'p_segmento' },
+  Grupo: { col: 'p.Grupo', param: 'p_grupo' },
+  Fornecedor: { col: 'p.Fornecedor', param: 'p_fornecedor' },
+  SubGrupo: { col: 'p.[Sub-grupo]', param: 'p_subgrupo' },
 };
 
 export default async function handler(req, res) {
   try {
-    const { p_coluna } = req.query;
-    const col = COLUNAS[p_coluna];
-    if (!col) {
-      return res.status(400).json({ message: `Coluna inválida: ${p_coluna}` });
-    }
+    const item = COLUNAS[req.query.p_coluna];
+    if (!item) return res.status(400).json({ message: `Coluna inválida: ${req.query.p_coluna}` });
+    if (responderCache(req, res, cache, CACHE_TTL_CATALOGO_MS)) return;
 
-    const cacheKey = JSON.stringify(req.query);
-    const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
-      return res.status(200).json(cached.data);
-    }
-
-    const pool = new sql.ConnectionPool(config);
-    await pool.connect();
+    const pool = await getPool();
+    const request = pool.request();
+    const where = aplicarFiltrosRegionais(request, req.query, { ignorar: [item.param] });
     const query = `
-      SELECT ${col} AS valor, COUNT(*) AS qtd
-      FROM VendasProdutos vp
-      JOIN Vendas v ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-      JOIN Clientes c ON v.[ID Cliente] = c.[ID Cliente]
-      JOIN Produtos p ON vp.[ID Produto] = p.[ID Produto]
-      WHERE ${col} IS NOT NULL AND ${col} <> ''
-      GROUP BY ${col}
-      ORDER BY qtd DESC
+      ${CTE_BASE_REGIONAL},
+      BaseFiltrada AS (
+        SELECT ${item.col} AS valor, vp.[ID Pedido de Venda] AS pedido_id
+        ${FROM_BASE_REGIONAL}
+        WHERE ${where} AND ${item.col} IS NOT NULL AND ${item.col} <> ''
+      )
+      SELECT
+        valor,
+        COUNT(DISTINCT pedido_id) AS qtd,
+        (SELECT COUNT(DISTINCT pedido_id) FROM BaseFiltrada) AS total_pedidos
+      FROM BaseFiltrada
+      GROUP BY valor
+      ORDER BY qtd DESC, valor ASC
     `;
-    const result = await pool.request().query(query);
-    await pool.close();
-    cache.set(cacheKey, { time: Date.now(), data: result.recordset });
-    return res.status(200).json(result.recordset);
+    const result = await request.query(query);
+    const data = result.recordset;
+    salvarCache(req, res, cache, data);
+    return res.status(200).json(data);
   } catch (err) {
-    return res.status(500).json({ message: err.message, code: err.code || null });
+    return erroApi(res, err);
   }
 }
