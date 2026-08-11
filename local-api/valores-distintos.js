@@ -6,10 +6,7 @@ import {
 const cache = new Map();
 
 const COLUNAS = {
-<<<<<<< HEAD
-=======
   Cidade: { col: "CONCAT(c.Cidade, ' / ', c.UF)", param: 'p_cidade' },
->>>>>>> b82158e (feat: adiciona filtro de cidade e destaca filtros do dashboard regional)
   Regiao: { col: 'c.Zona', param: 'p_regiao' },
   UF: { col: 'c.UF', param: 'p_uf' },
   Segmento: { col: 'c.Segmento', param: 'p_segmento' },
