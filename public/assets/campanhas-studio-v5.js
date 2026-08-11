@@ -21,6 +21,7 @@
   const norm = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').trim();
   const uid = (prefix = 'id') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL', maximumFractionDigits:0 });
+  const money2 = (value) => Number(value || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:2, maximumFractionDigits:2 });
   const number = (value, digits = 0) => Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits:digits, minimumFractionDigits:digits });
   const pct = (value) => `${Number(value || 0) >= 0 ? '+' : ''}${number(value, 1)}%`;
   const dateBR = (value) => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
@@ -56,8 +57,8 @@
     { id:'mix', label:'Mix de categorias', icon:'boxes', description:'Percentual de categorias obrigatórias cumpridas' },
     { id:'revenueGrowth', label:'Crescimento de R$', icon:'trending-up', description:'Crescimento percentual do faturamento' },
     { id:'kgGrowth', label:'Crescimento de KG', icon:'chart-no-axes-combined', description:'Crescimento percentual do volume' },
-    { id:'activationClients', label:'Ativações de pedido', icon:'badge-check', description:'Clientes ativados pela regra de pedido combinado' },
-    { id:'activationRate', label:'Taxa de ativação', icon:'percent', description:'Pedidos-oportunidade que receberam o produto gatilho' },
+    { id:'activationClients', label:'Benefícios utilizados', icon:'badge-check', description:'Clientes cuja primeira compra do ativador gerou desconto' },
+    { id:'activationRate', label:'Aproveitamento da 1ª compra', icon:'percent', description:'Primeiras compras do ativador que também continham produtos beneficiados' },
   ];
 
   const BASE_METRICS = [
@@ -69,9 +70,9 @@
     ['customers', 'Clientes únicos', 'clientes'],
     ['mix', 'Mix de categorias', '%'],
     ['orders', 'Pedidos', 'pedidos'],
-    ['activationClients', 'Ativações de pedido', 'clientes'],
-    ['activationOrders', 'Pedidos ativados', 'pedidos'],
-    ['activationRate', 'Taxa de ativação', '%'],
+    ['activationClients', 'Benefícios utilizados', 'clientes'],
+    ['activationOrders', 'Pedidos com benefício', 'pedidos'],
+    ['activationRate', 'Aproveitamento da 1ª compra', '%'],
   ];
 
   const GROWTH_METRICS = [
@@ -81,20 +82,21 @@
   const POINT_SOURCES = [
     ['positivity', 'Positivação líquida'], ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Peças'],
     ['customers', 'Clientes únicos'], ['orders', 'Pedidos'], ['mixCategories', 'Categorias de mix cumpridas'], ['distinctProducts', 'Produtos distintos'],
-    ['activationClients', 'Ativações de pedido'], ['activationOrders', 'Pedidos ativados'],
+    ['activationClients', 'Benefícios utilizados'], ['activationOrders', 'Pedidos com benefício'],
   ];
 
   const TIE_OPTIONS = [
     ['positivity', 'Maior positivação'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais peças'],
     ['mix', 'Maior mix'], ['points', 'Maior pontuação'], ['orders', 'Mais pedidos'],
     ['revenueGrowth', 'Maior crescimento de faturamento'], ['kgGrowth', 'Maior crescimento de volume'],
-    ['activationClients', 'Mais ativações de pedido'], ['activationRate', 'Maior taxa de ativação'],
+    ['activationClients', 'Mais benefícios utilizados'], ['activationRate', 'Maior aproveitamento da 1ª compra'],
   ];
 
   const STEPS = [
     { title:'Informações gerais', subtitle:'Período, fornecedores e participantes' },
     { title:'Ranking e metas', subtitle:'Métricas, metas e elegibilidade' },
     { title:'Produtos e categorias', subtitle:'Escopo, mix e pontuação por produto' },
+    { title:'Benefício de 1ª compra', subtitle:'Fortunata, produtos com desconto e elegibilidade' },
     { title:'Desempate e premiação', subtitle:'Prioridades, bônus e classificados' },
   ];
 
@@ -122,7 +124,7 @@
   const app = {
     view:'dashboard', campaigns:[], context:{ suppliers:[], products:[], representatives:[] }, contextReady:false, contextCached:false,
     contextStatus:null, contextPromise:null, useCachedAllowed:false, campaignSearch:'', productSearch:'', representativeSearch:'',
-    wizard:null, performance:null, sellerAudit:null, imageCache:new Map(), imageAttempted:new Set(), imageInFlight:new Map(), apiInFlight:new Map(), apiCache:new Map(),
+    wizard:null, performance:null, sellerAudit:null, benefitReport:null, imageCache:new Map(), imageAttempted:new Set(), imageInFlight:new Map(), apiInFlight:new Map(), apiCache:new Map(),
   };
 
   function icons(root = document) {
@@ -494,6 +496,7 @@
         </div>
         <div class="campaign-actions">
           <button class="secondary-btn" type="button" data-action="edit-campaign" data-id="${esc(campaign.id)}"><i data-lucide="pencil"></i>Editar</button>
+          ${campaign.orderActivationRule?.enabled ? `<button class="secondary-btn benefit-action-btn" type="button" data-action="benefit-report" data-id="${esc(campaign.id)}"><i data-lucide="badge-percent"></i>Benefícios</button>` : ''}
           <button class="primary-btn" type="button" data-action="performance" data-id="${esc(campaign.id)}"><i data-lucide="chart-no-axes-combined"></i>Performance</button>
         </div>
       </div>
@@ -597,9 +600,18 @@
       goalMode:'both', collectiveGoals:[defaultGoal('collective')], individualGoals:[defaultGoal('individual')],
       rules:[], pointRules:[], categories:[],
       orderActivationRule:{
-        enabled:false, name:'Ativação por pedido', baseCategoryId:'', baseMeasure:'distinct_products', baseMin:5,
-        triggerCategoryId:'', triggerMeasure:'distinct_products', triggerMin:1, countMode:'first_per_client',
-        discountType:'pending', discountValue:0,
+        enabled:false,
+        name:'Benefício de primeira compra',
+        baseCategoryId:'',
+        baseMeasure:'distinct_products',
+        baseMin:1,
+        triggerCategoryId:'',
+        triggerMeasure:'distinct_products',
+        triggerMin:1,
+        countMode:'first_per_client',
+        firstPurchaseMode:'historical_trigger',
+        discountType:'pending',
+        discountValue:0,
       },
       tieBreaks:[{ metric:'positivity', direction:'desc' }, { metric:'revenue', direction:'desc' }], prizes:[],
       createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
@@ -632,7 +644,12 @@
       rankingMetrics:Array.isArray(raw.rankingMetrics) ? raw.rankingMetrics : Array.isArray(raw.metricasRanking) ? raw.metricasRanking : [raw.metricaRanking || 'points'],
       collectiveGoals:Array.isArray(legacyCollective) ? legacyCollective : [], individualGoals:Array.isArray(legacyIndividual) ? legacyIndividual : [],
       rules:Array.isArray(raw.rules) ? raw.rules : [], pointRules:Array.isArray(raw.pointRules) ? raw.pointRules : [], categories:Array.isArray(raw.categories) ? raw.categories : [],
-      orderActivationRule:{ ...base.orderActivationRule, ...(raw.orderActivationRule || {}) },
+      orderActivationRule:{
+        ...base.orderActivationRule,
+        ...(raw.orderActivationRule || {}),
+        // Campanhas antigas mantêm a semântica que já existia: primeira ativação dentro da campanha.
+        firstPurchaseMode:raw.orderActivationRule?.firstPurchaseMode || (raw.orderActivationRule ? 'campaign_trigger' : base.orderActivationRule.firstPurchaseMode),
+      },
       tieBreaks:Array.isArray(raw.tieBreaks) ? raw.tieBreaks : base.tieBreaks, prizes:Array.isArray(raw.prizes) ? raw.prizes : [],
     };
   }
@@ -687,7 +704,7 @@
     $('[data-action="previous-step"]').style.visibility = app.wizard.step === 0 ? 'hidden' : 'visible';
     $('[data-action="next-step"]').style.display = app.wizard.step === STEPS.length - 1 ? 'none' : 'inline-flex';
     $('[data-action="save-campaign"]').style.display = app.wizard.step === STEPS.length - 1 ? 'inline-flex' : 'none';
-    const renderers = [renderGeneralStep, renderRulesStep, renderProductsStep, renderFinalStep];
+    const renderers = [renderGeneralStep, renderRulesStep, renderProductsStep, renderBenefitStep, renderFinalStep];
     $('#wizardStep').innerHTML = renderers[app.wizard.step]();
     const suppliers = app.wizard.campaign.suppliers || [];
     $('#modalFootStatus').textContent = suppliers.length ? `${suppliers.length} código(s) de fornecedor selecionado(s)` : 'Selecione ao menos um código de fornecedor.';
@@ -884,10 +901,87 @@
           <div class="category-toolbar"><input id="newCategoryName" placeholder="Nome da nova categoria"><button class="primary-btn" type="button" data-action="add-category"><i data-lucide="plus"></i>Nova categoria</button></div>
           ${campaign.categories.length ? `<div class="category-list">${campaign.categories.map(categoryCard).join('')}</div>` : '<div class="empty-state" style="margin:10px"><h3>Nenhuma categoria</h3><p>Crie uma categoria e arraste produtos para ela.</p></div>'}
         </section>
-      </div>
-      ${activationRulePanel(campaign)}`;
+      </div>`;
   }
 
+
+  function benefitCategorySummary(category, emptyText = 'Nenhuma categoria selecionada') {
+    if (!category) return `<div class="benefit-category-empty">${esc(emptyText)}</div>`;
+    const products = category.products || [];
+    return `<div class="benefit-category-summary">
+      <div><strong>${esc(category.name)}</strong><span>${number(products.length)} produto(s)</span></div>
+      <div class="benefit-product-mini-list">${products.slice(0, 8).map((product) => `<span>${esc(product.name)}</span>`).join('')}${products.length > 8 ? `<small>+${number(products.length - 8)} outros</small>` : ''}</div>
+    </div>`;
+  }
+
+  function haraldFortunataPresetInfo() {
+    const products = productsForCampaign();
+    const supplierHasHarald = (app.wizard?.campaign?.suppliers || []).some((supplier) => Number(supplier.id) === 48 || norm(supplier.name).includes('harald'));
+    if (!supplierHasHarald) return { available:false, trigger:[], benefit:[] };
+    const trigger = products.filter((product) => norm(product.name).includes('fortunata'));
+    const benefit = products.filter((product) => norm(product.name).includes('forneavel') && !norm(product.name).includes('fortunata'));
+    return { available:trigger.length > 0 && benefit.length > 0, trigger, benefit };
+  }
+
+  function applyHaraldFortunataPreset() {
+    if (!app.wizard) return;
+    const preset = haraldFortunataPresetInfo();
+    if (!preset.available) return toast('Não encontrei Fortunata e forneáveis Harald no catálogo carregado.', 'warning');
+
+    const campaign = app.wizard.campaign;
+    const findOrCreate = (name, products) => {
+      let category = campaign.categories.find((item) => norm(item.name) === norm(name));
+      if (!category) {
+        category = { id:uid('category'), name, requiredMix:false, minDistinct:1, pointUnit:'none', pointValue:0, products:[] };
+        campaign.categories.push(category);
+      }
+      category.products = products.map((product) => ({ ...product }));
+      category.requiredMix = false;
+      return category;
+    };
+
+    const triggerCategory = findOrCreate('Fortunata · produto ativador', preset.trigger);
+    const benefitCategory = findOrCreate('Forneáveis Harald · recebem desconto', preset.benefit);
+
+    campaign.salesScopeMode = 'supplier_all';
+    campaign.orderActivationRule = {
+      ...campaign.orderActivationRule,
+      enabled:true,
+      name:'Harald + Fortunata · benefício de primeira compra',
+      baseCategoryId:benefitCategory.id,
+      baseMeasure:'distinct_products',
+      baseMin:1,
+      triggerCategoryId:triggerCategory.id,
+      triggerMeasure:'distinct_products',
+      triggerMin:1,
+      countMode:'first_per_client',
+      firstPurchaseMode:'historical_trigger',
+      discountType:'pending',
+      discountValue:0,
+    };
+
+    renderWizard();
+    toast(`${preset.trigger.length} Fortunata e ${preset.benefit.length} forneáveis configurados.`);
+  }
+
+  function renderBenefitStep() {
+    const campaign = app.wizard.campaign;
+    const rule = campaign.orderActivationRule || {};
+    const preset = haraldFortunataPresetInfo();
+
+    return `<div class="step-head">
+      <div>
+        <h3>Benefício de primeira compra</h3>
+        <p>Configure uma linha que libera desconto e os produtos que recebem o benefício. A apuração identifica cliente por cliente e pode ser exportada.</p>
+      </div>
+      ${preset.available ? `<button type="button" class="secondary-btn preset-benefit-btn" data-action="apply-harald-fortunata"><i data-lucide="wand-sparkles"></i>Preset Harald + Fortunata</button>` : ''}
+    </div>
+    ${preset.available ? `<div class="fortunata-detected">
+      <i data-lucide="scan-search"></i>
+      <div><strong>Catálogo Harald reconhecido</strong><span>Encontrei ${number(preset.trigger.length)} produto(s) Fortunata e ${number(preset.benefit.length)} forneável(is) elegível(is). O preset cria as duas categorias sem limitar o faturamento geral da campanha.</span></div>
+    </div>` : ''}
+    ${activationRulePanel(campaign)}`;
+  }
 
   function activationRulePanel(campaign) {
     const rule = campaign.orderActivationRule || {};
@@ -895,42 +989,117 @@
       `<option value="${esc(category.id)}" ${category.id === selected ? 'selected' : ''}>${esc(category.name)} · ${(category.products || []).length} produto(s)</option>`
     ).join('');
 
-    const selectedBase = campaign.categories.find((category) => category.id === rule.baseCategoryId);
-    const selectedTrigger = campaign.categories.find((category) => category.id === rule.triggerCategoryId);
-    const discountText = rule.discountType === 'percent'
-      ? `${number(rule.discountValue, 2)}%`
-      : rule.discountType === 'fixed' ? money(rule.discountValue) : 'A definir';
+    const benefitCategory = campaign.categories.find((category) => category.id === rule.baseCategoryId);
+    const triggerCategory = campaign.categories.find((category) => category.id === rule.triggerCategoryId);
 
-    return `<section class="activation-rule-card ${rule.enabled ? 'is-enabled' : ''}">
+    const discountText = rule.discountType === 'percent'
+      ? `${number(rule.discountValue, 2)}% sobre os produtos beneficiados`
+      : rule.discountType === 'fixed_per_piece'
+        ? `${money2(rule.discountValue)} por peça beneficiada`
+        : rule.discountType === 'fixed'
+          ? `${money2(rule.discountValue)} por pedido`
+          : 'Valor ainda a definir';
+
+    return `<section class="activation-rule-card first-purchase-rule ${rule.enabled ? 'is-enabled' : ''}">
       <div class="activation-rule-head">
-        <div><span class="eyebrow">Mecânica por pedido</span><h4>Ativação por pedido</h4><p>O pedido precisa atingir uma base e receber uma categoria gatilho para virar uma ativação válida.</p></div>
-        <button type="button" class="${rule.enabled ? 'primary-btn' : 'secondary-btn'}" data-action="toggle-activation-rule"><i data-lucide="${rule.enabled ? 'toggle-right' : 'toggle-left'}"></i>${rule.enabled ? 'Regra ativa' : 'Ativar regra'}</button>
+        <div>
+          <span class="eyebrow">Regra especial</span>
+          <h4>Primeira compra com produto ativador</h4>
+          <p>O cliente recebe desconto nos produtos beneficiados quando inclui o produto ativador no primeiro pedido elegível.</p>
+        </div>
+        <button type="button" class="${rule.enabled ? 'primary-btn' : 'secondary-btn'}" data-action="toggle-activation-rule">
+          <i data-lucide="${rule.enabled ? 'toggle-right' : 'toggle-left'}"></i>${rule.enabled ? 'Benefício ativo' : 'Ativar benefício'}
+        </button>
       </div>
+
       ${rule.enabled ? `<div class="activation-rule-body">
-        <div class="activation-flow">
-          <div class="activation-flow-card base"><span>1 · Pedido base</span><strong>${esc(selectedBase?.name || 'Escolha uma categoria')}</strong><small>Precisa atingir o mínimo configurado.</small></div>
+        <div class="activation-flow benefit-flow">
+          <div class="activation-flow-card trigger">
+            <span>1 · Produto ativador</span>
+            <strong>${esc(triggerCategory?.name || 'Selecione a categoria Fortunata')}</strong>
+            <small>Precisa aparecer no primeiro pedido considerado.</small>
+          </div>
           <i data-lucide="plus"></i>
-          <div class="activation-flow-card trigger"><span>2 · Gatilho</span><strong>${esc(selectedTrigger?.name || 'Escolha uma categoria')}</strong><small>Precisa entrar no mesmo pedido.</small></div>
+          <div class="activation-flow-card base">
+            <span>2 · Produtos com benefício</span>
+            <strong>${esc(benefitCategory?.name || 'Selecione os forneáveis')}</strong>
+            <small>São os itens que recebem o desconto no mesmo pedido.</small>
+          </div>
           <i data-lucide="arrow-right"></i>
-          <div class="activation-flow-card success"><span>3 · Resultado</span><strong>Pedido ativado</strong><small>Desconto: ${esc(discountText)}</small></div>
+          <div class="activation-flow-card success">
+            <span>3 · Benefício</span>
+            <strong>${esc(discountText)}</strong>
+            <small>A utilização é registrada por cliente e pedido.</small>
+          </div>
         </div>
-        <div class="activation-config-grid">
-          <label>Nome da mecânica<input data-activation-field="name" value="${esc(rule.name || 'Ativação por pedido')}" placeholder="Ex.: Introdução Fortunata"></label>
-          <label>Categoria base<select data-activation-field="baseCategoryId"><option value="">Selecione</option>${optionHtml(rule.baseCategoryId)}</select></label>
-          <label>Contar a base por<select data-activation-field="baseMeasure"><option value="distinct_products" ${rule.baseMeasure === 'distinct_products' ? 'selected' : ''}>Produtos distintos</option><option value="pieces" ${rule.baseMeasure === 'pieces' ? 'selected' : ''}>Peças / unidades</option></select></label>
-          <label>Mínimo da base<input data-activation-field="baseMin" type="number" min="1" step="1" value="${Number(rule.baseMin) || 5}"></label>
-          <label>Categoria gatilho<select data-activation-field="triggerCategoryId"><option value="">Selecione</option>${optionHtml(rule.triggerCategoryId)}</select></label>
-          <label>Contar gatilho por<select data-activation-field="triggerMeasure"><option value="distinct_products" ${rule.triggerMeasure === 'distinct_products' ? 'selected' : ''}>Produtos distintos</option><option value="pieces" ${rule.triggerMeasure === 'pieces' ? 'selected' : ''}>Peças / unidades</option></select></label>
-          <label>Mínimo do gatilho<input data-activation-field="triggerMin" type="number" min="1" step="1" value="${Number(rule.triggerMin) || 1}"></label>
-          <label>Como contar<select data-activation-field="countMode"><option value="first_per_client" ${rule.countMode === 'first_per_client' ? 'selected' : ''}>Somente 1ª ativação por cliente</option><option value="every_order" ${rule.countMode === 'every_order' ? 'selected' : ''}>Todo pedido qualificado</option></select></label>
-          <label>Tipo de desconto<select data-activation-field="discountType"><option value="pending" ${rule.discountType === 'pending' ? 'selected' : ''}>Valor ainda a definir</option><option value="percent" ${rule.discountType === 'percent' ? 'selected' : ''}>Percentual</option><option value="fixed" ${rule.discountType === 'fixed' ? 'selected' : ''}>Valor fixo em R$</option></select></label>
-          <label>Valor do desconto<input data-activation-field="discountValue" type="number" min="0" step="0.01" value="${Number(rule.discountValue) || 0}" ${rule.discountType === 'pending' ? 'disabled' : ''}></label>
+
+        <div class="activation-config-grid benefit-config-grid">
+          <label class="wide-field">Nome da mecânica
+            <input data-activation-field="name" value="${esc(rule.name || 'Benefício de primeira compra')}" placeholder="Ex.: Harald + Fortunata">
+          </label>
+
+          <label>Produto/linha que libera o benefício
+            <select data-activation-field="triggerCategoryId"><option value="">Selecione</option>${optionHtml(rule.triggerCategoryId)}</select>
+          </label>
+
+          <label>Mínimo do ativador
+            <input data-activation-field="triggerMin" type="number" min="1" step="1" value="${Number(rule.triggerMin) || 1}">
+          </label>
+
+          <label>Produtos que recebem desconto
+            <select data-activation-field="baseCategoryId"><option value="">Selecione</option>${optionHtml(rule.baseCategoryId)}</select>
+          </label>
+
+          <label>Mínimo de produtos beneficiados
+            <input data-activation-field="baseMin" type="number" min="1" step="1" value="${Number(rule.baseMin) || 1}">
+          </label>
+
+          <label>O que significa “primeira compra”
+            <select data-activation-field="firstPurchaseMode">
+              <option value="historical_trigger" ${rule.firstPurchaseMode === 'historical_trigger' ? 'selected' : ''}>Cliente nunca comprou o ativador antes da campanha</option>
+              <option value="campaign_trigger" ${rule.firstPurchaseMode === 'campaign_trigger' ? 'selected' : ''}>Primeira compra do ativador dentro da campanha</option>
+            </select>
+          </label>
+
+          <label>Tipo de desconto
+            <select data-activation-field="discountType">
+              <option value="pending" ${rule.discountType === 'pending' ? 'selected' : ''}>Valor ainda a definir</option>
+              <option value="percent" ${rule.discountType === 'percent' ? 'selected' : ''}>Percentual sobre itens beneficiados</option>
+              <option value="fixed_per_piece" ${rule.discountType === 'fixed_per_piece' ? 'selected' : ''}>R$ por peça beneficiada</option>
+              <option value="fixed" ${rule.discountType === 'fixed' ? 'selected' : ''}>R$ fixo no pedido</option>
+            </select>
+          </label>
+
+          <label>Valor do desconto
+            <input data-activation-field="discountValue" type="number" min="0" step="0.01" value="${Number(rule.discountValue) || 0}" ${rule.discountType === 'pending' ? 'disabled' : ''}>
+          </label>
         </div>
-        <div class="activation-explainer"><i data-lucide="lightbulb"></i><div><strong>Exemplo</strong><p>5 produtos distintos da categoria base + 1 produto da categoria gatilho no mesmo pedido = pedido ativado.</p><small>O módulo mede a elegibilidade. Não aplica desconto automaticamente no ERP.</small></div></div>
-      </div>` : `<div class="activation-rule-preview"><i data-lucide="shopping-basket"></i><span><strong>Útil para introdução de novas linhas</strong><small>Ex.: 5 itens Harald + 1 Fortunata no mesmo pedido = ativação.</small></span></div>`}
+
+        <div class="benefit-rule-columns">
+          <div>
+            <span class="eyebrow">Ativador</span>
+            ${benefitCategorySummary(triggerCategory, 'Escolha a categoria com Fortunata')}
+          </div>
+          <div>
+            <span class="eyebrow">Recebem desconto</span>
+            ${benefitCategorySummary(benefitCategory, 'Escolha a categoria com os forneáveis')}
+          </div>
+        </div>
+
+        <div class="activation-explainer">
+          <i data-lucide="badge-percent"></i>
+          <div>
+            <strong>Regra operacional</strong>
+            <p>O sistema olha a primeira compra do produto ativador por cliente. Se esse pedido também contiver produtos beneficiados, registra o benefício como utilizado e calcula o desconto quando o valor estiver configurado.</p>
+            <small>Se a primeira compra do ativador ocorrer sem nenhum produto beneficiado, o relatório marca isso separadamente. O PMG Connect apura e exporta; ele não altera preço no ERP.</small>
+          </div>
+        </div>
+      </div>` : `<div class="activation-rule-preview">
+        <i data-lucide="badge-percent"></i>
+        <span><strong>Exemplo Harald + Fortunata</strong><small>1 Fortunata no primeiro pedido + forneáveis elegíveis = desconto nos forneáveis daquele pedido. Depois disso, o benefício fica consumido para o cliente.</small></span>
+      </div>`}
     </section>`;
   }
-
   function productCard(product) {
     const selected = app.wizard.selectedProducts.has(Number(product.id));
     const visual = app.imageCache.get(String(product.id));
@@ -1007,8 +1176,9 @@
       campaign.topN = Math.max(1, Number($('#topN')?.value) || 1);
       syncGoals(); syncPointRules(); syncEligibilityRules();
     }
-    if (app.wizard.step === 2) { syncCategories(); syncActivationRule(); }
-    if (app.wizard.step === 3) syncFinalStep();
+    if (app.wizard.step === 2) syncCategories();
+    if (app.wizard.step === 3) syncActivationRule();
+    if (app.wizard.step === 4) syncFinalStep();
   }
 
   function syncGoals() {
@@ -1051,6 +1221,9 @@
     for (const field of $$('[data-activation-field]')) {
       const name = field.dataset.activationField;
       rule[name] = ['baseMin','triggerMin','discountValue'].includes(name) ? Number(field.value) || 0 : field.value;
+      rule.countMode = 'first_per_client';
+      rule.baseMeasure = rule.baseMeasure || 'distinct_products';
+      rule.triggerMeasure = rule.triggerMeasure || 'distinct_products';
     }
   }
   function syncFinalStep() {
@@ -1079,16 +1252,20 @@
       const scopedProducts = [...new Set((campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite))];
       if (!scopedProducts.length) return 'No escopo “Somente produtos das categorias”, adicione pelo menos um produto.';
     }
-    if (step === 2 && campaign.orderActivationRule?.enabled) {
+    if (step === 3 && campaign.orderActivationRule?.enabled) {
       const rule = campaign.orderActivationRule;
-      const base = campaign.categories.find((category) => category.id === rule.baseCategoryId);
+      const benefit = campaign.categories.find((category) => category.id === rule.baseCategoryId);
       const trigger = campaign.categories.find((category) => category.id === rule.triggerCategoryId);
-      if (!base) return 'Na ativação por pedido, selecione a categoria base.';
-      if (!trigger) return 'Na ativação por pedido, selecione a categoria gatilho.';
-      if (base.id === trigger.id) return 'Categoria base e categoria gatilho precisam ser diferentes.';
-      if (!(base.products || []).length) return 'A categoria base da ativação precisa ter produtos.';
-      if (!(trigger.products || []).length) return 'A categoria gatilho da ativação precisa ter produtos.';
-      if (Number(rule.baseMin) <= 0 || Number(rule.triggerMin) <= 0) return 'Os mínimos da ativação precisam ser maiores que zero.';
+      if (!trigger) return 'No benefício de primeira compra, selecione o produto/linha que libera o benefício.';
+      if (!benefit) return 'No benefício de primeira compra, selecione os produtos que recebem desconto.';
+      if (benefit.id === trigger.id) return 'A categoria ativadora e a categoria beneficiada precisam ser diferentes.';
+      if (!(trigger.products || []).length) return 'A categoria ativadora precisa ter pelo menos um produto.';
+      if (!(benefit.products || []).length) return 'A categoria beneficiada precisa ter pelo menos um produto.';
+      const triggerIds = new Set((trigger.products || []).map((product) => Number(product.id)));
+      const overlap = (benefit.products || []).filter((product) => triggerIds.has(Number(product.id)));
+      if (overlap.length) return 'O mesmo produto não pode ser ativador e beneficiado ao mesmo tempo.';
+      if (Number(rule.baseMin) <= 0 || Number(rule.triggerMin) <= 0) return 'Os mínimos da regra precisam ser maiores que zero.';
+      if (!['historical_trigger','campaign_trigger'].includes(rule.firstPurchaseMode)) return 'Defina como o sistema deve interpretar a primeira compra.';
     }
     return '';
   }
@@ -1281,16 +1458,16 @@
     return new Set(relevant.map((line) => Number(line.productId))).size;
   }
 
-  function activationRuleStats(campaign, orderLines = []) {
+  function activationRuleStats(campaign, orderLines = [], historicalTriggerClients = new Set()) {
     const rule = campaign.orderActivationRule || {};
-    if (!rule.enabled) return { enabled:false, clients:0, orders:0, opportunities:0, qualifyingOrders:0, withoutTrigger:0, rate:0, clientIds:[], examples:[] };
+    if (!rule.enabled) return { enabled:false, clients:0, orders:0, opportunities:0, qualifyingOrders:0, withoutTrigger:0, withoutBenefit:0, rate:0, clientIds:[], examples:[] };
 
-    const baseCategory = (campaign.categories || []).find((category) => category.id === rule.baseCategoryId);
+    const benefitCategory = (campaign.categories || []).find((category) => category.id === rule.baseCategoryId);
     const triggerCategory = (campaign.categories || []).find((category) => category.id === rule.triggerCategoryId);
-    const baseIds = new Set((baseCategory?.products || []).map((product) => Number(product.id)));
+    const benefitIds = new Set((benefitCategory?.products || []).map((product) => Number(product.id)));
     const triggerIds = new Set((triggerCategory?.products || []).map((product) => Number(product.id)));
 
-    if (!baseIds.size || !triggerIds.size) return { enabled:true, clients:0, orders:0, opportunities:0, qualifyingOrders:0, withoutTrigger:0, rate:0, clientIds:[], examples:[] };
+    if (!benefitIds.size || !triggerIds.size) return { enabled:true, clients:0, orders:0, opportunities:0, qualifyingOrders:0, withoutTrigger:0, withoutBenefit:0, rate:0, clientIds:[], examples:[] };
 
     const orders = new Map();
     for (const line of orderLines || []) {
@@ -1300,36 +1477,58 @@
     }
 
     const sorted = [...orders.values()].sort((a,b) => String(a.orderDate).localeCompare(String(b.orderDate)) || String(a.orderId).localeCompare(String(b.orderId)));
+    const processedClients = new Set();
     const activatedClients = new Set();
     const examples = [];
-    let opportunities = 0, qualifyingOrders = 0, activationOrders = 0, withoutTrigger = 0;
+    let opportunities = 0, activationOrders = 0, withoutBenefit = 0;
 
     for (const order of sorted) {
-      if (rule.countMode === 'first_per_client' && activatedClients.has(order.clientId)) continue;
-      const baseValue = activationMeasure(order, baseIds, rule.baseMeasure);
-      if (baseValue < Math.max(1, Number(rule.baseMin) || 1)) continue;
+      if (processedClients.has(order.clientId)) continue;
+      if (rule.firstPurchaseMode === 'historical_trigger' && historicalTriggerClients.has(String(order.clientId))) {
+        processedClients.add(order.clientId);
+        continue;
+      }
 
+      const triggerValue = activationMeasure(order, triggerIds, rule.triggerMeasure || 'distinct_products');
+      if (triggerValue < Math.max(1, Number(rule.triggerMin) || 1)) continue;
+
+      // A primeira compra do ativador consome a oportunidade deste cliente.
+      processedClients.add(order.clientId);
       opportunities += 1;
-      const triggerValue = activationMeasure(order, triggerIds, rule.triggerMeasure);
-      if (triggerValue < Math.max(1, Number(rule.triggerMin) || 1)) { withoutTrigger += 1; continue; }
 
-      qualifyingOrders += 1;
+      const benefitValue = activationMeasure(order, benefitIds, rule.baseMeasure || 'distinct_products');
+      if (benefitValue < Math.max(1, Number(rule.baseMin) || 1)) {
+        withoutBenefit += 1;
+        continue;
+      }
+
       activationOrders += 1;
       activatedClients.add(order.clientId);
-      if (examples.length < 8) examples.push({ orderId:order.orderId, clientId:order.clientId, orderDate:order.orderDate, baseValue, triggerValue });
+      if (examples.length < 8) examples.push({ orderId:order.orderId, clientId:order.clientId, orderDate:order.orderDate, baseValue:benefitValue, triggerValue });
     }
 
     return {
-      enabled:true, clients:activatedClients.size, orders:activationOrders, opportunities, qualifyingOrders, withoutTrigger,
+      enabled:true,
+      clients:activatedClients.size,
+      orders:activationOrders,
+      opportunities,
+      qualifyingOrders:activationOrders,
+      withoutTrigger:0,
+      withoutBenefit,
       rate:opportunities ? (activationOrders / opportunities) * 100 : 0,
-      clientIds:[...activatedClients], examples,
-      baseCategoryName:baseCategory?.name || 'Base', triggerCategoryName:triggerCategory?.name || 'Gatilho',
-      baseMeasure:rule.baseMeasure, triggerMeasure:rule.triggerMeasure,
-      baseMin:Number(rule.baseMin) || 1, triggerMin:Number(rule.triggerMin) || 1, countMode:rule.countMode,
+      clientIds:[...activatedClients],
+      examples,
+      baseCategoryName:benefitCategory?.name || 'Produtos com desconto',
+      triggerCategoryName:triggerCategory?.name || 'Produto ativador',
+      baseMeasure:rule.baseMeasure || 'distinct_products',
+      triggerMeasure:rule.triggerMeasure || 'distinct_products',
+      baseMin:Number(rule.baseMin) || 1,
+      triggerMin:Number(rule.triggerMin) || 1,
+      countMode:'first_per_client',
     };
   }
 
-  function sellerMetrics(campaign, seller) {
+  function sellerMetrics(campaign, seller, historicalTriggerClients = new Set()) {
     const currentMix = categoryStats(campaign.categories, seller.current.rows);
     const previousMix = categoryStats(campaign.categories, seller.previous.rows);
 
@@ -1344,8 +1543,8 @@
     const positivity = currentCustomerIds.size - previousCustomerIds.size;
     const previousPositivity = 0;
 
-    const currentActivation = activationRuleStats(campaign, seller.current.orderLines);
-    const previousActivation = activationRuleStats(campaign, seller.previous.orderLines);
+    const currentActivation = activationRuleStats(campaign, seller.current.orderLines, historicalTriggerClients);
+    const previousActivation = activationRuleStats(campaign, seller.previous.orderLines, historicalTriggerClients);
     const currentBasePoints = categoryPoints(campaign.categories, seller.current.rows);
     const previousBasePoints = categoryPoints(campaign.categories, seller.previous.rows);
     const currentRaw = {
@@ -1458,7 +1657,8 @@
       seller.previous.orders = orderMap.get(`previous|${seller.name}`) || 0;
     }
 
-    const results = [...sellers.values()].map((seller) => sellerMetrics(campaign, seller));
+    const historicalTriggerClients = new Set((data.historicalTriggerClientIds || []).map((id) => String(id)));
+    const results = [...sellers.values()].map((seller) => sellerMetrics(campaign, seller, historicalTriggerClients));
     for (const item of results) {
       for (const rule of campaign.rules || []) {
         const value = rankMetric(item, rule.metric);
@@ -1610,6 +1810,10 @@
       (campaign.categories || []).filter((category) => activationCategoryIds.has(category.id))
         .flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite)
     )];
+    const activationTriggerProductIds = [...new Set(
+      (campaign.categories || []).find((category) => category.id === activationRule.triggerCategoryId)?.products
+        ?.map((product) => Number(product.id)).filter(Number.isFinite) || []
+    )];
 
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=apuracao`, {
@@ -1628,6 +1832,8 @@
           sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
           orderActivationEnabled:Boolean(activationRule.enabled),
           activationProductIds,
+          activationTriggerProductIds,
+          activationFirstPurchaseMode:activationRule.firstPurchaseMode || 'campaign_trigger',
           forceRefresh:force,
         }),
       });
@@ -1773,18 +1979,19 @@
     const rule = campaign.orderActivationRule || {};
     const data = item.activationAudit || {};
     const measureLabel = (measure) => measure === 'pieces' ? 'peças/unidades' : 'produtos distintos';
+
     const lines = [
-      `${rule.name || 'Ativação por pedido'}`,
-      `Base: ${data.baseCategoryName || '—'} · mínimo ${number(data.baseMin || rule.baseMin)} ${measureLabel(data.baseMeasure || rule.baseMeasure)}`,
-      `Gatilho: ${data.triggerCategoryName || '—'} · mínimo ${number(data.triggerMin || rule.triggerMin)} ${measureLabel(data.triggerMeasure || rule.triggerMeasure)}`,
-      `Pedidos-oportunidade: ${number(data.opportunities)}`,
-      `Pedidos ativados: ${number(data.orders)}`,
-      `Sem gatilho: ${number(data.withoutTrigger)}`,
-      `Clientes ativados: ${number(data.clients)}`,
-      `Taxa: ${number(data.rate,1)}%`,
-      `Contagem: ${rule.countMode === 'first_per_client' ? 'somente a primeira ativação de cada cliente na campanha' : 'todos os pedidos qualificados'}`,
+      `${rule.name || 'Benefício de primeira compra'}`,
+      `Ativador: ${data.triggerCategoryName || '—'} · mínimo ${number(data.triggerMin || rule.triggerMin)} ${measureLabel(data.triggerMeasure || rule.triggerMeasure)}`,
+      `Produtos com desconto: ${data.baseCategoryName || '—'} · mínimo ${number(data.baseMin || rule.baseMin)} ${measureLabel(data.baseMeasure || rule.baseMeasure)}`,
+      `Primeiras compras do ativador: ${number(data.opportunities)}`,
+      `Benefícios utilizados: ${number(data.orders)}`,
+      `Primeira compra sem item beneficiado: ${number(data.withoutBenefit)}`,
+      `Taxa de aproveitamento: ${number(data.rate,1)}%`,
       `Período: ${dateBR(audit.currentStart)} a ${dateBR(audit.currentLast)}`,
+      `Para a lista cliente a cliente, abra “Benefícios” na campanha.`,
     ];
+
     if (data.examples?.length) lines.push(`Exemplos: ${data.examples.map((row) => `pedido #${row.orderId} / cliente ${row.clientId}`).join(' · ')}`);
     return lines;
   }
@@ -2108,6 +2315,257 @@
     }
   }
 
+
+  function benefitRuleProducts(campaign) {
+    const rule = campaign.orderActivationRule || {};
+    const triggerCategory = (campaign.categories || []).find((category) => category.id === rule.triggerCategoryId);
+    const benefitCategory = (campaign.categories || []).find((category) => category.id === rule.baseCategoryId);
+    return {
+      triggerCategory,
+      benefitCategory,
+      triggerProducts:(triggerCategory?.products || []).map((product) => ({ id:Number(product.id), name:product.name })),
+      benefitProducts:(benefitCategory?.products || []).map((product) => ({ id:Number(product.id), name:product.name })),
+    };
+  }
+
+  function benefitStatusMeta(status) {
+    return ({
+      AVAILABLE:{ label:'Direito disponível', className:'available', icon:'circle-check-big' },
+      USED:{ label:'Benefício utilizado', className:'used', icon:'badge-check' },
+      INELIGIBLE_PRIOR_PURCHASE:{ label:'Sem direito · compra anterior', className:'blocked', icon:'ban' },
+      CONSUMED_WITHOUT_BENEFIT:{ label:'1ª compra sem item beneficiado', className:'warning', icon:'triangle-alert' },
+    })[status] || { label:status || '—', className:'', icon:'circle-help' };
+  }
+
+  function benefitDiscountLabel(config = {}) {
+    if (config.discountType === 'percent') return `${number(config.discountValue,2)}% sobre produtos beneficiados`;
+    if (config.discountType === 'fixed_per_piece') return `${money2(config.discountValue)} por peça`;
+    if (config.discountType === 'fixed') return `${money2(config.discountValue)} por pedido`;
+    return 'Valor a definir';
+  }
+
+  function benefitRowsFiltered() {
+    const report = app.benefitReport;
+    if (!report?.data?.clients) return [];
+    const query = norm(report.search || '');
+    const status = report.status || 'all';
+    return report.data.clients.filter((row) => {
+      if (status !== 'all' && row.status !== status) return false;
+      if (!query) return true;
+      return norm(`${row.clientId} ${row.clientName} ${row.tradeName} ${row.document} ${row.seller} ${row.city} ${row.uf} ${row.firstOrderId}`).includes(query);
+    });
+  }
+
+  function benefitReportHtml(campaign, data) {
+    const summary = data.summary || {};
+    const rows = benefitRowsFiltered();
+    const displayed = rows.slice(0, 350);
+    const config = data.configuration || {};
+    const statusOptions = [
+      ['all','Todos'],
+      ['AVAILABLE','Direito disponível'],
+      ['USED','Benefício utilizado'],
+      ['INELIGIBLE_PRIOR_PURCHASE','Sem direito · compra anterior'],
+      ['CONSUMED_WITHOUT_BENEFIT','1ª compra sem item beneficiado'],
+    ];
+
+    return `<div class="benefit-report-shell">
+      <div class="benefit-report-intro">
+        <div>
+          <span class="eyebrow">Controle operacional</span>
+          <h3>${esc(config.name || 'Benefício de primeira compra')}</h3>
+          <p>${esc(config.triggerCategoryName || 'Produto ativador')} libera desconto em ${esc(config.benefitCategoryName || 'produtos beneficiados')}. ${config.firstPurchaseMode === 'historical_trigger' ? 'O cliente só tem direito se nunca tiver comprado o ativador antes do início da campanha.' : 'A primeira compra considerada é a primeira dentro da campanha.'}</p>
+        </div>
+        <span class="benefit-discount-chip"><i data-lucide="badge-percent"></i>${esc(benefitDiscountLabel(config))}</span>
+      </div>
+
+      <div class="benefit-summary-grid">
+        <div><span>Clientes ativos analisados</span><strong>${number(summary.totalClients)}</strong></div>
+        <div class="available"><span>Direito disponível</span><strong>${number(summary.available)}</strong></div>
+        <div class="used"><span>Benefício utilizado</span><strong>${number(summary.used)}</strong></div>
+        <div class="blocked"><span>Sem direito por compra anterior</span><strong>${number(summary.ineligiblePrior)}</strong></div>
+        <div class="warning"><span>1ª compra sem item beneficiado</span><strong>${number(summary.consumedWithoutBenefit)}</strong></div>
+        <div><span>Desconto estimado utilizado</span><strong>${config.discountType === 'pending' ? 'A definir' : money2(summary.estimatedDiscountUsed)}</strong></div>
+      </div>
+
+      <div class="benefit-source-line">
+        <span><i data-lucide="database"></i><strong>Fonte:</strong> ${esc(data.source || 'SQL Server')} · dbo.Clientes + dbo.Vendas + dbo.VendasProdutos + dbo.Produtos</span>
+        <span><strong>Período:</strong> ${dateBR(data.periodsUsed?.currentStart)} a ${dateBR(data.periodsUsed?.currentLastInclusive)}</span>
+      </div>
+
+      <div class="benefit-toolbar">
+        <div class="search-field"><i data-lucide="search"></i><input id="benefitSearch" placeholder="Buscar cliente, ID, CNPJ/CPF ou vendedor" value="${esc(app.benefitReport?.search || '')}"></div>
+        <select id="benefitStatusFilter">${statusOptions.map(([value,label]) => `<option value="${value}" ${app.benefitReport?.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
+        <span class="hint">${number(rows.length)} cliente(s) no filtro</span>
+      </div>
+
+      <div class="table-wrap benefit-table-wrap">
+        <table class="benefit-table">
+          <thead><tr>
+            <th>Status</th>
+            <th>Cliente</th>
+            <th>Vendedor</th>
+            <th>Primeira compra do ativador</th>
+            <th>Pedido</th>
+            <th>Produtos beneficiados no pedido</th>
+            <th>Valor beneficiado</th>
+            <th>Desconto</th>
+            <th>Motivo / situação</th>
+          </tr></thead>
+          <tbody>${displayed.map((row) => {
+            const meta = benefitStatusMeta(row.status);
+            return `<tr>
+              <td><span class="benefit-status ${meta.className}"><i data-lucide="${meta.icon}"></i>${esc(meta.label)}</span></td>
+              <td><strong>${esc(row.tradeName || row.clientName || `Cliente ${row.clientId}`)}</strong><small>ID ${esc(row.clientId)}${row.clientName && row.tradeName ? ` · ${esc(row.clientName)}` : ''}${row.document ? ` · ${esc(row.document)}` : ''}</small></td>
+              <td><strong>${esc(sellerIdentity(row.seller).name || row.seller || '—')}</strong>${sellerIdentity(row.seller).code ? `<small>ID ${esc(sellerIdentity(row.seller).code)}</small>` : ''}</td>
+              <td>${row.firstTriggerDate ? `<strong>${dateBR(row.firstTriggerDate)}</strong><small>${row.status === 'INELIGIBLE_PRIOR_PURCHASE' ? 'antes da campanha' : 'durante a campanha'}</small>` : '<span class="muted-cell">Ainda não comprou</span>'}</td>
+              <td>${row.firstOrderId ? `<strong>#${esc(row.firstOrderId)}</strong>` : '—'}</td>
+              <td>${row.benefitLines?.length ? `<div class="benefit-lines">${row.benefitLines.slice(0,4).map((line) => `<span>${esc(line.productName)} <b>× ${number(line.pieces,2)}</b></span>`).join('')}${row.benefitLines.length > 4 ? `<small>+${row.benefitLines.length - 4} item(ns)</small>` : ''}</div>` : '<span class="muted-cell">Nenhum</span>'}</td>
+              <td>${row.benefitRevenue ? `<strong>${money2(row.benefitRevenue)}</strong><small>${number(row.benefitKg,2)} KG · ${number(row.benefitPieces,2)} peças</small>` : '—'}</td>
+              <td>${config.discountType === 'pending' ? '<span class="muted-cell">A definir</span>' : row.status === 'USED' ? `<strong>${money2(row.estimatedDiscount)}</strong>` : '—'}</td>
+              <td><small class="benefit-reason">${esc(row.reason || '')}</small></td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="9">Nenhum cliente encontrado neste filtro.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ${rows.length > displayed.length ? `<div class="benefit-limit-note">A tela mostra os primeiros ${number(displayed.length)} resultados para continuar leve. A exportação inclui todos os ${number(rows.length)} clientes filtrados.</div>` : ''}
+    </div>`;
+  }
+
+  function renderBenefitReport() {
+    if (!app.benefitReport?.campaign || !app.benefitReport?.data) return;
+    $('#benefitReportBody').innerHTML = benefitReportHtml(app.benefitReport.campaign, app.benefitReport.data);
+    icons($('#benefitReportBody'));
+  }
+
+  async function openBenefitReport(campaignId, { force = false } = {}) {
+    const campaign = normalizeCampaign(await DB.get('campanhas', campaignId));
+    if (!campaign?.id) return;
+    if (!campaign.orderActivationRule?.enabled) return toast('Esta campanha não possui benefício de primeira compra ativo.', 'warning');
+
+    const products = benefitRuleProducts(campaign);
+    if (!products.triggerProducts.length || !products.benefitProducts.length) {
+      return toast('Configure os produtos ativadores e beneficiados antes de abrir o relatório.', 'warning');
+    }
+
+    $('#benefitBackdrop').hidden = false;
+    document.body.style.overflow = 'hidden';
+    $('#benefitReportTitle').textContent = campaign.name;
+    $('#benefitReportBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Montando lista de benefícios</h3><p>Conferindo clientes, primeira compra do ativador e produtos beneficiados diretamente no SQL.</p></div></div>`;
+
+    const rule = campaign.orderActivationRule;
+    const periods = calculatePeriods(campaign.start);
+
+    try {
+      const data = await api(`${SQL_ENDPOINT}?recurso=beneficio-primeira-compra`, {
+        method:'POST',
+        force,
+        timeout:120000,
+        body:JSON.stringify({
+          campaignStart:periods.currentStart,
+          asOfDate:inputDate(new Date()),
+          sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
+          participantMode:campaign.participantMode,
+          triggerProductIds:products.triggerProducts.map((product) => product.id),
+          benefitProductIds:products.benefitProducts.map((product) => product.id),
+          triggerMin:Number(rule.triggerMin) || 1,
+          triggerMeasure:rule.triggerMeasure || 'distinct_products',
+          benefitMin:Number(rule.baseMin) || 1,
+          benefitMeasure:rule.baseMeasure || 'distinct_products',
+          firstPurchaseMode:rule.firstPurchaseMode || 'campaign_trigger',
+          discountType:rule.discountType || 'pending',
+          discountValue:Number(rule.discountValue) || 0,
+          ruleName:rule.name || 'Benefício de primeira compra',
+          triggerCategoryName:products.triggerCategory?.name || 'Produto ativador',
+          benefitCategoryName:products.benefitCategory?.name || 'Produtos beneficiados',
+          forceRefresh:force,
+        }),
+      });
+
+      app.benefitReport = { campaignId, campaign, data, search:'', status:'all' };
+      renderBenefitReport();
+    } catch (error) {
+      $('#benefitReportBody').innerHTML = `<div class="context-error"><strong>Não foi possível montar o relatório de benefícios.</strong><br>${esc(error.message)}${error.hint ? `<br>${esc(error.hint)}` : ''}</div>`;
+    }
+  }
+
+  function closeBenefitReport() {
+    $('#benefitBackdrop').hidden = true;
+    app.benefitReport = null;
+    if ($('#drawerBackdrop').hidden && $('#modalBackdrop').hidden && $('#sellerAuditBackdrop').hidden) document.body.style.overflow = '';
+  }
+
+  function benefitCsvRows() {
+    const report = app.benefitReport;
+    if (!report?.data) return [];
+    const config = report.data.configuration || {};
+    const rows = benefitRowsFiltered();
+    const targetList = (config.benefitProducts || []).map((product) => `${product.id} - ${product.name}`).join(' | ');
+
+    return rows.map((row) => ({
+      Status:benefitStatusMeta(row.status).label,
+      'Tem direito agora':row.status === 'AVAILABLE' ? 'SIM' : 'NÃO',
+      'ID Cliente':row.clientId,
+      Cliente:row.clientName || '',
+      'Nome Fantasia':row.tradeName || '',
+      'CNPJ/CPF':row.document || '',
+      Vendedor:row.seller || '',
+      Cidade:row.city || '',
+      UF:row.uf || '',
+      'Primeira compra do ativador':row.firstTriggerDate ? dateBR(row.firstTriggerDate) : '',
+      'Pedido da primeira compra':row.firstOrderId || '',
+      'Produtos ativadores no pedido':(row.triggerLines || []).map((line) => `${line.productId} - ${line.productName} x ${number(line.pieces,2)}`).join(' | '),
+      'Produtos beneficiados no pedido':(row.benefitLines || []).map((line) => `${line.productId} - ${line.productName} x ${number(line.pieces,2)}`).join(' | '),
+      'Peças beneficiadas':number(row.benefitPieces || 0, 2),
+      'KG beneficiado':number(row.benefitKg || 0, 2),
+      'Valor beneficiado':number(row.benefitRevenue || 0, 2),
+      'Regra de desconto':benefitDiscountLabel(config),
+      'Desconto estimado':config.discountType === 'pending' ? '' : number(row.estimatedDiscount || 0, 2),
+      'Produtos aos quais tem direito':targetList,
+      Motivo:row.reason || '',
+    }));
+  }
+
+  function csvCell(value) {
+    const raw = String(value ?? '').replace(/\r?\n/g, ' ').replace(/"/g, '""');
+    return `"${raw}"`;
+  }
+
+  function benefitCsvText() {
+    const rows = benefitCsvRows();
+    if (!rows.length) return '';
+    const headers = Object.keys(rows[0]);
+    return [headers.map(csvCell).join(';'), ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(';'))].join('\r\n');
+  }
+
+  function exportBenefitCsv() {
+    const text = benefitCsvText();
+    if (!text) return toast('Não há clientes neste filtro para exportar.', 'warning');
+    const campaign = app.benefitReport?.campaign;
+    const blob = new Blob([`\uFEFF${text}`], { type:'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `beneficios-${String(campaign?.name || 'campanha').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase()}-${inputDate(new Date())}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Relatório CSV exportado.');
+  }
+
+  async function copyBenefitCsv() {
+    const text = benefitCsvText();
+    if (!text) return toast('Não há clientes neste filtro para copiar.', 'warning');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Lista de benefícios copiada.');
+    } catch (_) {
+      toast('Não foi possível copiar a lista.', 'error');
+    }
+  }
+
+
   function performanceHtml(campaign, result, data) {
     const summary = result.summary;
     const used = data.periodsUsed || {};
@@ -2157,8 +2615,8 @@
       ${performanceMeta('Clientes', number(summary.customers), `Anterior ${number(summary.previousCustomers)} · ${pct(growth(summary.customers, summary.previousCustomers))}`)}
       ${performanceMeta('Positivação', `${summary.positivity >= 0 ? '+' : ''}${number(summary.positivity)}`, `${number(summary.customers)} atuais − ${number(summary.previousCustomers)} anteriores`)}
       ${performanceMeta('Pontos', number(summary.points,1), 'total da campanha')}
-      ${campaign.orderActivationRule?.enabled ? performanceMeta('Ativações', number(summary.activationClients), `${number(summary.activationOrders)} pedido(s) ativado(s)`) : ''}
-      ${campaign.orderActivationRule?.enabled ? performanceMeta('Taxa de ativação', `${number(summary.activationRate,1)}%`, 'ativados ÷ oportunidades') : ''}
+      ${campaign.orderActivationRule?.enabled ? performanceMeta('Benefícios utilizados', number(summary.activationClients), `${number(summary.activationOrders)} pedido(s) com benefício`) : ''}
+      ${campaign.orderActivationRule?.enabled ? performanceMeta('Aproveitamento 1ª compra', `${number(summary.activationRate,1)}%`, 'benefícios usados ÷ primeiras compras do ativador') : ''}
       ${performanceMeta('Elegíveis', number(summary.eligible), `${summary.classified} classificado(s)`)}
     </div>
 
@@ -2194,7 +2652,7 @@
             <th>${auditHeader('Anterior', ['Clientes únicos no período anterior PMG.'])}</th>
             <th>${auditHeader('Positivação', ['Positivação líquida = clientes atuais − clientes anteriores.', 'O hover também mostra novos, recorrentes e perdidos.'])}</th>
             <th>${auditHeader('Mix', ['Percentual de categorias obrigatórias cumpridas pelo vendedor.'])}</th>
-            ${campaign.orderActivationRule?.enabled ? `<th>${auditHeader('Ativações', ['Clientes ativados pela regra de pedido combinado.'])}</th><th>${auditHeader('Taxa ativação', ['Pedidos ativados ÷ pedidos-oportunidade × 100.'])}</th>` : ''}
+            ${campaign.orderActivationRule?.enabled ? `<th>${auditHeader('Benefícios', ['Clientes cuja primeira compra do ativador também continha produto beneficiado.'])}</th><th>${auditHeader('Aproveitamento', ['Benefícios usados ÷ primeiras compras do ativador × 100.'])}</th>` : ''}
             <th>${auditHeader('Pontos', ['Pontos de categorias + regras de desempenho configuradas na campanha.'])}</th>
             <th>Situação / meta individual</th>
           </tr></thead>
@@ -2311,6 +2769,7 @@
     if (event.target.id === 'campaignSearch') { app.campaignSearch = event.target.value; renderCampaigns(); $('#campaignSearch')?.focus(); }
     if (event.target.id === 'representativeSearch') { app.representativeSearch = event.target.value; renderRepresentatives(); $('#representativeSearch')?.focus(); }
     if (event.target.id === 'productPageSearch') { app.productSearch = event.target.value; renderProducts(); $('#productPageSearch')?.focus(); }
+    if (event.target.id === 'benefitSearch' && app.benefitReport) { app.benefitReport.search = event.target.value; renderBenefitReport(); $('#benefitSearch')?.focus(); }
     if (event.target.id === 'supplierSearch') { clearTimeout(supplierTimer); supplierTimer = setTimeout(() => renderSupplierResults(event.target.value), 80); }
     if (event.target.id === 'campaignStart') {
       app.wizard.campaign.start = $('#campaignStart')?.value || app.wizard.campaign.start;
@@ -2355,6 +2814,7 @@
     if (event.target.matches('[data-goal-field="mode"]')) renderWizard();
     if (event.target.matches('[data-point-field="mode"]')) renderWizard();
     if (event.target.matches('[data-activation-field="discountType"]')) { syncActivationRule(); renderWizard(); }
+    if (event.target.id === 'benefitStatusFilter' && app.benefitReport) { app.benefitReport.status = event.target.value; renderBenefitReport(); }
   });
 
   document.addEventListener('click', async (event) => {
@@ -2445,6 +2905,7 @@
       renderWizard();
       return;
     }
+    if (action === 'apply-harald-fortunata') { applyHaraldFortunataPreset(); return; }
 
     if (action === 'add-category') {
       const name = $('#newCategoryName')?.value.trim();
@@ -2477,6 +2938,11 @@
     if (action === 'add-prize') { app.wizard.campaign.prizes.push({ position:app.wizard.campaign.prizes.length + 1, type:'money', description:'' }); renderWizard(); return; }
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
     if (action === 'performance') return openPerformance(node.dataset.id);
+    if (action === 'benefit-report') return openBenefitReport(node.dataset.id);
+    if (action === 'close-benefit-report') { closeBenefitReport(); return; }
+    if (action === 'refresh-benefit-report') return openBenefitReport(node.dataset.id || app.benefitReport?.campaignId, { force:true });
+    if (action === 'export-benefit-csv') { exportBenefitCsv(); return; }
+    if (action === 'copy-benefit-csv') return copyBenefitCsv();
     if (action === 'retry-performance') { return openPerformance(node.dataset.id, { force:true }); }
     if (action === 'consistency-diagnostic') { return runConsistencyDiagnostic(node.dataset.id); }
     if (action === 'audit-seller') return openSellerAudit(node.dataset.campaignId, node.dataset.seller);
@@ -2511,7 +2977,12 @@
 
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('#globalSearch')?.focus(); }
-    if (event.key === 'Escape') { if (!$('#sellerAuditBackdrop').hidden) closeSellerAudit(); else if (!$('#modalBackdrop').hidden) closeWizard(); else if (!$('#drawerBackdrop').hidden) closePerformance(); }
+    if (event.key === 'Escape') {
+      if (!$('#benefitBackdrop').hidden) closeBenefitReport();
+      else if (!$('#sellerAuditBackdrop').hidden) closeSellerAudit();
+      else if (!$('#modalBackdrop').hidden) closeWizard();
+      else if (!$('#drawerBackdrop').hidden) closePerformance();
+    }
   });
 
   $('#globalSearch')?.addEventListener('input', (event) => {

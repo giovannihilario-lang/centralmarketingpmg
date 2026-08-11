@@ -472,3 +472,101 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
 }
 .collective-base-banner strong{display:block;font-size:12.5px;margin-bottom:2px}
 .collective-base-banner span{display:block;color:var(--muted);font-size:10.8px;line-height:1.45}
+
+
+/* V5.9 — Benefício de primeira compra / Fortunata */
+.preset-benefit-btn{align-self:flex-start}
+.fortunata-detected{
+  display:flex;gap:11px;align-items:flex-start;margin-bottom:14px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--brand) 26%,var(--line));
+  border-radius:13px;background:color-mix(in srgb,var(--brand) 5%,var(--surface))
+}
+.fortunata-detected>svg{width:18px;height:18px;color:var(--brand);flex:0 0 auto}
+.fortunata-detected strong{display:block;font-size:12.5px;margin-bottom:2px}
+.fortunata-detected span{display:block;color:var(--muted);font-size:11px;line-height:1.45}
+.benefit-flow .activation-flow-card{min-height:102px}
+.benefit-config-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.benefit-config-grid .wide-field{grid-column:span 2}
+.benefit-rule-columns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.benefit-rule-columns>div{padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.benefit-category-summary>div:first-child{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0 8px}
+.benefit-category-summary>div:first-child strong{font-size:12px}
+.benefit-category-summary>div:first-child span{font-size:10px;color:var(--muted)}
+.benefit-product-mini-list{display:flex;flex-wrap:wrap;gap:5px}
+.benefit-product-mini-list>span{max-width:100%;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:var(--surface);font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.benefit-product-mini-list small{align-self:center;color:var(--muted);font-size:9.5px}
+.benefit-category-empty{margin-top:7px;color:var(--muted);font-size:10.5px}
+.benefit-action-btn{white-space:nowrap}
+
+.benefit-backdrop{
+  position:fixed;inset:0;z-index:1300;background:rgba(15,23,20,.48);backdrop-filter:blur(5px);padding:24px;display:grid;place-items:center
+}
+.benefit-backdrop[hidden]{display:none}
+.benefit-report-modal{
+  width:min(1560px,97vw);height:min(900px,94vh);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line);
+  border-radius:18px;background:var(--surface);box-shadow:0 28px 80px rgba(0,0,0,.24)
+}
+.benefit-report-header{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 18px;border-bottom:1px solid var(--line);background:var(--surface)
+}
+.benefit-report-header h2{margin:2px 0 0;font-size:18px}
+.benefit-report-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.benefit-report-body{flex:1;overflow:auto;padding:16px;background:var(--bg)}
+.benefit-report-shell{max-width:1500px;margin:0 auto}
+.benefit-report-intro{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:15px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)
+}
+.benefit-report-intro h3{margin:3px 0;font-size:17px}
+.benefit-report-intro p{margin:0;max-width:850px;color:var(--muted);font-size:11.5px;line-height:1.5}
+.benefit-discount-chip{
+  display:inline-flex;align-items:center;gap:7px;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--brand) 8%,var(--surface-2));
+  color:var(--brand);font-size:11px;font-weight:800;white-space:nowrap
+}
+.benefit-discount-chip svg{width:16px;height:16px}
+.benefit-summary-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:10px 0}
+.benefit-summary-grid>div{padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.benefit-summary-grid span{display:block;color:var(--muted);font-size:9.5px;line-height:1.3}
+.benefit-summary-grid strong{display:block;margin-top:5px;font-size:16px}
+.benefit-summary-grid .available{border-color:color-mix(in srgb,var(--success,#15803d) 28%,var(--line))}
+.benefit-summary-grid .used{border-color:color-mix(in srgb,var(--brand) 30%,var(--line))}
+.benefit-summary-grid .blocked{border-color:color-mix(in srgb,var(--danger) 28%,var(--line))}
+.benefit-summary-grid .warning{border-color:color-mix(in srgb,var(--warning,#b7791f) 30%,var(--line))}
+.benefit-source-line{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 11px;margin-bottom:10px;border-radius:10px;
+  background:var(--surface-2);color:var(--muted);font-size:10px
+}
+.benefit-source-line span{display:flex;align-items:center;gap:5px}.benefit-source-line svg{width:13px;height:13px}
+.benefit-toolbar{display:grid;grid-template-columns:minmax(260px,1fr) 260px auto;gap:8px;align-items:center;margin-bottom:9px}
+.benefit-toolbar select{min-height:40px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 10px;color:var(--ink);font-size:11px}
+.benefit-table-wrap{background:var(--surface);max-height:none}
+.benefit-table{min-width:1380px}
+.benefit-table th{position:sticky;top:0;z-index:2;background:var(--surface-2)}
+.benefit-table td{vertical-align:top}
+.benefit-table td>strong{font-size:11px}.benefit-table td>small{display:block;color:var(--muted);font-size:9.5px;margin-top:2px;line-height:1.35}
+.benefit-status{display:inline-flex;align-items:center;gap:5px;padding:5px 7px;border-radius:8px;font-size:9.5px;font-weight:800;white-space:nowrap}
+.benefit-status svg{width:13px;height:13px}
+.benefit-status.available{background:color-mix(in srgb,var(--success,#15803d) 9%,var(--surface));color:var(--success,#15803d)}
+.benefit-status.used{background:color-mix(in srgb,var(--brand) 9%,var(--surface));color:var(--brand)}
+.benefit-status.blocked{background:color-mix(in srgb,var(--danger) 8%,var(--surface));color:var(--danger)}
+.benefit-status.warning{background:color-mix(in srgb,var(--warning,#b7791f) 10%,var(--surface));color:var(--warning,#a16207)}
+.benefit-lines{display:grid;gap:3px;min-width:250px}
+.benefit-lines span{font-size:9.5px;line-height:1.3}.benefit-lines b{font-weight:800}.benefit-lines small{color:var(--muted);font-size:9px}
+.muted-cell{color:var(--muted);font-size:10px}.benefit-reason{max-width:300px}
+.benefit-limit-note{padding:9px 11px;color:var(--muted);font-size:10px;text-align:center}
+@media(max-width:1150px){
+  .benefit-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .benefit-config-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .benefit-backdrop{padding:0}
+  .benefit-report-modal{width:100vw;height:100vh;border-radius:0}
+  .benefit-report-header{align-items:flex-start}
+  .benefit-report-actions{justify-content:flex-end}
+  .benefit-report-actions .secondary-btn{font-size:0;padding:9px}
+  .benefit-report-actions .secondary-btn svg{margin:0}
+  .benefit-report-intro{flex-direction:column}
+  .benefit-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .benefit-toolbar{grid-template-columns:1fr}
+  .benefit-rule-columns{grid-template-columns:1fr}
+  .benefit-config-grid{grid-template-columns:1fr}
+  .benefit-config-grid .wide-field{grid-column:auto}
+}

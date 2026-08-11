@@ -19,8 +19,8 @@
     })();
   </script>
   <title>PMG Connect — Campanhas</title>
-  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.8.0">
-  <script defer src="/assets/campanhas-studio-v5.js?v=5.8.0"></script>
+  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.9.0">
+  <script defer src="/assets/campanhas-studio-v5.js?v=5.9.0"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
 </head>
 <body>
@@ -142,6 +142,22 @@
         <button class="icon-btn" type="button" data-action="close-seller-audit" aria-label="Fechar auditoria"><i data-lucide="x"></i></button>
       </header>
       <div class="seller-audit-body" id="sellerAuditBody"></div>
+    </section>
+  </div>
+
+
+  <div class="benefit-backdrop" id="benefitBackdrop" hidden>
+    <section class="benefit-report-modal" role="dialog" aria-modal="true" aria-labelledby="benefitReportTitle">
+      <header class="benefit-report-header">
+        <div><span class="eyebrow">Benefício de primeira compra</span><h2 id="benefitReportTitle">Controle de benefícios</h2></div>
+        <div class="benefit-report-actions">
+          <button class="secondary-btn" type="button" data-action="copy-benefit-csv"><i data-lucide="copy"></i>Copiar</button>
+          <button class="secondary-btn" type="button" data-action="export-benefit-csv"><i data-lucide="file-down"></i>Exportar CSV</button>
+          <button class="secondary-btn" type="button" data-action="refresh-benefit-report"><i data-lucide="refresh-cw"></i>Atualizar</button>
+          <button class="icon-btn" type="button" data-action="close-benefit-report" aria-label="Fechar relatório"><i data-lucide="x"></i></button>
+        </div>
+      </header>
+      <div class="benefit-report-body" id="benefitReportBody"></div>
     </section>
   </div>
 

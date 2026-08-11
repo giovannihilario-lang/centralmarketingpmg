@@ -18,9 +18,11 @@ const CACHE_PATH = path.resolve(__dirname, '../data/campanhas-contexto-v5.json')
 const CACHE_VERSION = 5;
 const CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
 const PERFORMANCE_CACHE_TTL_MS = 2 * 60 * 1000;
+const BENEFIT_CACHE_TTL_MS = 2 * 60 * 1000;
 const performanceCache = new Map();
+const benefitCache = new Map();
 
-function stablePerformanceKey({ currentStart, currentEnd, previousStart, previousEnd, productIds, supplierIds, sellers, activationProductIds = [] }) {
+function stablePerformanceKey({ currentStart, currentEnd, previousStart, previousEnd, productIds, supplierIds, sellers, activationProductIds = [], activationTriggerProductIds = [], activationFirstPurchaseMode = 'campaign_trigger' }) {
   return JSON.stringify({
     currentStart:String(currentStart),
     currentEnd:String(currentEnd),
@@ -30,6 +32,8 @@ function stablePerformanceKey({ currentStart, currentEnd, previousStart, previou
     supplierIds:[...supplierIds].sort((a,b) => a-b),
     sellers:[...sellers].sort((a,b) => a.localeCompare(b, 'pt-BR')),
     activationProductIds:[...activationProductIds].sort((a,b) => a-b),
+    activationTriggerProductIds:[...activationTriggerProductIds].sort((a,b) => a-b),
+    activationFirstPurchaseMode,
   });
 }
 
@@ -84,7 +88,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.8.0',
+    version: '5.9.0',
   };
 }
 
@@ -457,6 +461,8 @@ async function queryPerformance(payload = {}) {
   const supplierIds = uniqueIntegers(payload.supplierIds);
   const sellers = uniqueTexts(payload.sellers);
   const activationProductIds = payload.orderActivationEnabled ? uniqueIntegers(payload.activationProductIds) : [];
+  const activationTriggerProductIds = payload.orderActivationEnabled ? uniqueIntegers(payload.activationTriggerProductIds) : [];
+  const activationFirstPurchaseMode = text(payload.activationFirstPurchaseMode) === 'historical_trigger' ? 'historical_trigger' : 'campaign_trigger';
 
   if (!productIds.length && !supplierIds.length) {
     const error = new Error('Selecione pelo menos um código de fornecedor ou produto participante.');
@@ -466,7 +472,8 @@ async function queryPerformance(payload = {}) {
 
   prunePerformanceCache();
   const cacheKey = stablePerformanceKey({
-    currentStart, currentEnd, previousStart, previousEnd, productIds, supplierIds, sellers, activationProductIds,
+    currentStart, currentEnd, previousStart, previousEnd, productIds, supplierIds, sellers,
+    activationProductIds, activationTriggerProductIds, activationFirstPurchaseMode,
   });
 
   if (!payload.forceRefresh) {
@@ -618,6 +625,15 @@ async function queryPerformance(payload = {}) {
     GROUP BY period, seller, clientId, orderId, productId;
     ` : ''}
 
+    ${activationFirstPurchaseMode === 'historical_trigger' && activationTriggerProductIds.length ? `
+    SELECT DISTINCT v.[ID Cliente] AS clientId
+    FROM dbo.VendasProdutos vp
+    INNER JOIN dbo.Vendas v ON v.[ID Pedido de Venda] = vp.[ID Pedido de Venda]
+    WHERE vp.[ID Produto] IN (${activationTriggerProductIds.join(',')})
+      AND v.[ID Cliente] IS NOT NULL
+      AND v.[Data] < CONVERT(date, @currentStart, 23);
+    ` : ''}
+
     DROP TABLE #CampaignBase;
     DROP TABLE #ScopeBase;
     DROP TABLE #ActiveSellers;
@@ -651,8 +667,9 @@ async function queryPerformance(payload = {}) {
     sellers:Number(row.sellers) || 0,
   }));
 
+  let extraRecordsetIndex = 3;
   const orderLines = activationProductIds.length
-    ? (result.recordsets?.[3] || []).map((row) => ({
+    ? (result.recordsets?.[extraRecordsetIndex++] || []).map((row) => ({
         period:row.period,
         seller:text(row.seller),
         clientId:Number(row.clientId),
@@ -663,6 +680,10 @@ async function queryPerformance(payload = {}) {
         kg:Number(row.kg) || 0,
         revenue:Number(row.revenue) || 0,
       }))
+    : [];
+
+  const historicalTriggerClientIds = activationFirstPurchaseMode === 'historical_trigger' && activationTriggerProductIds.length
+    ? (result.recordsets?.[extraRecordsetIndex++] || []).map((row) => Number(row.clientId)).filter(Number.isFinite)
     : [];
 
   const provenance = {
@@ -718,7 +739,8 @@ async function queryPerformance(payload = {}) {
     ok: true,
     source: 'SQL Server · Power BI',
     dateReference: 'dbo.Vendas.[Data]',
-    activeSellersOnly: true,
+    rankingActiveSellersOnly: sellers.length === 0,
+    collectiveScope: sellers.length ? 'REPRESENTANTES_ESPECIFICOS' : 'ESCOPO_COMERCIAL_TOTAL',
     periodPolicy: fixedPeriods?.partial ? 'SEIS_SEGUNDAS_FIXAS_ATUAL_PARCIAL_ANTERIOR_COMPLETO' : 'SEIS_SEGUNDAS_FIXAS',
     comparisonPolicy: fixedPeriods?.comparisonPolicy || '6_SEGUNDAS_VS_6_SEGUNDAS',
     provenance,
@@ -743,6 +765,7 @@ async function queryPerformance(payload = {}) {
     ordersBySeller,
     collectiveSummary,
     orderLines,
+    historicalTriggerClientIds,
     durationMs: Date.now() - startedAt,
     cache:{
       hit:false,
@@ -1093,6 +1116,402 @@ async function queryConsistencyDiagnostic(payload = {}) {
   };
 }
 
+
+function benefitMeasure(lines, ids, measure) {
+  const relevant = lines.filter((line) => ids.has(Number(line.productId)));
+  if (measure === 'pieces') return relevant.reduce((sum, line) => sum + Number(line.pieces || 0), 0);
+  return new Set(relevant.map((line) => Number(line.productId))).size;
+}
+
+function benefitDiscount({ discountType, discountValue, benefitRevenue, benefitPieces }) {
+  const value = Number(discountValue) || 0;
+  if (discountType === 'percent') return Math.max(0, Number(benefitRevenue || 0) * value / 100);
+  if (discountType === 'fixed_per_piece') return Math.max(0, Number(benefitPieces || 0) * value);
+  if (discountType === 'fixed') return Math.max(0, value);
+  return 0;
+}
+
+async function queryFirstPurchaseBenefit(payload = {}) {
+  const startedAt = Date.now();
+  const periods = fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate);
+  const currentStart = periods.currentStart;
+  const currentEnd = periods.currentEnd;
+
+  const sellers = uniqueTexts(payload.sellers);
+  const triggerProductIds = uniqueIntegers(payload.triggerProductIds);
+  const benefitProductIds = uniqueIntegers(payload.benefitProductIds);
+  const allProductIds = [...new Set([...triggerProductIds, ...benefitProductIds])];
+  const firstPurchaseMode = ['historical_trigger','campaign_trigger'].includes(text(payload.firstPurchaseMode))
+    ? text(payload.firstPurchaseMode)
+    : 'campaign_trigger';
+  const triggerMeasure = text(payload.triggerMeasure) === 'pieces' ? 'pieces' : 'distinct_products';
+  const benefitMeasureMode = text(payload.benefitMeasure) === 'pieces' ? 'pieces' : 'distinct_products';
+  const triggerMin = Math.max(1, Number(payload.triggerMin) || 1);
+  const benefitMin = Math.max(1, Number(payload.benefitMin) || 1);
+  const discountType = ['pending','percent','fixed_per_piece','fixed'].includes(text(payload.discountType))
+    ? text(payload.discountType)
+    : 'pending';
+  const discountValue = Math.max(0, Number(payload.discountValue) || 0);
+
+  if (!triggerProductIds.length || !benefitProductIds.length) {
+    const error = new Error('Configure os produtos ativadores e os produtos que recebem desconto.');
+    error.code = 'BENEFICIO_PRODUTOS_AUSENTES';
+    throw error;
+  }
+
+  const cacheKey = JSON.stringify({
+    currentStart:isoDate(currentStart),
+    currentEnd:isoDate(currentEnd),
+    sellers:[...sellers].sort(),
+    triggerProductIds:[...triggerProductIds].sort((a,b)=>a-b),
+    benefitProductIds:[...benefitProductIds].sort((a,b)=>a-b),
+    firstPurchaseMode, triggerMeasure, benefitMeasureMode, triggerMin, benefitMin,
+    discountType, discountValue,
+    ruleName:text(payload.ruleName),
+    triggerCategoryName:text(payload.triggerCategoryName),
+    benefitCategoryName:text(payload.benefitCategoryName),
+  });
+
+  const cached = benefitCache.get(cacheKey);
+  if (!payload.forceRefresh && cached && Date.now() - cached.createdAt <= BENEFIT_CACHE_TTL_MS) {
+    return {
+      ...cached.value,
+      durationMs:Date.now() - startedAt,
+      cache:{ hit:true, ageMs:Date.now()-cached.createdAt, ttlMs:BENEFIT_CACHE_TTL_MS },
+    };
+  }
+
+  for (const [key, entry] of benefitCache.entries()) {
+    if (!entry || Date.now() - entry.createdAt > BENEFIT_CACHE_TTL_MS) benefitCache.delete(key);
+  }
+
+  const pool = await getPool();
+  const request = pool.request();
+  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
+  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
+
+  const clientSellerFilter = sellers.length
+    ? `AND LTRIM(RTRIM(c.[Vendedor])) IN (${addTextParams(request, 'benefitClientSeller', sellers)})`
+    : '';
+  const orderSellerFilter = sellers.length
+    ? `AND LTRIM(RTRIM(v.[Vendedor])) IN (${addTextParams(request, 'benefitOrderSeller', sellers)})`
+    : '';
+
+  const result = await request.query(`
+    SET NOCOUNT ON;
+
+    SELECT
+      c.[ID Cliente] AS clientId,
+      LTRIM(RTRIM(ISNULL(c.[Cliente], ''))) AS clientName,
+      LTRIM(RTRIM(ISNULL(c.[Nome Fantasia], ''))) AS tradeName,
+      LTRIM(RTRIM(ISNULL(c.[CNPJ/CPF], ''))) AS document,
+      LTRIM(RTRIM(ISNULL(c.[Vendedor], ''))) AS seller,
+      LTRIM(RTRIM(ISNULL(c.[Cidade], ''))) AS city,
+      LTRIM(RTRIM(ISNULL(c.[UF], ''))) AS uf,
+      LTRIM(RTRIM(ISNULL(c.[Status], ''))) AS status
+    FROM dbo.Clientes c
+    WHERE c.[ID Cliente] IS NOT NULL
+      AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+      ${clientSellerFilter};
+
+    WITH VendasRank AS (
+      SELECT
+        v.[ID Pedido de Venda],
+        v.[Data],
+        v.[ID Cliente],
+        v.[Vendedor],
+        ROW_NUMBER() OVER (
+          PARTITION BY v.[ID Pedido de Venda]
+          ORDER BY
+            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
+            v.[Data] DESC,
+            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
+            v.[ID Cliente] DESC
+        ) AS rn
+      FROM dbo.Vendas v
+      WHERE v.[Data] >= CONVERT(date, @currentStart, 23)
+        AND v.[Data] < CONVERT(date, @currentEnd, 23)
+    ),
+    VendasUnicas AS (
+      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]
+      FROM VendasRank
+      WHERE rn = 1
+    ),
+    ProdutosRank AS (
+      SELECT
+        p.[ID Produto], p.[Produto],
+        ROW_NUMBER() OVER (
+          PARTITION BY p.[ID Produto]
+          ORDER BY
+            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
+            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
+            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
+        ) AS rn
+      FROM dbo.Produtos p
+      WHERE p.[ID Produto] IN (${allProductIds.join(',')})
+    ),
+    ProdutosUnicos AS (
+      SELECT [ID Produto], [Produto]
+      FROM ProdutosRank
+      WHERE rn = 1
+    )
+    SELECT
+      v.[ID Cliente] AS clientId,
+      v.[ID Pedido de Venda] AS orderId,
+      v.[Data] AS orderDate,
+      LTRIM(RTRIM(v.[Vendedor])) AS seller,
+      vp.[ID Produto] AS productId,
+      p.[Produto] AS productName,
+      SUM(ISNULL(vp.[Qtde PC], 0)) AS pieces,
+      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
+      SUM(ISNULL(vp.[Valor], 0)) AS revenue
+    FROM VendasUnicas v
+    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+    INNER JOIN ProdutosUnicos p ON p.[ID Produto] = vp.[ID Produto]
+    WHERE v.[ID Cliente] IS NOT NULL
+      AND vp.[ID Produto] IN (${allProductIds.join(',')})
+      ${orderSellerFilter}
+    GROUP BY
+      v.[ID Cliente], v.[ID Pedido de Venda], v.[Data], LTRIM(RTRIM(v.[Vendedor])),
+      vp.[ID Produto], p.[Produto]
+    ORDER BY v.[ID Cliente], v.[Data], v.[ID Pedido de Venda], vp.[ID Produto];
+
+    ${firstPurchaseMode === 'historical_trigger' ? `
+    WITH TriggerOrders AS (
+      SELECT DISTINCT vp.[ID Pedido de Venda] AS orderId
+      FROM dbo.VendasProdutos vp
+      WHERE vp.[ID Produto] IN (${triggerProductIds.join(',')})
+    ),
+    PriorVendasRank AS (
+      SELECT
+        v.[ID Pedido de Venda],
+        v.[Data],
+        v.[ID Cliente],
+        ROW_NUMBER() OVER (
+          PARTITION BY v.[ID Pedido de Venda]
+          ORDER BY
+            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
+            v.[Data] DESC,
+            v.[ID Cliente] DESC
+        ) AS rn
+      FROM TriggerOrders t
+      INNER JOIN dbo.Vendas v ON v.[ID Pedido de Venda] = t.orderId
+      WHERE v.[Data] < CONVERT(date, @currentStart, 23)
+    )
+    SELECT
+      v.[ID Cliente] AS clientId,
+      MIN(v.[Data]) AS firstPriorDate
+    FROM PriorVendasRank v
+    WHERE v.rn = 1
+      AND v.[ID Cliente] IS NOT NULL
+    GROUP BY v.[ID Cliente];
+    ` : `
+    SELECT CAST(NULL AS int) AS clientId, CAST(NULL AS datetime2) AS firstPriorDate WHERE 1 = 0;
+    `}
+
+    WITH ProdutosRank AS (
+      SELECT
+        p.[ID Produto], p.[Produto],
+        ROW_NUMBER() OVER (
+          PARTITION BY p.[ID Produto]
+          ORDER BY
+            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
+            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
+            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
+        ) AS rn
+      FROM dbo.Produtos p
+      WHERE p.[ID Produto] IN (${allProductIds.join(',')})
+    )
+    SELECT [ID Produto] AS productId, LTRIM(RTRIM(ISNULL([Produto], ''))) AS productName
+    FROM ProdutosRank
+    WHERE rn = 1
+    ORDER BY [ID Produto];
+  `);
+
+  const clientMap = new Map();
+  for (const row of result.recordsets?.[0] || []) {
+    const id = Number(row.clientId);
+    if (!Number.isFinite(id) || clientMap.has(id)) continue;
+    clientMap.set(id, {
+      clientId:id,
+      clientName:text(row.clientName),
+      tradeName:text(row.tradeName),
+      document:text(row.document),
+      seller:text(row.seller),
+      city:text(row.city),
+      uf:text(row.uf),
+    });
+  }
+
+  const lines = (result.recordsets?.[1] || []).map((row) => ({
+    clientId:Number(row.clientId),
+    orderId:String(row.orderId),
+    orderDate:row.orderDate || null,
+    seller:text(row.seller),
+    productId:Number(row.productId),
+    productName:text(row.productName),
+    pieces:Number(row.pieces) || 0,
+    kg:Number(row.kg) || 0,
+    revenue:Number(row.revenue) || 0,
+  }));
+
+  const priorMap = new Map(
+    (result.recordsets?.[2] || [])
+      .filter((row) => row.clientId != null)
+      .map((row) => [Number(row.clientId), row.firstPriorDate || null])
+  );
+
+  const productMap = new Map(
+    (result.recordsets?.[3] || []).map((row) => [Number(row.productId), text(row.productName)])
+  );
+
+  const triggerIds = new Set(triggerProductIds);
+  const benefitIds = new Set(benefitProductIds);
+  const ordersByClient = new Map();
+
+  for (const line of lines) {
+    if (!ordersByClient.has(line.clientId)) ordersByClient.set(line.clientId, new Map());
+    const orders = ordersByClient.get(line.clientId);
+    if (!orders.has(line.orderId)) orders.set(line.orderId, {
+      orderId:line.orderId,
+      orderDate:line.orderDate,
+      seller:line.seller,
+      lines:[],
+    });
+    orders.get(line.orderId).lines.push(line);
+  }
+
+  const clients = [];
+  for (const client of clientMap.values()) {
+    const priorDate = priorMap.get(client.clientId) || null;
+    const orderMap = ordersByClient.get(client.clientId) || new Map();
+    const orders = [...orderMap.values()].sort((a,b) => {
+      const dateCompare = new Date(a.orderDate || 0).getTime() - new Date(b.orderDate || 0).getTime();
+      if (dateCompare) return dateCompare;
+      return String(a.orderId).localeCompare(String(b.orderId), 'pt-BR', { numeric:true });
+    });
+
+    let firstTriggerOrder = null;
+    for (const order of orders) {
+      const triggerValue = benefitMeasure(order.lines, triggerIds, triggerMeasure);
+      if (triggerValue >= triggerMin) {
+        firstTriggerOrder = { ...order, triggerValue };
+        break;
+      }
+    }
+
+    let status = 'AVAILABLE';
+    let reason = firstPurchaseMode === 'historical_trigger'
+      ? 'Cliente ativo sem compra anterior do produto ativador; benefício disponível.'
+      : 'Cliente ainda não comprou o produto ativador nesta campanha; benefício disponível.';
+    let firstTriggerDate = null;
+    let firstOrderId = '';
+    let triggerLines = [];
+    let benefitLines = [];
+    let benefitPieces = 0;
+    let benefitKg = 0;
+    let benefitRevenue = 0;
+    let estimatedDiscount = 0;
+
+    if (firstPurchaseMode === 'historical_trigger' && priorDate) {
+      status = 'INELIGIBLE_PRIOR_PURCHASE';
+      firstTriggerDate = priorDate;
+      reason = 'Cliente já comprou o produto ativador antes do início da campanha e não possui direito ao benefício de primeira compra.';
+    } else if (firstTriggerOrder) {
+      firstTriggerDate = firstTriggerOrder.orderDate;
+      firstOrderId = firstTriggerOrder.orderId;
+      triggerLines = firstTriggerOrder.lines.filter((line) => triggerIds.has(Number(line.productId)));
+      benefitLines = firstTriggerOrder.lines.filter((line) => benefitIds.has(Number(line.productId)));
+      const benefitValue = benefitMeasure(firstTriggerOrder.lines, benefitIds, benefitMeasureMode);
+
+      benefitPieces = benefitLines.reduce((sum,line) => sum + Number(line.pieces || 0), 0);
+      benefitKg = benefitLines.reduce((sum,line) => sum + Number(line.kg || 0), 0);
+      benefitRevenue = benefitLines.reduce((sum,line) => sum + Number(line.revenue || 0), 0);
+
+      if (benefitValue >= benefitMin) {
+        status = 'USED';
+        estimatedDiscount = benefitDiscount({ discountType, discountValue, benefitRevenue, benefitPieces });
+        reason = 'Primeira compra do produto ativador contém produtos beneficiados; benefício registrado como utilizado.';
+      } else {
+        status = 'CONSUMED_WITHOUT_BENEFIT';
+        reason = 'A primeira compra do produto ativador não continha o mínimo de produtos beneficiados. Como o benefício vale somente na primeira compra, ele fica consumido sem desconto aplicado.';
+      }
+    }
+
+    clients.push({
+      ...client,
+      status,
+      reason,
+      firstTriggerDate,
+      firstOrderId,
+      triggerLines,
+      benefitLines,
+      benefitPieces,
+      benefitKg,
+      benefitRevenue,
+      estimatedDiscount,
+    });
+  }
+
+  const summary = {
+    totalClients:clients.length,
+    available:clients.filter((row) => row.status === 'AVAILABLE').length,
+    used:clients.filter((row) => row.status === 'USED').length,
+    ineligiblePrior:clients.filter((row) => row.status === 'INELIGIBLE_PRIOR_PURCHASE').length,
+    consumedWithoutBenefit:clients.filter((row) => row.status === 'CONSUMED_WITHOUT_BENEFIT').length,
+    estimatedDiscountUsed:clients.reduce((sum,row) => sum + Number(row.estimatedDiscount || 0), 0),
+  };
+
+  const configuration = {
+    name:text(payload.ruleName) || 'Benefício de primeira compra',
+    firstPurchaseMode,
+    triggerMeasure,
+    triggerMin,
+    benefitMeasure:benefitMeasureMode,
+    benefitMin,
+    discountType,
+    discountValue,
+    triggerCategoryName:text(payload.triggerCategoryName) || 'Produto ativador',
+    benefitCategoryName:text(payload.benefitCategoryName) || 'Produtos beneficiados',
+    triggerProducts:triggerProductIds.map((id) => ({ id, name:productMap.get(id) || `Produto ${id}` })),
+    benefitProducts:benefitProductIds.map((id) => ({ id, name:productMap.get(id) || `Produto ${id}` })),
+  };
+
+  const response = {
+    ok:true,
+    source:'SQL Server · Power BI',
+    endpoint:'/api/campanhas-data?recurso=beneficio-primeira-compra',
+    handler:'local-api/campanhas-data.js → queryFirstPurchaseBenefit()',
+    dateReference:'dbo.Vendas.[Data]',
+    periodsUsed:{
+      currentStart:isoDate(currentStart),
+      currentEndExclusive:isoDate(currentEnd),
+      currentLastInclusive:isoDate(addUtcDays(currentEnd, -1)),
+    },
+    configuration,
+    summary,
+    clients:clients.sort((a,b) =>
+      a.status.localeCompare(b.status) ||
+      String(a.seller).localeCompare(String(b.seller), 'pt-BR') ||
+      String(a.tradeName || a.clientName).localeCompare(String(b.tradeName || b.clientName), 'pt-BR')
+    ),
+    warnings:[
+      'A lista-base considera clientes cujo dbo.Clientes.[Status] começa por ATIV.',
+      firstPurchaseMode === 'historical_trigger'
+        ? 'Direito disponível significa que não foi localizada compra anterior dos produtos ativadores antes do início da campanha.'
+        : 'Direito disponível significa que o cliente ainda não comprou o ativador dentro da campanha.',
+      'O benefício é consumido na primeira compra do ativador. Se esse pedido não tiver produto beneficiado, o relatório marca “1ª compra sem item beneficiado”.',
+      'Tipo/Forma de Venda, devoluções e cancelamentos seguem sem regra corporativa adicional nesta versão; a leitura usa as mesmas tabelas comerciais do módulo de campanhas.',
+      'O desconto é calculado apenas para conferência. Esta rota não altera preços nem pedidos no ERP.',
+    ],
+    durationMs:Date.now()-startedAt,
+    cache:{ hit:false, ageMs:0, ttlMs:BENEFIT_CACHE_TTL_MS },
+  };
+
+  benefitCache.set(cacheKey, { createdAt:Date.now(), value:response });
+  return response;
+}
+
 async function querySellerAudit(payload = {}) {
   const startedAt = Date.now();
   const seller = text(payload.seller);
@@ -1289,12 +1708,13 @@ function publicError(error) {
     CAMPANHA_NAO_INICIADA: 'A apuração ficará disponível a partir da primeira segunda-feira da campanha.',
     VENDEDOR_AUSENTE: 'Escolha um representante para abrir a auditoria.',
     FORNECEDOR_AUSENTE: 'Selecione ao menos um fornecedor para executar o diagnóstico de consistência.',
+    BENEFICIO_PRODUTOS_AUSENTES: 'Configure a categoria Fortunata/ativadora e os produtos que recebem desconto.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.8.0',
+    versao: '5.9.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -1326,7 +1746,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.8.0',
+        version: '5.9.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
@@ -1341,6 +1761,11 @@ export default async function handler(req, res) {
     if (resource === 'auditoria-vendedor') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para auditoria do vendedor.', codigo: 'METODO_INVALIDO' });
       return res.status(200).json(await querySellerAudit(req.body || {}));
+    }
+
+    if (resource === 'beneficio-primeira-compra') {
+      if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para o relatório de benefícios.', codigo: 'METODO_INVALIDO' });
+      return res.status(200).json(await queryFirstPurchaseBenefit(req.body || {}));
     }
 
     if (resource === 'diagnostico-consistencia') {
