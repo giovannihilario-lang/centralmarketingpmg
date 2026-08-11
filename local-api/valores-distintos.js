@@ -1,5 +1,5 @@
 import {
-  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  getPool, sql, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
   responderCache, salvarCache, erroApi, CACHE_TTL_CATALOGO_MS,
 } from '../src/lib/regional-dashboard.js';
 
