@@ -122,7 +122,7 @@
   const app = {
     view:'dashboard', campaigns:[], context:{ suppliers:[], products:[], representatives:[] }, contextReady:false, contextCached:false,
     contextStatus:null, contextPromise:null, useCachedAllowed:false, campaignSearch:'', productSearch:'', representativeSearch:'',
-    wizard:null, performance:null, imageCache:new Map(), imageAttempted:new Set(), imageInFlight:new Map(), apiInFlight:new Map(), apiCache:new Map(),
+    wizard:null, performance:null, sellerAudit:null, imageCache:new Map(), imageAttempted:new Set(), imageInFlight:new Map(), apiInFlight:new Map(), apiCache:new Map(),
   };
 
   function icons(root = document) {
@@ -593,6 +593,7 @@
     return {
       id:uid('campaign'), name:'', description:'', start:inputDate(start), end:inputDate(end),
       suppliers:[], participantMode:'all', representatives:[], rankingMetrics:['points','positivity'], rankingMode:'TOP_N_ELIGIBLE', topN:5,
+      salesScopeMode:'supplier_all',
       goalMode:'both', collectiveGoals:[defaultGoal('collective')], individualGoals:[defaultGoal('individual')],
       rules:[], pointRules:[], categories:[],
       orderActivationRule:{
@@ -625,6 +626,7 @@
       name:raw.name || raw.nome || '', description:raw.description || raw.descricao || '',
       start:normalizedStart, end:normalizedEnd,
       suppliers:Array.isArray(legacySuppliers) ? legacySuppliers.map((supplier) => ({ id:Number(supplier.id ?? supplier.code ?? supplier.fornecedorId) || null, name:supplier.name || supplier.nome || supplier.fornecedor || 'Fornecedor', totalProducts:Number(supplier.totalProducts || supplier.totalProdutos)||0 })) : [],
+      salesScopeMode:['supplier_all','selected_products','legacy_auto'].includes(raw.salesScopeMode) ? raw.salesScopeMode : 'legacy_auto',
       rankingMetrics:Array.isArray(raw.rankingMetrics) ? raw.rankingMetrics : Array.isArray(raw.metricasRanking) ? raw.metricasRanking : [raw.metricaRanking || 'points'],
       collectiveGoals:Array.isArray(legacyCollective) ? legacyCollective : [], individualGoals:Array.isArray(legacyIndividual) ? legacyIndividual : [],
       rules:Array.isArray(raw.rules) ? raw.rules : [], pointRules:Array.isArray(raw.pointRules) ? raw.pointRules : [], categories:Array.isArray(raw.categories) ? raw.categories : [],
@@ -857,6 +859,14 @@
     const options = productFilterOptions(baseProducts);
     const selectedCount = app.wizard.selectedProducts.size;
     return `<div class="step-head"><div><h3>Produtos, categorias e mix</h3><p>O catálogo já está no navegador. Filtrar, pesquisar e adicionar produtos não dispara novas consultas ao SQL.</p></div><span class="badge active">${number(baseProducts.length)} produtos disponíveis</span></div>
+      <div class="sales-scope-card ${campaign.salesScopeMode === 'legacy_auto' ? 'legacy' : ''}">
+        <div class="sales-scope-head"><span class="eyebrow">Escopo da apuração</span><h4>O que entra em faturamento, KG e clientes?</h4><p>As categorias podem servir para mix/pontos sem necessariamente limitar toda a venda. Escolha explicitamente.</p></div>
+        <div class="sales-scope-options">
+          <button type="button" class="scope-choice ${campaign.salesScopeMode === 'supplier_all' ? 'selected' : ''}" data-action="sales-scope" data-value="supplier_all"><i data-lucide="boxes"></i><span><strong>Todos os produtos dos fornecedores</strong><small>Usa todos os produtos ligados aos códigos de fornecedor selecionados.</small></span></button>
+          <button type="button" class="scope-choice ${campaign.salesScopeMode === 'selected_products' ? 'selected' : ''}" data-action="sales-scope" data-value="selected_products"><i data-lucide="list-checks"></i><span><strong>Somente produtos das categorias</strong><small>Somente IDs arrastados para as categorias entram nos números.</small></span></button>
+        </div>
+        ${campaign.salesScopeMode === 'legacy_auto' ? `<div class="legacy-scope-warning"><i data-lucide="triangle-alert"></i><span><strong>Campanha em modo legado</strong><small>Até a V5.4, qualquer produto em categoria fazia a apuração ignorar o fornecedor inteiro e usar só esses IDs. Escolha um modo acima para eliminar essa ambiguidade.</small></span></div>` : ''}
+      </div>
       <div class="product-layout">
         <section class="catalog-panel">
           <div class="panel-head"><h4>Catálogo dos códigos selecionados</h4><p>${esc(campaign.suppliers.map((supplier) => `${supplier.name} (${supplier.id})`).join(' · '))}</p></div>
@@ -1064,6 +1074,10 @@
       if (campaign.participantMode === 'specific' && !campaign.representatives.length) return 'Selecione os representantes participantes.';
     }
     if (step === 1 && !campaign.rankingMetrics.length) return 'Selecione pelo menos uma métrica de ranking.';
+    if (step === 2 && campaign.salesScopeMode === 'selected_products') {
+      const scopedProducts = [...new Set((campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite))];
+      if (!scopedProducts.length) return 'No escopo “Somente produtos das categorias”, adicione pelo menos um produto.';
+    }
     if (step === 2 && campaign.orderActivationRule?.enabled) {
       const rule = campaign.orderActivationRule;
       const base = campaign.categories.find((category) => category.id === rule.baseCategoryId);
@@ -1233,7 +1247,7 @@
     if (goal.mode === 'growth_percent') {
       return `<div class="goal-audit">
         <div><span>Atual</span><strong>${esc(audit.currentText)}</strong></div>
-        <div><span>Anterior equivalente</span><strong>${esc(audit.previousText)}</strong></div>
+        <div><span>Anterior PMG</span><strong>${esc(audit.previousText)}</strong></div>
         <div><span>Diferença</span><strong>${esc(audit.deltaText)}</strong></div>
         <div><span>Crescimento</span><strong>${esc(audit.valueText)}</strong></div>
       </div>
@@ -1514,6 +1528,17 @@
     };
   }
 
+  function effectiveSalesScope(campaign) {
+    const categoryProductIds = [...new Set(
+      (campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite)
+    )];
+    const supplierIds = (campaign.suppliers || []).map((supplier) => Number(supplier.id)).filter(Number.isFinite);
+    const mode = campaign.salesScopeMode || 'legacy_auto';
+    if (mode === 'supplier_all') return { mode, productIds:[], supplierIds };
+    if (mode === 'selected_products') return { mode, productIds:categoryProductIds, supplierIds };
+    return { mode:'legacy_auto', productIds:categoryProductIds.length ? categoryProductIds : [], supplierIds };
+  }
+
   async function openPerformance(id, { force = false } = {}) {
     const campaign = normalizeCampaign(await DB.get('campanhas', id));
     if (!campaign?.id) return;
@@ -1552,15 +1577,9 @@
       $('#performanceBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Consultando vendas reais</h3><p>Primeiro acesso pode levar alguns segundos. As próximas aberturas usam cache local e cache da API.</p></div></div>`;
     }
 
-    const productIds = [...new Set(
-      (campaign.categories || [])
-        .flatMap((category) => (category.products || []).map((product) => Number(product.id)))
-        .filter(Number.isFinite)
-    )];
-
-    const supplierIds = (campaign.suppliers || [])
-      .map((supplier) => Number(supplier.id))
-      .filter(Number.isFinite);
+    const salesScope = effectiveSalesScope(campaign);
+    const productIds = salesScope.productIds;
+    const supplierIds = salesScope.supplierIds;
 
     const activationRule = campaign.orderActivationRule || {};
     const activationCategoryIds = new Set([activationRule.baseCategoryId, activationRule.triggerCategoryId].filter(Boolean));
@@ -1582,6 +1601,7 @@
           previousEnd:periods.previousEnd,
           supplierIds,
           productIds,
+          salesScopeMode:salesScope.mode,
           sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
           orderActivationEnabled:Boolean(activationRule.enabled),
           activationProductIds,
@@ -1599,6 +1619,8 @@
         data:{
           source:data.source,
           dateReference:data.dateReference,
+          comparisonPolicy:data.comparisonPolicy,
+          provenance:data.provenance || null,
           durationMs:data.durationMs,
           partial:data.partial,
           asOfDate:data.asOfDate,
@@ -1644,7 +1666,7 @@
 
   function metricCellAudit(metric, period, item, audit) {
     const isCurrent = period === 'current';
-    const periodLabel = isCurrent ? 'Campanha' : 'Anterior equivalente';
+    const periodLabel = isCurrent ? 'Campanha' : 'Anterior PMG';
     const start = isCurrent ? audit.currentStart : audit.previousStart;
     const last = isCurrent ? audit.currentLast : audit.previousLast;
 
@@ -1699,7 +1721,7 @@
     return [
       `Crescimento de ${label}`,
       `Atual: ${formattedCurrent}`,
-      `Anterior equivalente: ${formattedPrevious}`,
+      `Anterior PMG: ${formattedPrevious}`,
       previous
         ? `Fórmula: (Atual − Anterior) ÷ |Anterior| × 100`
         : `Sem base anterior: quando o anterior é zero, a regra operacional atual considera 100% se houver venda e 0% se também não houver venda.`,
@@ -1743,6 +1765,212 @@
     return lines;
   }
 
+  function sourceList(values, max = 20) {
+    const list = Array.isArray(values) ? values : [];
+    if (!list.length) return 'Nenhum';
+    const shown = list.slice(0, max).join(', ');
+    return list.length > max ? `${shown} … (+${list.length - max})` : shown;
+  }
+
+  function provenancePanel(campaign, data, result) {
+    const p = data.provenance || {};
+    const scope = p.scope || {};
+    const filters = p.filters || {};
+    const tables = p.tables || [];
+    const cache = data.cache || {};
+    const warnings = p.warnings || [];
+    const endpoint = p.endpoint || '/api/campanhas-data?recurso=apuracao';
+
+    return `<details class="provenance-panel" open>
+      <summary>
+        <span><i data-lucide="scan-search"></i><strong>Fonte da apuração e filtros usados</strong><small>Veja exatamente de onde os números saíram.</small></span>
+        <span class="source-status ${cache.hit ? 'cached' : 'live'}">${cache.hit ? 'Cache da API' : 'SQL consultado'}</span>
+      </summary>
+      <div class="provenance-content">
+        <div class="source-map-grid">
+          <div class="source-map-card">
+            <span>Apuração</span><strong>${esc(endpoint)}</strong><small>${esc(p.handler || 'local-api/campanhas-data.js')}</small>
+          </div>
+          <div class="source-map-card">
+            <span>Banco</span><strong>${esc(p.source || data.source || 'SQL Server')}</strong><small>database ${esc(p.database || 'powerbi')}</small>
+          </div>
+          <div class="source-map-card">
+            <span>Data de referência</span><strong>${esc(p.dateReference || data.dateReference || 'dbo.Vendas.[Data]')}</strong><small>É essa coluna que decide em qual período a venda entra.</small>
+          </div>
+          <div class="source-map-card">
+            <span>Escopo efetivo</span><strong>${scope.mode === 'LISTA_DE_PRODUTOS' ? `${number(scope.productCount)} produtos` : `${number(scope.supplierCount)} fornecedor(es)`}</strong><small>${esc(scope.note || '')}</small>
+          </div>
+        </div>
+
+        <div class="source-columns">
+          <section>
+            <h4>Tabelas usadas</h4>
+            ${tables.length ? tables.map((table) => `<div class="source-table"><strong>${esc(table.name)}</strong><span>${esc(table.role)}</span><small>${esc((table.columns || []).join(' · '))}</small></div>`).join('') : '<small>Metadados de tabela indisponíveis nesta apuração salva.</small>'}
+          </section>
+          <section>
+            <h4>Fórmulas atuais</h4>
+            <div class="formula-list">
+              <div><b>Faturamento</b><code>${esc(p.metrics?.revenue || 'SUM(dbo.VendasProdutos.[Valor])')}</code></div>
+              <div><b>Volume</b><code>${esc(p.metrics?.kg || 'SUM(dbo.VendasProdutos.[Qtde Kg])')}</code></div>
+              <div><b>Clientes</b><code>${esc(p.metrics?.customers || 'COUNT DISTINCT dbo.Vendas.[ID Cliente]')}</code></div>
+              <div><b>Positivação</b><code>${esc(p.metrics?.positivity || 'clientes atuais - clientes anteriores')}</code></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="source-scope-details">
+          <div><span>Produtos enviados à API</span><strong>${esc(sourceList(scope.productIds, 30))}</strong></div>
+          <div><span>Fornecedores enviados à API</span><strong>${esc(sourceList(scope.supplierIds, 30))}</strong></div>
+          <div><span>Representantes específicos</span><strong>${scope.sellerCount ? esc(sourceList(scope.sellers, 12)) : 'Todos os representantes ativos'}</strong></div>
+          <div><span>Filtro de representante ativo</span><strong>${esc(filters.activeSeller || "dbo.Clientes.[Status] LIKE 'ATIV%'")}</strong></div>
+          <div><span>Tipo de venda</span><strong>${esc(filters.saleType || 'Sem filtro explícito')}</strong></div>
+          <div><span>Forma de venda</span><strong>${esc(filters.saleForm || 'Sem filtro explícito')}</strong></div>
+        </div>
+
+        ${warnings.length ? `<div class="source-warnings"><strong><i data-lucide="triangle-alert"></i>Pontos que podem causar diferença com outro relatório</strong>${warnings.map((warning) => `<p>${esc(warning)}</p>`).join('')}</div>` : ''}
+
+        <div class="source-actions">
+          <button class="secondary-btn" type="button" data-action="retry-performance" data-id="${esc(campaign.id)}"><i data-lucide="refresh-cw"></i>Reprocessar sem cache</button>
+          <small>Contexto de produtos/representantes: <code>/api/campanhas-data?recurso=contexto</code>. Imagens do catálogo são apenas visuais e não entram nas métricas.</small>
+        </div>
+      </div>
+    </details>`;
+  }
+
+  function auditSummaryCard(label, current, previous, formatter = (value) => number(value)) {
+    return `<div class="audit-summary-card"><span>${esc(label)}</span><strong>${formatter(current)}</strong><small>Anterior: ${formatter(previous)}</small></div>`;
+  }
+
+  function sellerAuditHtml(campaign, data) {
+    const identity = sellerIdentity(data.seller);
+    const current = data.summaries?.current || {};
+    const previous = data.summaries?.previous || {};
+    const rows = data.rows || [];
+    const used = data.periodsUsed || {};
+
+    return `<div class="seller-audit-top">
+      <div>
+        <span class="eyebrow">${esc(identity.code ? `ID ${identity.code}` : 'Representante')}</span>
+        <h3>${esc(identity.name || data.seller)}</h3>
+        <p>Linhas participantes exatamente como a API local recebeu do SQL.</p>
+      </div>
+      <div class="audit-source-chip"><i data-lucide="database"></i><span><strong>${esc(data.source || 'SQL Server')}</strong><small>${esc(data.endpoint || '')}</small></span></div>
+    </div>
+
+    <div class="audit-period-box">
+      <strong>Períodos efetivamente consultados</strong>
+      <span>Campanha: ${dateBR(used.currentStart)} a ${dateBR(used.currentLastInclusive)}</span>
+      <span>Anterior PMG: ${dateBR(used.previousStart)} a ${dateBR(used.previousLastInclusive)}</span>
+      <small>${data.partial ? 'A campanha está parcial; a referência anterior permanece o bloco completo de seis segundas.' : 'Campanha e referência fechadas no bloco de seis segundas.'}</small>
+    </div>
+
+    <div class="audit-summary-grid">
+      ${auditSummaryCard('Faturamento', current.revenue, previous.revenue, money)}
+      ${auditSummaryCard('Volume KG', current.kg, previous.kg, (v) => `${number(v,1)} KG`)}
+      ${auditSummaryCard('Clientes únicos', current.customers, previous.customers)}
+      ${auditSummaryCard('Pedidos', current.orders, previous.orders)}
+      ${auditSummaryCard('Produtos distintos', current.products, previous.products)}
+    </div>
+
+    <div class="audit-warning-box">
+      <strong><i data-lucide="shield-alert"></i>Regras de inclusão que estão valendo agora</strong>
+      <p><b>Data:</b> ${esc(data.dateReference || 'dbo.Vendas.[Data]')}</p>
+      <p><b>Tipo(s) encontrados:</b> ${esc((data.saleTypes || []).join(' · ') || 'nenhum')}</p>
+      <p><b>Forma(s) encontradas:</b> ${esc((data.saleForms || []).join(' · ') || 'nenhuma')}</p>
+      ${(data.warnings || []).map((warning) => `<small>${esc(warning)}</small>`).join('')}
+    </div>
+
+    <div class="audit-table-head">
+      <div><span class="eyebrow">Linhas que formam os números</span><h3>Pedidos e produtos considerados</h3></div>
+      <button class="secondary-btn" data-action="copy-seller-audit"><i data-lucide="copy"></i>Copiar diagnóstico</button>
+    </div>
+    ${data.truncated ? '<div class="context-error">A auditoria chegou ao limite de 1.500 linhas. Restrinja o escopo da campanha para investigação completa.</div>' : ''}
+    <div class="table-wrap audit-table-wrap">
+      <table class="audit-table">
+        <thead><tr><th>Período</th><th>Data</th><th>Pedido</th><th>Cliente</th><th>Tipo</th><th>Forma</th><th>Produto</th><th>Fornecedor</th><th>R$ linha</th><th>KG</th><th>PC</th><th>R$ pedido inteiro*</th></tr></thead>
+        <tbody>${rows.map((row) => `<tr>
+          <td><span class="badge ${row.period === 'current' ? 'active' : 'scheduled'}">${row.period === 'current' ? 'Campanha' : 'Anterior'}</span></td>
+          <td>${dateBR(row.orderDate)}</td>
+          <td><strong>#${esc(row.orderId)}</strong></td>
+          <td>${esc(row.clientId)}</td>
+          <td>${esc(row.saleType)}</td>
+          <td>${esc(row.saleForm)}</td>
+          <td><strong>${esc(row.productId)}</strong><small>${esc(row.productName)}</small></td>
+          <td>${row.supplierId ? `<strong>${esc(row.supplierId)}</strong>` : ''}<small>${esc(row.supplierName)}</small></td>
+          <td>${money(row.revenue)}</td>
+          <td>${number(row.kg,2)}</td>
+          <td>${number(row.pieces,2)}</td>
+          <td>${money(row.wholeOrderValue)}</td>
+        </tr>`).join('') || '<tr><td colspan="12">Nenhuma linha encontrada para esse representante e escopo.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <p class="audit-footnote">* O valor total do pedido é apenas referência. A campanha soma somente <code>dbo.VendasProdutos.[Valor]</code> dos produtos participantes.</p>`;
+  }
+
+  async function openSellerAudit(campaignId, seller) {
+    const backdrop = $('#sellerAuditBackdrop');
+    const body = $('#sellerAuditBody');
+    const campaign = normalizeCampaign(await DB.get('campanhas', campaignId));
+    if (!campaign?.id) return;
+
+    backdrop.hidden = false;
+    body.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Auditando ${esc(sellerIdentity(seller).name || seller)}</h3><p>Buscando pedidos e produtos diretamente no SQL para conferir a origem dos números.</p></div></div>`;
+    $('#sellerAuditTitle').textContent = `Origem dos números · ${sellerIdentity(seller).name || seller}`;
+    icons(backdrop);
+
+    const periods = calculatePeriods(campaign.start);
+    const salesScope = effectiveSalesScope(campaign);
+    const productIds = salesScope.productIds;
+    const supplierIds = salesScope.supplierIds;
+
+    try {
+      const data = await api(`${SQL_ENDPOINT}?recurso=auditoria-vendedor`, {
+        method:'POST', force:true, timeout:60000,
+        body:JSON.stringify({
+          campaignStart:periods.currentStart,
+          asOfDate:inputDate(new Date()),
+          seller,
+          productIds,
+          supplierIds,
+          salesScopeMode:salesScope.mode,
+        }),
+      });
+      app.sellerAudit = { campaignId, seller, data };
+      body.innerHTML = sellerAuditHtml(campaign, data);
+      icons(body);
+    } catch (error) {
+      body.innerHTML = `<div class="context-error"><strong>Não foi possível abrir a auditoria do vendedor.</strong><br>${esc(error.message)}</div>`;
+    }
+  }
+
+  function closeSellerAudit() {
+    $('#sellerAuditBackdrop').hidden = true;
+    app.sellerAudit = null;
+  }
+
+  async function copySellerAudit() {
+    if (!app.sellerAudit?.data) return;
+    const payload = {
+      seller:app.sellerAudit.seller,
+      source:app.sellerAudit.data.source,
+      endpoint:app.sellerAudit.data.endpoint,
+      dateReference:app.sellerAudit.data.dateReference,
+      periodsUsed:app.sellerAudit.data.periodsUsed,
+      scope:app.sellerAudit.data.scope,
+      summaries:app.sellerAudit.data.summaries,
+      saleTypes:app.sellerAudit.data.saleTypes,
+      saleForms:app.sellerAudit.data.saleForms,
+      warnings:app.sellerAudit.data.warnings,
+      rows:app.sellerAudit.data.rows,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      toast('Diagnóstico copiado para a área de transferência.');
+    } catch (_) {
+      toast('Não foi possível copiar o diagnóstico.', 'error');
+    }
+  }
+
   function performanceHtml(campaign, result, data) {
     const summary = result.summary;
     const used = data.periodsUsed || {};
@@ -1761,8 +1989,8 @@
           <div class="period-audit-icon"><i data-lucide="calendar-clock"></i></div>
           <div>
             <strong>Apuração parcial até ${dateBR(data.asOfDate || currentUsedLast)}</strong>
-            <p>Comparação equivalente: campanha ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · anterior ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
-            <small>A janela completa continua sendo ${dateBR(nominal.currentStart || result.periods.currentStart)} a ${dateBR(nominal.currentLastInclusive || result.periods.currentLast)}.</small>
+            <p>Apuração atual: campanha ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · referência anterior fixa ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
+            <small>A campanha completa continua sendo ${dateBR(nominal.currentStart || result.periods.currentStart)} a ${dateBR(nominal.currentLastInclusive || result.periods.currentLast)}. A referência anterior não é encurtada em apuração parcial.</small>
           </div>
         </div>`
       : `<div class="period-audit">
@@ -1774,6 +2002,7 @@
         </div>`;
 
     return `${periodAudit}
+    ${provenancePanel(campaign, data, result)}
     <div class="performance-kpis">
       ${performanceMeta('Faturamento', money(summary.revenue), `Anterior ${money(summary.previousRevenue)} · ${pct(growth(summary.revenue, summary.previousRevenue))}`)}
       ${performanceMeta('Volume', `${number(summary.kg,1)} KG`, `Anterior ${number(summary.previousKg,1)} KG · ${pct(growth(summary.kg, summary.previousKg))}`)}
@@ -1808,13 +2037,13 @@
             <th>#</th>
             <th>${auditHeader('Representante', ['Nome e ID são lidos do campo dbo.Vendas.[Vendedor].', 'Ex.: NATALIA ALBIERI-988 → nome NATALIA ALBIERI · ID 988.'])}</th>
             <th>${auditHeader('R$ campanha', ['Soma de dbo.VendasProdutos.[Valor] no período atual.', 'Passe o mouse nos valores para ver período e cálculo.'])}</th>
-            <th>${auditHeader('R$ anterior', ['Soma de dbo.VendasProdutos.[Valor] no período anterior equivalente.'])}</th>
+            <th>${auditHeader('R$ anterior', ['Soma de dbo.VendasProdutos.[Valor] no período anterior PMG.'])}</th>
             <th>${auditHeader('Δ R$', ['(Faturamento atual − anterior) ÷ |anterior| × 100.'])}</th>
             <th>${auditHeader('KG campanha', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período atual.'])}</th>
-            <th>${auditHeader('KG anterior', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período anterior equivalente.'])}</th>
+            <th>${auditHeader('KG anterior', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período anterior PMG.'])}</th>
             <th>${auditHeader('Δ KG', ['(KG atual − KG anterior) ÷ |KG anterior| × 100.'])}</th>
             <th>${auditHeader('Clientes', ['Clientes únicos no período atual.', 'COUNT DISTINCT dbo.Vendas.[ID Cliente].'])}</th>
-            <th>${auditHeader('Anterior', ['Clientes únicos no período anterior equivalente.'])}</th>
+            <th>${auditHeader('Anterior', ['Clientes únicos no período anterior PMG.'])}</th>
             <th>${auditHeader('Positivação', ['Positivação líquida = clientes atuais − clientes anteriores.', 'O hover também mostra novos, recorrentes e perdidos.'])}</th>
             <th>${auditHeader('Mix', ['Percentual de categorias obrigatórias cumpridas pelo vendedor.'])}</th>
             ${campaign.orderActivationRule?.enabled ? `<th>${auditHeader('Ativações', ['Clientes ativados pela regra de pedido combinado.'])}</th><th>${auditHeader('Taxa ativação', ['Pedidos ativados ÷ pedidos-oportunidade × 100.'])}</th>` : ''}
@@ -1863,7 +2092,7 @@
 
     return `<tr>
       <td><span class="rank-badge">${item.position}</span></td>
-      <td>${auditValue(`<strong class="rep-name">${esc(identity.name || item.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}`, sellerAudit, 'rep-audit')}${item.reasons.length ? `<small style="display:block;color:var(--danger);margin-top:3px" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}</td>
+      <td>${auditValue(`<strong class="rep-name">${esc(identity.name || item.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}`, sellerAudit, 'rep-audit')}<button class="row-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.name)}"><i data-lucide="scan-search"></i>Auditar</button>${item.reasons.length ? `<small style="display:block;color:var(--danger);margin-top:3px" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}</td>
       <td>${auditValue(money(item.revenue), metricCellAudit('revenue','current',item,audit))}</td>
       <td>${auditValue(money(item.previousRevenue), metricCellAudit('revenue','previous',item,audit))}</td>
       <td>${auditValue(`<span class="delta ${item.revenueGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.revenueGrowth)}</span>`, growthCellAudit('revenue',item,audit))}</td>
@@ -1991,6 +2220,7 @@
     if (action === 'edit-campaign') return openWizard(node.dataset.id);
     if (action === 'close-modal') return closeWizard();
     if (action === 'close-performance') return closePerformance();
+    if (action === 'close-seller-audit') return closeSellerAudit();
     if (action === 'open-sidebar') { $('#sidebar').classList.add('is-open'); $('.sidebar-backdrop').classList.add('is-open'); return; }
     if (action === 'close-sidebar') { $('#sidebar').classList.remove('is-open'); $('.sidebar-backdrop').classList.remove('is-open'); return; }
     if (action === 'theme') { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; localStorage.setItem(THEME_KEY, next); return; }
@@ -2059,6 +2289,8 @@
     if (action === 'add-rule-template') { app.wizard.campaign.rules.push({ id:uid('rule'), name:node.dataset.label, metric:node.dataset.metric, operator:'>=', value:Number(node.dataset.value) || 0 }); renderWizard(); return; }
     if (action === 'remove-rule') { app.wizard.campaign.rules = app.wizard.campaign.rules.filter((item) => item.id !== node.dataset.id); renderWizard(); return; }
 
+    if (action === 'sales-scope') { app.wizard.campaign.salesScopeMode = node.dataset.value; renderWizard(); return; }
+
     if (action === 'toggle-activation-rule') {
       syncCategories();
       app.wizard.campaign.orderActivationRule.enabled = !app.wizard.campaign.orderActivationRule.enabled;
@@ -2098,6 +2330,8 @@
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
     if (action === 'performance') return openPerformance(node.dataset.id);
     if (action === 'retry-performance') { return openPerformance(node.dataset.id, { force:true }); }
+    if (action === 'audit-seller') return openSellerAudit(node.dataset.campaignId, node.dataset.seller);
+    if (action === 'copy-seller-audit') return copySellerAudit();
   });
 
   document.addEventListener('click', (event) => {
@@ -2128,7 +2362,7 @@
 
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('#globalSearch')?.focus(); }
-    if (event.key === 'Escape') { if (!$('#modalBackdrop').hidden) closeWizard(); else if (!$('#drawerBackdrop').hidden) closePerformance(); }
+    if (event.key === 'Escape') { if (!$('#sellerAuditBackdrop').hidden) closeSellerAudit(); else if (!$('#modalBackdrop').hidden) closeWizard(); else if (!$('#drawerBackdrop').hidden) closePerformance(); }
   });
 
   $('#globalSearch')?.addEventListener('input', (event) => {

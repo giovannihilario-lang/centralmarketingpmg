@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>PMG Connect — Campanhas</title>
-  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.4.0">
-  <script defer src="/assets/campanhas-studio-v5.js?v=5.4.0"></script>
+  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.5.0">
+  <script defer src="/assets/campanhas-studio-v5.js?v=5.5.0"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
 </head>
 <body>
@@ -119,6 +119,16 @@
       </header>
       <div class="drawer-body" id="performanceBody"></div>
     </aside>
+  </div>
+
+  <div class="audit-backdrop" id="sellerAuditBackdrop" hidden>
+    <section class="seller-audit-modal" role="dialog" aria-modal="true" aria-labelledby="sellerAuditTitle">
+      <header class="seller-audit-header">
+        <div><span class="eyebrow">Auditoria SQL</span><h2 id="sellerAuditTitle">Origem dos números</h2></div>
+        <button class="icon-btn" type="button" data-action="close-seller-audit" aria-label="Fechar auditoria"><i data-lucide="x"></i></button>
+      </header>
+      <div class="seller-audit-body" id="sellerAuditBody"></div>
+    </section>
   </div>
 
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>

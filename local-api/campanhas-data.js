@@ -84,7 +84,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.4.0',
+    version: '5.5.0',
   };
 }
 
@@ -320,32 +320,32 @@ function fixedSixMondayPeriods(startRaw, asOfRaw = null) {
     throw error;
   }
 
-  // Janela PMG completa: 6 segundas-feiras.
+  // Regra PMG: a campanha e a referência são sempre definidas por seis segundas-feiras.
+  // Ex.: campanha 22/06 -> 27/07; anterior 11/05 -> 15/06.
   const nominalCurrentLast = addUtcDays(start, 35);
   const nominalPreviousStart = addUtcDays(start, -42);
   const nominalPreviousLast = addUtcDays(start, -7);
 
-  // Em apuração parcial, nunca usa dias futuros.
-  // O anterior é cortado no mesmo número de dias transcorridos.
+  // Durante a campanha, o período atual pode ser parcial para não contar datas futuras.
+  // A referência anterior NÃO é truncada: ela permanece o bloco completo de seis segundas.
   const requestedAsOf = asOfRaw ? parseDate(asOfRaw, 'asOfDate') : localTodayAsUtcDate();
 
   if (requestedAsOf < start) {
-    const error = new Error('A campanha ainda não iniciou; não há apuração parcial disponível.');
+    const error = new Error('A campanha ainda não iniciou; não há apuração disponível.');
     error.code = 'CAMPANHA_NAO_INICIADA';
     throw error;
   }
 
   const effectiveCurrentLast = requestedAsOf < nominalCurrentLast ? requestedAsOf : nominalCurrentLast;
   const elapsedDays = Math.floor((effectiveCurrentLast - start) / 86400000) + 1;
-  const effectivePreviousLast = addUtcDays(nominalPreviousStart, elapsedDays - 1);
 
   return {
     currentStart: start,
     currentEnd: addUtcDays(effectiveCurrentLast, 1),
     currentLast: effectiveCurrentLast,
     previousStart: nominalPreviousStart,
-    previousEnd: addUtcDays(effectivePreviousLast, 1),
-    previousLast: effectivePreviousLast,
+    previousEnd: addUtcDays(nominalPreviousLast, 1),
+    previousLast: nominalPreviousLast,
 
     nominalCurrentStart: start,
     nominalCurrentLast,
@@ -355,6 +355,9 @@ function fixedSixMondayPeriods(startRaw, asOfRaw = null) {
     asOfDate: effectiveCurrentLast,
     partial: effectiveCurrentLast < nominalCurrentLast,
     elapsedDays,
+    comparisonPolicy: effectiveCurrentLast < nominalCurrentLast
+      ? 'ATUAL_PARCIAL_VS_ANTERIOR_COMPLETO_6_SEGUNDAS'
+      : '6_SEGUNDAS_VS_6_SEGUNDAS',
   };
 }
 
@@ -543,12 +546,59 @@ async function queryPerformance(payload = {}) {
       }))
     : [];
 
+  const provenance = {
+    endpoint: '/api/campanhas-data?recurso=apuracao',
+    handler: 'local-api/campanhas-data.js → queryPerformance()',
+    source: 'SQL Server',
+    database: 'powerbi',
+    dateReference: 'dbo.Vendas.[Data]',
+    tables: [
+      { name:'dbo.Vendas', role:'pedido, vendedor, cliente e data', columns:['ID Pedido de Venda','ID Cliente','Vendedor','Data','Tipo','Forma de Venda','Valor Total'] },
+      { name:'dbo.VendasProdutos', role:'valores e quantidades dos produtos participantes', columns:['ID Pedido de Venda','ID Produto','Qtde PC','Qtde Kg','Valor'] },
+      { name:'dbo.Clientes', role:'validação de representantes ativos', columns:['Vendedor','Status'] },
+      ...(productIds.length ? [] : [{ name:'dbo.Produtos', role:'filtro por código de fornecedor', columns:['ID Produto','ID Fornecedor','Fornecedor'] }]),
+    ],
+    metrics: {
+      revenue:'SUM(dbo.VendasProdutos.[Valor])',
+      kg:'SUM(dbo.VendasProdutos.[Qtde Kg])',
+      pieces:'SUM(dbo.VendasProdutos.[Qtde PC])',
+      customers:'COUNT DISTINCT dbo.Vendas.[ID Cliente] após o filtro de produtos/fornecedor',
+      orders:'COUNT DISTINCT dbo.Vendas.[ID Pedido de Venda] após o filtro de produtos/fornecedor',
+      positivity:'clientes únicos atuais - clientes únicos anteriores',
+    },
+    scope: {
+      mode: productIds.length ? 'LISTA_DE_PRODUTOS' : 'FORNECEDOR',
+      productIds,
+      supplierIds,
+      sellers,
+      productCount:productIds.length,
+      supplierCount:supplierIds.length,
+      sellerCount:sellers.length,
+      note:productIds.length
+        ? 'Há produtos explícitos na campanha; a apuração usa esses IDs como filtro efetivo. Os códigos de fornecedor não são reaplicados sobre as linhas.'
+        : 'Não há lista explícita de produtos; a apuração filtra dbo.Produtos.[ID Fornecedor].',
+    },
+    filters: {
+      activeSeller:"Representante precisa aparecer em dbo.Clientes com Status começando por 'ATIV'",
+      saleType:'SEM FILTRO EXPLÍCITO em dbo.Vendas.[Tipo]',
+      saleForm:'SEM FILTRO EXPLÍCITO em dbo.Vendas.[Forma de Venda]',
+      returnsAndCancellations:'SEM REGRA EXPLÍCITA adicional para devoluções/cancelamentos nesta versão',
+    },
+    warnings: [
+      'Faturamento usa o valor das linhas participantes em dbo.VendasProdutos.[Valor], não dbo.Vendas.[Valor Total] do pedido inteiro.',
+      'A data usada é dbo.Vendas.[Data]. Se outro relatório usa faturamento, nota ou entrega, os números podem divergir.',
+      'Tipo, forma de venda, devoluções e cancelamentos ainda não possuem filtro corporativo explícito nesta consulta. Audite um vendedor para ver quais registros entraram.',
+    ],
+  };
+
   const response = {
     ok: true,
     source: 'SQL Server · Power BI',
     dateReference: 'dbo.Vendas.[Data]',
     activeSellersOnly: true,
-    periodPolicy: fixedPeriods?.partial ? 'SEIS_SEGUNDAS_FIXAS_PARCIAL_EQUIVALENTE' : 'SEIS_SEGUNDAS_FIXAS',
+    periodPolicy: fixedPeriods?.partial ? 'SEIS_SEGUNDAS_FIXAS_ATUAL_PARCIAL_ANTERIOR_COMPLETO' : 'SEIS_SEGUNDAS_FIXAS',
+    comparisonPolicy: fixedPeriods?.comparisonPolicy || '6_SEGUNDAS_VS_6_SEGUNDAS',
+    provenance,
     partial: Boolean(fixedPeriods?.partial),
     asOfDate: fixedPeriods?.asOfDate || null,
     elapsedDays: fixedPeriods?.elapsedDays || null,
@@ -585,6 +635,155 @@ async function queryPerformance(payload = {}) {
   return response;
 }
 
+
+async function querySellerAudit(payload = {}) {
+  const startedAt = Date.now();
+  const seller = text(payload.seller);
+  if (!seller) {
+    const error = new Error('Informe o representante que será auditado.');
+    error.code = 'VENDEDOR_AUSENTE';
+    throw error;
+  }
+
+  const periods = payload.campaignStart
+    ? fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate)
+    : null;
+  const currentStart = periods?.currentStart || parseDate(payload.currentStart, 'currentStart');
+  const currentEnd = periods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
+  const previousStart = periods?.previousStart || parseDate(payload.previousStart, 'previousStart');
+  const previousEnd = periods?.previousEnd || parseDate(payload.previousEnd, 'previousEnd');
+
+  const productIds = uniqueIntegers(payload.productIds);
+  const supplierIds = uniqueIntegers(payload.supplierIds);
+  if (!productIds.length && !supplierIds.length) {
+    const error = new Error('A campanha não possui escopo de produtos/fornecedor para auditoria.');
+    error.code = 'ESCOPO_AUSENTE';
+    throw error;
+  }
+
+  const pool = await getPool();
+  const request = pool.request();
+  request.input('sellerAudit', sql.NVarChar(200), seller);
+  request.input('currentStart', sql.DateTime2, currentStart);
+  request.input('currentEnd', sql.DateTime2, currentEnd);
+  request.input('previousStart', sql.DateTime2, previousStart);
+  request.input('previousEnd', sql.DateTime2, previousEnd);
+
+  const scopeFilter = productIds.length
+    ? `vp.[ID Produto] IN (${productIds.join(',')})`
+    : `p.[ID Fornecedor] IN (${supplierIds.join(',')})`;
+
+  const result = await request.query(`
+    SET NOCOUNT ON;
+
+    WITH ActiveSellers AS (
+      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
+      FROM dbo.Clientes c
+      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
+        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+    )
+    SELECT TOP (1500)
+      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END AS period,
+      LTRIM(RTRIM(v.[Vendedor])) AS seller,
+      v.[ID Pedido de Venda] AS orderId,
+      v.[Data] AS orderDate,
+      v.[ID Cliente] AS clientId,
+      NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), '') AS saleType,
+      NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), '') AS saleForm,
+      ISNULL(v.[Valor Total], 0) AS wholeOrderValue,
+      vp.[ID Produto] AS productId,
+      p.[Produto] AS productName,
+      p.[ID Fornecedor] AS supplierId,
+      p.[Fornecedor] AS supplierName,
+      SUM(ISNULL(vp.[Qtde PC], 0)) AS pieces,
+      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
+      SUM(ISNULL(vp.[Valor], 0)) AS revenue
+    FROM dbo.Vendas v
+    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
+    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
+    WHERE LTRIM(RTRIM(v.[Vendedor])) = @sellerAudit
+      AND (
+        (v.[Data] >= @currentStart AND v.[Data] < @currentEnd)
+        OR (v.[Data] >= @previousStart AND v.[Data] < @previousEnd)
+      )
+      AND ${scopeFilter}
+    GROUP BY
+      CASE WHEN v.[Data] >= @currentStart AND v.[Data] < @currentEnd THEN 'current' ELSE 'previous' END,
+      LTRIM(RTRIM(v.[Vendedor])),
+      v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Tipo], v.[Forma de Venda], v.[Valor Total],
+      vp.[ID Produto], p.[Produto], p.[ID Fornecedor], p.[Fornecedor]
+    ORDER BY period DESC, v.[Data] DESC, v.[ID Pedido de Venda] DESC, vp.[ID Produto];
+  `);
+
+  const rows = (result.recordset || []).map((row) => ({
+    period:row.period,
+    seller:text(row.seller),
+    orderId:String(row.orderId),
+    orderDate:row.orderDate || null,
+    clientId:Number(row.clientId),
+    saleType:text(row.saleType) || '(vazio)',
+    saleForm:text(row.saleForm) || '(vazio)',
+    wholeOrderValue:Number(row.wholeOrderValue) || 0,
+    productId:Number(row.productId),
+    productName:text(row.productName),
+    supplierId:Number(row.supplierId) || null,
+    supplierName:text(row.supplierName),
+    pieces:Number(row.pieces) || 0,
+    kg:Number(row.kg) || 0,
+    revenue:Number(row.revenue) || 0,
+  }));
+
+  function summarize(period) {
+    const selected = rows.filter((row) => row.period === period);
+    return {
+      revenue:selected.reduce((sum,row) => sum + row.revenue, 0),
+      kg:selected.reduce((sum,row) => sum + row.kg, 0),
+      pieces:selected.reduce((sum,row) => sum + row.pieces, 0),
+      orders:new Set(selected.map((row) => row.orderId)).size,
+      customers:new Set(selected.map((row) => String(row.clientId))).size,
+      products:new Set(selected.map((row) => String(row.productId))).size,
+    };
+  }
+
+  const distinctValues = (field) => [...new Set(rows.map((row) => row[field]).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'pt-BR'));
+
+  return {
+    ok:true,
+    source:'SQL Server · Power BI',
+    endpoint:'/api/campanhas-data?recurso=auditoria-vendedor',
+    handler:'local-api/campanhas-data.js → querySellerAudit()',
+    seller,
+    dateReference:'dbo.Vendas.[Data]',
+    partial:Boolean(periods?.partial),
+    comparisonPolicy:periods?.comparisonPolicy || '6_SEGUNDAS_VS_6_SEGUNDAS',
+    periodsUsed:{
+      currentStart,
+      currentEndExclusive:currentEnd,
+      currentLastInclusive:periods?.currentLast || addUtcDays(currentEnd, -1),
+      previousStart,
+      previousEndExclusive:previousEnd,
+      previousLastInclusive:periods?.previousLast || addUtcDays(previousEnd, -1),
+    },
+    scope:{
+      mode:productIds.length ? 'LISTA_DE_PRODUTOS' : 'FORNECEDOR',
+      productIds,
+      supplierIds,
+    },
+    summaries:{ current:summarize('current'), previous:summarize('previous') },
+    saleTypes:distinctValues('saleType'),
+    saleForms:distinctValues('saleForm'),
+    rows,
+    truncated:rows.length >= 1500,
+    warnings:[
+      'Cada linha representa um produto participante dentro de um pedido. O faturamento auditado soma dbo.VendasProdutos.[Valor].',
+      'dbo.Vendas.[Valor Total] é exibido apenas como referência do pedido inteiro e não é usado no faturamento da campanha.',
+      'Não há filtro explícito por Tipo/Forma de Venda nem regra adicional de cancelamento/devolução nesta versão.',
+    ],
+    durationMs:Date.now() - startedAt,
+  };
+}
+
 function publicError(error) {
   const code = error?.code || error?.originalError?.code || 'CAMPANHAS_LOCAL_ERROR';
   const hints = {
@@ -593,12 +792,13 @@ function publicError(error) {
     ETIMEOUT: 'O SQL Server demorou para responder. Tente preparar o contexto novamente.',
     ESCOPO_AUSENTE: 'Selecione fornecedores ou produtos participantes.',
     CAMPANHA_NAO_INICIADA: 'A apuração ficará disponível a partir da primeira segunda-feira da campanha.',
+    VENDEDOR_AUSENTE: 'Escolha um representante para abrir a auditoria.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.4.0',
+    versao: '5.5.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -630,7 +830,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.4.0',
+        version: '5.5.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
@@ -640,6 +840,11 @@ export default async function handler(req, res) {
     if (resource === 'apuracao') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para apuração.', codigo: 'METODO_INVALIDO' });
       return res.status(200).json(await queryPerformance(req.body || {}));
+    }
+
+    if (resource === 'auditoria-vendedor') {
+      if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para auditoria do vendedor.', codigo: 'METODO_INVALIDO' });
+      return res.status(200).json(await querySellerAudit(req.body || {}));
     }
 
     return res.status(404).json({ erro: `Recurso desconhecido: ${resource}`, codigo: 'RECURSO_DESCONHECIDO' });
