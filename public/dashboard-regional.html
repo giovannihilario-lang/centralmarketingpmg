@@ -113,71 +113,30 @@
   .export-menu button svg { width:14px; height:14px; opacity:.7; flex-shrink:0; }
   .export-menu .export-hint { padding:8px 12px 4px; font-size:10px; color:#9ca3af; letter-spacing:.02em; }
 
-
-  /* ── Loading global do dashboard ── */
-  .dashboard-loading {
-    position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
-    padding: 28px; background: rgba(244,245,244,.88); backdrop-filter: blur(12px) saturate(.9);
-    opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .24s ease, visibility .24s ease;
-  }
-  .dashboard-loading.show { opacity: 1; visibility: visible; pointer-events: all; }
-  .dashboard-loading-card {
-    width: min(520px, calc(100vw - 36px)); background: rgba(255,255,255,.96); border: 1px solid rgba(195,224,205,.95);
-    border-radius: 22px; padding: 28px 30px 26px; box-shadow: 0 30px 80px -28px rgba(26,77,46,.38);
-    position: relative; overflow: hidden; animation: loadingCardIn .42s var(--ease-out) both;
-  }
-  .dashboard-loading-card::before { content:''; position:absolute; inset:0 0 auto; height:4px; background:linear-gradient(90deg,var(--green-dark),var(--green-light),var(--amber),var(--green-dark)); background-size:220% 100%; animation: shimmerMove 1.8s linear infinite; }
-  .dashboard-loading-top { display:flex; align-items:center; gap:15px; }
-  .dashboard-loading-mark { width:48px; height:48px; border-radius:15px; display:grid; place-items:center; color:white; background:linear-gradient(145deg,var(--green-dark),var(--green-mid)); box-shadow:0 10px 24px -12px rgba(26,77,46,.7); flex-shrink:0; }
-  .dashboard-loading-mark svg { width:25px; height:25px; }
-  .dashboard-loading-copy { min-width:0; }
-  .dashboard-loading-eyebrow { font-size:10px; font-weight:800; letter-spacing:1.2px; text-transform:uppercase; color:var(--green-mid); margin-bottom:5px; }
-  .dashboard-loading-title { font-family:var(--font-display); font-size:21px; font-weight:750; line-height:1.15; color:var(--text-dark); letter-spacing:-.35px; }
-  .dashboard-loading-detail { margin-top:8px; color:var(--gray-text); font-size:12.5px; line-height:1.45; min-height:18px; }
-  .dashboard-loading-track { height:7px; background:#edf1ee; border-radius:99px; overflow:hidden; margin-top:22px; }
-  .dashboard-loading-fill { height:100%; width:18%; border-radius:inherit; background:linear-gradient(90deg,var(--green-dark),var(--green-light)); transition:width .5s var(--ease-out); position:relative; overflow:hidden; }
-  .dashboard-loading-fill::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent); transform:translateX(-100%); animation:loadingSweep 1.15s ease-in-out infinite; }
-  .dashboard-loading-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:14px; }
-  .dashboard-loading-step { border:1px solid var(--gray-1); background:#fafbfa; color:#8a918d; border-radius:9px; padding:7px 8px; font-size:10px; font-weight:650; text-align:center; transition:.22s ease; }
-  .dashboard-loading-step.active { border-color:var(--green-border); background:var(--green-pale); color:var(--green-dark); }
-  .dashboard-loading-step.done { color:var(--green-mid); background:#f6fbf8; }
-  @keyframes loadingCardIn { from { opacity:0; transform:translateY(14px) scale(.975); } to { opacity:1; transform:none; } }
-  @keyframes loadingSweep { to { transform:translateX(100%); } }
-  @media (max-width: 600px) { .dashboard-loading-card { padding:24px 20px 22px; } .dashboard-loading-title { font-size:18px; } .dashboard-loading-steps { grid-template-columns:1fr; } }
-
-  .body-layout { display: grid; grid-template-columns: 330px 1fr; flex: 1; overflow: hidden; position: relative; }
-    .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 18px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 2; box-shadow: 6px 0 24px -20px rgba(17,24,39,.15); }
+  .body-layout { display: grid; grid-template-columns: 280px 1fr; flex: 1; overflow: hidden; position: relative; }
+    .sidebar { background: var(--white); border-right: 1px solid var(--gray-1); padding: 16px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; position: relative; z-index: 2; box-shadow: 6px 0 24px -20px rgba(17,24,39,.15); }
   .sidebar > * { animation: sidebarEnter .5s var(--ease-out) both; }
   .sidebar > *:nth-child(1) { animation-delay: .03s; }
   .sidebar > *:nth-child(2) { animation-delay: .07s; }
   .sidebar > *:nth-child(3) { animation-delay: .11s; }
   .sidebar > *:nth-child(4) { animation-delay: .15s; }
   .sidebar > *:nth-child(5) { animation-delay: .19s; }
-  .sb-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; display:flex; align-items:center; gap:6px; }
+  .sb-section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--gray-text); font-weight: 600; margin-bottom: 7px; display:flex; align-items:center; gap:6px; }
   .sb-section-title:not(:first-child) { margin-top: 16px; }
   .chip-group { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
 
   /* ── Abas de filtro (Localização / Catálogo) ── */
-.filter-tabs { background: linear-gradient(180deg, #f9fbfa, var(--gray-0)); border: 1px solid var(--gray-1); border-radius: 14px; padding: 12px; box-shadow: 0 8px 22px -20px rgba(17,24,39,.35); display:flex; flex-direction:column; }
+.filter-tabs { background: var(--gray-0); border: 1px solid var(--gray-1); border-radius: 12px; padding: 10px; display:flex; flex-direction:column; }
 .filter-tabs-nav { display:flex; gap:2px; background: var(--white); border: 1px solid var(--gray-1); border-radius: 9px; padding: 2px; margin-bottom: 12px; position: relative; }
-.filter-tab { flex:1; min-width:0; position:relative; z-index:2; border:none; background:transparent; padding:10px 7px; font-size:12px; font-weight:600; color: var(--gray-text); border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; transition: color .2s ease; }
-  .filter-tab svg { width:14px; height:14px; flex-shrink:0; }
+.filter-tab { flex:1; min-width:0; position:relative; z-index:2; border:none; background:transparent; padding:7px 5px; font-size:10.5px; font-weight:600; color: var(--gray-text); border-radius:7px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:4px; transition: color .2s ease; }
+  .filter-tab svg { width:11px; height:11px; flex-shrink:0; }
   .filter-tab .tab-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .filter-tab .tab-count { flex-shrink:0; font-size:9.5px; background: rgba(0,0,0,.06); padding:1px 4px; border-radius: 8px; font-weight:700; }
+  .filter-tab .tab-count { flex-shrink:0; font-size:8.5px; background: rgba(0,0,0,.06); padding:1px 4px; border-radius: 8px; font-weight:700; }
   .filter-tab.active { color: var(--green-dark); }
   .filter-tab.active .tab-count { background: var(--green-pale); color: var(--green-dark); }
   .filter-tab-indicator { position:absolute; top:3px; bottom:3px; left:3px; width: calc(50% - 3px); background: linear-gradient(135deg, var(--green-pale), #f2faf5); border: 1px solid var(--green-border); border-radius:7px; transition: transform .32s var(--ease-spring); box-shadow: 0 2px 6px -2px rgba(26,77,46,.2); z-index: 1; }
   .filter-tab-panel { display:none; animation: floatUp .3s var(--ease-out) both; max-height: 640px; overflow-y: auto; padding-right: 4px; }
-  .filter-tab-panel.active { display:flex; flex-direction: column; gap: 14px; }
-  .sidebar-filter-title { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; padding:2px 2px 0; }
-  .sidebar-filter-title strong { font-size:17px; line-height:1; color:var(--text-dark); letter-spacing:-.2px; }
-  .sidebar-filter-title span { font-size:10.5px; color:var(--gray-text); text-align:right; }
-  .filter-block { border:1px solid transparent; border-radius:11px; padding:8px; margin:-8px; transition:border-color .18s ease, background .18s ease; }
-  .filter-block.featured { background:linear-gradient(135deg, #f0f8f3, #fbfdfc); border-color:var(--green-border); padding:10px; margin:-6px; box-shadow:0 7px 18px -17px rgba(26,77,46,.7); }
-  .filter-block.featured .sb-section-title { color:var(--green-dark); font-size:11.5px; font-weight:800; }
-  .filter-helper { font-size:10.5px; color:var(--gray-text); line-height:1.35; margin:-2px 0 2px; }
-  .catalogo-callout { display:flex; align-items:center; gap:7px; padding:7px 9px; border-radius:9px; background:var(--green-pale); color:var(--green-dark); font-size:10.5px; font-weight:650; border:1px solid var(--green-border); }
-  .catalogo-callout svg { width:13px; height:13px; flex-shrink:0; }
+  .filter-tab-panel.active { display:flex; flex-direction: column; gap: 12px; }
 
   /* ── Resumo de filtros aplicados ── */
   .fam-box { display:none; flex-direction:column; gap:7px; background: linear-gradient(135deg, var(--green-pale), #f4faf6); border:1px solid var(--green-border); border-radius:12px; padding:10px 11px; }
@@ -190,15 +149,15 @@
   .fam-pill { display:inline-flex; align-items:center; gap:5px; background:white; border:1px solid var(--green-border); color: var(--green-dark); font-size:10.5px; font-weight:600; padding:3px 6px 3px 9px; border-radius: 20px; animation: pillIn .28s var(--ease-spring) both; }
   .fam-pill button { border:none; background: var(--green-pale); color: var(--green-dark); width:14px; height:14px; border-radius:50%; font-size:10px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition: background .15s ease, transform .15s ease; }
   .fam-pill button:hover { background: var(--green-dark); color:white; transform: scale(1.12); }
-  .chip-search { width:100%; padding:9px 11px; font-size:12.5px; border:1px solid var(--gray-1); border-radius:7px; background:var(--gray-0); margin-bottom:6px; outline:none; transition: border-color .18s ease, box-shadow .18s ease; }
+  .chip-search { width:100%; padding:6px 9px; font-size:11.5px; border:1px solid var(--gray-1); border-radius:7px; background:var(--gray-0); margin-bottom:6px; outline:none; transition: border-color .18s ease, box-shadow .18s ease; }
   .chip-search:focus { border-color: var(--green-mid); background: var(--white); box-shadow: 0 0 0 3px var(--green-pale); }
   .chip-empty { font-size:11px; color:var(--gray-text); padding:6px 4px; }
-  .chip { padding: 8px 11px; border-radius: 9px; border: 1px solid var(--gray-1); background: var(--white); font-size: 12.5px; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .15s var(--ease-spring), box-shadow .16s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
+  .chip { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--gray-1); background: var(--white); font-size: 12px; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .15s var(--ease-spring), box-shadow .16s ease; display:flex; justify-content:space-between; align-items:center; user-select:none; }
   .chip:hover { border-color: var(--green-mid); background: var(--green-pale); transform: translateX(2px); }
   .chip.active { background: var(--green-dark); color: white; border-color: var(--green-dark); box-shadow: 0 3px 10px -3px rgba(26,77,46,.5); animation: tabPop .3s var(--ease-spring); }
   .chip:active { transform: scale(0.96); }
   .chip .badge { font-size: 10px; opacity: .65; font-variant-numeric: tabular-nums; }
-  .btn-apply { padding: 12px; background: var(--green-dark); background-size: 200% 100%; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%; transition: background-position .35s ease, transform .15s var(--ease-spring), box-shadow .2s ease; background-image: linear-gradient(100deg, var(--green-dark) 0%, var(--green-mid) 50%, var(--green-dark) 100%); }
+  .btn-apply { padding: 10px; background: var(--green-dark); background-size: 200% 100%; color: white; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; width: 100%; transition: background-position .35s ease, transform .15s var(--ease-spring), box-shadow .2s ease; background-image: linear-gradient(100deg, var(--green-dark) 0%, var(--green-mid) 50%, var(--green-dark) 100%); }
   .btn-apply:hover { background-position: 100% 0; box-shadow: 0 8px 20px -8px rgba(26,77,46,.55); transform: translateY(-1px); }
   .btn-apply:active { transform: scale(.97); }
   .btn-reset { padding: 8px; background: transparent; color: var(--gray-text); border: 1px solid var(--gray-1); border-radius: 7px; font-size: 11px; cursor: pointer; width: 100%; transition: border-color .16s ease, color .16s ease; }
@@ -398,7 +357,7 @@
     .row-4 { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 980px) {
-    .body-layout { grid-template-columns: 285px 1fr; }
+    .body-layout { grid-template-columns: 248px 1fr; }
     .row-2 { grid-template-columns: 1fr; }
     .row-2-even { grid-template-columns: 1fr; }
   }
@@ -413,28 +372,6 @@
 </style>
 </head>
 <body>
-
-
-<div class="dashboard-loading show" id="dashboardLoading" role="status" aria-live="polite" aria-busy="true">
-  <div class="dashboard-loading-card">
-    <div class="dashboard-loading-top">
-      <div class="dashboard-loading-mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
-      </div>
-      <div class="dashboard-loading-copy">
-        <div class="dashboard-loading-eyebrow">PMG Connect · Regional</div>
-        <div class="dashboard-loading-title" id="dashboardLoadingTitle">Preparando o Dashboard Regional</div>
-        <div class="dashboard-loading-detail" id="dashboardLoadingDetail">Conectando aos dados e preparando seus filtros.</div>
-      </div>
-    </div>
-    <div class="dashboard-loading-track"><div class="dashboard-loading-fill" id="dashboardLoadingFill"></div></div>
-    <div class="dashboard-loading-steps">
-      <div class="dashboard-loading-step active" id="loadingStep1">Filtros</div>
-      <div class="dashboard-loading-step" id="loadingStep2">Indicadores</div>
-      <div class="dashboard-loading-step" id="loadingStep3">Mapa e gráficos</div>
-    </div>
-  </div>
-</div>
 
 <div class="top-progress" id="topProgress"></div>
 
@@ -491,11 +428,6 @@
 <div class="body-layout">
   <aside class="sidebar">
 
-    <div class="sidebar-filter-title">
-      <strong>Filtros</strong>
-      <span>Refine o dashboard<br>em poucos cliques</span>
-    </div>
-
     <div class="periodo-filter" id="periodoFilter">
       <button class="periodo-trigger" type="button" onclick="togglePeriodoPanel()" aria-haspopup="true" aria-expanded="false">
         <svg class="cal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
@@ -536,20 +468,13 @@
       </div>
 
       <div class="filter-tab-panel active" data-panel="local">
-        <div class="filter-block featured">
-          <div class="sb-section-title">Cidade</div>
-          <div class="filter-helper">Encontre diretamente a praça que deseja analisar.</div>
-          <input type="text" class="chip-search" placeholder="Buscar cidade…" oninput="filtrarChips('cidadeChips', this.value)">
-          <div class="chip-group" id="cidadeChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todas as cidades <span class="badge">–</span></div></div>
+        <div>
+          <div class="sb-section-title">Região</div>
+          <input type="text" class="chip-search" placeholder="Buscar região…" oninput="filtrarChips('regiaoChips', this.value)">
+          <div class="chip-group" id="regiaoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
         </div>
 
-        <div class="filter-block">
-          <div class="sb-section-title">Região comercial</div>
-          <input type="text" class="chip-search" placeholder="Buscar região / zona…" oninput="filtrarChips('regiaoChips', this.value)">
-          <div class="chip-group" id="regiaoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todas <span class="badge">–</span></div></div>
-        </div>
-
-        <div class="filter-block">
+        <div>
           <div class="sb-section-title">UF</div>
           <input type="text" class="chip-search" placeholder="Buscar UF…" oninput="filtrarChips('ufChips', this.value)">
           <div class="chip-group" id="ufChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
@@ -557,23 +482,19 @@
       </div>
 
       <div class="filter-tab-panel" data-panel="catalogo">
-        <div class="catalogo-callout">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
-          Filtre o catálogo por segmento, grupo ou fornecedor
-        </div>
-        <div class="filter-block featured">
+        <div>
           <div class="sb-section-title">Segmento</div>
           <input type="text" class="chip-search" placeholder="Buscar segmento…" oninput="filtrarChips('segmentoChips', this.value)">
           <div class="chip-group" id="segmentoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
         </div>
 
-        <div class="filter-block featured">
+        <div>
           <div class="sb-section-title">Grupo</div>
           <input type="text" class="chip-search" placeholder="Buscar grupo…" oninput="filtrarChips('grupoChips', this.value)">
           <div class="chip-group" id="grupoChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
         </div>
 
-        <div class="filter-block featured">
+        <div>
           <div class="sb-section-title">Fornecedor</div>
           <input type="text" class="chip-search" placeholder="Buscar fornecedor…" oninput="filtrarChips('fornecedorChips', this.value)">
           <div class="chip-group" id="fornecedorChips"><div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">–</span></div></div>
@@ -667,7 +588,8 @@
         <div class="chart-canvas-wrap" id="wrap-chartEvolucao"><canvas id="chartEvolucao"></canvas></div>
       </div>
       <div class="chart-box">
-        <div class="chart-hdr"><div class="chart-title">Heatmap — UF x Período (Faturamento)</div><div class="chart-tag">Ano/mês</div></div><div style="overflow-x:auto;"><table class="heatmap-table" id="heatmapTable"></table></div>
+        <div class="chart-hdr"><div class="chart-title">Heatmap — UF x Mês (Faturamento)</div><div class="chart-tag">Grid</div></div>
+        <div style="overflow-x:auto;"><table class="heatmap-table" id="heatmapTable"></table></div>
       </div>
     </div>
 
@@ -681,7 +603,7 @@
         <div class="chart-canvas-wrap" id="wrap-chartSegmento"><canvas id="chartSegmento"></canvas></div>
       </div>
       <div class="chart-box">
-        <div class="chart-hdr"><div class="chart-title">Top 10 Fornecedores</div><div class="chart-tag">Participação no total</div></div>
+        <div class="chart-hdr"><div class="chart-title">Top 10 Fornecedores</div><div class="chart-tag">Rosca</div></div>
         <div class="chart-canvas-wrap" id="wrap-chartFornecedor"><canvas id="chartFornecedor"></canvas></div>
       </div>
       <div class="chart-box">
@@ -698,14 +620,9 @@
 <script src="geo-data.js"></script>
 <script>
 /* ══════════════════ CONFIG ══════════════════ */
-// Quando o HTML é servido pelo Node local (localhost ou outro computador da LAN),
-// usa a própria origem. Quando a tela está hospedada em HTTPS (ex.: Vercel), ela
-// conversa com a API local do computador do usuário em localhost:3001.
-const API_BASE = window.PMG_API_BASE || (
-  location.protocol === 'http:'
-    ? `${location.origin}/api`
-    : 'http://localhost:3001/api'
-);
+// Projeto roda apenas na máquina local por enquanto — quando for para produção,
+// trocar para a URL do servidor real (ou ler de uma variável de ambiente/config).
+const API_BASE = 'http://localhost:3001/api';
 
 /* ══════════════════ CHART.JS — DEFAULTS VISUAIS/ANIMAÇÃO ══════════════════ */
 Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
@@ -756,21 +673,18 @@ function _apiCacheKey(path, params) {
 }
 
 function limparCacheApi() { _apiCache.clear(); }
-let _forcarRefreshServidor = false;
 
 async function apiGet(path, params = {}, { forceRefresh = false } = {}) {
   const key = _apiCacheKey(path, params);
-  const bypass = forceRefresh || _forcarRefreshServidor;
 
-  if (!bypass) {
+  if (!forceRefresh) {
     const cached = _apiCache.get(key);
     if (cached && (Date.now() - cached.ts) < API_CACHE_TTL_MS) return cached.result;
     const inFlight = _apiInFlight.get(key);
     if (inFlight) return inFlight;
   }
 
-  const paramsServidor = bypass ? { ...params, p_refresh: 1 } : params;
-  const promise = _apiGetRaw(path, paramsServidor).then(result => {
+  const promise = _apiGetRaw(path, params).then(result => {
     _apiInFlight.delete(key);
     // Só guarda em cache respostas sem erro — falhas de rede não devem "grudar".
     if (!result.error) _apiCache.set(key, { ts: Date.now(), result });
@@ -780,19 +694,60 @@ async function apiGet(path, params = {}, { forceRefresh = false } = {}) {
   return promise;
 }
 
+const API_RETRY_DELAYS_MS = [0, 650, 1500];
+
+function aguardar(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function _apiGetRaw(path, params) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== '') qs.append(k, v);
   });
-  try {
-    const res = await fetch(`${API_BASE}${path}?${qs.toString()}`);
-    const json = await res.json();
-    if (!res.ok) return { data: null, error: json };
-    return { data: json, error: null };
-  } catch (err) {
-    return { data: null, error: { message: `Falha ao conectar na API local (${API_BASE}). O servidor Node está rodando? Detalhe: ${err.message}` } };
+
+  const url = `${API_BASE}${path}?${qs.toString()}`;
+  let ultimoErro = null;
+
+  // O Chrome pode rejeitar a primeira chamada ao localhost enquanto resolve
+  // a permissão de acesso à rede local. Uma falha transitória não deve virar
+  // imediatamente um banner dizendo que o servidor está desligado.
+  for (let tentativa = 0; tentativa < API_RETRY_DELAYS_MS.length; tentativa++) {
+    const atraso = API_RETRY_DELAYS_MS[tentativa];
+    if (atraso) await aguardar(atraso);
+
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+
+      let json;
+      try {
+        json = await res.json();
+      } catch {
+        json = { message: `A API local respondeu HTTP ${res.status}, mas sem JSON válido.` };
+      }
+
+      if (res.ok) return { data: json, error: null };
+
+      // Erros HTTP chegaram ao servidor. Não adianta fingir que ele está offline.
+      // Só repetimos indisponibilidades temporárias do servidor/proxy.
+      if (![502, 503, 504].includes(res.status)) {
+        return { data: null, error: json };
+      }
+
+      ultimoErro = json;
+    } catch (err) {
+      ultimoErro = err;
+    }
   }
+
+  const detalhe = ultimoErro?.message || String(ultimoErro || 'Falha de rede desconhecida');
+  return {
+    data: null,
+    error: {
+      message: `A API local não respondeu após novas tentativas (${API_BASE}). Verifique se o servidor Node está aberto e se o navegador permitiu acesso à rede local. Detalhe: ${detalhe}`,
+      transient: true
+    }
+  };
 }
 
 const COLS = {
@@ -816,7 +771,7 @@ function fmtNum(n){ return n.toLocaleString('pt-BR'); }
 
 /* ══════════════════ ESTADO GLOBAL ══════════════════ */
 
-let filtroCidade='', filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='';
+let filtroRegiao='', filtroUF='', filtroSegmento='', filtroGrupo='', filtroFornecedor='';
 let mapMode = 'valor';
 let rankMode = 'valor';
 let charts = {};
@@ -825,7 +780,6 @@ let cidadesCache = [];
 
 function getFiltrosParams() {
   return {
-    p_cidade: filtroCidade || null,
     p_regiao: filtroRegiao || null,
     p_uf: filtroUF || null,
     p_segmento: filtroSegmento || null,
@@ -872,41 +826,6 @@ function salvarCentroDistribuicao(lat, lng, nome) {
 let DISTRIBUICAO_CENTRAL = carregarCentroDistribuicao(); // null = ainda não configurado
 
 const PALETTE = ['#1a4d2e','#4caf70','#f59e0b','#8b5cf6','#3b82f6','#ec4899','#14b8a6','#ef4444','#a855f7','#84cc16'];
-
-
-/* ══════════════════ LOADING GLOBAL ══════════════════ */
-let dashboardLoadingDepth = 0;
-function setDashboardLoadingStage(stage = 1, title, detail) {
-  const overlay = document.getElementById('dashboardLoading');
-  if (!overlay) return;
-  if (title) document.getElementById('dashboardLoadingTitle').textContent = title;
-  if (detail) document.getElementById('dashboardLoadingDetail').textContent = detail;
-  const pct = stage <= 1 ? 28 : stage === 2 ? 62 : 88;
-  document.getElementById('dashboardLoadingFill').style.width = pct + '%';
-  [1,2,3].forEach(i => {
-    const el = document.getElementById('loadingStep' + i);
-    el.classList.toggle('active', i === stage);
-    el.classList.toggle('done', i < stage);
-  });
-}
-function showDashboardLoading(title = 'Atualizando o Dashboard Regional', detail = 'Buscando os dados mais recentes para esta visualização.', stage = 1) {
-  dashboardLoadingDepth++;
-  const overlay = document.getElementById('dashboardLoading');
-  if (!overlay) return;
-  overlay.classList.add('show');
-  overlay.setAttribute('aria-busy', 'true');
-  setDashboardLoadingStage(stage, title, detail);
-}
-function hideDashboardLoading({ force = false } = {}) {
-  dashboardLoadingDepth = force ? 0 : Math.max(0, dashboardLoadingDepth - 1);
-  if (dashboardLoadingDepth > 0) return;
-  const overlay = document.getElementById('dashboardLoading');
-  if (!overlay) return;
-  const fill = document.getElementById('dashboardLoadingFill');
-  if (fill) fill.style.width = '100%';
-  overlay.setAttribute('aria-busy', 'false');
-  setTimeout(() => overlay.classList.remove('show'), 180);
-}
 
 /* ══════════════════ LOADING HELPERS ══════════════════ */
 let requisicoesAtivas = 0;
@@ -1028,7 +947,7 @@ function switchFilterTab(tab) {
 }
 
 const FAM_LABELS = {
-  cidadeChips: 'Cidade', regiaoChips: 'Região comercial', ufChips: 'UF', segmentoChips: 'Segmento',
+  regiaoChips: 'Região', ufChips: 'UF', segmentoChips: 'Segmento',
   grupoChips: 'Grupo', fornecedorChips: 'Fornecedor'
 };
 
@@ -1051,7 +970,7 @@ function updateFiltrosAplicadosMini() {
   }
 
   document.getElementById('tabCountLocal').textContent =
-    [filtroCidade, filtroRegiao, filtroUF].filter(Boolean).length || '–';
+    [filtroRegiao, filtroUF].filter(Boolean).length || '–';
   document.getElementById('tabCountCatalogo').textContent =
     [filtroSegmento, filtroGrupo, filtroFornecedor].filter(Boolean).length || '–';
 
@@ -1072,66 +991,21 @@ function removerFiltroChip(containerId) {
 
 async function buildChipsRPC(containerId, coluna) {
   const container = document.getElementById(containerId);
-  const selecionadoAntes = container?.querySelector('.chip.active')?.dataset.val || '';
-
-  // Filtros são contextuais: cada lista respeita os demais filtros e o período,
-  // mas ignora a si própria para que a opção selecionada continue removível.
-  const params = getFiltrosParams();
-  const colunaParaParam = {
-    Cidade: 'p_cidade', Regiao: 'p_regiao', UF: 'p_uf', Segmento: 'p_segmento',
-    Grupo: 'p_grupo', Fornecedor: 'p_fornecedor'
-  };
-  delete params[colunaParaParam[coluna]];
-
-  const { data, error } = await apiGet('/valores-distintos', { p_coluna: coluna, ...params });
+  const { data, error } = await apiGet('/valores-distintos', { p_coluna: coluna });
   if (error) { console.error(error); showToast('Erro ao carregar filtros: ' + error.message); return; }
-
-  const rows = data || [];
-  const totalPedidos = Number(rows[0]?.total_pedidos) || 0;
-  const labelTodos = coluna === 'Cidade' ? 'Todas as cidades' : 'Todos';
-  container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">${labelTodos} <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
-
-  rows.forEach(row => {
+  const total = data.reduce((s,r)=>s+Number(r.qtd),0);
+  container.innerHTML = `<div class="chip active" data-val="" tabindex="0" role="button" aria-pressed="true">Todos <span class="badge">${fmtNum(total)}</span></div>`;
+  data.forEach(row => {
     const v = row.valor;
     const div = document.createElement('div');
     div.className = 'chip'; div.dataset.val = v;
     div.tabIndex = 0; div.setAttribute('role', 'button'); div.setAttribute('aria-pressed', 'false');
-    div.title = `${fmtNum(Number(row.qtd) || 0)} pedidos distintos nos filtros atuais`;
-    div.innerHTML = `<span>${escapeHtml(v)}</span><span class="badge">${fmtNum(Number(row.qtd) || 0)}</span>`;
+    div.innerHTML = `<span>${escapeHtml(v)}</span><span class="badge">${fmtNum(Number(row.qtd))}</span>`;
     div.onclick = () => selecionarChip(container, div);
     container.appendChild(div);
   });
-
-  // Se a combinação atual zerou esta dimensão, mantemos a opção selecionada com badge 0
-  // para o usuário enxergar e remover o filtro, em vez de fazê-lo desaparecer misteriosamente.
-  if (selecionadoAntes && !container.querySelector(`.chip[data-val="${CSS.escape(selecionadoAntes)}"]`)) {
-    const div = document.createElement('div');
-    div.className = 'chip'; div.dataset.val = selecionadoAntes;
-    div.tabIndex = 0; div.setAttribute('role', 'button'); div.setAttribute('aria-pressed', 'false');
-    div.title = '0 pedidos com a combinação atual de filtros';
-    div.innerHTML = `<span>${escapeHtml(selecionadoAntes)}</span><span class="badge">0</span>`;
-    div.onclick = () => selecionarChip(container, div);
-    container.appendChild(div);
-  }
-
-  const alvo = selecionadoAntes
-    ? container.querySelector(`.chip[data-val="${CSS.escape(selecionadoAntes)}"]`)
-    : container.querySelector('.chip[data-val=""]');
-  selecionarChip(container, alvo || container.querySelector('.chip[data-val=""]'));
-
   const chipTodos = container.querySelector('.chip[data-val=""]');
   chipTodos.onclick = () => selecionarChip(container, chipTodos);
-}
-
-async function atualizarFiltrosContextuais() {
-  await Promise.all([
-    buildChipsRPC('cidadeChips', 'Cidade'),
-    buildChipsRPC('regiaoChips', 'Regiao'),
-    buildChipsRPC('ufChips', 'UF'),
-    buildChipsRPC('segmentoChips', 'Segmento'),
-    buildChipsRPC('grupoChips', 'Grupo'),
-    buildChipsRPC('fornecedorChips', 'Fornecedor'),
-  ]);
 }
 
 function selecionarChip(container, chipSelecionado) {
@@ -1311,9 +1185,7 @@ function aplicarPresetPeriodo(idx) {
   const p = presets[idx];
   if (!meses.length) return;
   if (p.ano) {
-    const anoMaisRecente = meses[meses.length-1].slice(0,4);
-    const mesesDoAno = meses.filter(m => m.startsWith(anoMaisRecente + '-'));
-    document.getElementById('periodoDe').value = mesesDoAno[0] || meses[meses.length-1];
+    document.getElementById('periodoDe').value = meses[meses.length-1].slice(0,4) + '-01';
   } else {
     document.getElementById('periodoDe').value = meses[Math.max(0, meses.length - p.n)];
   }
@@ -1370,12 +1242,10 @@ async function aplicarFiltros() {
   const btn = document.getElementById('btnAplicarFiltros');
   const btnTextoOriginal = btn?.textContent;
   if (btn) { btn.disabled = true; btn.style.opacity = '.7'; btn.style.cursor = 'wait'; btn.textContent = 'Aplicando…'; }
-  showDashboardLoading('Aplicando filtros', 'Recalculando indicadores, ranking, mapa e gráficos com a seleção atual.', 2);
 
   try {
     pararModoDiretoria();
     if (replayAtivo) toggleReplay(); // muda o período/filtros: encerra o replay para não ficar com dado desatualizado
-    filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
     filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
     filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
     filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
@@ -1386,15 +1256,14 @@ async function aplicarFiltros() {
     document.getElementById('periodoAtual').textContent =
       (periodoDe || periodoAte) ? `${periodoDe || '…'} → ${periodoAte || '…'}` : 'Todo o histórico';
 
-    const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
+    const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || periodoDe || periodoAte;
     document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
 
     document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
     updateFiltrosAplicadosMini();
     atualizarUrlComFiltros();
-    await Promise.all([renderDashboard(), atualizarFiltrosContextuais()]);
+    await renderDashboard();
   } finally {
-    hideDashboardLoading();
     _aplicandoFiltros = false;
     if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.textContent = btnTextoOriginal; }
   }
@@ -1406,7 +1275,6 @@ function reselecionarChipsAtuais() {
   // aqui reaplicamos os valores de filtro que já estavam em vigor antes da atualização,
   // para que "Atualizar dados" nunca resete silenciosamente os filtros do usuário.
   const mapa = [
-    ['cidadeChips', filtroCidade],
     ['regiaoChips', filtroRegiao],
     ['ufChips', filtroUF],
     ['segmentoChips', filtroSegmento],
@@ -1430,18 +1298,14 @@ async function atualizarDadosForcado() {
   btn.disabled = true;
   btn.classList.add('spinning');
   showToast('Atualizando dados do servidor…', { loading: true });
-  showDashboardLoading('Atualizando dados do servidor', 'Ignorando o cache e consultando novamente a base regional.', 1);
 
-  limparCacheApi(); // descarta o cache do navegador
-  _forcarRefreshServidor = true; // também ignora o cache de 3 min dos endpoints Node
+  limparCacheApi(); // descarta tudo que estava em memória — próximas chamadas vão direto ao servidor
 
   try {
     // Recarrega também o mapeamento de nomes canônicos de cidade e as opções de
     // filtro (chips/período), pois cadastros novos podem ter surgido desde a última carga.
     await carregarCidadesCanonicas();
-    setDashboardLoadingStage(2, 'Atualizando filtros e indicadores', 'Recarregando cidades, catálogo e métricas com os dados mais recentes.');
     await Promise.all([
-      buildChipsRPC('cidadeChips', 'Cidade'),
       buildChipsRPC('regiaoChips', 'Regiao'),
       buildChipsRPC('ufChips', 'UF'),
       buildChipsRPC('segmentoChips', 'Segmento'),
@@ -1451,15 +1315,12 @@ async function atualizarDadosForcado() {
     ]);
     reselecionarChipsAtuais();
     updateFiltrosAplicadosMini();
-    setDashboardLoadingStage(3, 'Montando a visualização', 'Finalizando mapa, rankings e gráficos regionais.');
     await renderDashboard();
     showToast('Dados atualizados com sucesso.');
   } catch (e) {
     console.error(e);
     showToast('Erro ao atualizar dados: ' + e.message);
   } finally {
-    hideDashboardLoading();
-    _forcarRefreshServidor = false;
     btn.disabled = false;
     btn.classList.remove('spinning');
   }
@@ -1470,13 +1331,12 @@ async function atualizarDadosForcado() {
 // para que o estado do dashboard possa ser compartilhado por link e
 // restaurado com o botão voltar/avançar do navegador.
 const URL_PARAM_MAP = {
-  cidade: 'cidadeChips', regiao: 'regiaoChips', uf: 'ufChips', segmento: 'segmentoChips',
+  regiao: 'regiaoChips', uf: 'ufChips', segmento: 'segmentoChips',
   grupo: 'grupoChips', fornecedor: 'fornecedorChips'
 };
 
 function montarSearchParamsDosFiltrosAtuais() {
   const params = new URLSearchParams();
-  if (filtroCidade) params.set('cidade', filtroCidade);
   if (filtroRegiao) params.set('regiao', filtroRegiao);
   if (filtroUF) params.set('uf', filtroUF);
   if (filtroSegmento) params.set('segmento', filtroSegmento);
@@ -1513,16 +1373,13 @@ function restaurarFiltrosDaURL() {
   renderPeriodoCalendarHighlight();
   atualizarLabelPeriodoPendente();
 
-  // O estado real vem do chip que de fato pôde ser selecionado. Assim uma URL antiga
-  // com valor inexistente cai de verdade em "Todos", sem filtro invisível na consulta.
-  filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
-  filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
-  filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
-  filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
-  filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
-  filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+  filtroRegiao = params.get('regiao') || '';
+  filtroUF = params.get('uf') || '';
+  filtroSegmento = params.get('segmento') || '';
+  filtroGrupo = params.get('grupo') || '';
+  filtroFornecedor = params.get('fornecedor') || '';
 
-  const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || params.get('de') || params.get('ate');
+  const temFiltro = filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || params.get('de') || params.get('ate');
   document.getElementById('filtroAtivo').style.display = temFiltro ? 'inline-flex' : 'none';
   document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
   updateFiltrosAplicadosMini();
@@ -1531,11 +1388,10 @@ function restaurarFiltrosDaURL() {
 // Botão voltar/avançar do navegador: restaura os filtros daquele ponto do
 // histórico e re-renderiza — sem empurrar uma nova entrada (senão o back
 // vira um loop).
-window.addEventListener('popstate', async () => {
+window.addEventListener('popstate', () => {
   pararModoDiretoria();
   restaurarFiltrosDaURL();
-  showDashboardLoading('Restaurando visualização', 'Reaplicando os filtros deste ponto do histórico.', 2);
-  try { await renderDashboard(); } finally { hideDashboardLoading(); }
+  renderDashboard();
 });
 
 function resetarFiltros() {
@@ -1606,19 +1462,18 @@ async function renderKPIs() {
   const totalValor = Number(k.total_valor) || 0;
   const totalKg = Number(k.total_kg) || 0;
   const nRegistros = Number(k.n_registros) || 0;
-  const nPedidos = Number(k.n_pedidos) || 0;
   const nCidades = Number(k.n_cidades) || 0;
   const nUFs = Number(k.n_ufs) || 0;
   const nFornecedores = Number(k.n_fornecedores) || 0;
-  const ticketMedio = Number(k.ticket_medio) || (nPedidos ? totalValor / nPedidos : 0);
+  const ticketMedio = nRegistros ? totalValor / nRegistros : 0;
 
   let deltaValor = null, deltaKg = null, deltaTicket = null;
   if (temPeriodoComparativo && resultAnterior && !resultAnterior.error) {
     const kAnt = (resultAnterior.data && resultAnterior.data[0]) || {};
     const valorAnt = Number(kAnt.total_valor) || 0;
     const kgAnt = Number(kAnt.total_kg) || 0;
-    const pedidosAnt = Number(kAnt.n_pedidos) || 0;
-    const ticketAnt = Number(kAnt.ticket_medio) || (pedidosAnt ? valorAnt / pedidosAnt : 0);
+    const registrosAnt = Number(kAnt.n_registros) || 0;
+    const ticketAnt = registrosAnt ? valorAnt / registrosAnt : 0;
     if (valorAnt > 0) deltaValor = ((totalValor - valorAnt) / valorAnt) * 100;
     if (kgAnt > 0) deltaKg = ((totalKg - kgAnt) / kgAnt) * 100;
     if (ticketAnt > 0) deltaTicket = ((ticketMedio - ticketAnt) / ticketAnt) * 100;
@@ -1638,7 +1493,7 @@ async function renderKPIs() {
     { label:'Cidades Atendidas', raw: nCidades, fmt: fmtNum, icon: ICONS.pin, color:'--amber', color2:'--amber', soft:'--amber-pale' },
     { label:'UFs Atendidas', raw: nUFs, fmt: fmtNum, icon: ICONS.map, color:'--violet', color2:'--violet', soft:'--violet-pale' },
     { label:'Fornecedores Ativos', raw: nFornecedores, fmt: fmtNum, icon: ICONS.factory, color:'--green-mid', color2:'--green-light', soft:'--green-pale' },
-    { label:'Ticket Médio / Pedido', raw: ticketMedio, fmt: fmtMoney, icon: ICONS.chart, color:'--blue', color2:'--violet', soft:'--blue-pale', delta: deltaTicket },
+    { label:'Ticket Médio / Registro', raw: ticketMedio, fmt: fmtMoney, icon: ICONS.chart, color:'--blue', color2:'--violet', soft:'--blue-pale', delta: deltaTicket },
   ];
 
   const tituloComparativo = paramsAnterior
@@ -1660,7 +1515,7 @@ async function renderKPIs() {
 
   kpis.forEach((kp,i) => animateKpiValue(document.getElementById(`kpiVal${i}`), kp.raw, kp.fmt));
 
-  document.getElementById('hdrRegistrosTxt').textContent = `${fmtNum(nPedidos)} pedidos • ${fmtNum(nRegistros)} itens`;
+  document.getElementById('hdrRegistrosTxt').textContent = `${fmtNum(nRegistros)} registros`;
 }
 
 function animateKpiValue(el, target, fmt, duration = 750) {
@@ -1738,30 +1593,19 @@ async function renderAltasQuedas() {
   }
 
   const cidadesAnterior = agregarCidadesRaw(data);
-  const mapaAtual = new Map(cidadesCache.map(c => [normalizeKey(c.cidade) + '|' + c.uf, c]));
-  const mapaAnterior = new Map(cidadesAnterior.map(c => [normalizeKey(c.cidade) + '|' + c.uf, c]));
-  const todasAsChaves = new Set([...mapaAtual.keys(), ...mapaAnterior.keys()]);
+  const mapaAnterior = new Map(cidadesAnterior.map(c => [normalizeKey(c.cidade) + '|' + c.uf, c.valor]));
 
-  const variacoes = [...todasAsChaves]
-    .map(key => {
-      const atual = mapaAtual.get(key);
-      const anteriorObj = mapaAnterior.get(key);
-      const anterior = anteriorObj?.valor || 0;
-      if (anterior <= 0) return null; // cidade nova não possui percentual finito comparável
-      const valorAtual = atual?.valor || 0; // ausência atual é venda zero, portanto pode ser -100%
-      const referencia = atual || anteriorObj;
-      return {
-        cidade: referencia.cidade,
-        uf: referencia.uf,
-        atual: valorAtual,
-        anterior,
-        pct: ((valorAtual - anterior) / anterior) * 100
-      };
+  const variacoes = cidadesCache
+    .map(c => {
+      const key = normalizeKey(c.cidade) + '|' + c.uf;
+      const anterior = mapaAnterior.get(key) || 0;
+      if (anterior <= 0) return null; // sem base de comparação (cidade nova ou sem venda no período anterior)
+      return { cidade: c.cidade, uf: c.uf, pct: ((c.valor - anterior) / anterior) * 100 };
     })
     .filter(Boolean);
 
-  const altas = variacoes.filter(v => v.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, 5);
-  const quedas = variacoes.filter(v => v.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 5);
+  const altas = [...variacoes].sort((a, b) => b.pct - a.pct).slice(0, 5);
+  const quedas = [...variacoes].sort((a, b) => a.pct - b.pct).slice(0, 5);
 
   tag.textContent = `vs. ${prevDe} → ${prevAte}`;
 
@@ -1944,18 +1788,10 @@ function toggleReplay() {
 }
 
 async function iniciarReplay() {
+  const todosMeses = JSON.parse(document.getElementById('periodoPresets')?.dataset.meses || '[]');
   const de = document.getElementById('periodoDe').value;
   const ate = document.getElementById('periodoAte').value;
-  const params = { ...getFiltrosParams(), p_de: null, p_ate: null };
-  const { data, error } = await apiGet('/periodos-distintos', params);
-  if (error) {
-    console.error(error);
-    showToast('Erro ao descobrir os meses disponíveis para o replay: ' + error.message);
-    toggleReplay();
-    return;
-  }
-  const todosMeses = (data || []).map(r => `${r.ano}-${r.mes}`).sort();
-  // Só percorre meses que realmente existem para os filtros ativos.
+  // Com período selecionado, o replay percorre só os meses dentro dele; sem período, todo o histórico.
   replayMeses = todosMeses.filter(m => (!de || m >= de) && (!ate || m <= ate));
 
   if (!replayMeses.length) {
@@ -2087,34 +1923,17 @@ async function renderEvolucao() {
   hideLoading(box);
   if (error) { console.error(error); renderChartWrapError('chartEvolucao', error.message); return; }
   ensureCanvas('chartEvolucao');
-
-  const mesesGlobais = new Set(JSON.parse(document.getElementById('periodoPresets')?.dataset.meses || '[]'));
-  const de = document.getElementById('periodoDe').value;
-  const ate = document.getElementById('periodoAte').value;
   const porAno = {};
-  const anosPresentes = new Set((data || []).map(r => String(r.ano).trim()));
-
-  anosPresentes.forEach(ano => {
-    porAno[ano] = Array.from({ length: 12 }, (_, idx) => {
-      const ym = `${ano}-${String(idx + 1).padStart(2, '0')}`;
-      const dentroDoFiltro = (!de || ym >= de) && (!ate || ym <= ate);
-      // null = mês fora da janela/base disponível; 0 = mês válido sem venda no filtro atual.
-      return dentroDoFiltro && mesesGlobais.has(ym) ? 0 : null;
-    });
-  });
-
   (data||[]).forEach(r => {
     const ano = String(r.ano).trim();
     const idx = parseInt(r.mes,10) - 1;
-    if (!porAno[ano]) porAno[ano] = Array(12).fill(null);
-    porAno[ano][idx] = Number(r.valor) || 0;
+    porAno[ano] = porAno[ano] || Array(12).fill(0);
+    porAno[ano][idx] += Number(r.valor) || 0;
   });
-
   const labels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const datasets = Object.keys(porAno).sort().map((ano,i) => ({
     label: ano, data: porAno[ano], borderColor: PALETTE[i%PALETTE.length],
-    backgroundColor: PALETTE[i%PALETTE.length]+'22', tension: 0.35, fill: false, pointRadius: 3,
-    spanGaps: false
+    backgroundColor: PALETTE[i%PALETTE.length]+'22', tension: 0.35, fill: true, pointRadius: 3
   }));
   charts.evolucao = new Chart(document.getElementById('chartEvolucao'), {
     type:'line', data:{ labels, datasets },
@@ -2154,28 +1973,11 @@ async function renderFornecedor() {
   hideLoading(box);
   if (error) { console.error(error); renderChartWrapError('chartFornecedor', error.message); return; }
   ensureCanvas('chartFornecedor');
-
-  const rows = data || [];
-  const arr = rows.map(r => [r.chave, Number(r.total)||0]);
-  const totalGeral = Number(rows[0]?.total_geral) || arr.reduce((s,a)=>s+a[1],0);
-  const totalTop = arr.reduce((s,a)=>s+a[1],0);
-  const outros = Math.max(0, totalGeral - totalTop);
-  if (outros > 0.005) arr.push(['Outros', outros]);
-
+  const arr = (data||[]).map(r => [r.chave, Number(r.total)||0]);
   charts.chartFornecedor = new Chart(document.getElementById('chartFornecedor'), {
     type:'doughnut',
-    data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: arr.map((a,i) => a[0] === 'Outros' ? '#d1d5db' : PALETTE[i % PALETTE.length]), borderWidth:2, borderColor:'#fff' }] },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{
-        legend:{position:'right', labels:{boxWidth:9,font:{size:9}}},
-        tooltip:{ callbacks:{ label: ctx => {
-          const valor = Number(ctx.raw) || 0;
-          const pct = totalGeral ? (valor / totalGeral) * 100 : 0;
-          return `${ctx.label}: ${fmtMoney(valor)} (${pct.toFixed(1)}%)`;
-        }}}
-      }
-    }
+    data:{ labels: arr.map(a=>a[0]), datasets:[{ data: arr.map(a=>a[1]), backgroundColor: PALETTE, borderWidth:2, borderColor:'#fff' }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{boxWidth:9,font:{size:9}}}} }
   });
 }
 
@@ -2206,7 +2008,7 @@ async function renderConcentracaoCidades() {
   for (const c of cidades) { acc += c.valor; n80++; if (acc / total >= 0.8) break; }
   if (tagEl) tagEl.textContent = `${n80} de ${cidades.length} cidades = 80%`;
 
-  const top = cidades.slice(0, Math.max(15, n80));
+  const top = cidades.slice(0, 15);
   let acumulado = 0;
   const nomesCompletos = top.map(c => `${c.cidade}/${c.uf}`);
   const labels = top.map(c => {
@@ -2242,7 +2044,7 @@ async function renderConcentracaoCidades() {
       scales: {
         y: { position: 'left', ticks: { callback: v => fmtMoney(v) } },
         y1: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%' } },
-        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 }, autoSkip: true, maxTicksLimit: 20 } }
+        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 }, autoSkip: false } }
       }
     }
   });
@@ -2280,53 +2082,43 @@ async function renderHeatmap() {
   if (error) {
     console.error(error);
     document.getElementById('heatmapTable').innerHTML =
-      `<tr><td><div class="error-banner" style="grid-column:auto;">
+      `<tr><td colspan="13"><div class="error-banner" style="grid-column:auto;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
         <span>Erro ao carregar heatmap: ${escapeHtml(error.message)}</span>
       </div></td></tr>`;
     return;
   }
-
+  const meses = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const mesesLabel = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const rows = data || [];
-  const periodos = [...new Set(rows.map(r => `${r.ano}-${String(r.mes).padStart(2,'0')}`))].sort();
   const ufs = [...new Set(rows.map(r=>r.uf))].sort();
   const grid = {};
   let max = 0;
-
   rows.forEach(r => {
-    const periodo = `${r.ano}-${String(r.mes).padStart(2,'0')}`;
-    grid[r.uf] = grid[r.uf] || {};
+    grid[r.uf] = grid[r.uf] || Array(12).fill(0);
+    const idx = parseInt(r.mes,10) - 1;
     const v = Number(r.valor) || 0;
-    grid[r.uf][periodo] = v;
+    grid[r.uf][idx] = v;
     if (v > max) max = v;
   });
-
   function colorFor(v) {
-    if (!v || !max) return '#f0f1f0';
+    if (!v) return '#f0f1f0';
+    // Escala em raiz quadrada em vez de linear: quando uma UF concentra a maior
+    // parte do faturamento, uma escala linear deixa quase tudo "claro" — a raiz
+    // comprime o topo e expande a base, tornando as diferenças menores visíveis.
     const t = Math.sqrt(v / max);
     const r = Math.round(112 - t*(112-26)), g = Math.round(148 - t*(148-77)), b = Math.round(127 - t*(127-46));
     return `rgb(${r},${g},${b})`;
   }
-  const periodoLabel = p => {
-    const [ano, mes] = p.split('-');
-    return `${mesesLabel[Number(mes)-1]}/${ano}`;
-  };
-
-  if (!periodos.length || !ufs.length) {
-    document.getElementById('heatmapTable').innerHTML = '<tr><td style="padding:16px;color:var(--gray-text);">Sem dados para o período atual.</td></tr>';
-    return;
-  }
-
-  let html = '<tr><th>UF</th>' + periodos.map(p=>`<th>${periodoLabel(p)}</th>`).join('') + '</tr>';
+  let html = '<tr><th>UF</th>' + mesesLabel.map(m=>`<th>${m}</th>`).join('') + '</tr>';
   let cellIdx = 0;
   ufs.forEach(uf => {
     const ufSafe = escapeHtml(uf);
-    html += `<tr><td>${ufSafe}</td>` + periodos.map(periodo => {
-      const v = grid[uf]?.[periodo] || 0;
+    html += `<tr><td>${ufSafe}</td>` + meses.map((_,i) => {
+      const v = (grid[uf] && grid[uf][i]) || 0;
       const dark = v && Math.sqrt(v/max) > 0.55;
-      const delay = Math.min(cellIdx++ * 0.004, 0.5);
-      const label = `${ufSafe} • ${periodoLabel(periodo)}: ${fmtMoney(v)}`;
+      const delay = Math.min(cellIdx++ * 0.008, 0.5);
+      const label = `${ufSafe} • ${mesesLabel[i]}: ${fmtMoney(v)}`;
       return `<td><div class="heat-cell" style="background:${colorFor(v)}; ${dark?'color:white;':''} animation-delay:${delay}s;" title="${label}" role="img" aria-label="${label}" tabindex="0">${v?Math.round(v/1000)+'k':''}</div></td>`;
     }).join('') + '</tr>';
   });
@@ -2430,8 +2222,6 @@ function rodarModoDiretoria() {
 
 /* ══════════════════ INICIALIZAÇÃO ══════════════════ */
 async function inicializar() {
-  dashboardLoadingDepth = 1;
-  setDashboardLoadingStage(1, 'Preparando o Dashboard Regional', 'Carregando cidades, catálogo, períodos e filtros disponíveis.');
   document.getElementById('hdrPeriodoTxt').textContent = 'Todo o histórico';
   renderKpiSkeleton();
   renderRankSkeleton();
@@ -2440,7 +2230,6 @@ async function inicializar() {
   // em vez de esperar carregarCidadesCanonicas() terminar antes de começar o resto.
   await Promise.all([
     carregarCidadesCanonicas(),
-    buildChipsRPC('cidadeChips', 'Cidade'),
     buildChipsRPC('regiaoChips', 'Regiao'),
     buildChipsRPC('ufChips', 'UF'),
     buildChipsRPC('segmentoChips', 'Segmento'),
@@ -2449,13 +2238,7 @@ async function inicializar() {
     buildPeriodoOptionsRPC()
   ]);
   restaurarFiltrosDaURL(); // aplica filtros vindos de um link compartilhado, se houver
-  setDashboardLoadingStage(2, 'Calculando indicadores', 'Consolidando faturamento, pedidos, volume e cidades atendidas.');
-  await Promise.all([
-    renderDashboard({ primeiraCarga: true }),
-    atualizarFiltrosContextuais()
-  ]);
-  setDashboardLoadingStage(3, 'Finalizando mapa e gráficos', 'Organizando ranking, concentração e evolução regional.');
-  hideDashboardLoading();
+  await renderDashboard({ primeiraCarga: true });
 }
 
 function staggerEntrance() {
@@ -2480,7 +2263,6 @@ document.addEventListener('click', (e) => {
 // Nome de arquivo descritivo, refletindo os filtros aplicados no momento da exportação.
 function nomeArquivoExport(extensao) {
   const partes = ['vendas-por-cidade'];
-  if (filtroCidade) partes.push(filtroCidade);
   if (filtroRegiao) partes.push(filtroRegiao);
   if (filtroUF) partes.push(filtroUF);
   const de = document.getElementById('periodoDe').value;
