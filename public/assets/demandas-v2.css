@@ -425,3 +425,139 @@ body.ui-theme-dark.ui-high-contrast{--ink:#fff;--text:#f1f7f3;--muted:#cfddd3;--
 @media(max-width:820px){.accessibility-size-grid.three-options,.theme-choice-grid,.monthly-project-grid{grid-template-columns:1fr}.unified-agenda-toolbar{align-items:flex-start}.agenda-scope-actions{width:100%;justify-content:flex-start}.agenda-scope-toggle{width:100%}.agenda-scope-toggle button{flex:1}.agenda-scope-actions .toolbar-select{flex:1;min-width:180px}body.ui-scale-large,body.ui-scale-xlarge{--sidebar:285px}body.ui-scale-large .app-shell .view-stack,body.ui-scale-xlarge .app-shell .view-stack{padding:20px 15px 48px}body.ui-scale-large .app-shell .calendar-day{min-height:100px}body.ui-scale-xlarge .app-shell .calendar-day{min-height:115px}}
 @media(max-width:560px){.monthly-project-stats{grid-template-columns:1fr 1fr}.agenda-scope-actions .btn,.agenda-scope-actions .toolbar-select{width:100%}.agenda-scope-toggle button span{display:inline}.project-pill{max-width:120px}}
 body.ui-theme-dark .auth-screen{background:#0b130e}body.ui-theme-dark .auth-card{background:#142019;border-color:#304737;box-shadow:var(--shadow-md)}body.ui-theme-dark .auth-card h2{color:#f4f8f5}body.ui-theme-dark .auth-card>p,body.ui-theme-dark .auth-card>small{color:#a8b9ad}body.ui-theme-dark .auth-card-logo{background:#f7faf8;border-color:#3b5542}body.ui-theme-dark .loading-screen{background:rgba(11,19,14,.95);color:#bde7cb}
+\n\n/* =========================================================
+   DARK MODE V3.2 — TOGGLE ÚNICO + SUPERFÍCIES CONSISTENTES
+   Este bloco fica por último de propósito: corrige regras antigas
+   com cores claras hardcoded e mantém ícones Lucide legíveis.
+   ========================================================= */
+.theme-toggle{width:68px;height:38px;padding:0;border:1px solid var(--line);border-radius:999px;background:var(--surface);display:inline-flex;align-items:center;justify-content:center;color:var(--muted);box-shadow:var(--shadow-xs);transition:.22s var(--ease);flex:none}
+.theme-toggle:hover{border-color:var(--green-300);box-shadow:0 6px 18px rgba(13,43,26,.10);transform:translateY(-1px)}
+.theme-toggle-track{position:relative;width:58px;height:28px;border-radius:999px;background:#eef3ef;display:flex;align-items:center;justify-content:space-between;padding:0 7px;transition:.25s var(--ease);overflow:hidden}
+.theme-toggle-track>svg{width:14px;height:14px;position:relative;z-index:1;stroke:currentColor}
+.theme-toggle-sun{color:#b7780d}.theme-toggle-moon{color:#7b8790}
+.theme-toggle-thumb{position:absolute;z-index:2;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 3px 9px rgba(20,40,28,.20);transition:.27s var(--ease)}
+.theme-toggle.active .theme-toggle-track{background:#24382b}.theme-toggle.active .theme-toggle-thumb{transform:translateX(30px);background:#dce9df}.theme-toggle.active .theme-toggle-sun{color:#8c9b91}.theme-toggle.active .theme-toggle-moon{color:#a9deb9}
+
+/* Lucide: todos os ícones usam a cor do componente, sem fills pretos/brancos acidentais. */
+.app-shell svg,.modal-layer svg,.right-drawer svg,.search-layer svg,.auth-screen svg{stroke:currentColor;fill:none}
+
+body.ui-theme-dark{
+  --bg:#0d1511;--surface:#151f19;--surface-2:#1a2720;--surface-3:#202f26;
+  --ink:#f5f8f6;--text:#dbe6df;--muted:#aabbb0;--faint:#879a8e;
+  --line:#2d4034;--line-strong:#405a49;--cream:#121b16;
+  --green-50:#17251c;--green-100:#1c3123;--green-200:#2b5038;--green-300:#70cf8f;
+  --green-400:#67c986;--green-500:#4fb873;--green-600:#42a867;--green-700:#31844f;
+  --green-800:#23613b;--green-850:#19462d;--green-900:#10321f;--green-950:#081d12;
+  --amber:#f0ac3c;--amber-soft:#382b17;--red:#f06a72;--red-soft:#3a1d20;
+  --blue:#6f9ff3;--blue-soft:#182943;--purple:#a183e8;--purple-soft:#29213e;
+  --shadow-xs:0 1px 3px rgba(0,0,0,.28);--shadow-sm:0 12px 30px rgba(0,0,0,.28);
+  --shadow-md:0 22px 58px rgba(0,0,0,.38);--shadow-lg:0 38px 100px rgba(0,0,0,.52);
+  background:radial-gradient(circle at 18% 0,#16281c 0,transparent 34%),#0d1511;color:var(--text)
+}
+body.ui-theme-dark .topbar{background:rgba(13,21,17,.94);border-color:var(--line);box-shadow:0 8px 28px rgba(0,0,0,.13)}
+body.ui-theme-dark .theme-toggle{background:#17231c;border-color:#38503f;color:#dfe9e2}
+body.ui-theme-dark .theme-toggle:hover{border-color:#64ba7e;box-shadow:0 7px 20px rgba(0,0,0,.26)}
+
+/* Superfícies principais */
+body.ui-theme-dark :where(.card,.metric-card,.task-card,.person-card,.calendar-card,.selected-day,.task-list-view,.team-summary-card,.team-insight-card,.team-avatar-strip,.person-drawer-section,.task-status-section,.task-assignee-section,.task-detail-summary>div,.academy-command-bar,.academy-reservation-card,.sector-summary-card,.academy-summary-card,.manager-evaluation-panel,.evaluation-feedback,.intrusive-meta-card,.accessibility-size-grid button,.assignee-selector-button,.assignee-option,.evaluation-choice,.transfer-person-card.choose){background:var(--surface);border-color:var(--line);color:var(--text)}
+body.ui-theme-dark :where(.task-card,.person-card,.metric-card,.team-summary-card,.team-insight-card){box-shadow:var(--shadow-xs)}
+body.ui-theme-dark :where(.task-card,.person-card,.metric-card,.focus-item,.timeline-content,.day-item,.person-drawer-task,.sector-day-item,.team-avatar-person):hover{background:var(--surface-3);border-color:#45604d}
+
+/* Campos, selects e controles */
+body.ui-theme-dark :where(.global-search,.search-input,.quick-capture textarea,.task-toolbar select,.team-search-field,.team-controls select,.toolbar-select,.field input,.field textarea,.field select,.input-shell,.suffix-input,.comment-form textarea,.assignee-picker-search,.academy-import-map-grid select){background:#18251d;color:var(--ink);border-color:#354c3c;box-shadow:none}
+body.ui-theme-dark :where(input,textarea,select){color-scheme:dark}
+body.ui-theme-dark :where(input,textarea)::placeholder{color:#7f9385}
+body.ui-theme-dark :where(select option){background:#18251d;color:#eef5f0}
+body.ui-theme-dark :where(.global-search,.search-input,.quick-capture textarea,.field input,.field textarea,.field select,.input-shell,.assignee-picker-search):focus-within{border-color:#5ab879;box-shadow:0 0 0 3px rgba(90,184,121,.12)}
+
+/* Botões e ícones */
+body.ui-theme-dark .icon-btn.subtle{background:#18251d;border-color:#354c3c;color:#b8c8bd}
+body.ui-theme-dark .icon-btn.subtle:hover{background:#223329;border-color:#52705b;color:#9de0b4}
+body.ui-theme-dark .btn.secondary{background:#1a2820;border-color:#3a5141;color:#dce9df}
+body.ui-theme-dark .btn.secondary:hover{background:#22362a;border-color:#5c8369;color:#a9e4bc}
+body.ui-theme-dark .btn.light{background:#edf4ef;color:#19462d}
+body.ui-theme-dark .btn.danger-soft{background:#3a1d20;border-color:#653039;color:#ffadb3}
+body.ui-theme-dark .notification-badge{border-color:#0d1511}
+body.ui-theme-dark .status-step-icon,body.ui-theme-dark .avatar-status-badge,body.ui-theme-dark .task-avatar-icon{background:#202f26;border-color:#405748}
+body.ui-theme-dark .activity-avatar-icon{background:#2e8150;border-color:#18251d;color:#fff}
+body.ui-theme-dark .avatar{border-color:#263a2e}
+body.ui-theme-dark .task-avatar-filter .avatar{border-color:#263a2e}
+
+/* Cards internos, chips e estados */
+body.ui-theme-dark :where(.segmented,.timeline-content,.focus-item,.day-item,.workload-block,.person-metric,.team-pulse-grid>div,.detail-field,.setting-status-card,.task-avatar-filter,.team-avatar-person){background:var(--surface-2);border-color:var(--line);color:var(--text)}
+body.ui-theme-dark .segmented button{color:#9fb0a5}
+body.ui-theme-dark .segmented button.active{background:#273a2e;color:#b9e9c9;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+body.ui-theme-dark .soft-count,body.ui-theme-dark .table-pill,body.ui-theme-dark .size-pill{background:#223128;color:#aebdb3}
+body.ui-theme-dark .kanban-column{background:#111d16;border-color:#2b4032}
+body.ui-theme-dark .kanban-head b{background:#1b2921;border-color:#354c3c;color:#aabbb0}
+body.ui-theme-dark .task-list-view .task-table-head{background:#19251e;border-color:var(--line)}
+body.ui-theme-dark .task-row{border-color:#26382d}
+body.ui-theme-dark .task-row:hover{background:#1c2c22}
+body.ui-theme-dark .person-drawer-task{background:#17231c}
+body.ui-theme-dark .person-drawer-task:hover{background:#203329}
+
+/* Calendário */
+body.ui-theme-dark .calendar-grid{border-color:var(--line)}
+body.ui-theme-dark .calendar-day{background:#151f19;border-color:#2b4032;color:var(--text)}
+body.ui-theme-dark .calendar-day.outside{background:#101813;color:#667b6d}
+body.ui-theme-dark .calendar-day:hover{background:#1d2c23}
+body.ui-theme-dark .calendar-day.selected{background:#203528;box-shadow:inset 0 0 0 2px #55b977}
+body.ui-theme-dark .calendar-day.today .day-number{background:#4fb873;color:#071a10}
+body.ui-theme-dark .sector-day.has-immediate{background:#341b1e!important;box-shadow:inset 0 0 0 2px rgba(240,106,114,.52)}
+body.ui-theme-dark .academy-day.academy-requested{background:#352b18}
+body.ui-theme-dark .academy-reservation-card.has-conflict{background:#332a19;border-color:#725d2c}
+
+/* Modais, drawers, busca e menus */
+body.ui-theme-dark .modal-layer{background:rgba(2,7,4,.78)}
+body.ui-theme-dark :where(.modal-card,.right-drawer,.search-command,.user-dropdown){background:#121c16;border-color:#2e4335;color:var(--text)}
+body.ui-theme-dark .person-drawer-content{background:linear-gradient(180deg,#111b15,#0d1611)}
+body.ui-theme-dark :where(.drawer-footer-actions,.person-drawer-actions){background:rgba(18,28,22,.97);border-color:var(--line)}
+body.ui-theme-dark .user-menu-trigger{background:#17231c;border-color:#354c3c;color:var(--text)}
+body.ui-theme-dark .user-menu-trigger:hover{background:#203128;border-color:#4e6c57}
+body.ui-theme-dark .user-dropdown-item{color:#dce7df}
+body.ui-theme-dark .user-dropdown-item:hover{background:#20342a;color:#a9e4bc}
+body.ui-theme-dark .user-dropdown-divider{background:#2b4032}
+body.ui-theme-dark .user-dropdown-logout{color:#ff9da4}
+body.ui-theme-dark .user-dropdown-logout:hover{background:#3a1c20;color:#ffc1c5}
+
+/* Notificações */
+body.ui-theme-dark .notification-item{background:#151f19;border-color:#283a2f}
+body.ui-theme-dark .notification-item.unread{background:#1b3124}
+body.ui-theme-dark .notification-item:hover{background:#21372b}
+body.ui-theme-dark .notification-item-icon{background:#20382a;color:#8bd7a3}
+body.ui-theme-dark .intrusive-notification-layer{background:rgba(1,5,3,.84)}
+body.ui-theme-dark .intrusive-notification-card:not(.tone-immediate){background:linear-gradient(150deg,#17241c,#101913);border-color:#3a5542;color:#eef6f0}
+body.ui-theme-dark .intrusive-notification-card.tone-immediate{background:linear-gradient(150deg,#38181c,#1d1012);border-color:#db5661;color:#fff}
+body.ui-theme-dark .intrusive-notification-later{background:#1b2820;border-color:#405848;color:#dce7df}
+body.ui-theme-dark .intrusive-notification-warning{background:#2b2518;border-color:#5d4d24;color:#f3cf7d}
+body.ui-theme-dark .intrusive-notification-card.tone-immediate .intrusive-notification-warning{background:#3b1c20;border-color:#7b343b;color:#ffbec3}
+
+/* Prioridade imediata, avaliação e transferência */
+body.ui-theme-dark .immediate-audience-option{background:#1a2520;border-color:#5f3b3f;color:#e8c7ca}
+body.ui-theme-dark .immediate-audience-option.active{background:#3b1b20;border-color:#d45a64;color:#ffc7cb;box-shadow:0 0 0 4px rgba(219,69,77,.12)}
+body.ui-theme-dark .evaluation-feedback.adjustments{background:#352a18;border-color:#6d5427}
+body.ui-theme-dark .evaluation-feedback.approved{background:#193224;border-color:#3b6849}
+body.ui-theme-dark .evaluation-feedback.adjustments>span,body.ui-theme-dark .evaluation-feedback.approved>span{background:#202f26}
+body.ui-theme-dark .manager-evaluation-panel{background:#261f34;border-color:#55456d}
+
+/* Academia e relatório */
+body.ui-theme-dark :where(.academy-file-drop,.academy-availability){background:#18261e;border-color:#354c3c;color:var(--text)}
+body.ui-theme-dark .monthly-project-card-head>span{background:#322847;color:#d0bdf6}
+body.ui-theme-dark .project-pill{background:#332a42;color:#d6c5f4}
+
+/* Texto de alto contraste em todos os componentes */
+body.ui-theme-dark :where(h1,h2,h3,h4,strong,.toolbar-title h2,.card-heading h3,.section-header h3,.task-card h3,.person-copy strong,.detail-field strong,.person-drawer-task strong){color:var(--ink)}
+body.ui-theme-dark :where(p,small,.toolbar-title p,.task-card p,.person-copy span,.detail-field label){color:var(--muted)}
+
+/* Login também respeita o tema sem apagar a marca. */
+body.ui-theme-dark .auth-screen{background:#0d1511}
+body.ui-theme-dark .auth-card{background:#151f19;border-color:#344b3b;color:var(--text)}
+body.ui-theme-dark .auth-card h2{color:var(--ink)}
+body.ui-theme-dark .auth-card>p,body.ui-theme-dark .auth-card>small{color:var(--muted)}
+body.ui-theme-dark .auth-card-logo,body.ui-theme-dark .auth-brand img,body.ui-theme-dark .side-logo{background:#f7faf8}
+body.ui-theme-dark .loading-screen{background:rgba(13,21,17,.96);color:#bce6ca}
+
+/* O tutorial mantém o próprio design, inclusive no dark mode. */
+body.ui-theme-dark .onboarding-layer{color-scheme:light}
+
+@media(max-width:560px){.theme-toggle{width:60px}.theme-toggle-track{width:52px}.theme-toggle.active .theme-toggle-thumb{transform:translateX(24px)}}

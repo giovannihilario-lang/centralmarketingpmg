@@ -90,7 +90,7 @@ const state = {
   transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
   agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
-  monthlyReportData: null, accessibility: { scale: 'large', theme: 'system', contrast: false, reduceMotion: false }
+  monthlyReportData: null, accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
 
 const $ = id => document.getElementById(id);
@@ -2262,39 +2262,54 @@ function exportMonthlyReportCsv(){
 function printMonthlyReport(){const html=$('monthlyReportContent').innerHTML,w=window.open('','_blank','width=1200,height=800');if(!w)return toast('Permita pop-ups para imprimir o relatório.','error');w.document.write(`<!doctype html><html><head><title>Relatório mensal PMG Connect</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#17221b}.monthly-report-row{display:grid;grid-template-columns:2fr repeat(6,1fr);gap:10px;padding:10px;border-bottom:1px solid #ddd}.head{font-weight:bold;background:#f2f5f3}.avatar{display:none}.monthly-report-hero{padding:20px;background:#164b2d;color:white;margin-bottom:20px}.monthly-report-totals{display:flex;gap:30px}.monthly-person small{display:block;color:#777}</style></head><body>${html}</body></html>`);w.document.close();setTimeout(()=>w.print(),250);}
 
 const ACCESSIBILITY_KEY='pmg-demandas-accessibilidade-v2';
-function resolvedTheme(theme=state.accessibility.theme){
-  if(theme==='system') return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';
-  return theme==='dark'?'dark':'light';
-}
 function loadAccessibilityPreferences(){
   try{
     const saved=JSON.parse(localStorage.getItem(ACCESSIBILITY_KEY)||localStorage.getItem('pmg-demandas-accessibilidade-v1')||'{}');
+    // Migração da versão anterior: "system" deixa de existir. Se estava em system,
+    // começamos no claro para que o único controle de tema seja o toggle manual.
     state.accessibility={
       scale:['medium','large','xlarge'].includes(saved.scale)?saved.scale:'large',
-      theme:['light','dark','system'].includes(saved.theme)?saved.theme:'system',
+      theme:saved.theme==='dark'?'dark':'light',
       contrast:Boolean(saved.contrast),reduceMotion:Boolean(saved.reduceMotion)
     };
-  }catch(_){state.accessibility={scale:'large',theme:'system',contrast:false,reduceMotion:false};}
+  }catch(_){state.accessibility={scale:'large',theme:'light',contrast:false,reduceMotion:false};}
   applyAccessibilityPreferences();
+}
+function updateThemeToggle(){
+  const dark=state.accessibility.theme==='dark';
+  const button=$('themeToggleBtn');
+  if(button){
+    button.setAttribute('aria-checked',String(dark));
+    button.setAttribute('aria-label',dark?'Desativar modo escuro':'Ativar modo escuro');
+    button.title=dark?'Usar modo claro':'Usar modo escuro';
+    button.classList.toggle('active',dark);
+  }
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta)meta.setAttribute('content',dark?'#0f1813':'#133d25');
+  document.documentElement.style.colorScheme=dark?'dark':'light';
 }
 function applyAccessibilityPreferences(){
   ['medium','large','xlarge'].forEach(scale=>document.body.classList.toggle(`ui-scale-${scale}`,state.accessibility.scale===scale));
-  const theme=resolvedTheme();
-  document.body.classList.toggle('ui-theme-dark',theme==='dark');
-  document.body.classList.toggle('ui-theme-light',theme==='light');
-  document.body.dataset.themePreference=state.accessibility.theme;
+  const dark=state.accessibility.theme==='dark';
+  document.body.classList.toggle('ui-theme-dark',dark);
+  document.body.classList.toggle('ui-theme-light',!dark);
+  document.body.dataset.themePreference=dark?'dark':'light';
   document.body.classList.toggle('ui-high-contrast',state.accessibility.contrast);
   document.body.classList.toggle('ui-reduce-motion',state.accessibility.reduceMotion);
   $$('[data-ui-scale]').forEach(btn=>{const active=btn.dataset.uiScale===state.accessibility.scale;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));});
-  $$('[data-ui-theme]').forEach(btn=>{const active=btn.dataset.uiTheme===state.accessibility.theme;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));});
   if($('accessibilityContrast'))$('accessibilityContrast').checked=state.accessibility.contrast;
   if($('accessibilityMotion'))$('accessibilityMotion').checked=state.accessibility.reduceMotion;
+  updateThemeToggle();
 }
 function saveAccessibilityPreferences(){try{localStorage.setItem(ACCESSIBILITY_KEY,JSON.stringify(state.accessibility));}catch(_){}applyAccessibilityPreferences();}
 function openAccessibility(){applyAccessibilityPreferences();$('accessibilityModal').classList.remove('hidden');refreshIcons();}
 function setAccessibilityScale(scale){if(!['medium','large','xlarge'].includes(scale))return;state.accessibility.scale=scale;saveAccessibilityPreferences();}
-function setAccessibilityTheme(theme){if(!['light','dark','system'].includes(theme))return;state.accessibility.theme=theme;saveAccessibilityPreferences();}
-function resetAccessibility(){state.accessibility={scale:'large',theme:'system',contrast:false,reduceMotion:false};saveAccessibilityPreferences();toast('Acessibilidade e tema restaurados.');}
+function toggleTheme(){
+  state.accessibility.theme=state.accessibility.theme==='dark'?'light':'dark';
+  saveAccessibilityPreferences();
+  refreshIcons();
+}
+function resetAccessibility(){state.accessibility={scale:'large',theme:'light',contrast:false,reduceMotion:false};saveAccessibilityPreferences();toast('Acessibilidade restaurada.');}
 
 /* =========================================================
    MENU DO USUÁRIO E LOGOUT
@@ -2388,8 +2403,7 @@ function bindEvents() {
   $('profileBtn').addEventListener('click', () => openProfile(false));
   $('accessibilityBtn')?.addEventListener('click', openAccessibility);
   $$('[data-ui-scale]').forEach(button => button.addEventListener('click', () => setAccessibilityScale(button.dataset.uiScale)));
-  $$('[data-ui-theme]').forEach(button => button.addEventListener('click', () => setAccessibilityTheme(button.dataset.uiTheme)));
-  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (state.accessibility.theme === 'system') applyAccessibilityPreferences(); });
+  $('themeToggleBtn')?.addEventListener('click', toggleTheme);
   $('accessibilityContrast')?.addEventListener('change', event => { state.accessibility.contrast = event.target.checked; saveAccessibilityPreferences(); });
   $('accessibilityMotion')?.addEventListener('change', event => { state.accessibility.reduceMotion = event.target.checked; saveAccessibilityPreferences(); });
   $('accessibilityResetBtn')?.addEventListener('click', resetAccessibility);

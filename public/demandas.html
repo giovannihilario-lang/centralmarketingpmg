@@ -94,6 +94,13 @@
         <div class="topbar-actions">
           <button id="refreshBtn" class="icon-btn subtle" title="Atualizar dados"><i data-lucide="refresh-cw"></i></button>
           <button id="notificationBtn" class="icon-btn subtle notification-trigger" title="Notificações"><i data-lucide="bell"></i><b id="notificationBadge" class="notification-badge hidden">0</b></button>
+          <button id="themeToggleBtn" class="theme-toggle" type="button" role="switch" aria-checked="false" title="Ativar modo escuro" aria-label="Alternar modo escuro">
+            <span class="theme-toggle-track" aria-hidden="true">
+              <i class="theme-toggle-sun" data-lucide="sun"></i>
+              <i class="theme-toggle-moon" data-lucide="moon"></i>
+              <span class="theme-toggle-thumb"></span>
+            </span>
+          </button>
           <button id="accessibilityBtn" class="icon-btn subtle" title="Acessibilidade e tamanho da interface" aria-label="Acessibilidade"><i data-lucide="accessibility"></i></button>
           <button id="quickAddBtn" class="btn primary"><i data-lucide="plus"></i><span>Adicionar</span></button>
 
@@ -661,10 +668,9 @@
 
   <div id="accessibilityModal" class="modal-layer hidden">
     <div class="modal-card accessibility-modal">
-      <div class="modal-head"><div><span class="eyebrow">Acessibilidade e aparência</span><h2>Deixe a Central confortável para cada pessoa</h2><p>O tamanho altera a interface inteira: textos, cartões, botões, avatares, imagens, campos e calendários. O tutorial mantém seu próprio layout para não quebrar em zoom de 100%.</p></div><button class="icon-btn subtle" data-close-modal="accessibilityModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Acessibilidade</span><h2>Deixe a Central confortável para cada pessoa</h2><p>O tamanho altera a interface inteira: textos, cartões, botões, avatares, imagens, campos e calendários. O modo escuro agora é controlado pelo botão no topo da Central.</p></div><button class="icon-btn subtle" data-close-modal="accessibilityModal"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
         <div class="accessibility-section"><strong>Tamanho da interface</strong><div class="accessibility-size-grid three-options"><button type="button" data-ui-scale="medium"><span>A</span><strong>Médio</strong><small>Mais compacto, ainda confortável</small></button><button type="button" data-ui-scale="large"><span>A+</span><strong>Grande</strong><small>Recomendado para uso diário</small></button><button type="button" data-ui-scale="xlarge"><span>A++</span><strong>Extra grande</strong><small>Máxima leitura e alvos maiores</small></button></div></div>
-        <div class="accessibility-section appearance-section"><strong>Tema</strong><div class="theme-choice-grid"><button type="button" data-ui-theme="light"><i data-lucide="sun"></i><span><strong>Claro</strong><small>Fundo claro e alto contraste</small></span></button><button type="button" data-ui-theme="dark"><i data-lucide="moon-star"></i><span><strong>Escuro</strong><small>Verdes profundos, superfícies separadas e cores vivas</small></span></button><button type="button" data-ui-theme="system"><i data-lucide="monitor-cog"></i><span><strong>Sistema</strong><small>Acompanha o tema do computador</small></span></button></div></div>
         <div class="accessibility-switches"><label><span><strong>Alto contraste</strong><small>Aumenta separação entre textos, bordas e fundos.</small></span><input id="accessibilityContrast" type="checkbox"></label><label><span><strong>Reduzir animações</strong><small>Evita movimentos que possam atrapalhar a leitura. Alertas imediatos continuam bem visíveis.</small></span><input id="accessibilityMotion" type="checkbox"></label></div>
       </div>
       <div class="modal-footer"><button id="accessibilityResetBtn" class="btn secondary" type="button"><i data-lucide="rotate-ccw"></i>Restaurar padrão</button><button class="btn primary" type="button" data-close-modal="accessibilityModal"><i data-lucide="check"></i>Pronto</button></div>
