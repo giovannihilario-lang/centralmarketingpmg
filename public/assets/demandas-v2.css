@@ -2100,3 +2100,426 @@ body:not(.ui-theme-dark) .ghost-copy,
 body:not(.ui-theme-dark) .low-contrast-fix{
   color:var(--muted)!important;
 }
+
+
+/* =========================================================
+   DARK MODE V3.4.8 — AUDITORIA FINAL DE CONTRASTE
+   ---------------------------------------------------------
+   Corrige a causa raiz do modo escuro anterior:
+   - os tokens --green-900/--green-700 são invertidos no tema escuro
+     para funcionar como TEXTO, mas algumas versões antigas também os
+     usavam como FUNDO de banners. Isso criava painéis verde-claro com
+     texto branco.
+   - alguns componentes novos mantinham background:#fff/rgba(255,...)
+     e não tinham override escuro.
+   Este bloco fica por último e não altera o tutorial.
+   ========================================================= */
+
+/* Paleta semântica exclusiva do tema escuro. */
+body.ui-theme-dark{
+  --dark-bg:#08100c;
+  --dark-shell:#0a130e;
+  --dark-panel:#101b14;
+  --dark-card:#132019;
+  --dark-card-2:#17261d;
+  --dark-card-3:#1d3025;
+  --dark-hover:#22382b;
+  --dark-line:#2c4435;
+  --dark-line-strong:#3a5b47;
+  --dark-brand-950:#071b11;
+  --dark-brand-900:#0d2d1c;
+  --dark-brand-800:#174a2e;
+  --dark-brand-700:#23653e;
+  --dark-brand-600:#2f8250;
+  --dark-text:#eef6f0;
+  --dark-text-2:#d1dfd5;
+  --dark-muted:#9caf9f;
+  --dark-faint:#758a7c;
+  background:
+    radial-gradient(circle at 18% -8%,rgba(48,118,76,.13),transparent 34%),
+    var(--dark-bg)!important;
+  color:var(--dark-text-2);
+}
+
+/* Fundo, shell e barras. */
+body.ui-theme-dark .main-shell{background:transparent}
+body.ui-theme-dark .topbar{
+  background:rgba(8,16,12,.93)!important;
+  border-bottom-color:#23382b!important;
+  box-shadow:0 8px 30px rgba(0,0,0,.13);
+}
+body.ui-theme-dark .sidebar{
+  background:linear-gradient(180deg,#0b2a19 0%,#071b11 58%,#06150d 100%)!important;
+  border-right:1px solid #173322;
+}
+body.ui-theme-dark .view-stack{color:var(--dark-text-2)}
+
+/* BANNERS: nunca mais usar os tokens verdes invertidos como fundo. */
+body.ui-theme-dark :where(
+  .today-hero,
+  .team-manager-banner,
+  .detail-banner,
+  .person-hero,
+  .task-overview-hero,
+  .monthly-report-hero
+){
+  background:
+    radial-gradient(circle at 78% 18%,rgba(108,210,142,.14),transparent 28%),
+    linear-gradient(135deg,#0e3020 0%,#174b31 58%,#236a42 100%)!important;
+  color:#fff!important;
+  border-color:#2a6242!important;
+  box-shadow:0 22px 52px rgba(0,0,0,.24)!important;
+}
+body.ui-theme-dark :where(
+  .today-hero,
+  .team-manager-banner,
+  .detail-banner,
+  .person-hero,
+  .task-overview-hero,
+  .monthly-report-hero
+) :where(h1,h2,h3,strong){color:#fff!important}
+body.ui-theme-dark :where(
+  .today-hero,
+  .team-manager-banner,
+  .detail-banner,
+  .person-hero,
+  .task-overview-hero,
+  .monthly-report-hero
+) :where(p,small,span:not(.badge):not(.pill):not(.soft-count)){
+  color:rgba(238,248,241,.78);
+}
+body.ui-theme-dark .today-hero .eyebrow,
+body.ui-theme-dark .team-manager-banner .eyebrow,
+body.ui-theme-dark .detail-banner .eyebrow,
+body.ui-theme-dark .task-overview-hero .eyebrow{color:#8ee1a9!important}
+
+/* Card de data do Hoje: escuro e elevado, sem placa verde-clara. */
+body.ui-theme-dark .hero-date-card{
+  background:linear-gradient(160deg,#1b3023,#122019)!important;
+  color:#f4faf6!important;
+  border:1px solid #355c44!important;
+  box-shadow:0 20px 50px rgba(0,0,0,.34)!important;
+}
+body.ui-theme-dark .hero-date-card strong{color:#fff!important}
+body.ui-theme-dark .hero-date-card :where(span,small){color:#8edca8!important}
+body.ui-theme-dark .hero-ring{border-color:rgba(151,225,175,.15)!important}
+
+/* Superfícies que ainda tinham branco hardcoded. */
+body.ui-theme-dark :where(
+  .card,
+  .metric-card,
+  .task-card,
+  .person-card,
+  .calendar-card,
+  .selected-day,
+  .task-list-view,
+  .team-summary-card,
+  .team-insight-card,
+  .team-avatar-strip,
+  .avatar-filter-panel,
+  .person-drawer-section,
+  .task-status-section,
+  .task-assignee-section,
+  .task-detail-summary>div,
+  .academy-command-bar,
+  .academy-summary-card,
+  .sector-summary-card,
+  .academy-reservation-card,
+  .academy-requests,
+  .academy-training-manager,
+  .academy-request-hub,
+  .academy-training-list-card,
+  .manager-evaluation-panel,
+  .evaluation-feedback,
+  .intrusive-meta-card,
+  .accessibility-size-grid button,
+  .assignee-selector-button,
+  .assignee-option,
+  .evaluation-choice,
+  .transfer-person-card.choose,
+  .person-drawer-metrics>div,
+  .person-drawer-task,
+  .productivity-card,
+  .task-template-toolbar
+){
+  background:var(--dark-card)!important;
+  border-color:var(--dark-line)!important;
+  color:var(--dark-text-2)!important;
+  box-shadow:0 5px 18px rgba(0,0,0,.12)!important;
+}
+
+/* Cards internos / campos. */
+body.ui-theme-dark :where(
+  .timeline-content,
+  .focus-item,
+  .day-item,
+  .workload-block,
+  .person-metric,
+  .team-pulse-grid>div,
+  .detail-field,
+  .setting-status-card,
+  .task-avatar-filter,
+  .team-avatar-person,
+  .status-step,
+  .checklist-item,
+  .dependency-card,
+  .academy-full-day-toggle,
+  .training-type-grid button,
+  .academy-training-rules span,
+  .intrusive-notification-later,
+  .status-waiting-note
+){
+  background:var(--dark-card-2)!important;
+  border-color:var(--dark-line)!important;
+  color:var(--dark-text-2)!important;
+}
+body.ui-theme-dark :where(
+  .timeline-content,
+  .focus-item,
+  .day-item,
+  .task-avatar-filter,
+  .team-avatar-person,
+  .assignee-option,
+  .training-type-grid button,
+  .checklist-item
+):hover{
+  background:var(--dark-hover)!important;
+  border-color:#43684f!important;
+}
+
+/* Faixa de Responsáveis da aba Demandas: bug visível no screenshot. */
+body.ui-theme-dark .avatar-filter-panel{
+  background:linear-gradient(180deg,#14221a,#101b14)!important;
+  border-color:#2d4736!important;
+}
+body.ui-theme-dark .avatar-filter-copy{color:#75d596!important}
+body.ui-theme-dark .avatar-filter-copy strong{color:#eef6f0!important}
+body.ui-theme-dark .avatar-filter-copy small{color:#90a496!important}
+body.ui-theme-dark .task-avatar-filter{
+  background:#18271e!important;
+  border-color:#304b39!important;
+}
+body.ui-theme-dark .task-avatar-filter.active{
+  background:#1d4930!important;
+  border-color:#58c57d!important;
+  box-shadow:0 0 0 2px rgba(88,197,125,.12)!important;
+}
+body.ui-theme-dark .task-avatar-filter strong{color:#f0f7f2!important}
+body.ui-theme-dark .task-avatar-filter small{color:#91a598!important}
+body.ui-theme-dark .task-avatar-filter-all{background:#23402e!important;color:#8de0a8!important}
+body.ui-theme-dark .task-avatar-filter .avatar{border-color:#2f4938!important}
+
+/* Kanban. */
+body.ui-theme-dark .kanban-column{
+  background:#0e1812!important;
+  border-color:#263c2f!important;
+}
+body.ui-theme-dark .kanban-head b{
+  background:#19271f!important;
+  color:#a6b8ac!important;
+  border-color:#30483a!important;
+}
+body.ui-theme-dark .task-card{
+  background:#142019!important;
+  border-color:#2d4436!important;
+}
+body.ui-theme-dark .task-card:hover{background:#17261d!important;border-color:#3b5b47!important}
+
+/* Equipe. */
+body.ui-theme-dark .team-summary-card,
+body.ui-theme-dark .team-insight-card{
+  background:#111d16!important;
+  border-color:#2a4133!important;
+}
+body.ui-theme-dark .team-summary-icon{
+  background:#173723!important;
+  color:#76da98!important;
+}
+body.ui-theme-dark .team-updated-at{
+  background:rgba(8,24,15,.34)!important;
+  border-color:rgba(154,228,178,.20)!important;
+  color:#a4e5b8!important;
+}
+
+/* Calendários gerais. */
+body.ui-theme-dark .calendar-grid{border-color:#2c4335!important}
+body.ui-theme-dark .calendar-day{
+  background:#101b14!important;
+  border-color:#2a4133!important;
+  color:#dce8df!important;
+}
+body.ui-theme-dark .calendar-day:hover{background:#17261d!important}
+body.ui-theme-dark .calendar-day.outside{background:#0d1510!important;color:#65776a!important}
+body.ui-theme-dark .calendar-day.selected{
+  background:#17281e!important;
+  box-shadow:inset 0 0 0 2px #58bf7b!important;
+}
+body.ui-theme-dark .day-number{color:#dce8df!important}
+
+/* Cabeçalho do dia selecionado: mesma correção dos banners claros. */
+body.ui-theme-dark .selected-day-head{
+  background:linear-gradient(145deg,#10311f,#1e6140)!important;
+  border:1px solid #326f4c!important;
+  color:#fff!important;
+}
+body.ui-theme-dark .selected-day-head strong{color:#fff!important}
+body.ui-theme-dark .selected-day-head :where(span,small){color:#9ae2b1!important}
+
+/* Academia. */
+body.ui-theme-dark .academy-section-tabs{
+  background:#0f1913!important;
+  border-color:#2b4234!important;
+}
+body.ui-theme-dark .academy-section-tab{
+  background:transparent!important;
+  border-color:transparent!important;
+}
+body.ui-theme-dark .academy-section-tab:hover{
+  background:#17261d!important;
+  border-color:#304b3a!important;
+}
+body.ui-theme-dark .academy-section-tab>svg{
+  background:#192a20!important;
+  color:#a3b6a8!important;
+}
+body.ui-theme-dark .academy-section-tab.active{
+  background:linear-gradient(135deg,#3b2d65,#514085)!important;
+  border-color:#7762b8!important;
+  box-shadow:0 10px 28px rgba(0,0,0,.20)!important;
+}
+body.ui-theme-dark .academy-section-tab.active :where(strong,small){color:#f3efff!important}
+body.ui-theme-dark .academy-section-tab.active>svg{background:rgba(255,255,255,.12)!important;color:#fff!important}
+body.ui-theme-dark .academy-training-hub{
+  background:linear-gradient(135deg,#1a1730 0%,#171c20 56%,#111b15 100%)!important;
+  border-color:#4e426c!important;
+}
+body.ui-theme-dark .academy-training-rules span{
+  background:#211d31!important;
+  color:#c7bbeb!important;
+  border-color:#493e65!important;
+}
+body.ui-theme-dark .academy-day{
+  background:#101b14!important;
+  border-color:#2a4133!important;
+}
+body.ui-theme-dark .academy-day:hover{background:#17261d!important}
+body.ui-theme-dark .academy-day.academy-training-day{
+  background:#211c31!important;
+  border-color:#584b7d!important;
+}
+body.ui-theme-dark .academy-day.academy-requested{
+  background:#2b2415!important;
+  border-color:#68562a!important;
+}
+body.ui-theme-dark .academy-reservation-card.is-training{
+  background:#201b2d!important;
+  border-color:#4c4266!important;
+}
+body.ui-theme-dark .academy-reservation-card.is-training.training-mkt{
+  background:#2a2818!important;
+  border-color:#655d29!important;
+}
+body.ui-theme-dark .academy-reservation-card.is-training.training-avulso{
+  background:#2b2118!important;
+  border-color:#6c4928!important;
+}
+body.ui-theme-dark .academy-training-date{background:#241f35!important}
+body.ui-theme-dark .academy-training-date strong{color:#f1ecff!important}
+body.ui-theme-dark .academy-training-date :where(span,small){color:#c9baf2!important}
+body.ui-theme-dark .academy-training-pill{background:#302747!important;color:#d0c1f6!important}
+body.ui-theme-dark .academy-training-pill.mkt{background:#3a3517!important;color:#f2dc54!important}
+body.ui-theme-dark .academy-training-pill.avulso{background:#3d2a19!important;color:#ffb15a!important}
+
+/* Inputs e selects: sem branco radioativo. */
+body.ui-theme-dark :where(
+  .global-search,
+  .search-input,
+  .quick-capture textarea,
+  .task-toolbar select,
+  .team-search-field,
+  .team-controls select,
+  .toolbar-select,
+  .field input,
+  .field textarea,
+  .field select,
+  .input-shell,
+  .suffix-input,
+  .comment-form textarea,
+  .assignee-picker-search,
+  .academy-import-map-grid select,
+  .task-template-actions select
+){
+  background:#14221a!important;
+  color:#edf5ef!important;
+  border-color:#314b3a!important;
+  box-shadow:none!important;
+}
+body.ui-theme-dark :where(input,textarea,select)::placeholder{color:#74877a!important;opacity:1}
+body.ui-theme-dark :where(input,textarea,select):focus{
+  border-color:#57bd79!important;
+  box-shadow:0 0 0 3px rgba(87,189,121,.10)!important;
+}
+
+/* Botões claros antigos. */
+body.ui-theme-dark .btn.light,
+body.ui-theme-dark .btn.secondary,
+body.ui-theme-dark .icon-btn.subtle{
+  background:#18271e!important;
+  border-color:#36523f!important;
+  color:#e3eee6!important;
+}
+body.ui-theme-dark .btn.light:hover,
+body.ui-theme-dark .btn.secondary:hover,
+body.ui-theme-dark .icon-btn.subtle:hover{
+  background:#21372a!important;
+  border-color:#52725a!important;
+  color:#a7e3ba!important;
+}
+
+/* Modais, drawers e menus. */
+body.ui-theme-dark :where(.modal-card,.right-drawer,.search-command,.user-dropdown){
+  background:#0f1913!important;
+  border-color:#2d4536!important;
+  color:#e4eee7!important;
+}
+body.ui-theme-dark :where(.modal-head,.modal-footer,.drawer-footer-actions,.person-drawer-actions){
+  background:#111d16!important;
+  border-color:#2a4133!important;
+}
+body.ui-theme-dark .user-dropdown button:hover{background:#1a2a21!important}
+body.ui-theme-dark .notification-item.unread{background:#182b20!important}
+
+/* Pequenos fundos brancos remanescentes em cards. */
+body.ui-theme-dark .status-step-icon,
+body.ui-theme-dark .avatar-status-badge,
+body.ui-theme-dark .task-avatar-icon,
+body.ui-theme-dark .checklist-item>span,
+body.ui-theme-dark .task-template-icon,
+body.ui-theme-dark .day-item-symbol{
+  background:#1c2d23!important;
+  border-color:#385441!important;
+  color:#8bdba5!important;
+}
+
+/* Texto sempre legível em superfícies escuras. */
+body.ui-theme-dark .app-shell :where(h1,h2,h3,h4,strong){color:#f2f7f4}
+body.ui-theme-dark .app-shell :where(p,small){color:var(--dark-muted)}
+body.ui-theme-dark .app-shell .eyebrow{color:#63cb86}
+body.ui-theme-dark .app-shell .muted{color:var(--dark-muted)!important}
+
+/* Exceções semânticas: cores de status continuam vivas. */
+body.ui-theme-dark .priority-pill.baixa{color:#8eb5ff}
+body.ui-theme-dark .priority-pill.media{color:#7ed99b}
+body.ui-theme-dark .priority-pill.alta{color:#efb54e}
+body.ui-theme-dark .priority-pill.urgente,
+body.ui-theme-dark .priority-pill.imediata{color:#ff8a90}
+
+/* Tutorial possui tema próprio e não herda as superfícies acima. */
+body.ui-theme-dark .onboarding-layer .onboarding-card{background:#fff!important;color:#294033!important}
+body.ui-theme-dark .onboarding-layer .onboarding-content{background:#fff!important;color:#294033!important}
+body.ui-theme-dark .onboarding-layer .onboarding-content h2{color:#102117!important}
+body.ui-theme-dark .onboarding-layer .onboarding-content>p,
+body.ui-theme-dark .onboarding-layer .onboarding-point small{color:#6b7f72!important}
+body.ui-theme-dark .onboarding-layer .onboarding-point{background:#f8faf9!important;border-color:#dfe8e2!important}
+body.ui-theme-dark .onboarding-layer .onboarding-point strong{color:#102117!important}
+body.ui-theme-dark .onboarding-layer .onboarding-point>span{background:#fff!important;border-color:#dfe8e2!important;color:#22653b!important}
