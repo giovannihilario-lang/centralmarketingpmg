@@ -2480,6 +2480,9 @@ function updateThemeToggle(){
 function applyAccessibilityPreferences(){
   ['medium','large','xlarge'].forEach(scale=>document.body.classList.toggle(`ui-scale-${scale}`,state.accessibility.scale===scale));
   const dark=state.accessibility.theme==='dark';
+  document.documentElement.dataset.theme=dark?'dark':'light';
+  document.documentElement.classList.toggle('ui-theme-dark',dark);
+  document.documentElement.classList.toggle('ui-theme-light',!dark);
   document.body.classList.toggle('ui-theme-dark',dark);
   document.body.classList.toggle('ui-theme-light',!dark);
   document.body.dataset.themePreference=dark?'dark':'light';

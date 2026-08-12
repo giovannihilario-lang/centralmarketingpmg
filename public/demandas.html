@@ -4,6 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#133d25">
+  <script>
+    (() => {
+      try {
+        const raw = localStorage.getItem('pmg-demandas-accessibilidade-v2') || localStorage.getItem('pmg-demandas-accessibilidade-v1') || '{}';
+        const saved = JSON.parse(raw);
+        const dark = saved && saved.theme === 'dark';
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#0a100d' : '#133d25');
+      } catch (_) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
   <title>Central de Demandas — PMG Connect</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
