@@ -12,15 +12,13 @@ self.addEventListener('push', event => {
       icon: data.icon || '/imagenssite/pmglogo.png',
       badge: data.badge || '/imagenssite/pmglogo.png',
       tag: data.tag || undefined,
-      renotify: Boolean(data.immediate),
-      requireInteraction: Boolean(data.reminderId || data.immediate),
-      vibrate: data.immediate ? [250, 100, 250, 100, 450] : [120, 60, 120],
+      renotify: false,
+      requireInteraction: Boolean(data.reminderId),
       actions: Array.isArray(data.actions) ? data.actions : [],
       data: {
         url: data.url || '/central.html',
         reminderId: data.reminderId || null,
-        taskId: data.taskId || null,
-        immediate: Boolean(data.immediate)
+        taskId: data.taskId || null
       }
     })
   );
