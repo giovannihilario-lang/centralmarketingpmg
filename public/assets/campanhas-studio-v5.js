@@ -52,7 +52,7 @@
     { id:'points', label:'Pontos', icon:'sparkles', description:'Pontuação total gerada pelas regras da campanha' },
     { id:'revenue', label:'Faturamento', icon:'badge-dollar-sign', description:'Valor vendido no período da campanha' },
     { id:'kg', label:'Volume em KG', icon:'weight', description:'Quantidade total vendida em quilos' },
-    { id:'pieces', label:'Peças', icon:'package', description:'Quantidade total vendida em peças' },
+    { id:'pieces', label:'Quantidade de unidades', icon:'package', description:'Quantidade total vendida em unidades' },
     { id:'positivity', label:'Positivação', icon:'user-round-plus', description:'Clientes atuais menos clientes do período anterior' },
     { id:'mix', label:'Mix de categorias', icon:'boxes', description:'Percentual de categorias obrigatórias cumpridas' },
     { id:'revenueGrowth', label:'Crescimento de R$', icon:'trending-up', description:'Crescimento percentual do faturamento' },
@@ -65,7 +65,7 @@
     ['positivity', 'Positivação líquida', 'clientes'],
     ['revenue', 'Faturamento', 'R$'],
     ['kg', 'Volume', 'KG'],
-    ['pieces', 'Peças', 'unidades'],
+    ['pieces', 'Quantidade de unidades', 'unidades'],
     ['points', 'Pontos', 'pontos'],
     ['customers', 'Clientes únicos', 'clientes'],
     ['mix', 'Mix de categorias', '%'],
@@ -76,17 +76,17 @@
   ];
 
   const GROWTH_METRICS = [
-    ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Peças'], ['customers', 'Clientes únicos'], ['orders', 'Pedidos'],
+    ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Quantidade de unidades'], ['customers', 'Clientes únicos'], ['orders', 'Pedidos'],
   ];
 
   const POINT_SOURCES = [
-    ['positivity', 'Positivação líquida'], ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Peças'],
+    ['positivity', 'Positivação líquida'], ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Quantidade de unidades'],
     ['customers', 'Clientes únicos'], ['orders', 'Pedidos'], ['mixCategories', 'Categorias de mix cumpridas'], ['distinctProducts', 'Produtos distintos'],
     ['activationClients', 'Benefícios utilizados'], ['activationOrders', 'Pedidos com benefício'],
   ];
 
   const TIE_OPTIONS = [
-    ['positivity', 'Maior positivação'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais peças'],
+    ['positivity', 'Maior positivação'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais unidades'],
     ['mix', 'Maior mix'], ['points', 'Maior pontuação'], ['orders', 'Mais pedidos'],
     ['revenueGrowth', 'Maior crescimento de faturamento'], ['kgGrowth', 'Maior crescimento de volume'],
     ['activationClients', 'Mais benefícios utilizados'], ['activationRate', 'Maior aproveitamento da 1ª compra'],
@@ -595,6 +595,7 @@
     const end = new Date(start); end.setDate(end.getDate() + 35);
     return {
       id:uid('campaign'), name:'', description:'', start:inputDate(start), end:inputDate(end),
+      periodMode:'six_mondays',
       suppliers:[], participantMode:'all', representatives:[], rankingMetrics:['points','positivity'], rankingMode:'TOP_N_ELIGIBLE', topN:5,
       salesScopeMode:'supplier_all',
       goalMode:'both', collectiveGoals:[defaultGoal('collective')], individualGoals:[defaultGoal('individual')],
@@ -632,10 +633,14 @@
     const legacyCollective = raw.collectiveGoals || (raw.collectiveMeta ? [{ id:uid('goal'), scope:'collective', mode:['revenueGrowth','kgGrowth'].includes(raw.collectiveMeta.metric) ? 'growth_percent' : 'absolute', metric:String(raw.collectiveMeta.metric || 'positivity').replace('Growth',''), operator:'>=', value:Number(raw.collectiveMeta.value)||0 }] : []);
     const legacyIndividual = raw.individualGoals || (raw.individualMeta ? [{ id:uid('goal'), scope:'individual', mode:['revenueGrowth','kgGrowth'].includes(raw.individualMeta.metric) ? 'growth_percent' : 'absolute', metric:String(raw.individualMeta.metric || 'positivity').replace('Growth',''), operator:'>=', value:Number(raw.individualMeta.value)||0 }] : []);
     const normalizedStart = raw.start || raw.dataInicio || base.start;
-    const normalizedEnd = sixthMondayFrom(normalizedStart) || base.end;
+    const periodMode = raw.periodMode === 'custom' ? 'custom' : 'six_mondays';
+    const normalizedEnd = periodMode === 'custom'
+      ? (raw.end || raw.dataFim || normalizedStart)
+      : (sixthMondayFrom(normalizedStart) || base.end);
     return {
       ...base, ...raw,
       name:raw.name || raw.nome || '', description:raw.description || raw.descricao || '',
+      periodMode,
       start:normalizedStart, end:normalizedEnd,
       suppliers:Array.isArray(legacySuppliers) ? legacySuppliers.map((supplier) => ({ id:Number(supplier.id ?? supplier.code ?? supplier.fornecedorId) || null, name:supplier.name || supplier.nome || supplier.fornecedor || 'Fornecedor', totalProducts:Number(supplier.totalProducts || supplier.totalProdutos)||0 })) : [],
       salesScopeMode:['supplier_all','selected_products'].includes(raw.salesScopeMode)
@@ -654,23 +659,51 @@
     };
   }
 
-  function calculatePeriods(startRaw) {
-    const start = startRaw ? new Date(`${startRaw}T12:00:00`) : null;
-    if (!start || Number.isNaN(start.getTime())) return { valid:false, error:'Informe a primeira segunda-feira da campanha.' };
-    if (start.getDay() !== 1) return { valid:false, error:'O início da campanha precisa ser uma segunda-feira.' };
+  function calculatePeriods(campaignOrStart, endRaw = null, modeRaw = null) {
+    const campaign = typeof campaignOrStart === 'object' && campaignOrStart
+      ? campaignOrStart
+      : { start:campaignOrStart, end:endRaw, periodMode:modeRaw || 'six_mondays' };
 
-    // Regra PMG: sempre seis segundas-feiras.
-    // Ex.: campanha 22/06 a 27/07; referência anterior 11/05 a 15/06.
-    const currentLast = new Date(start); currentLast.setDate(currentLast.getDate() + 35);
-    const currentEndExclusive = new Date(currentLast); currentEndExclusive.setDate(currentEndExclusive.getDate() + 1);
-    const previousStart = new Date(start); previousStart.setDate(previousStart.getDate() - 42);
-    const previousLast = new Date(start); previousLast.setDate(previousLast.getDate() - 7);
-    const previousEndExclusive = new Date(previousLast); previousEndExclusive.setDate(previousEndExclusive.getDate() + 1);
+    const mode = campaign.periodMode === 'custom' ? 'custom' : 'six_mondays';
+    const startRaw = campaign.start;
+    const start = startRaw ? new Date(`${startRaw}T12:00:00`) : null;
+
+    if (!start || Number.isNaN(start.getTime())) return { valid:false, error:'Informe a data inicial da campanha.' };
+
+    if (mode === 'six_mondays') {
+      if (start.getDay() !== 1) return { valid:false, error:'No modelo PMG, o início precisa ser uma segunda-feira.' };
+
+      const currentLast = new Date(start); currentLast.setDate(currentLast.getDate() + 35);
+      const currentEndExclusive = new Date(currentLast); currentEndExclusive.setDate(currentEndExclusive.getDate() + 1);
+      const previousStart = new Date(start); previousStart.setDate(previousStart.getDate() - 42);
+      const previousLast = new Date(start); previousLast.setDate(previousLast.getDate() - 7);
+      const previousEndExclusive = new Date(previousLast); previousEndExclusive.setDate(previousEndExclusive.getDate() + 1);
+
+      return {
+        valid:true, mode, days:36, weeks:6, mondays:6,
+        currentStart:inputDate(start), currentEnd:inputDate(currentEndExclusive), currentLast:inputDate(currentLast),
+        previousStart:inputDate(previousStart), previousEnd:inputDate(previousEndExclusive), previousLast:inputDate(previousLast),
+        label:'Modelo PMG · 6 segundas-feiras',
+        previousLabel:'Referência anterior · 6 segundas-feiras',
+      };
+    }
+
+    const finish = campaign.end ? new Date(`${campaign.end}T12:00:00`) : null;
+    if (!finish || Number.isNaN(finish.getTime())) return { valid:false, error:'Informe a data final da campanha.' };
+    if (finish < start) return { valid:false, error:'A data final não pode ser anterior à data inicial.' };
+
+    const days = Math.floor((finish - start) / 86400000) + 1;
+    const currentEndExclusive = new Date(finish); currentEndExclusive.setDate(currentEndExclusive.getDate() + 1);
+    const previousLast = new Date(start); previousLast.setDate(previousLast.getDate() - 1);
+    const previousStart = new Date(start); previousStart.setDate(previousStart.getDate() - days);
+    const previousEndExclusive = new Date(start);
 
     return {
-      valid:true, weeks:6, mondays:6,
-      currentStart:inputDate(start), currentEnd:inputDate(currentEndExclusive), currentLast:inputDate(currentLast),
+      valid:true, mode, days,
+      currentStart:inputDate(start), currentEnd:inputDate(currentEndExclusive), currentLast:inputDate(finish),
       previousStart:inputDate(previousStart), previousEnd:inputDate(previousEndExclusive), previousLast:inputDate(previousLast),
+      label:`Período livre · ${days} dia${days === 1 ? '' : 's'}`,
+      previousLabel:`Referência anterior · mesma duração (${days} dia${days === 1 ? '' : 's'})`,
     };
   }
 
@@ -714,33 +747,43 @@
 
   function periodPreview(periods) {
     if (!periods.valid) return `<div class="hint" style="grid-column:1/-1;color:var(--danger)">${esc(periods.error)}</div>`;
-    return `<div class="period-box"><span>Campanha · 6 segundas-feiras</span><strong>${dateBR(periods.currentStart)} a ${dateBR(periods.currentLast)}</strong></div><div class="period-arrow"><i data-lucide="arrow-left-right"></i></div><div class="period-box"><span>Referência anterior · 6 segundas-feiras</span><strong>${dateBR(periods.previousStart)} a ${dateBR(periods.previousLast)}</strong></div>`;
+    return `<div class="period-box"><span>${esc(periods.label || 'Campanha')}</span><strong>${dateBR(periods.currentStart)} a ${dateBR(periods.currentLast)}</strong></div><div class="period-arrow"><i data-lucide="arrow-left-right"></i></div><div class="period-box"><span>${esc(periods.previousLabel || 'Referência anterior')}</span><strong>${dateBR(periods.previousStart)} a ${dateBR(periods.previousLast)}</strong></div>`;
   }
 
   function renderGeneralStep() {
     const campaign = app.wizard.campaign;
-    const periods = calculatePeriods(campaign.start);
+    const periods = calculatePeriods(campaign);
+    const customPeriod = campaign.periodMode === 'custom';
     return `<div class="step-head"><div><h3>Informações gerais</h3><p>Defina o período, selecione um ou mais códigos de fornecedor e determine os participantes.</p></div></div>
       <div class="form-grid">
         <div class="field"><label>Nome da campanha *</label><input id="campaignName" value="${esc(campaign.name)}" placeholder="Ex.: Campanha Camil Q3"></div>
         <div class="field"><label>Status calculado</label><input value="${campaignStatus(campaign).label}" disabled></div>
         <div class="field full"><label>Descrição ou regulamento</label><textarea id="campaignDescription" placeholder="Objetivo, observações e regras gerais…">${esc(campaign.description)}</textarea></div>
         <div class="field full"><label>Códigos de fornecedor participantes *</label>${supplierSelector()}</div>
-        <div class="field">
-          <label>1ª segunda-feira da campanha *</label>
-          <div class="date-picker-control">
-            <input id="campaignStart" type="date" value="${esc(campaign.start)}" aria-label="Escolher primeira segunda-feira da campanha">
-            <button type="button" class="date-picker-button" data-action="open-date-picker" data-target="campaignStart" title="Abrir calendário"><i data-lucide="calendar-days"></i></button>
+        <div class="field full">
+          <label>Modelo de período</label>
+          <div class="period-mode-grid">
+            ${choiceCard('period-mode','six_mondays','calendar-range','Modelo PMG · 6 segundas','Mantém o preenchimento automático atual: começa em uma segunda e termina na 6ª segunda-feira.',campaign.periodMode !== 'custom')}
+            ${choiceCard('period-mode','custom','calendar-days','Período livre','Escolha qualquer data inicial e final. A referência anterior terá exatamente a mesma duração.',campaign.periodMode === 'custom')}
           </div>
-          <small class="hint">Escolha no calendário a primeira segunda-feira. O sistema monta as seis semanas automaticamente.</small>
         </div>
         <div class="field">
-          <label>6ª segunda-feira · calculada automaticamente</label>
-          <div class="date-picker-control is-readonly">
-            <input id="campaignEnd" type="date" value="${esc(campaign.end)}" disabled>
-            <span class="date-picker-button is-static"><i data-lucide="calendar-check-2"></i></span>
+          <label>${customPeriod ? 'Data inicial da campanha *' : '1ª segunda-feira da campanha *'}</label>
+          <div class="date-picker-control">
+            <input id="campaignStart" type="date" value="${esc(campaign.start)}" aria-label="Escolher data inicial da campanha">
+            <button type="button" class="date-picker-button" data-action="open-date-picker" data-target="campaignStart" title="Abrir calendário"><i data-lucide="calendar-days"></i></button>
           </div>
-          <small class="hint">Fechamento calculado a partir da primeira segunda-feira.</small>
+          <small class="hint">${customPeriod ? 'Pode ser qualquer dia da semana.' : 'No modelo PMG, a data inicial precisa ser uma segunda-feira.'}</small>
+        </div>
+        <div class="field">
+          <label>${customPeriod ? 'Data final da campanha *' : '6ª segunda-feira · calculada automaticamente'}</label>
+          <div class="date-picker-control ${customPeriod ? '' : 'is-readonly'}">
+            <input id="campaignEnd" type="date" value="${esc(campaign.end)}" ${customPeriod ? '' : 'disabled'} aria-label="Escolher data final da campanha">
+            ${customPeriod
+              ? `<button type="button" class="date-picker-button" data-action="open-date-picker" data-target="campaignEnd" title="Abrir calendário"><i data-lucide="calendar-days"></i></button>`
+              : `<span class="date-picker-button is-static"><i data-lucide="calendar-check-2"></i></span>`}
+          </div>
+          <small class="hint">${customPeriod ? 'A referência anterior é calculada automaticamente com a mesma quantidade de dias, imediatamente antes da campanha.' : 'Fechamento calculado automaticamente a partir da primeira segunda-feira.'}</small>
         </div>
         <div class="period-preview" id="periodPreview">${periodPreview(periods)}</div>
         <div class="field full"><label>Participantes</label><div class="choice-grid">
@@ -793,7 +836,7 @@
       ${['collective','both'].includes(campaign.goalMode) ? goalBlock('collective', 'Metas coletivas', 'O total do grupo precisa atingir todas as condições configuradas.', campaign.collectiveGoals) : ''}
       ${['individual','both'].includes(campaign.goalMode) ? goalBlock('individual', 'Metas individuais', 'Cada vendedor precisa atingir todas as condições para ficar elegível.', campaign.individualGoals) : ''}
 
-      <div class="subsection"><div class="subsection-head"><div><h4>Pontos por desempenho</h4><p>Crie pontos por positivação, faturamento, volume, peças, pedidos, mix ou produtos distintos.</p></div><button class="secondary-btn" type="button" data-action="add-point-rule"><i data-lucide="plus"></i>Adicionar regra</button></div>
+      <div class="subsection"><div class="subsection-head"><div><h4>Pontos por desempenho</h4><p>Crie pontos por positivação, faturamento, volume, quantidade de unidades, pedidos, mix ou produtos distintos.</p></div><button class="secondary-btn" type="button" data-action="add-point-rule"><i data-lucide="plus"></i>Adicionar regra</button></div>
         ${campaign.pointRules.length ? `<div class="point-rule-list">${campaign.pointRules.map(pointRuleRow).join('')}</div>` : '<div class="hint">Nenhuma regra adicional de pontos. As categorias de produtos ainda podem gerar pontos separadamente.</div>'}
       </div>
 
@@ -1146,7 +1189,7 @@
       app.imageInFlight.set(key, promise);
       await promise;
     }
-    if (changed && app.wizard?.step === 2) renderWizard();
+    if (changed && app.wizard?.step === 2) { syncCurrentStep(); renderWizard(); }
   }
 
   function renderFinalStep() {
@@ -1168,7 +1211,9 @@
       campaign.name = $('#campaignName')?.value.trim() || campaign.name;
       campaign.description = $('#campaignDescription')?.value.trim() || '';
       campaign.start = $('#campaignStart')?.value || campaign.start;
-      campaign.end = sixthMondayFrom(campaign.start) || campaign.end;
+      campaign.end = campaign.periodMode === 'custom'
+        ? ($('#campaignEnd')?.value || campaign.end || campaign.start)
+        : (sixthMondayFrom(campaign.start) || campaign.end);
       campaign.representatives = $$('[data-representative]:checked').map((input) => input.dataset.representative);
     }
     if (app.wizard.step === 1) {
@@ -1243,7 +1288,7 @@
     if (step === 0) {
       if (!campaign.name) return 'Informe o nome da campanha.';
       if (!campaign.suppliers.length) return 'Selecione pelo menos um código de fornecedor.';
-      const periods = calculatePeriods(campaign.start);
+      const periods = calculatePeriods(campaign);
       if (!periods.valid) return periods.error;
       if (campaign.participantMode === 'specific' && !campaign.representatives.length) return 'Selecione os representantes participantes.';
     }
@@ -1425,7 +1470,7 @@
     if (goal.mode === 'growth_percent') {
       return `<div class="goal-audit">
         <div><span>Atual</span><strong>${esc(audit.currentText)}</strong></div>
-        <div><span>Anterior PMG</span><strong>${esc(audit.previousText)}</strong></div>
+        <div><span>Referência anterior</span><strong>${esc(audit.previousText)}</strong></div>
         <div><span>Diferença</span><strong>${esc(audit.deltaText)}</strong></div>
         <div><span>Crescimento</span><strong>${esc(audit.valueText)}</strong></div>
       </div>
@@ -1770,7 +1815,7 @@
     document.body.style.overflow = 'hidden';
     $('#performanceTitle').textContent = campaign.name;
 
-    const periods = calculatePeriods(campaign.start);
+    const periods = calculatePeriods(campaign);
     if (!periods.valid) {
       $('#performanceBody').innerHTML = `<div class="context-error">${esc(periods.error)}</div>`;
       return;
@@ -1821,6 +1866,8 @@
         force,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
+          campaignEnd:periods.currentLast,
+          periodMode:campaign.periodMode || 'six_mondays',
           asOfDate:inputDate(new Date()),
           currentStart:periods.currentStart,
           currentEnd:periods.currentEnd,
@@ -1855,6 +1902,11 @@
           partial:data.partial,
           asOfDate:data.asOfDate,
           elapsedDays:data.elapsedDays,
+          totalDays:data.totalDays,
+          remainingDays:data.remainingDays,
+          periodMode:data.periodMode,
+          previousEquivalentEndExclusive:data.previousEquivalentEndExclusive,
+          equivalentPreviousSummary:data.equivalentPreviousSummary || null,
           periodsUsed:data.periodsUsed,
           nominalPeriods:data.nominalPeriods,
           cache:data.cache || null,
@@ -1896,7 +1948,7 @@
 
   function metricCellAudit(metric, period, item, audit) {
     const isCurrent = period === 'current';
-    const periodLabel = isCurrent ? 'Campanha' : 'Anterior PMG';
+    const periodLabel = isCurrent ? 'Campanha' : 'Referência anterior';
     const start = isCurrent ? audit.currentStart : audit.previousStart;
     const last = isCurrent ? audit.currentLast : audit.previousLast;
 
@@ -1951,7 +2003,7 @@
     return [
       `Crescimento de ${label}`,
       `Atual: ${formattedCurrent}`,
-      `Anterior PMG: ${formattedPrevious}`,
+      `Referência anterior: ${formattedPrevious}`,
       previous
         ? `Fórmula: (Atual − Anterior) ÷ |Anterior| × 100`
         : `Sem base anterior: quando o anterior é zero, a regra operacional atual considera 100% se houver venda e 0% se também não houver venda.`,
@@ -1978,7 +2030,7 @@
   function activationAuditLines(item, campaign, audit) {
     const rule = campaign.orderActivationRule || {};
     const data = item.activationAudit || {};
-    const measureLabel = (measure) => measure === 'pieces' ? 'peças/unidades' : 'produtos distintos';
+    const measureLabel = (measure) => measure === 'pieces' ? 'unidades' : 'produtos distintos';
 
     const lines = [
       `${rule.name || 'Benefício de primeira compra'}`,
@@ -2012,9 +2064,9 @@
     const warnings = p.warnings || [];
     const endpoint = p.endpoint || '/api/campanhas-data?recurso=apuracao';
 
-    return `<details class="provenance-panel" open>
+    return `<details class="provenance-panel">
       <summary>
-        <span><i data-lucide="scan-search"></i><strong>Fonte da apuração e filtros usados</strong><small>Veja exatamente de onde os números saíram.</small></span>
+        <span><i data-lucide="scan-search"></i><strong>Verificações, fonte e filtros da apuração</strong><small>Clique para abrir detalhes técnicos.</small></span>
         <span class="source-status ${cache.hit ? 'cached' : 'live'}">${cache.hit ? 'Cache da API' : 'SQL consultado'}</span>
       </summary>
       <div class="provenance-content">
@@ -2054,6 +2106,7 @@
           <div><span>Fornecedores enviados à API</span><strong>${esc(sourceList(scope.supplierIds, 30))}</strong></div>
           <div><span>Representantes específicos</span><strong>${scope.sellerCount ? esc(sourceList(scope.sellers, 12)) : 'Todos os representantes ativos'}</strong></div>
           <div><span>Filtro de representante ativo</span><strong>${scope.rankingMode === 'REPRESENTANTES_ATIVOS_ATUAIS' ? esc(filters.activeSeller || "Somente no ranking: dbo.Clientes.[Status] LIKE 'ATIV%'") : 'Não se aplica; representantes específicos'}</strong></div>
+          <div><span>Conciliação histórica do vendedor</span><strong>${esc(filters.sellerHistory || 'ID numérico final; fallback por nome normalizado sem sufixo')}</strong></div>
           <div><span>Tipo de venda</span><strong>${esc(filters.saleType || 'Sem filtro explícito')}</strong></div>
           <div><span>Forma de venda</span><strong>${esc(filters.saleForm || 'Sem filtro explícito')}</strong></div>
         </div>
@@ -2154,7 +2207,7 @@
     const campaign = normalizeCampaign(await DB.get('campanhas', campaignId));
     if (!campaign?.id) return;
 
-    const periods = calculatePeriods(campaign.start);
+    const periods = calculatePeriods(campaign);
     const scope = effectiveSalesScope(campaign);
 
     slot.innerHTML = `<div class="diagnostic-loading"><span class="mini-spinner"></span><span><strong>Comparando diretamente no SQL…</strong><small>Fornecedor bruto × vendedores ativos × produtos ativos × escopo efetivo.</small></span></div>`;
@@ -2166,6 +2219,8 @@
         timeout:120000,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
+          campaignEnd:periods.currentLast,
+          periodMode:campaign.periodMode || 'six_mondays',
           asOfDate:inputDate(new Date()),
           supplierIds:scope.supplierIds,
           productIds:scope.productIds,
@@ -2197,6 +2252,7 @@
         <span class="eyebrow">${esc(identity.code ? `ID ${identity.code}` : 'Representante')}</span>
         <h3>${esc(identity.name || data.seller)}</h3>
         <p>Linhas participantes exatamente como a API local recebeu do SQL.</p>
+        ${data.sellerAliases?.length > 1 ? `<small class="seller-alias-note">Registros históricos conciliados: ${esc(data.sellerAliases.join(' · '))}</small>` : ''}
       </div>
       <div class="audit-source-chip"><i data-lucide="database"></i><span><strong>${esc(data.source || 'SQL Server')}</strong><small>${esc(data.endpoint || '')}</small></span></div>
     </div>
@@ -2204,8 +2260,8 @@
     <div class="audit-period-box">
       <strong>Períodos efetivamente consultados</strong>
       <span>Campanha: ${dateBR(used.currentStart)} a ${dateBR(used.currentLastInclusive)}</span>
-      <span>Anterior PMG: ${dateBR(used.previousStart)} a ${dateBR(used.previousLastInclusive)}</span>
-      <small>${data.partial ? 'A campanha está parcial; a referência anterior permanece o bloco completo de seis segundas.' : 'Campanha e referência fechadas no bloco de seis segundas.'}</small>
+      <span>Referência anterior: ${dateBR(used.previousStart)} a ${dateBR(used.previousLastInclusive)}</span>
+      <small>${data.partial ? 'A campanha está parcial; a referência anterior oficial permanece completa.' : 'Campanha e referência anterior estão fechadas no período configurado.'}</small>
     </div>
 
     <div class="audit-summary-grid">
@@ -2262,7 +2318,7 @@
     $('#sellerAuditTitle').textContent = `Origem dos números · ${sellerIdentity(seller).name || seller}`;
     icons(backdrop);
 
-    const periods = calculatePeriods(campaign.start);
+    const periods = calculatePeriods(campaign);
     const salesScope = effectiveSalesScope(campaign);
     const productIds = salesScope.productIds;
     const supplierIds = salesScope.supplierIds;
@@ -2272,6 +2328,8 @@
         method:'POST', force:true, timeout:60000,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
+          campaignEnd:periods.currentLast,
+          periodMode:campaign.periodMode || 'six_mondays',
           asOfDate:inputDate(new Date()),
           seller,
           productIds,
@@ -2393,6 +2451,21 @@
         <span><strong>Período:</strong> ${dateBR(data.periodsUsed?.currentStart)} a ${dateBR(data.periodsUsed?.currentLastInclusive)}</span>
       </div>
 
+      <details class="benefit-entitlement" open>
+        <summary>
+          <span><i data-lucide="package-check"></i><strong>Produtos aos quais um cliente com direito pode aplicar o benefício</strong></span>
+          <small>${number((config.benefitProducts || []).length)} produto(s)</small>
+        </summary>
+        <div class="benefit-entitlement-products">
+          ${(config.benefitProducts || []).map((product) => `<span><b>${esc(product.id)}</b>${esc(product.name)}</span>`).join('') || '<small>Nenhum produto beneficiado configurado.</small>'}
+        </div>
+      </details>
+
+      <div class="benefit-export-inline">
+        <button class="secondary-btn" type="button" data-action="export-benefit-eligible"><i data-lucide="ticket-check"></i>Exportar quem tem direito</button>
+        <button class="primary-btn" type="button" data-action="export-benefit-all"><i data-lucide="file-down"></i>Exportar relatório completo</button>
+      </div>
+
       <div class="benefit-toolbar">
         <div class="search-field"><i data-lucide="search"></i><input id="benefitSearch" placeholder="Buscar cliente, ID, CNPJ/CPF ou vendedor" value="${esc(app.benefitReport?.search || '')}"></div>
         <select id="benefitStatusFilter">${statusOptions.map(([value,label]) => `<option value="${value}" ${app.benefitReport?.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
@@ -2421,7 +2494,7 @@
               <td>${row.firstTriggerDate ? `<strong>${dateBR(row.firstTriggerDate)}</strong><small>${row.status === 'INELIGIBLE_PRIOR_PURCHASE' ? 'antes da campanha' : 'durante a campanha'}</small>` : '<span class="muted-cell">Ainda não comprou</span>'}</td>
               <td>${row.firstOrderId ? `<strong>#${esc(row.firstOrderId)}</strong>` : '—'}</td>
               <td>${row.benefitLines?.length ? `<div class="benefit-lines">${row.benefitLines.slice(0,4).map((line) => `<span>${esc(line.productName)} <b>× ${number(line.pieces,2)}</b></span>`).join('')}${row.benefitLines.length > 4 ? `<small>+${row.benefitLines.length - 4} item(ns)</small>` : ''}</div>` : '<span class="muted-cell">Nenhum</span>'}</td>
-              <td>${row.benefitRevenue ? `<strong>${money2(row.benefitRevenue)}</strong><small>${number(row.benefitKg,2)} KG · ${number(row.benefitPieces,2)} peças</small>` : '—'}</td>
+              <td>${row.benefitRevenue ? `<strong>${money2(row.benefitRevenue)}</strong><small>${number(row.benefitKg,2)} KG · ${number(row.benefitPieces,2)} unidades</small>` : '—'}</td>
               <td>${config.discountType === 'pending' ? '<span class="muted-cell">A definir</span>' : row.status === 'USED' ? `<strong>${money2(row.estimatedDiscount)}</strong>` : '—'}</td>
               <td><small class="benefit-reason">${esc(row.reason || '')}</small></td>
             </tr>`;
@@ -2434,27 +2507,41 @@
 
   function renderBenefitReport() {
     if (!app.benefitReport?.campaign || !app.benefitReport?.data) return;
-    $('#benefitReportBody').innerHTML = benefitReportHtml(app.benefitReport.campaign, app.benefitReport.data);
-    icons($('#benefitReportBody'));
+    for (const selector of ['#benefitReportBody', '#benefitInlineBody']) {
+      const target = $(selector);
+      if (!target) continue;
+      target.innerHTML = benefitReportHtml(app.benefitReport.campaign, app.benefitReport.data);
+      icons(target);
+    }
   }
 
-  async function openBenefitReport(campaignId, { force = false } = {}) {
+  async function loadBenefitReportData(campaignId, { force = false, targetSelector = '#benefitReportBody', openModal = false } = {}) {
     const campaign = normalizeCampaign(await DB.get('campanhas', campaignId));
-    if (!campaign?.id) return;
-    if (!campaign.orderActivationRule?.enabled) return toast('Esta campanha não possui benefício de primeira compra ativo.', 'warning');
+    if (!campaign?.id) return null;
+    if (!campaign.orderActivationRule?.enabled) {
+      toast('Esta campanha não possui benefício de primeira compra ativo.', 'warning');
+      return null;
+    }
 
     const products = benefitRuleProducts(campaign);
     if (!products.triggerProducts.length || !products.benefitProducts.length) {
-      return toast('Configure os produtos ativadores e beneficiados antes de abrir o relatório.', 'warning');
+      toast('Configure os produtos ativadores e beneficiados antes de abrir o relatório.', 'warning');
+      return null;
     }
 
-    $('#benefitBackdrop').hidden = false;
-    document.body.style.overflow = 'hidden';
-    $('#benefitReportTitle').textContent = campaign.name;
-    $('#benefitReportBody').innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Montando lista de benefícios</h3><p>Conferindo clientes, primeira compra do ativador e produtos beneficiados diretamente no SQL.</p></div></div>`;
+    if (openModal) {
+      $('#benefitBackdrop').hidden = false;
+      document.body.style.overflow = 'hidden';
+      $('#benefitReportTitle').textContent = campaign.name;
+    }
+
+    const target = $(targetSelector);
+    if (target) {
+      target.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Montando lista de benefícios</h3><p>Conferindo clientes, primeira compra do ativador e produtos beneficiados diretamente no SQL.</p></div></div>`;
+    }
 
     const rule = campaign.orderActivationRule;
-    const periods = calculatePeriods(campaign.start);
+    const periods = calculatePeriods(campaign);
 
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=beneficio-primeira-compra`, {
@@ -2463,6 +2550,8 @@
         timeout:120000,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
+          campaignEnd:periods.currentLast,
+          periodMode:campaign.periodMode || 'six_mondays',
           asOfDate:inputDate(new Date()),
           sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
           participantMode:campaign.participantMode,
@@ -2484,9 +2573,45 @@
 
       app.benefitReport = { campaignId, campaign, data, search:'', status:'all' };
       renderBenefitReport();
+      return data;
     } catch (error) {
-      $('#benefitReportBody').innerHTML = `<div class="context-error"><strong>Não foi possível montar o relatório de benefícios.</strong><br>${esc(error.message)}${error.hint ? `<br>${esc(error.hint)}` : ''}</div>`;
+      if (target) {
+        target.innerHTML = `<div class="context-error"><strong>Não foi possível montar o relatório de benefícios.</strong><br>${esc(error.message)}${error.hint ? `<br>${esc(error.hint)}` : ''}<br><button class="secondary-btn" data-action="${openModal ? 'refresh-benefit-report' : 'refresh-benefit-inline'}" data-id="${esc(campaignId)}" style="margin-top:10px">Tentar novamente</button></div>`;
+      }
+      return null;
     }
+  }
+
+  async function openBenefitReport(campaignId, { force = false } = {}) {
+    return loadBenefitReportData(campaignId, {
+      force,
+      targetSelector:'#benefitReportBody',
+      openModal:true,
+    });
+  }
+
+  async function loadBenefitReportInline(campaignId, { force = false } = {}) {
+    if (!force && app.benefitReport?.campaignId === campaignId && app.benefitReport?.data) {
+      renderBenefitReport();
+      return app.benefitReport.data;
+    }
+    return loadBenefitReportData(campaignId, {
+      force,
+      targetSelector:'#benefitInlineBody',
+      openModal:false,
+    });
+  }
+
+  function switchPerformanceTab(tab, campaignId) {
+    $$('.performance-tab').forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.performanceTab === tab);
+    });
+
+    $$('[data-performance-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.performancePanel !== tab;
+    });
+
+    if (tab === 'benefit') void loadBenefitReportInline(campaignId);
   }
 
   function closeBenefitReport() {
@@ -2495,11 +2620,15 @@
     if ($('#drawerBackdrop').hidden && $('#modalBackdrop').hidden && $('#sellerAuditBackdrop').hidden) document.body.style.overflow = '';
   }
 
-  function benefitCsvRows() {
+  function benefitCsvRows(mode = 'filtered') {
     const report = app.benefitReport;
     if (!report?.data) return [];
     const config = report.data.configuration || {};
-    const rows = benefitRowsFiltered();
+    const rows = mode === 'all'
+      ? (report.data.clients || [])
+      : mode === 'eligible'
+        ? (report.data.clients || []).filter((row) => row.status === 'AVAILABLE')
+        : benefitRowsFiltered();
     const targetList = (config.benefitProducts || []).map((product) => `${product.id} - ${product.name}`).join(' | ');
 
     return rows.map((row) => ({
@@ -2509,14 +2638,15 @@
       Cliente:row.clientName || '',
       'Nome Fantasia':row.tradeName || '',
       'CNPJ/CPF':row.document || '',
-      Vendedor:row.seller || '',
+      'Vendedor atual':row.seller || '',
       Cidade:row.city || '',
       UF:row.uf || '',
       'Primeira compra do ativador':row.firstTriggerDate ? dateBR(row.firstTriggerDate) : '',
       'Pedido da primeira compra':row.firstOrderId || '',
+      'Vendedor do pedido':row.firstOrderSeller || '',
       'Produtos ativadores no pedido':(row.triggerLines || []).map((line) => `${line.productId} - ${line.productName} x ${number(line.pieces,2)}`).join(' | '),
       'Produtos beneficiados no pedido':(row.benefitLines || []).map((line) => `${line.productId} - ${line.productName} x ${number(line.pieces,2)}`).join(' | '),
-      'Peças beneficiadas':number(row.benefitPieces || 0, 2),
+      'Unidades beneficiadas':number(row.benefitPieces || 0, 2),
       'KG beneficiado':number(row.benefitKg || 0, 2),
       'Valor beneficiado':number(row.benefitRevenue || 0, 2),
       'Regra de desconto':benefitDiscountLabel(config),
@@ -2531,31 +2661,41 @@
     return `"${raw}"`;
   }
 
-  function benefitCsvText() {
-    const rows = benefitCsvRows();
+  function benefitCsvText(mode = 'filtered') {
+    const rows = benefitCsvRows(mode);
     if (!rows.length) return '';
     const headers = Object.keys(rows[0]);
     return [headers.map(csvCell).join(';'), ...rows.map((row) => headers.map((header) => csvCell(row[header])).join(';'))].join('\r\n');
   }
 
-  function exportBenefitCsv() {
-    const text = benefitCsvText();
-    if (!text) return toast('Não há clientes neste filtro para exportar.', 'warning');
+  function exportBenefitCsv(mode = 'filtered') {
+    const text = benefitCsvText(mode);
+    if (!text) {
+      const label = mode === 'eligible' ? 'Não há clientes com direito disponível.' : 'Não há clientes para exportar.';
+      return toast(label, 'warning');
+    }
+
     const campaign = app.benefitReport?.campaign;
+    const suffix = mode === 'eligible'
+      ? 'clientes-com-direito'
+      : mode === 'all'
+        ? 'relatorio-completo'
+        : 'filtro-atual';
+
     const blob = new Blob([`\uFEFF${text}`], { type:'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `beneficios-${String(campaign?.name || 'campanha').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase()}-${inputDate(new Date())}.csv`;
+    link.download = `beneficios-${String(campaign?.name || 'campanha').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase()}-${suffix}-${inputDate(new Date())}.csv`;
     document.body.append(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast('Relatório CSV exportado.');
+    toast(`${benefitCsvRows(mode).length} cliente(s) exportado(s).`);
   }
 
   async function copyBenefitCsv() {
-    const text = benefitCsvText();
+    const text = benefitCsvText('filtered');
     if (!text) return toast('Não há clientes neste filtro para copiar.', 'warning');
     try {
       await navigator.clipboard.writeText(text);
@@ -2563,6 +2703,73 @@
     } catch (_) {
       toast('Não foi possível copiar a lista.', 'error');
     }
+  }
+
+
+
+  function remainingTargetText(current, previous, formatter) {
+    const difference = Number(previous || 0) - Number(current || 0);
+    if (difference > 0) return `Faltam ${formatter(difference)} para alcançar o período anterior completo.`;
+    if (difference < 0) return `Já superou o período anterior completo em ${formatter(Math.abs(difference))}.`;
+    return 'Já igualou o período anterior completo.';
+  }
+
+  function partialProgressHtml(result, data) {
+    if (!data.partial) return '';
+    const summary = result.summary || {};
+    const hasEquivalent = Boolean(data.equivalentPreviousSummary);
+    const equivalent = data.equivalentPreviousSummary || {};
+    const elapsed = Number(data.elapsedDays || 0);
+    const configuredStart = result.periods?.currentStart ? new Date(`${result.periods.currentStart}T12:00:00`) : null;
+    const configuredLast = result.periods?.currentLast ? new Date(`${result.periods.currentLast}T12:00:00`) : null;
+    const inferredTotal = configuredStart && configuredLast ? Math.floor((configuredLast - configuredStart) / 86400000) + 1 : 0;
+    const total = Number(data.totalDays || result.periods?.days || inferredTotal || 0);
+    const remaining = Number.isFinite(Number(data.remainingDays)) ? Number(data.remainingDays) : Math.max(0, total - elapsed);
+    const eqEndExclusive = data.previousEquivalentEndExclusive;
+    let eqLast = null;
+    if (eqEndExclusive) {
+      const date = new Date(`${String(eqEndExclusive).slice(0,10)}T12:00:00`);
+      date.setDate(date.getDate() - 1);
+      eqLast = inputDate(date);
+    }
+
+    return `<section class="partial-progress-card">
+      <div class="partial-progress-head">
+        <div><span class="eyebrow">Acompanhamento parcial</span><h3>O que está sendo comparado agora?</h3></div>
+        <span class="partial-days">${number(elapsed)} de ${number(total)} dias · ${number(remaining)} restante(s)</span>
+      </div>
+
+      <div class="partial-explain-grid">
+        <div class="partial-explain official">
+          <span>Comparação oficial de metas/crescimento</span>
+          <strong>Atual parcial × anterior completo</strong>
+          <small>Atual ${dateBR(data.periodsUsed?.currentStart)} a ${dateBR(data.periodsUsed?.currentLastInclusive)} · anterior ${dateBR(data.periodsUsed?.previousStart)} a ${dateBR(data.periodsUsed?.previousLastInclusive)}.</small>
+        </div>
+        <div class="partial-explain pace">
+          <span>Ritmo equivalente</span>
+          <strong>${hasEquivalent ? `${pct(growth(summary.revenue, equivalent.revenue))} R$ · ${pct(growth(summary.kg, equivalent.kg))} KG` : 'Calculando na atualização…'}</strong>
+          <small>${hasEquivalent ? `Compara os ${number(elapsed)} dias já decorridos com os mesmos ${number(elapsed)} dias no início da referência anterior${eqLast ? ` (${dateBR(data.periodsUsed?.previousStart)} a ${dateBR(eqLast)})` : ''}.` : 'A apuração salva é de uma versão anterior. O ritmo equivalente aparecerá após a próxima consulta ao SQL.'}</small>
+        </div>
+      </div>
+
+      <div class="partial-target-grid">
+        <div><span>Faturamento</span><strong>${money(summary.revenue)}</strong><small>${remainingTargetText(summary.revenue, summary.previousRevenue, money)}</small></div>
+        <div><span>Volume</span><strong>${number(summary.kg,1)} KG</strong><small>${remainingTargetText(summary.kg, summary.previousKg, (value) => `${number(value,1)} KG`)}</small></div>
+        <div><span>Clientes</span><strong>${number(summary.customers)}</strong><small>${remainingTargetText(summary.customers, summary.previousCustomers, (value) => `${number(value)} cliente(s)`)}</small></div>
+      </div>
+      <p class="partial-footnote"><i data-lucide="info"></i>O ritmo equivalente é apenas acompanhamento. Ele não altera ranking, elegibilidade ou meta configurada.</p>
+    </section>`;
+  }
+
+  function comparisonMetricCell(title, currentHtml, previousHtml, deltaHtml, currentAudit, previousAudit, deltaAudit) {
+    return `<div class="seller-compare-cell">
+      <span class="seller-compare-title">${esc(title)}</span>
+      <div class="seller-compare-values">
+        <div><small>Atual</small>${auditValue(`<strong>${currentHtml}</strong>`, currentAudit)}</div>
+        <div><small>Anterior</small>${auditValue(`<strong>${previousHtml}</strong>`, previousAudit)}</div>
+      </div>
+      <div class="seller-compare-delta">${auditValue(deltaHtml, deltaAudit)}</div>
+    </div>`;
   }
 
 
@@ -2584,14 +2791,14 @@
           <div class="period-audit-icon"><i data-lucide="calendar-clock"></i></div>
           <div>
             <strong>Apuração parcial até ${dateBR(data.asOfDate || currentUsedLast)}</strong>
-            <p>Apuração atual: campanha ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · referência anterior fixa ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
-            <small>A campanha completa continua sendo ${dateBR(nominal.currentStart || result.periods.currentStart)} a ${dateBR(nominal.currentLastInclusive || result.periods.currentLast)}. A referência anterior não é encurtada em apuração parcial.</small>
+            <p>Atual usado: ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · referência anterior oficial completa: ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
+            <small>A campanha completa continua sendo ${dateBR(nominal.currentStart || result.periods.currentStart)} a ${dateBR(nominal.currentLastInclusive || result.periods.currentLast)}. A referência anterior permanece completa; abaixo mostramos também o ritmo equivalente dos mesmos dias já decorridos.</small>
           </div>
         </div>`
       : `<div class="period-audit">
           <div class="period-audit-icon"><i data-lucide="calendar-check-2"></i></div>
           <div>
-            <strong>Apuração do período completo</strong>
+            <strong>Apuração do período configurado completo</strong>
             <p>Campanha ${dateBR(currentUsedStart)} a ${dateBR(currentUsedLast)} · anterior ${dateBR(previousUsedStart)} a ${dateBR(previousUsedLast)}.</p>
           </div>
         </div>`;
@@ -2606,17 +2813,16 @@
       </div>
     </div>`;
 
-    return `${periodAudit}
+    const overviewHtml = `${periodAudit}
     ${provenancePanel(campaign, data, result)}
     ${collectiveBaseBanner}
+    ${partialProgressHtml(result, data)}
     <div class="performance-kpis">
       ${performanceMeta('Faturamento', money(summary.revenue), `Anterior ${money(summary.previousRevenue)} · ${pct(growth(summary.revenue, summary.previousRevenue))}`)}
       ${performanceMeta('Volume', `${number(summary.kg,1)} KG`, `Anterior ${number(summary.previousKg,1)} KG · ${pct(growth(summary.kg, summary.previousKg))}`)}
       ${performanceMeta('Clientes', number(summary.customers), `Anterior ${number(summary.previousCustomers)} · ${pct(growth(summary.customers, summary.previousCustomers))}`)}
       ${performanceMeta('Positivação', `${summary.positivity >= 0 ? '+' : ''}${number(summary.positivity)}`, `${number(summary.customers)} atuais − ${number(summary.previousCustomers)} anteriores`)}
       ${performanceMeta('Pontos', number(summary.points,1), 'total da campanha')}
-      ${campaign.orderActivationRule?.enabled ? performanceMeta('Benefícios utilizados', number(summary.activationClients), `${number(summary.activationOrders)} pedido(s) com benefício`) : ''}
-      ${campaign.orderActivationRule?.enabled ? performanceMeta('Aproveitamento 1ª compra', `${number(summary.activationRate,1)}%`, 'benefícios usados ÷ primeiras compras do ativador') : ''}
       ${performanceMeta('Elegíveis', number(summary.eligible), `${summary.classified} classificado(s)`)}
     </div>
 
@@ -2632,40 +2838,62 @@
           </div>`).join('')}</div>`
       : '<div class="goal-status-grid"><div class="goal-status"><strong>Meta coletiva não configurada</strong><small>O ranking depende apenas das metas individuais, elegibilidade e métricas selecionadas.</small></div></div>'}
 
-    <section class="section-card" style="margin-top:12px">
+    <section class="section-card ranking-compare-section" style="margin-top:12px">
       <div class="section-head">
-        <div><span class="eyebrow">Performance</span><h3>Ranking e comparativo por vendedor</h3></div>
+        <div><span class="eyebrow">Performance</span><h3>Ranking e comparativo por vendedor</h3><p class="ranking-helper">Atual, anterior e variação ficam agrupados para você não precisar atravessar uma tabela de aeroporto.</p></div>
         <span class="hint">${esc(data.source || 'SQL Server')} · ${number(data.durationMs || 0)} ms${apiCache.hit ? ` · cache API ${number((apiCache.ageMs || 0) / 1000, 1)}s` : ''}</span>
       </div>
-      <div class="table-wrap" style="margin-top:12px">
-        <table>
+      <div class="table-wrap ranking-compare-wrap" style="margin-top:12px">
+        <table class="ranking-compare-table">
           <thead><tr>
             <th>#</th>
-            <th>${auditHeader('Representante', ['Nome e ID são lidos do campo dbo.Vendas.[Vendedor].', 'Ex.: NATALIA ALBIERI-988 → nome NATALIA ALBIERI · ID 988.'])}</th>
-            <th>${auditHeader('R$ campanha', ['Soma de dbo.VendasProdutos.[Valor] no período atual.', 'Passe o mouse nos valores para ver período e cálculo.'])}</th>
-            <th>${auditHeader('R$ anterior', ['Soma de dbo.VendasProdutos.[Valor] no período anterior PMG.'])}</th>
-            <th>${auditHeader('Δ R$', ['(Faturamento atual − anterior) ÷ |anterior| × 100.'])}</th>
-            <th>${auditHeader('KG campanha', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período atual.'])}</th>
-            <th>${auditHeader('KG anterior', ['Soma de dbo.VendasProdutos.[Qtde Kg] no período anterior PMG.'])}</th>
-            <th>${auditHeader('Δ KG', ['(KG atual − KG anterior) ÷ |KG anterior| × 100.'])}</th>
-            <th>${auditHeader('Clientes', ['Clientes únicos no período atual.', 'COUNT DISTINCT dbo.Vendas.[ID Cliente].'])}</th>
-            <th>${auditHeader('Anterior', ['Clientes únicos no período anterior PMG.'])}</th>
-            <th>${auditHeader('Positivação', ['Positivação líquida = clientes atuais − clientes anteriores.', 'O hover também mostra novos, recorrentes e perdidos.'])}</th>
-            <th>${auditHeader('Mix', ['Percentual de categorias obrigatórias cumpridas pelo vendedor.'])}</th>
-            ${campaign.orderActivationRule?.enabled ? `<th>${auditHeader('Benefícios', ['Clientes cuja primeira compra do ativador também continha produto beneficiado.'])}</th><th>${auditHeader('Aproveitamento', ['Benefícios usados ÷ primeiras compras do ativador × 100.'])}</th>` : ''}
-            <th>${auditHeader('Pontos', ['Pontos de categorias + regras de desempenho configuradas na campanha.'])}</th>
-            <th>Situação / meta individual</th>
+            <th>${auditHeader('Representante', ['O histórico é conciliado pelo ID final do vendedor quando disponível.', 'Se o registro histórico não tiver ID, o sistema usa o nome normalizado sem o sufixo.'])}</th>
+            <th>Faturamento</th>
+            <th>Volume</th>
+            <th>Clientes / positivação</th>
+            <th>Mix / pontos</th>
+            <th>Situação / meta</th>
           </tr></thead>
-          <tbody>${result.results.map((item) => performanceRow(item, result.collectiveHit, audit, campaign)).join('') || `<tr><td colspan="${campaign.orderActivationRule?.enabled ? 16 : 14}">Nenhuma venda encontrada no período.</td></tr>`}</tbody>
+          <tbody>${result.results.map((item) => performanceRow(item, result.collectiveHit, audit, campaign)).join('') || '<tr><td colspan="7">Nenhuma venda encontrada no período.</td></tr>'}</tbody>
         </table>
       </div>
     </section>
 
     <div class="meta-block period-meta">
-      <strong>Regra de período PMG:</strong>
-      janela completa da campanha ${dateBR(result.periods.currentStart)} a ${dateBR(result.periods.currentLast)}
-      · referência completa ${dateBR(result.periods.previousStart)} a ${dateBR(result.periods.previousLast)}
-      · referência SQL ${esc(data.dateReference || 'dbo.Vendas.[Data]')}.
+      <strong>Regra de período:</strong>
+      ${campaign.periodMode === 'custom' ? 'período livre' : 'modelo PMG · 6 segundas'}
+      · campanha ${dateBR(result.periods.currentStart)} a ${dateBR(result.periods.currentLast)}
+      · referência anterior ${dateBR(result.periods.previousStart)} a ${dateBR(result.periods.previousLast)}
+      · coluna SQL ${esc(data.dateReference || 'dbo.Vendas.[Data]')}.
+    </div>`;
+
+    if (!campaign.orderActivationRule?.enabled) return overviewHtml;
+
+    return `<div class="performance-tabs-shell">
+      <div class="performance-tabs" role="tablist" aria-label="Áreas da campanha">
+        <button class="performance-tab is-active" type="button" data-action="performance-tab" data-performance-tab="overview" data-id="${esc(campaign.id)}">
+          <i data-lucide="chart-no-axes-combined"></i>
+          <span><strong>Performance geral</strong><small>Ranking, metas e comparativos</small></span>
+        </button>
+        <button class="performance-tab benefit-tab" type="button" data-action="performance-tab" data-performance-tab="benefit" data-id="${esc(campaign.id)}">
+          <i data-lucide="badge-percent"></i>
+          <span><strong>${esc(campaign.orderActivationRule?.name || 'Benefício 1ª compra')}</strong><small>Direitos, utilização e exportação</small></span>
+        </button>
+      </div>
+
+      <div data-performance-panel="overview">${overviewHtml}</div>
+
+      <div data-performance-panel="benefit" hidden>
+        <div id="benefitInlineBody" class="benefit-inline-body">
+          <div class="benefit-tab-intro">
+            <i data-lucide="ticket-check"></i>
+            <div>
+              <strong>Controle de benefício por cliente</strong>
+              <p>Abra esta aba para carregar quem ainda tem direito, quem já utilizou, qual pedido consumiu a primeira compra e quais itens receberam o benefício.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -2675,11 +2903,11 @@
     const identity = sellerIdentity(item.name);
 
     const sellerAudit = [
-      `Representante: ${identity.name || item.name}`,
+      `Representante consolidado: ${identity.name || item.name}`,
       identity.code ? `ID: ${identity.code}` : '',
-      `Valor original do SQL: ${identity.raw}`,
+      `Chave principal: ID numérico final quando disponível`,
+      `Fallback: nome normalizado sem o sufixo`,
       `Fonte: dbo.Vendas.[Vendedor]`,
-      `Somente vendedores considerados ativos pela carteira em dbo.Clientes entram na apuração.`,
     ];
 
     const mixAudit = [
@@ -2691,27 +2919,50 @@
 
     const pointsAudit = [
       `Pontos totais calculados pelas regras configuradas nesta campanha.`,
-      `Inclui pontuação das categorias e regras por desempenho.`,
       `Resultado atual: ${number(item.points,1)} pontos`,
-      `Para auditar a fórmula, consulte a etapa “Ranking e metas” da campanha.`,
     ];
+
+    const customerAudit = positivityAuditLines(item, audit);
 
     return `<tr>
       <td><span class="rank-badge">${item.position}</span></td>
-      <td>${auditValue(`<strong class="rep-name">${esc(identity.name || item.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}`, sellerAudit, 'rep-audit')}<button class="row-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.name)}"><i data-lucide="scan-search"></i>Auditar</button>${item.reasons.length ? `<small style="display:block;color:var(--danger);margin-top:3px" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}</td>
-      <td>${auditValue(money(item.revenue), metricCellAudit('revenue','current',item,audit))}</td>
-      <td>${auditValue(money(item.previousRevenue), metricCellAudit('revenue','previous',item,audit))}</td>
-      <td>${auditValue(`<span class="delta ${item.revenueGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.revenueGrowth)}</span>`, growthCellAudit('revenue',item,audit))}</td>
-      <td>${auditValue(number(item.kg,1), metricCellAudit('kg','current',item,audit))}</td>
-      <td>${auditValue(number(item.previousKg,1), metricCellAudit('kg','previous',item,audit))}</td>
-      <td>${auditValue(`<span class="delta ${item.kgGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.kgGrowth)}</span>`, growthCellAudit('kg',item,audit))}</td>
-      <td>${auditValue(number(item.customers), metricCellAudit('customers','current',item,audit))}</td>
-      <td>${auditValue(number(item.previousCustomers), metricCellAudit('customers','previous',item,audit))}</td>
-      <td>${auditValue(`<strong class="delta ${item.positivity >= 0 ? 'positive' : 'negative'}">${item.positivity >= 0 ? '+' : ''}${number(item.positivity)}</strong>`, positivityAuditLines(item,audit))}</td>
-      <td>${auditValue(`${number(item.mix)}% <small>(${item.mixDone}/${item.mixTotal})</small>`, mixAudit)}</td>
-      ${campaign.orderActivationRule?.enabled ? `<td>${auditValue(`<strong>${number(item.activationClients)}</strong>`, activationAuditLines(item,campaign,audit), 'activation-audit')}</td><td>${auditValue(`${number(item.activationRate,1)}%`, activationAuditLines(item,campaign,audit), 'activation-audit')}</td>` : ''}
-      <td>${auditValue(number(item.points,1), pointsAudit)}</td>
-      <td><span class="badge ${item.classified && collectiveHit ? 'active' : !item.eligible ? 'danger' : 'scheduled'}">${status}</span>${individualGoalsHtml(item)}</td>
+      <td class="ranking-seller-cell">
+        ${auditValue(`<strong class="rep-name">${esc(identity.name || item.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}`, sellerAudit, 'rep-audit')}
+        <button class="row-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.name)}"><i data-lucide="scan-search"></i>Auditar origem</button>
+        ${item.reasons.length ? `<small class="ranking-first-reason" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}
+      </td>
+      <td>${comparisonMetricCell(
+        'Faturamento',
+        money(item.revenue),
+        money(item.previousRevenue),
+        `<span class="delta ${item.revenueGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.revenueGrowth)}</span>`,
+        metricCellAudit('revenue','current',item,audit),
+        metricCellAudit('revenue','previous',item,audit),
+        growthCellAudit('revenue',item,audit)
+      )}</td>
+      <td>${comparisonMetricCell(
+        'Volume',
+        `${number(item.kg,1)} KG`,
+        `${number(item.previousKg,1)} KG`,
+        `<span class="delta ${item.kgGrowth >= 0 ? 'positive' : 'negative'}">${pct(item.kgGrowth)}</span>`,
+        metricCellAudit('kg','current',item,audit),
+        metricCellAudit('kg','previous',item,audit),
+        growthCellAudit('kg',item,audit)
+      )}</td>
+      <td>
+        <div class="customer-compare-cell">
+          <div><small>Atual</small>${auditValue(`<strong>${number(item.customers)}</strong>`, metricCellAudit('customers','current',item,audit))}</div>
+          <div><small>Anterior</small>${auditValue(`<strong>${number(item.previousCustomers)}</strong>`, metricCellAudit('customers','previous',item,audit))}</div>
+          <div class="positivity-chip ${item.positivity >= 0 ? 'positive' : 'negative'}">${auditValue(`<strong>${item.positivity >= 0 ? '+' : ''}${number(item.positivity)}</strong><small>positivação</small>`, customerAudit)}</div>
+        </div>
+      </td>
+      <td>
+        <div class="mix-points-cell">
+          ${auditValue(`<strong>${number(item.mix)}%</strong><small>mix · ${item.mixDone}/${item.mixTotal}</small>`, mixAudit)}
+          ${auditValue(`<strong>${number(item.points,1)}</strong><small>pontos</small>`, pointsAudit)}
+        </div>
+      </td>
+      <td class="ranking-status-cell"><span class="badge ${item.classified && collectiveHit ? 'active' : !item.eligible ? 'danger' : 'scheduled'}">${status}</span>${individualGoalsHtml(item)}</td>
     </tr>`;
   }
 
@@ -2722,6 +2973,7 @@
 
   function renderSupplierResults(value) {
     if (!app.wizard) return;
+    syncCurrentStep();
     app.wizard.supplierQuery = value;
     const input = $('#supplierSearch');
     renderWizard();
@@ -2759,6 +3011,7 @@
   }
 
   function applyProductFiltersAndRender() {
+    if (app.wizard) syncCurrentStep();
     app.wizard.productVisibleLimit = 100;
     renderWizard();
   }
@@ -2770,14 +3023,25 @@
     if (event.target.id === 'representativeSearch') { app.representativeSearch = event.target.value; renderRepresentatives(); $('#representativeSearch')?.focus(); }
     if (event.target.id === 'productPageSearch') { app.productSearch = event.target.value; renderProducts(); $('#productPageSearch')?.focus(); }
     if (event.target.id === 'benefitSearch' && app.benefitReport) { app.benefitReport.search = event.target.value; renderBenefitReport(); $('#benefitSearch')?.focus(); }
+    if (event.target.id === 'campaignName' && app.wizard) app.wizard.campaign.name = event.target.value;
+    if (event.target.id === 'campaignDescription' && app.wizard) app.wizard.campaign.description = event.target.value;
     if (event.target.id === 'supplierSearch') { clearTimeout(supplierTimer); supplierTimer = setTimeout(() => renderSupplierResults(event.target.value), 80); }
     if (event.target.id === 'campaignStart') {
       app.wizard.campaign.start = $('#campaignStart')?.value || app.wizard.campaign.start;
-      app.wizard.campaign.end = sixthMondayFrom(app.wizard.campaign.start) || app.wizard.campaign.end;
+      if (app.wizard.campaign.periodMode === 'custom') {
+        if (!app.wizard.campaign.end || app.wizard.campaign.end < app.wizard.campaign.start) app.wizard.campaign.end = app.wizard.campaign.start;
+      } else {
+        app.wizard.campaign.end = sixthMondayFrom(app.wizard.campaign.start) || app.wizard.campaign.end;
+      }
       const endField = $('#campaignEnd');
       if (endField) endField.value = app.wizard.campaign.end;
       const preview = $('#periodPreview');
-      if (preview) { preview.innerHTML = periodPreview(calculatePeriods(app.wizard.campaign.start)); icons(preview); }
+      if (preview) { preview.innerHTML = periodPreview(calculatePeriods(app.wizard.campaign)); icons(preview); }
+    }
+    if (event.target.id === 'campaignEnd') {
+      app.wizard.campaign.end = $('#campaignEnd')?.value || app.wizard.campaign.end;
+      const preview = $('#periodPreview');
+      if (preview) { preview.innerHTML = periodPreview(calculatePeriods(app.wizard.campaign)); icons(preview); }
     }
     if (event.target.id === 'wizardRepSearch') {
       const query = norm(event.target.value);
@@ -2811,17 +3075,26 @@
       event.target.checked ? app.wizard.selectedProducts.add(id) : app.wizard.selectedProducts.delete(id);
       event.target.closest('.product-card')?.classList.toggle('is-selected', event.target.checked);
     }
-    if (event.target.matches('[data-goal-field="mode"]')) renderWizard();
-    if (event.target.matches('[data-point-field="mode"]')) renderWizard();
-    if (event.target.matches('[data-activation-field="discountType"]')) { syncActivationRule(); renderWizard(); }
+    if (event.target.matches('[data-goal-field="mode"]')) { syncCurrentStep(); renderWizard(); }
+    if (event.target.matches('[data-point-field="mode"]')) { syncCurrentStep(); renderWizard(); }
+    if (event.target.matches('[data-activation-field="discountType"]')) { syncCurrentStep(); renderWizard(); }
     if (event.target.id === 'benefitStatusFilter' && app.benefitReport) { app.benefitReport.status = event.target.value; renderBenefitReport(); }
   });
+
+  const WIZARD_STATEFUL_ACTIONS = new Set([
+    'toggle-supplier','remove-supplier','participant-mode','period-mode','toggle-ranking','goal-mode',
+    'add-goal','remove-goal','add-point-rule','remove-point-rule','add-rule-template','remove-rule',
+    'sales-scope','toggle-activation-rule','apply-harald-fortunata','add-category','remove-category',
+    'remove-product-category','add-selected-products','add-all-filtered','add-tie','remove-tie','move-tie-up',
+    'add-prize','remove-prize'
+  ]);
 
   document.addEventListener('click', async (event) => {
     const node = event.target.closest('[data-action],[data-view]');
     if (!node) return;
     const action = node.dataset.action;
     const view = node.dataset.view;
+    if (app.wizard && WIZARD_STATEFUL_ACTIONS.has(action)) syncCurrentStep();
 
     if (view) { app.view = view; renderView(); return; }
     if (action === 'new-campaign') return openWizard();
@@ -2871,6 +3144,17 @@
     if (action === 'remove-supplier') {
       app.wizard.campaign.suppliers = app.wizard.campaign.suppliers.filter((item) => String(item.id) !== String(node.dataset.id));
       renderWizard(); return;
+    }
+    if (action === 'period-mode') {
+      syncCurrentStep();
+      app.wizard.campaign.periodMode = node.dataset.value === 'custom' ? 'custom' : 'six_mondays';
+      if (app.wizard.campaign.periodMode === 'six_mondays') {
+        app.wizard.campaign.end = sixthMondayFrom(app.wizard.campaign.start) || app.wizard.campaign.end;
+      } else if (!app.wizard.campaign.end || app.wizard.campaign.end < app.wizard.campaign.start) {
+        app.wizard.campaign.end = app.wizard.campaign.start;
+      }
+      renderWizard();
+      return;
     }
     if (action === 'participant-mode') { app.wizard.campaign.participantMode = node.dataset.value; renderWizard(); return; }
     if (action === 'toggle-ranking') {
@@ -2937,11 +3221,15 @@
     if (action === 'move-tie-up') { const index = Number(node.dataset.index); if (index > 0) { const list = app.wizard.campaign.tieBreaks; [list[index - 1], list[index]] = [list[index], list[index - 1]]; } renderWizard(); return; }
     if (action === 'add-prize') { app.wizard.campaign.prizes.push({ position:app.wizard.campaign.prizes.length + 1, type:'money', description:'' }); renderWizard(); return; }
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
+    if (action === 'performance-tab') { switchPerformanceTab(node.dataset.performanceTab, node.dataset.id); return; }
+    if (action === 'refresh-benefit-inline') return loadBenefitReportInline(node.dataset.id || app.benefitReport?.campaignId, { force:true });
+    if (action === 'export-benefit-eligible') { exportBenefitCsv('eligible'); return; }
+    if (action === 'export-benefit-all') { exportBenefitCsv('all'); return; }
     if (action === 'performance') return openPerformance(node.dataset.id);
     if (action === 'benefit-report') return openBenefitReport(node.dataset.id);
     if (action === 'close-benefit-report') { closeBenefitReport(); return; }
     if (action === 'refresh-benefit-report') return openBenefitReport(node.dataset.id || app.benefitReport?.campaignId, { force:true });
-    if (action === 'export-benefit-csv') { exportBenefitCsv(); return; }
+    if (action === 'export-benefit-csv') { exportBenefitCsv('filtered'); return; }
     if (action === 'copy-benefit-csv') return copyBenefitCsv();
     if (action === 'retry-performance') { return openPerformance(node.dataset.id, { force:true }); }
     if (action === 'consistency-diagnostic') { return runConsistencyDiagnostic(node.dataset.id); }

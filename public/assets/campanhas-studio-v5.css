@@ -570,3 +570,170 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
   .benefit-config-grid{grid-template-columns:1fr}
   .benefit-config-grid .wide-field{grid-column:auto}
 }
+
+
+/* V5.9.1 — Benefício como aba operacional da campanha */
+.performance-tabs-shell{min-height:100%}
+.performance-tabs{
+  position:sticky;
+  top:-14px;
+  z-index:35;
+  display:flex;
+  gap:8px;
+  padding:10px 0 13px;
+  margin-bottom:1px;
+  background:linear-gradient(180deg,var(--surface) 78%,transparent)
+}
+.performance-tab{
+  min-width:210px;
+  min-height:48px;
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:8px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface);
+  color:var(--muted);
+  cursor:pointer;
+  text-align:left
+}
+.performance-tab>svg{width:18px;height:18px;flex:0 0 auto}
+.performance-tab span{display:block}
+.performance-tab strong{display:block;font-size:11.5px;color:var(--ink)}
+.performance-tab small{display:block;margin-top:2px;font-size:9.5px;color:var(--muted)}
+.performance-tab:hover{border-color:color-mix(in srgb,var(--brand) 35%,var(--line))}
+.performance-tab.is-active{background:var(--brand);border-color:var(--brand);color:#fff}
+.performance-tab.is-active strong,.performance-tab.is-active small{color:#fff}
+.performance-tab.is-active small{opacity:.78}
+.benefit-tab-intro{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  padding:18px;
+  border:1px dashed var(--line);
+  border-radius:14px;
+  background:var(--surface-2)
+}
+.benefit-tab-intro>svg{width:23px;height:23px;color:var(--brand);flex:0 0 auto}
+.benefit-tab-intro strong{display:block;font-size:13px}
+.benefit-tab-intro p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.45}
+.benefit-inline-body .benefit-report-shell{max-width:none}
+
+.benefit-entitlement{
+  margin:10px 0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface)
+}
+.benefit-entitlement summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+  cursor:pointer
+}
+.benefit-entitlement summary>span{display:flex;align-items:center;gap:7px;font-size:10.5px}
+.benefit-entitlement summary svg{width:15px;height:15px;color:var(--brand)}
+.benefit-entitlement summary small{color:var(--muted);font-size:9.5px}
+.benefit-entitlement-products{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding:0 12px 12px
+}
+.benefit-entitlement-products>span{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  max-width:330px;
+  padding:5px 7px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface-2);
+  font-size:9.5px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis
+}
+.benefit-entitlement-products b{color:var(--brand)}
+.benefit-export-inline{
+  display:flex;
+  justify-content:flex-end;
+  gap:7px;
+  flex-wrap:wrap;
+  margin:10px 0
+}
+
+@media(max-width:760px){
+  .performance-tabs{overflow:auto}
+  .performance-tab{min-width:190px}
+  .benefit-export-inline{justify-content:flex-start}
+}
+
+
+/* V5.10 — período livre, formulário persistente e performance legível */
+.period-mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.period-mode-grid .choice-card{min-height:82px}
+
+.provenance-panel:not([open]){border-radius:12px;background:var(--surface-2)}
+.provenance-panel:not([open])>summary{min-height:48px;padding-top:9px;padding-bottom:9px}
+.provenance-panel:not([open])>summary small{opacity:.75}
+
+.partial-progress-card{margin:12px 0;padding:14px;border:1px solid color-mix(in srgb,var(--brand) 20%,var(--line));border-radius:14px;background:color-mix(in srgb,var(--brand) 3%,var(--surface))}
+.partial-progress-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.partial-progress-head h3{margin:2px 0 0;font-size:15px}
+.partial-days{padding:6px 8px;border-radius:999px;background:var(--surface-2);font-size:10px;font-weight:800;color:var(--muted);white-space:nowrap}
+.partial-explain-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.partial-explain{padding:10px 11px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
+.partial-explain>span{display:block;color:var(--muted);font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.04em}
+.partial-explain>strong{display:block;margin:4px 0 2px;font-size:12px}
+.partial-explain>small{display:block;color:var(--muted);font-size:9.5px;line-height:1.4}
+.partial-explain.pace{border-color:color-mix(in srgb,var(--brand) 30%,var(--line))}
+.partial-target-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+.partial-target-grid>div{padding:10px;border-radius:10px;background:var(--surface-2)}
+.partial-target-grid span{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;font-weight:800}
+.partial-target-grid strong{display:block;margin:3px 0;font-size:13px}
+.partial-target-grid small{font-size:9.5px;line-height:1.35;color:var(--muted)}
+.partial-footnote{display:flex;align-items:center;gap:6px;margin:9px 0 0;color:var(--muted);font-size:9.5px}
+.partial-footnote svg{width:13px;height:13px;flex:0 0 auto}
+
+.ranking-helper{margin:3px 0 0;color:var(--muted);font-size:10px}
+.ranking-compare-wrap{overflow:auto;max-height:620px}
+.ranking-compare-table{min-width:1180px}
+.ranking-compare-table thead th{position:sticky;top:0;z-index:4;background:var(--surface-2);white-space:nowrap}
+.ranking-compare-table th:nth-child(1),.ranking-compare-table td:nth-child(1){width:48px;text-align:center}
+.ranking-compare-table th:nth-child(2),.ranking-compare-table td:nth-child(2){min-width:185px}
+.ranking-compare-table th:nth-child(3),.ranking-compare-table td:nth-child(3),
+.ranking-compare-table th:nth-child(4),.ranking-compare-table td:nth-child(4){min-width:190px}
+.ranking-compare-table th:nth-child(5),.ranking-compare-table td:nth-child(5){min-width:175px}
+.ranking-compare-table th:nth-child(6),.ranking-compare-table td:nth-child(6){min-width:135px}
+.ranking-compare-table th:nth-child(7),.ranking-compare-table td:nth-child(7){min-width:210px}
+.ranking-seller-cell{vertical-align:top}
+.ranking-first-reason{display:block;color:var(--danger);font-size:9px;margin-top:5px;max-width:180px;white-space:normal;line-height:1.35}
+.seller-compare-cell{display:grid;gap:6px}
+.seller-compare-title{display:none}
+.seller-compare-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.seller-compare-values>div{padding:6px 7px;border-radius:8px;background:var(--surface-2);min-width:0}
+.seller-compare-values small,.customer-compare-cell>div>small,.mix-points-cell small{display:block;color:var(--muted);font-size:8.5px;text-transform:uppercase;font-weight:800;letter-spacing:.03em}
+.seller-compare-values strong{display:block;margin-top:2px;font-size:11px;white-space:nowrap}
+.seller-compare-delta{display:flex;align-items:center;justify-content:flex-start;padding-left:2px;font-size:10px}
+.customer-compare-cell{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.customer-compare-cell>div{padding:6px 7px;border-radius:8px;background:var(--surface-2)}
+.customer-compare-cell>div strong{display:block;margin-top:2px;font-size:13px}
+.customer-compare-cell .positivity-chip{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--brand) 5%,var(--surface-2))}
+.customer-compare-cell .positivity-chip.positive strong{color:var(--success,#15803d)}
+.customer-compare-cell .positivity-chip.negative strong{color:var(--danger)}
+.customer-compare-cell .positivity-chip .metric-audit{width:100%;justify-content:space-between}
+.mix-points-cell{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mix-points-cell .metric-audit{display:block;padding:7px;border-radius:8px;background:var(--surface-2)}
+.mix-points-cell strong{display:block;font-size:13px}
+.ranking-status-cell{vertical-align:top}
+.seller-alias-note{display:block;margin-top:3px;color:var(--muted);font-size:8.5px;font-style:normal;line-height:1.35}
+
+@media(max-width:760px){
+  .period-mode-grid,.partial-explain-grid,.partial-target-grid{grid-template-columns:1fr}
+  .partial-progress-head{flex-direction:column}
+  .ranking-compare-table{min-width:980px}
+}

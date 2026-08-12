@@ -88,7 +88,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.9.0',
+    version: '5.10.0',
   };
 }
 
@@ -426,6 +426,78 @@ function fixedSixMondayPeriods(startRaw, asOfRaw = null) {
   };
 }
 
+
+function customCampaignPeriods(startRaw, endRaw, asOfRaw = null) {
+  const start = parseDate(startRaw, 'campaignStart');
+  const nominalCurrentLast = parseDate(endRaw, 'campaignEnd');
+
+  if (nominalCurrentLast < start) {
+    const error = new Error('A data final da campanha não pode ser anterior à data inicial.');
+    error.code = 'PERIODO_INVALIDO';
+    throw error;
+  }
+
+  const requestedAsOf = asOfRaw ? parseDate(asOfRaw, 'asOfDate') : localTodayAsUtcDate();
+  if (requestedAsOf < start) {
+    const error = new Error('A campanha ainda não iniciou; não há apuração disponível.');
+    error.code = 'CAMPANHA_NAO_INICIADA';
+    throw error;
+  }
+
+  const durationDays = Math.floor((nominalCurrentLast - start) / 86400000) + 1;
+  const nominalPreviousLast = addUtcDays(start, -1);
+  const nominalPreviousStart = addUtcDays(start, -durationDays);
+  const effectiveCurrentLast = requestedAsOf < nominalCurrentLast ? requestedAsOf : nominalCurrentLast;
+  const elapsedDays = Math.floor((effectiveCurrentLast - start) / 86400000) + 1;
+
+  return {
+    mode:'custom',
+    currentStart:start,
+    currentEnd:addUtcDays(effectiveCurrentLast, 1),
+    currentLast:effectiveCurrentLast,
+    previousStart:nominalPreviousStart,
+    previousEnd:addUtcDays(nominalPreviousLast, 1),
+    previousLast:nominalPreviousLast,
+    previousEquivalentEnd:addUtcDays(nominalPreviousStart, Math.min(elapsedDays, durationDays)),
+
+    nominalCurrentStart:start,
+    nominalCurrentLast,
+    nominalPreviousStart,
+    nominalPreviousLast,
+
+    asOfDate:effectiveCurrentLast,
+    partial:effectiveCurrentLast < nominalCurrentLast,
+    elapsedDays,
+    durationDays,
+    remainingDays:Math.max(0, durationDays - elapsedDays),
+    comparisonPolicy:effectiveCurrentLast < nominalCurrentLast
+      ? 'ATUAL_PARCIAL_VS_ANTERIOR_COMPLETO_PERIODO_LIVRE'
+      : 'PERIODO_LIVRE_VS_ANTERIOR_MESMA_DURACAO',
+  };
+}
+
+function resolveCampaignPeriods(payload = {}) {
+  const mode = payload.periodMode === 'custom' ? 'custom' : 'six_mondays';
+  if (mode === 'custom') {
+    if (!payload.campaignEnd) {
+      const error = new Error('Informe a data final da campanha no período livre.');
+      error.code = 'PERIODO_INVALIDO';
+      throw error;
+    }
+    return customCampaignPeriods(payload.campaignStart, payload.campaignEnd, payload.asOfDate);
+  }
+
+  const periods = fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate);
+  const durationDays = 36;
+  return {
+    ...periods,
+    mode:'six_mondays',
+    durationDays,
+    remainingDays:Math.max(0, durationDays - periods.elapsedDays),
+    previousEquivalentEnd:addUtcDays(periods.previousStart, Math.min(periods.elapsedDays, durationDays)),
+  };
+}
+
 function uniqueIntegers(values, max = 20000) {
   return [...new Set((Array.isArray(values) ? values : []).map(Number).filter(Number.isFinite))].slice(0, max);
 }
@@ -452,11 +524,11 @@ function addTextParams(request, prefix, values) {
 
 async function queryPerformance(payload = {}) {
   const startedAt = Date.now();
-  const fixedPeriods = payload.campaignStart ? fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate) : null;
-  const currentStart = fixedPeriods?.currentStart || parseDate(payload.currentStart, 'currentStart');
-  const currentEnd = fixedPeriods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
-  const previousStart = fixedPeriods?.previousStart || parseDate(payload.previousStart, 'previousStart');
-  const previousEnd = fixedPeriods?.previousEnd || parseDate(payload.previousEnd, 'previousEnd');
+  const campaignPeriods = payload.campaignStart ? resolveCampaignPeriods(payload) : null;
+  const currentStart = campaignPeriods?.currentStart || parseDate(payload.currentStart, 'currentStart');
+  const currentEnd = campaignPeriods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
+  const previousStart = campaignPeriods?.previousStart || parseDate(payload.previousStart, 'previousStart');
+  const previousEnd = campaignPeriods?.previousEnd || parseDate(payload.previousEnd, 'previousEnd');
   const productIds = uniqueIntegers(payload.productIds);
   const supplierIds = uniqueIntegers(payload.supplierIds);
   const sellers = uniqueTexts(payload.sellers);
@@ -497,6 +569,7 @@ async function queryPerformance(payload = {}) {
   request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
   request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
   request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
+  request.input('previousEquivalentEnd', sql.VarChar(10), isoDate(campaignPeriods?.previousEquivalentEnd || previousEnd));
 
   const scopeFilters = [];
 
@@ -520,11 +593,43 @@ async function queryPerformance(payload = {}) {
   const result = await request.query(`
     SET NOCOUNT ON;
 
-    SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
+    ;WITH ActiveSellerRaw AS (
+      SELECT DISTINCT
+        s.rawSeller AS seller,
+        s.sellerCode,
+        s.sellerNameKey
+      FROM dbo.Clientes c
+      CROSS APPLY (
+        SELECT
+          LTRIM(RTRIM(c.[Vendedor])) AS rawSeller,
+          CHARINDEX('-', REVERSE(LTRIM(RTRIM(c.[Vendedor])))) AS dashPos
+      ) s0
+      CROSS APPLY (
+        SELECT TRY_CONVERT(int, CASE WHEN s0.dashPos > 1 THEN RIGHT(s0.rawSeller, s0.dashPos - 1) END) AS sellerCode
+      ) sc
+      CROSS APPLY (
+        SELECT
+          s0.rawSeller,
+          sc.sellerCode,
+          UPPER(REPLACE(LTRIM(RTRIM(CASE
+            WHEN sc.sellerCode IS NOT NULL THEN LEFT(s0.rawSeller, LEN(s0.rawSeller) - s0.dashPos)
+            ELSE s0.rawSeller
+          END)), ' ', '')) AS sellerNameKey
+      ) s
+      WHERE NULLIF(s.rawSeller, '') IS NOT NULL
+        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
+    ),
+    ActiveSellerRank AS (
+      SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY COALESCE(CONVERT(varchar(20), sellerCode), CONCAT('NAME:', sellerNameKey))
+        ORDER BY CASE WHEN sellerCode IS NULL THEN 1 ELSE 0 END, seller
+      ) AS rn
+      FROM ActiveSellerRaw
+    )
+    SELECT seller, sellerCode, sellerNameKey
     INTO #ActiveSellers
-    FROM dbo.Clientes c
-    WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-      AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%';
+    FROM ActiveSellerRank
+    WHERE rn = 1;
 
     -- Base comercial completa do escopo. O histórico não é cortado pelo
     -- status atual do representante. Vendas são reduzidas a uma linha por pedido
@@ -549,7 +654,9 @@ async function queryPerformance(payload = {}) {
     )
     SELECT
       CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
-      LTRIM(RTRIM(v.[Vendedor])) AS seller,
+      sellerKey.rawSeller AS seller,
+      sellerKey.sellerCode,
+      sellerKey.sellerNameKey,
       v.[ID Cliente] AS clientId,
       v.[ID Pedido de Venda] AS orderId,
       v.[Data] AS orderDate,
@@ -560,20 +667,57 @@ async function queryPerformance(payload = {}) {
     INTO #ScopeBase
     FROM VendasUnicas v
     INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    WHERE NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NOT NULL
+    CROSS APPLY (
+      SELECT
+        LTRIM(RTRIM(v.[Vendedor])) AS rawSeller,
+        CHARINDEX('-', REVERSE(LTRIM(RTRIM(v.[Vendedor])))) AS dashPos
+    ) sellerRaw
+    CROSS APPLY (
+      SELECT TRY_CONVERT(int, CASE WHEN sellerRaw.dashPos > 1 THEN RIGHT(sellerRaw.rawSeller, sellerRaw.dashPos - 1) END) AS sellerCode
+    ) sellerCodePart
+    CROSS APPLY (
+      SELECT
+        sellerRaw.rawSeller,
+        sellerCodePart.sellerCode,
+        UPPER(REPLACE(LTRIM(RTRIM(CASE
+          WHEN sellerCodePart.sellerCode IS NOT NULL THEN LEFT(sellerRaw.rawSeller, LEN(sellerRaw.rawSeller) - sellerRaw.dashPos)
+          ELSE sellerRaw.rawSeller
+        END)), ' ', '')) AS sellerNameKey
+    ) sellerKey
+    WHERE NULLIF(sellerKey.rawSeller, '') IS NOT NULL
       AND (
         (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
         OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
       )
       AND ${scopeFilters.join(' AND ')};
 
-    -- Base individual do ranking.
-    SELECT b.*
+    -- Base individual do ranking. O representante histórico é conciliado
+    -- pelo ID final (quando existe) e, como fallback, pelo nome normalizado sem o sufixo.
+    SELECT
+      b.period,
+      matchedSeller.seller AS seller,
+      b.seller AS sellerAlias,
+      b.clientId,
+      b.orderId,
+      b.orderDate,
+      b.productId,
+      b.pieces,
+      b.kg,
+      b.revenue
     INTO #CampaignBase
     FROM #ScopeBase b
-    ${sellers.length
-      ? `WHERE b.seller IN (${explicitSellerParams})`
-      : `INNER JOIN #ActiveSellers a ON a.seller = b.seller`};
+    CROSS APPLY (
+      SELECT TOP (1) a.seller
+      FROM #ActiveSellers a
+      WHERE
+        (b.sellerCode IS NOT NULL AND a.sellerCode = b.sellerCode)
+        OR (b.sellerCode IS NULL AND a.sellerNameKey = b.sellerNameKey)
+        OR (a.sellerCode IS NULL AND a.sellerNameKey = b.sellerNameKey)
+      ORDER BY
+        CASE WHEN b.sellerCode IS NOT NULL AND a.sellerCode = b.sellerCode THEN 0 ELSE 1 END,
+        a.seller
+    ) matchedSeller
+    ${sellers.length ? `WHERE matchedSeller.seller IN (${explicitSellerParams})` : ''};
 
     SELECT
       period,
@@ -608,6 +752,19 @@ async function queryPerformance(payload = {}) {
       COUNT(DISTINCT seller) AS sellers
     FROM ${sellers.length ? '#CampaignBase' : '#ScopeBase'}
     GROUP BY period;
+
+    -- Ritmo equivalente: mesma quantidade de dias já decorridos, mas dentro
+    -- do período anterior. Não altera metas/ranking; serve para leitura parcial.
+    SELECT
+      SUM(revenue) AS revenue,
+      SUM(kg) AS kg,
+      SUM(pieces) AS pieces,
+      COUNT(DISTINCT clientId) AS customers,
+      COUNT(DISTINCT orderId) AS orders,
+      COUNT(DISTINCT productId) AS products
+    FROM ${sellers.length ? '#CampaignBase' : '#ScopeBase'}
+    WHERE period = 'previous'
+      AND orderDate < CONVERT(date, @previousEquivalentEnd, 23);
 
     ${activationProductIds.length ? `
     SELECT
@@ -667,7 +824,17 @@ async function queryPerformance(payload = {}) {
     sellers:Number(row.sellers) || 0,
   }));
 
-  let extraRecordsetIndex = 3;
+  const equivalentPreviousSummaryRaw = result.recordsets?.[3]?.[0] || {};
+  const equivalentPreviousSummary = {
+    revenue:Number(equivalentPreviousSummaryRaw.revenue) || 0,
+    kg:Number(equivalentPreviousSummaryRaw.kg) || 0,
+    pieces:Number(equivalentPreviousSummaryRaw.pieces) || 0,
+    customers:Number(equivalentPreviousSummaryRaw.customers) || 0,
+    orders:Number(equivalentPreviousSummaryRaw.orders) || 0,
+    products:Number(equivalentPreviousSummaryRaw.products) || 0,
+  };
+
+  let extraRecordsetIndex = 4;
   const orderLines = activationProductIds.length
     ? (result.recordsets?.[extraRecordsetIndex++] || []).map((row) => ({
         period:row.period,
@@ -722,7 +889,8 @@ async function queryPerformance(payload = {}) {
         : 'Não há lista explícita de produtos; a apuração filtra dbo.Produtos.[ID Fornecedor].',
     },
     filters: {
-      activeSeller:"Representante precisa aparecer em dbo.Clientes com Status começando por 'ATIV'",
+      activeSeller:"Ranking usa representantes atuais de dbo.Clientes com Status ATIV%; histórico é conciliado por ID do vendedor ou nome normalizado",
+      sellerHistory:'ID numérico no final de dbo.Vendas.[Vendedor]; fallback por nome normalizado sem sufixo quando o histórico não possui ID',
       saleType:'SEM FILTRO EXPLÍCITO em dbo.Vendas.[Tipo]',
       saleForm:'SEM FILTRO EXPLÍCITO em dbo.Vendas.[Forma de Venda]',
       returnsAndCancellations:'SEM REGRA EXPLÍCITA adicional para devoluções/cancelamentos nesta versão',
@@ -731,6 +899,7 @@ async function queryPerformance(payload = {}) {
       'Faturamento usa o valor das linhas participantes em dbo.VendasProdutos.[Valor], não dbo.Vendas.[Valor Total] do pedido inteiro.',
       'A data usada é dbo.Vendas.[Data], com YYYY-MM-DD convertido diretamente para DATE no SQL, sem deslocamento de horário/timezone.',
       'Se outro relatório usa faturamento, nota fiscal ou entrega, os números podem divergir.',
+      'O histórico individual é conciliado por ID numérico no final do campo Vendedor; se não houver ID no registro histórico, usa nome normalizado sem sufixo.',
       'Tipo, forma de venda, devoluções e cancelamentos ainda não possuem filtro corporativo explícito nesta consulta. Audite um vendedor para ver quais registros entraram.',
     ],
   };
@@ -741,25 +910,30 @@ async function queryPerformance(payload = {}) {
     dateReference: 'dbo.Vendas.[Data]',
     rankingActiveSellersOnly: sellers.length === 0,
     collectiveScope: sellers.length ? 'REPRESENTANTES_ESPECIFICOS' : 'ESCOPO_COMERCIAL_TOTAL',
-    periodPolicy: fixedPeriods?.partial ? 'SEIS_SEGUNDAS_FIXAS_ATUAL_PARCIAL_ANTERIOR_COMPLETO' : 'SEIS_SEGUNDAS_FIXAS',
-    comparisonPolicy: fixedPeriods?.comparisonPolicy || '6_SEGUNDAS_VS_6_SEGUNDAS',
+    periodPolicy: campaignPeriods?.mode === 'custom' ? 'PERIODO_LIVRE' : 'SEIS_SEGUNDAS_FIXAS',
+    comparisonPolicy: campaignPeriods?.comparisonPolicy || 'PERIODO_CONFIGURADO_VS_REFERENCIA_ANTERIOR',
     provenance,
-    partial: Boolean(fixedPeriods?.partial),
-    asOfDate: fixedPeriods?.asOfDate || null,
-    elapsedDays: fixedPeriods?.elapsedDays || null,
+    partial: Boolean(campaignPeriods?.partial),
+    asOfDate: campaignPeriods?.asOfDate || null,
+    elapsedDays: campaignPeriods?.elapsedDays || null,
+    totalDays: campaignPeriods?.durationDays || null,
+    remainingDays: campaignPeriods?.remainingDays || 0,
+    periodMode: campaignPeriods?.mode || 'six_mondays',
+    previousEquivalentEndExclusive: campaignPeriods?.previousEquivalentEnd || previousEnd,
+    equivalentPreviousSummary,
     periodsUsed: {
       currentStart,
       currentEndExclusive: currentEnd,
-      currentLastInclusive: fixedPeriods?.currentLast || addUtcDays(currentEnd, -1),
+      currentLastInclusive: campaignPeriods?.currentLast || addUtcDays(currentEnd, -1),
       previousStart,
       previousEndExclusive: previousEnd,
-      previousLastInclusive: fixedPeriods?.previousLast || addUtcDays(previousEnd, -1),
+      previousLastInclusive: campaignPeriods?.previousLast || addUtcDays(previousEnd, -1),
     },
-    nominalPeriods: fixedPeriods ? {
-      currentStart: fixedPeriods.nominalCurrentStart,
-      currentLastInclusive: fixedPeriods.nominalCurrentLast,
-      previousStart: fixedPeriods.nominalPreviousStart,
-      previousLastInclusive: fixedPeriods.nominalPreviousLast,
+    nominalPeriods: campaignPeriods ? {
+      currentStart: campaignPeriods.nominalCurrentStart,
+      currentLastInclusive: campaignPeriods.nominalCurrentLast,
+      previousStart: campaignPeriods.nominalPreviousStart,
+      previousLastInclusive: campaignPeriods.nominalPreviousLast,
     } : null,
     lines,
     ordersBySeller,
@@ -787,7 +961,7 @@ async function queryPerformance(payload = {}) {
 async function queryConsistencyDiagnostic(payload = {}) {
   const startedAt = Date.now();
   const periods = payload.campaignStart
-    ? fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate)
+    ? resolveCampaignPeriods(payload)
     : null;
 
   const currentStart = periods?.currentStart || parseDate(payload.currentStart, 'currentStart');
@@ -1133,7 +1307,7 @@ function benefitDiscount({ discountType, discountValue, benefitRevenue, benefitP
 
 async function queryFirstPurchaseBenefit(payload = {}) {
   const startedAt = Date.now();
-  const periods = fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate);
+  const periods = resolveCampaignPeriods(payload);
   const currentStart = periods.currentStart;
   const currentEnd = periods.currentEnd;
 
@@ -1193,10 +1367,6 @@ async function queryFirstPurchaseBenefit(payload = {}) {
   const clientSellerFilter = sellers.length
     ? `AND LTRIM(RTRIM(c.[Vendedor])) IN (${addTextParams(request, 'benefitClientSeller', sellers)})`
     : '';
-  const orderSellerFilter = sellers.length
-    ? `AND LTRIM(RTRIM(v.[Vendedor])) IN (${addTextParams(request, 'benefitOrderSeller', sellers)})`
-    : '';
-
   const result = await request.query(`
     SET NOCOUNT ON;
 
@@ -1270,7 +1440,6 @@ async function queryFirstPurchaseBenefit(payload = {}) {
     INNER JOIN ProdutosUnicos p ON p.[ID Produto] = vp.[ID Produto]
     WHERE v.[ID Cliente] IS NOT NULL
       AND vp.[ID Produto] IN (${allProductIds.join(',')})
-      ${orderSellerFilter}
     GROUP BY
       v.[ID Cliente], v.[ID Pedido de Venda], v.[Data], LTRIM(RTRIM(v.[Vendedor])),
       vp.[ID Produto], p.[Produto]
@@ -1444,6 +1613,7 @@ async function queryFirstPurchaseBenefit(payload = {}) {
       reason,
       firstTriggerDate,
       firstOrderId,
+      firstOrderSeller:firstTriggerOrder?.seller || '',
       triggerLines,
       benefitLines,
       benefitPieces,
@@ -1502,6 +1672,7 @@ async function queryFirstPurchaseBenefit(payload = {}) {
         : 'Direito disponível significa que o cliente ainda não comprou o ativador dentro da campanha.',
       'O benefício é consumido na primeira compra do ativador. Se esse pedido não tiver produto beneficiado, o relatório marca “1ª compra sem item beneficiado”.',
       'Tipo/Forma de Venda, devoluções e cancelamentos seguem sem regra corporativa adicional nesta versão; a leitura usa as mesmas tabelas comerciais do módulo de campanhas.',
+      'A compra histórica do produto ativador é vinculada ao cliente, independentemente de qual vendedor registrou o pedido no passado; a seleção de representantes usa a carteira atual de dbo.Clientes.',
       'O desconto é calculado apenas para conferência. Esta rota não altera preços nem pedidos no ERP.',
     ],
     durationMs:Date.now()-startedAt,
@@ -1522,7 +1693,7 @@ async function querySellerAudit(payload = {}) {
   }
 
   const periods = payload.campaignStart
-    ? fixedSixMondayPeriods(payload.campaignStart, payload.asOfDate)
+    ? resolveCampaignPeriods(payload)
     : null;
   const currentStart = periods?.currentStart || parseDate(payload.currentStart, 'currentStart');
   const currentEnd = periods?.currentEnd || parseDate(payload.currentEnd, 'currentEnd');
@@ -1547,18 +1718,25 @@ async function querySellerAudit(payload = {}) {
 
   const scopeFilter = productIds.length
     ? `vp.[ID Produto] IN (${productIds.join(',')})`
-    : `p.[ID Fornecedor] IN (${supplierIds.join(',')})`;
+    : `EXISTS (
+        SELECT 1
+        FROM dbo.Produtos pScope
+        WHERE pScope.[ID Produto] = vp.[ID Produto]
+          AND pScope.[ID Fornecedor] IN (${supplierIds.join(',')})
+      )`;
 
   const result = await request.query(`
     SET NOCOUNT ON;
 
-    WITH ActiveSellers AS (
-      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
-      FROM dbo.Clientes c
-      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    ),
-    VendasRank AS (
+    DECLARE @sellerAuditTrim nvarchar(200) = LTRIM(RTRIM(@sellerAudit));
+    DECLARE @sellerAuditDash int = CHARINDEX('-', REVERSE(@sellerAuditTrim));
+    DECLARE @sellerAuditCode int = TRY_CONVERT(int, CASE WHEN @sellerAuditDash > 1 THEN RIGHT(@sellerAuditTrim, @sellerAuditDash - 1) END);
+    DECLARE @sellerAuditNameKey nvarchar(200) = UPPER(REPLACE(LTRIM(RTRIM(CASE
+      WHEN @sellerAuditCode IS NOT NULL THEN LEFT(@sellerAuditTrim, LEN(@sellerAuditTrim) - @sellerAuditDash)
+      ELSE @sellerAuditTrim
+    END)), ' ', ''));
+
+    WITH VendasRank AS (
       SELECT
         v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
         v.[Tipo], v.[Forma de Venda], v.[Valor Total],
@@ -1613,10 +1791,27 @@ async function querySellerAudit(payload = {}) {
       SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
       SUM(ISNULL(vp.[Valor], 0)) AS revenue
     FROM VendasUnicas v
-    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
     INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
     INNER JOIN ProdutosUnicos p ON p.[ID Produto] = vp.[ID Produto]
-    WHERE LTRIM(RTRIM(v.[Vendedor])) = @sellerAudit
+    CROSS APPLY (
+      SELECT
+        LTRIM(RTRIM(v.[Vendedor])) AS rawSeller,
+        CHARINDEX('-', REVERSE(LTRIM(RTRIM(v.[Vendedor])))) AS dashPos
+    ) sellerRaw
+    CROSS APPLY (
+      SELECT TRY_CONVERT(int, CASE WHEN sellerRaw.dashPos > 1 THEN RIGHT(sellerRaw.rawSeller, sellerRaw.dashPos - 1) END) AS sellerCode
+    ) sellerCodePart
+    CROSS APPLY (
+      SELECT UPPER(REPLACE(LTRIM(RTRIM(CASE
+        WHEN sellerCodePart.sellerCode IS NOT NULL THEN LEFT(sellerRaw.rawSeller, LEN(sellerRaw.rawSeller) - sellerRaw.dashPos)
+        ELSE sellerRaw.rawSeller
+      END)), ' ', '')) AS sellerNameKey
+    ) sellerNamePart
+    WHERE (
+        (@sellerAuditCode IS NOT NULL AND sellerCodePart.sellerCode = @sellerAuditCode)
+        OR (sellerCodePart.sellerCode IS NULL AND sellerNamePart.sellerNameKey = @sellerAuditNameKey)
+        OR (@sellerAuditCode IS NULL AND sellerNamePart.sellerNameKey = @sellerAuditNameKey)
+      )
       AND (
         (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
         OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
@@ -1661,6 +1856,7 @@ async function querySellerAudit(payload = {}) {
   }
 
   const distinctValues = (field) => [...new Set(rows.map((row) => row[field]).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'pt-BR'));
+  const sellerAliases = distinctValues('seller');
 
   return {
     ok:true,
@@ -1668,6 +1864,8 @@ async function querySellerAudit(payload = {}) {
     endpoint:'/api/campanhas-data?recurso=auditoria-vendedor',
     handler:'local-api/campanhas-data.js → querySellerAudit()',
     seller,
+    sellerAliases,
+    sellerMatchPolicy:'ID final do vendedor; fallback por nome normalizado sem sufixo',
     dateReference:'dbo.Vendas.[Data]',
     partial:Boolean(periods?.partial),
     comparisonPolicy:periods?.comparisonPolicy || '6_SEGUNDAS_VS_6_SEGUNDAS',
@@ -1690,6 +1888,7 @@ async function querySellerAudit(payload = {}) {
     rows,
     truncated:rows.length >= 1500,
     warnings:[
+      'O vendedor auditado é conciliado pelo ID numérico no final do campo Vendedor quando disponível; se o histórico não tiver ID, o sistema usa o nome normalizado sem o sufixo.',
       'Cada linha representa um produto participante dentro de um pedido. O faturamento auditado soma dbo.VendasProdutos.[Valor].',
       'dbo.Vendas.[Valor Total] é exibido apenas como referência do pedido inteiro e não é usado no faturamento da campanha.',
       'Não há filtro explícito por Tipo/Forma de Venda nem regra adicional de cancelamento/devolução nesta versão.',
@@ -1705,7 +1904,7 @@ function publicError(error) {
     ELOGIN: 'Confira usuário, senha e permissão de acesso ao banco powerbi.',
     ETIMEOUT: 'O SQL Server demorou para responder. Tente preparar o contexto novamente.',
     ESCOPO_AUSENTE: 'Selecione fornecedores ou produtos participantes.',
-    CAMPANHA_NAO_INICIADA: 'A apuração ficará disponível a partir da primeira segunda-feira da campanha.',
+    CAMPANHA_NAO_INICIADA: 'A apuração ficará disponível a partir da data inicial da campanha.',
     VENDEDOR_AUSENTE: 'Escolha um representante para abrir a auditoria.',
     FORNECEDOR_AUSENTE: 'Selecione ao menos um fornecedor para executar o diagnóstico de consistência.',
     BENEFICIO_PRODUTOS_AUSENTES: 'Configure a categoria Fortunata/ativadora e os produtos que recebem desconto.',
@@ -1714,7 +1913,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.9.0',
+    versao: '5.10.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -1746,7 +1945,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.9.0',
+        version: '5.10.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
