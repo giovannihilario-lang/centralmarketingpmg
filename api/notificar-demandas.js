@@ -19,8 +19,16 @@ async function loadDependencies() {
 const NOTIFICATION_TEXT = {
   nova_tarefa: 'Você recebeu uma nova demanda',
   prazo_proximo: 'Uma demanda está perto do prazo',
+  prazo_atrasado: 'Uma demanda está atrasada',
+  prazo_alterado: 'O prazo de uma demanda mudou',
   comentario: 'Há um novo comentário em uma demanda',
-  status_mudou: 'Uma demanda foi atualizada'
+  status_mudou: 'Uma demanda foi atualizada',
+  demanda_imediata: 'DEMANDA IMEDIATA · abra agora',
+  avaliacao_pendente: 'Uma demanda aguarda sua avaliação',
+  avaliacao_aprovada: 'A conclusão da demanda foi aprovada',
+  avaliacao_ajustes: 'A demanda voltou para ajustes',
+  transferencia: 'Uma demanda foi transferida para você',
+  lembrete: 'Está na hora do seu lembrete'
 };
 
 function makeSupabase() {
@@ -82,6 +90,7 @@ function payloadFor(notification) {
   const task = notification.tarefa;
   const reminder = notification.lembrete;
   const isReminder = Boolean(notification.lembrete_id);
+  const isImmediate = notification.tipo === 'demanda_imediata' || task?.prioridade === 'imediata';
   const itemTitle = task?.titulo || reminder?.titulo || 'Atualização';
   const heading = notification.mensagem
     || (isReminder
@@ -97,18 +106,23 @@ function payloadFor(notification) {
         { action: 'snooze-10', title: 'Adiar 10 min' },
         { action: 'complete', title: 'Concluir' }
       ]
-    : [{ action: 'open', title: 'Abrir demanda' }];
+    : [{ action: 'open', title: isImmediate ? 'ABRIR AGORA' : 'Abrir demanda' }];
+
+  const taskMeta = task
+    ? [task.prioridade ? `Prioridade: ${String(task.prioridade).toUpperCase()}` : '', task.prazo_em ? `Prazo: ${new Date(task.prazo_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''].filter(Boolean).join(' · ')
+    : '';
 
   return JSON.stringify({
-    title: isReminder ? 'PMG Connect · Agenda' : 'PMG Connect · Demandas',
-    body: `${heading}: ${itemTitle}`,
+    title: isImmediate ? 'PMG CONNECT · DEMANDA IMEDIATA' : isReminder ? 'PMG Connect · Agenda' : 'PMG Connect · Demandas',
+    body: isImmediate ? `${itemTitle}\n${taskMeta || heading}` : `${heading}: ${itemTitle}${taskMeta ? ` · ${taskMeta}` : ''}`,
     icon: '/imagenssite/pmglogo.png',
     badge: '/imagenssite/pmglogo.png',
-    tag: `pmg-${notification.id}`,
+    tag: isImmediate ? `pmg-imediata-${notification.tarefa_id}` : `pmg-${notification.id}`,
     url,
     actions,
     reminderId: notification.lembrete_id || null,
-    taskId: notification.tarefa_id || null
+    taskId: notification.tarefa_id || null,
+    immediate: isImmediate
   });
 }
 
@@ -130,7 +144,7 @@ async function processPending(supabase) {
       tipo,
       mensagem,
       criado_em,
-      tarefa:tarefas(id,titulo),
+      tarefa:tarefas(id,titulo,prioridade,prazo_em,status),
       lembrete:lembretes(id,titulo,tipo)
     `)
     .is('push_enviada_em', null)

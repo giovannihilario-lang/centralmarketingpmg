@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Demandas V2 */
+/* PMG Connect — Central de Demandas V3 / Operação */
 let db = null;
 let VAPID_PUBLIC_KEY = '';
 let publicConfigPromise = null;
@@ -44,7 +44,7 @@ const STATUS = {
   revisao: { label: 'Em revisão', icon: 'scan-eye' },
   concluida: { label: 'Concluída', icon: 'circle-check-big' }
 };
-const PRIORITY = { baixa: 'Baixa', media: 'Média', alta: 'Alta', urgente: 'Urgente' };
+const PRIORITY = { baixa: 'Baixa', media: 'Média', alta: 'Alta', urgente: 'Urgente', imediata: 'IMEDIATA' };
 const SIZE = { rapida: 'Rápida', media: 'Média', grande: 'Grande' };
 const RECURRENCE = { nenhuma: 'Não repete', diaria: 'Diariamente', semanal: 'Semanalmente', mensal: 'Mensalmente', anual: 'Anualmente' };
 const NOTIFICATION_TEXT = {
@@ -54,19 +54,27 @@ const NOTIFICATION_TEXT = {
   prazo_alterado: 'O prazo de uma demanda mudou',
   comentario: 'Há um novo comentário',
   status_mudou: 'O status de uma demanda mudou',
-  lembrete: 'Está na hora do seu lembrete'
+  lembrete: 'Está na hora do seu lembrete',
+  demanda_imediata: 'DEMANDA IMEDIATA: verifique agora',
+  avaliacao_pendente: 'Uma demanda aguarda avaliação de conclusão',
+  avaliacao_aprovada: 'Sua conclusão foi aprovada',
+  avaliacao_ajustes: 'A demanda voltou para ajustes',
+  transferencia: 'Uma demanda foi transferida para você'
 };
 const ACTIVITY_TEXT = {
   criada: 'criou a demanda', editada: 'editou a demanda', status: 'alterou o status de',
-  atribuida: 'alterou o responsável de', comentario: 'comentou em', arquivada: 'arquivou', restaurada: 'restaurou'
+  atribuida: 'alterou o responsável de', comentario: 'comentou em', arquivada: 'arquivou', restaurada: 'restaurou',
+  transferida: 'transferiu a demanda', avaliacao: 'avaliou a conclusão de'
 };
 const ACTIVITY_ICON = {
   criada: 'clipboard-plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog',
-  comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore'
+  comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore',
+  transferida: 'arrow-right-left', avaliacao: 'badge-check'
 };
-const PRIORITY_ORDER = { urgente: 0, alta: 1, media: 2, baixa: 3 };
+const PRIORITY_ORDER = { imediata: -1, urgente: 0, alta: 1, media: 2, baixa: 3 };
 const VIEW_META = {
   hoje: ['Sua rotina', 'Hoje'], agenda: ['Planejamento', 'Agenda'],
+  'calendario-setor': ['Planejamento coletivo', 'Calendário do setor'], academia: ['Espaço compartilhado', 'Academia PMG'],
   demandas: ['Fluxo de trabalho', 'Demandas'], equipe: ['Capacidade do setor', 'Equipe']
 };
 
@@ -78,7 +86,11 @@ const state = {
   selectedDate: dateKey(new Date()), pushSubscription: null,
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
   assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
-  intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false
+  intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false,
+  transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
+  sectorCalendarCursor: startOfMonth(new Date()), sectorSelectedDate: dateKey(new Date()), sectorPersonFilter: '',
+  academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
+  monthlyReportData: null, accessibility: { scale: 'large', contrast: false, reduceMotion: false }
 };
 
 const $ = id => document.getElementById(id);
@@ -104,6 +116,9 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
+  if (/academia_reservas|transferencias_tarefa|criar_tarefa_v3|editar_tarefa_v3|avaliar_conclusao|transferir_tarefa/i.test(message)) {
+    return 'A migração Demandas V3 ainda não foi executada no Supabase. Rode sql/demandas_v3_operacao.sql.';
+  }
   if (/lembretes|atividades_tarefa|criar_tarefa_v2|relation .* does not exist/i.test(message)) {
     return 'A migração Demandas V2 ainda não foi executada no Supabase.';
   }
@@ -142,15 +157,22 @@ const STATUS_ORDER = ['nova', 'andamento', 'revisao', 'concluida'];
 const STATUS_HELP = {
   nova: 'Aguardando alguém começar',
   andamento: 'Sendo executada agora',
-  revisao: 'Pronta para conferência',
-  concluida: 'Entrega finalizada'
+  revisao: 'Aguardando avaliação de um gestor',
+  concluida: 'Conclusão aprovada e encerrada'
 };
 const STATUS_ACTION = {
   nova: { next: 'andamento', label: 'Iniciar demanda', icon: 'play' },
-  andamento: { next: 'revisao', label: 'Enviar para revisão', icon: 'scan-eye' },
-  revisao: { next: 'concluida', label: 'Concluir demanda', icon: 'circle-check-big' },
+  andamento: { next: 'revisao', label: 'Enviar para avaliação', icon: 'scan-eye' },
+  revisao: { next: '__avaliar__', label: 'Avaliar conclusão', icon: 'badge-check' },
   concluida: { next: 'andamento', label: 'Reabrir demanda', icon: 'rotate-ccw' }
 };
+
+function statusActionForTask(task) {
+  if (!task) return STATUS_ACTION.nova;
+  if (task.status === 'revisao' && !isManager()) return null;
+  if (task.status === 'concluida' && !isManager()) return null;
+  return STATUS_ACTION[task.status] || STATUS_ACTION.nova;
+}
 
 function syncChoiceCards(selectId) {
   const select = $(selectId);
@@ -204,6 +226,31 @@ function syncTaskFormVisuals(prefix) {
   renderAssigneePreview(assigneeId, previewId);
   syncChoiceCards(priorityId);
   syncChoiceCards(sizeId);
+  syncImmediateAudience(prefix);
+}
+
+function syncImmediateAudience(prefix = 'item') {
+  const isEdit = prefix === 'editTask';
+  const priority = $(isEdit ? 'editTaskPriority' : 'itemPriority')?.value || 'media';
+  const hiddenInput = $(isEdit ? 'editTaskAlertAll' : 'itemAlertAll');
+  const section = $(isEdit ? 'editImmediateAudienceSection' : 'immediateAudienceSection');
+  const selector = isEdit ? '[data-edit-immediate-audience]' : '[data-immediate-audience]';
+  const isImmediate = priority === 'imediata';
+  if (section) section.classList.toggle('hidden', !isImmediate);
+  if (!isImmediate && hiddenInput) hiddenInput.value = 'false';
+  const all = hiddenInput?.value === 'true';
+  $$(selector).forEach(button => {
+    const target = isEdit ? button.dataset.editImmediateAudience : button.dataset.immediateAudience;
+    const active = (target === 'todos') === all;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function setImmediateAudience(all, isEdit = false) {
+  const input = $(isEdit ? 'editTaskAlertAll' : 'itemAlertAll');
+  if (input) input.value = String(Boolean(all));
+  syncImmediateAudience(isEdit ? 'editTask' : 'item');
 }
 
 function openAssigneePicker({ selectId = null, previewId = null, taskId = null, title = 'Selecionar responsável' } = {}) {
@@ -265,13 +312,18 @@ function statusFlowHTML(task, canChangeStatus) {
     const meta = STATUS[status];
     const current = status === task.status;
     const passed = currentIndex >= 0 && index < currentIndex;
-    const disabled = !canChangeStatus || Boolean(task.arquivada_em) || current;
+    let disabled = !canChangeStatus || Boolean(task.arquivada_em) || current;
+    const claimMode = !isManager() && !task.responsavel_id && task.prioridade === 'imediata' && task.alerta_para_todos;
+    if (claimMode && status !== 'andamento') disabled = true;
+    if (status === 'concluida') disabled = disabled || !isManager() || task.status !== 'revisao';
+    if (!isManager() && status === 'nova' && task.status !== 'nova') disabled = true;
     return `<button type="button" class="status-step ${status} ${current ? 'current' : ''} ${passed ? 'passed' : ''}" data-task-status="${status}" ${disabled ? 'disabled' : ''}>
       <span class="status-step-icon"><i data-lucide="${current || passed ? 'check' : meta.icon}"></i></span>
       <span class="status-step-copy"><strong>${meta.label}</strong><small>${STATUS_HELP[status]}</small></span>
     </button>`;
   }).join('');
 }
+
 function parseDate(value) { return value ? new Date(value) : null; }
 function dateKey(value) {
   const date = value instanceof Date ? value : new Date(value);
@@ -331,10 +383,11 @@ function dueLabel(task) {
 function dueClass(task) { return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : ''; }
 function reminderEffectiveTime(reminder) { return reminder.adiado_ate || reminder.inicio_em; }
 function itemTitle(item) { return item.titulo || 'Sem título'; }
-function priorityWeight(task) { return ({ urgente: 4, alta: 3, media: 2, baixa: 1 })[task.prioridade] || 2; }
+function priorityWeight(task) { return ({ imediata: 6, urgente: 4, alta: 3, media: 2, baixa: 1 })[task.prioridade] || 2; }
 function sizeWeight(task) { return Number(task.estimativa_horas) || ({ rapida: 1, media: 2.5, grande: 5 })[task.tamanho] || 2.5; }
 
 async function bootstrap() {
+  loadAccessibilityPreferences();
   setLoading(true); refreshIcons();
   try {
     await initializeSupabaseClient();
@@ -364,7 +417,7 @@ async function initializeUser() {
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
 }
 async function loadAll() {
-  await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities()]);
+  await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3()]);
 }
 async function loadCollaborators() {
   const { data, error } = await db.from('colaboradores').select('id,nome,foto_url,cargo,role,ativo,perfil_configurado,criado_em,atualizado_em').eq('ativo', true).order('nome');
@@ -394,7 +447,7 @@ async function loadActivities() {
 }
 
 function renderAll() {
-  renderShell(); renderToday(); renderAgenda(); renderDemandas(); renderEquipe(); renderNotifications(); refreshIcons();
+  renderShell(); renderToday(); renderAgenda(); renderSectorCalendar(); renderDemandas(); renderEquipe(); renderAcademy(); renderNotifications(); refreshIcons();
 }
 function renderShell() {
   $('sideUserAvatar').innerHTML = avatarHTML(state.me, 'sm');
@@ -406,7 +459,9 @@ function renderShell() {
   $('navTaskCount').textContent = activeTasks.length;
   $('navTodayCount').textContent = mine.filter(task => taskDueKey(task) === todayKey() || isOverdue(task)).length;
   $('navTodayCount').classList.toggle('hidden', Number($('navTodayCount').textContent) === 0);
-  const [eyebrow, title] = VIEW_META[state.view]; $('pageEyebrow').textContent = eyebrow; $('pageTitle').textContent = title;
+  const academyPending = state.academyReservations.filter(item => item.status === 'solicitada').length;
+  if ($('navAcademyPending')) { $('navAcademyPending').textContent = academyPending; $('navAcademyPending').classList.toggle('hidden', academyPending === 0); }
+  const [eyebrow, title] = VIEW_META[state.view] || VIEW_META.hoje; $('pageEyebrow').textContent = eyebrow; $('pageTitle').textContent = title;
   $$('.nav-item[data-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.view === state.view));
   $$('.view').forEach(view => view.classList.toggle('active', view.dataset.page === state.view));
   updateTypeSelectorPermissions();
@@ -547,7 +602,7 @@ function renderDemandas() {
 function populateAssigneeSelects() {
   const options = `<option value="">Todos os responsáveis</option><option value="none">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
   const select = $('taskAssigneeFilter'); if (select) { const value = select.value; select.innerHTML = options; select.value = value; }
-  ['itemAssignee', 'editTaskAssignee'].forEach(id => { const el = $(id); if (!el) return; const value = el.value; el.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`; el.value = value; });
+  ['itemAssignee', 'editTaskAssignee', 'transferAssignee'].forEach(id => { const el = $(id); if (!el) return; const value = el.value; el.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`; el.value = value; });
 }
 function renderTaskAvatarFilters() {
   const container = $('taskAvatarFilters'); if (!container) return;
@@ -630,7 +685,7 @@ function teamPersonStats(person) {
     const due = taskDue(task);
     return due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
   });
-  const urgent = active.filter(task => task.prioridade === 'urgente');
+  const urgent = active.filter(task => ['imediata', 'urgente'].includes(task.prioridade));
   const hours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
   const utilization = Math.min(140, Math.round((hours / TEAM_CAPACITY_HOURS) * 100));
   const deadlineCompleted = completed30.filter(task => taskDue(task) && task.concluida_em);
@@ -674,14 +729,22 @@ function renderEquipe() {
     : 'Veja a disponibilidade estimada do setor e quem está cuidando de cada frente.';
   $('teamUpdatedAt').textContent = `Atualizado ${relativeTime(new Date().toISOString())}`;
 
+  const operationalPeople = state.collaborators.filter(person => person.role !== 'gestor');
+  const busyPeople = operationalPeople.filter(person => active.some(task => task.responsavel_id === person.id)).length;
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const peopleCompletedMonth = operationalPeople.filter(person => state.tasks.some(task => task.responsavel_id === person.id && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= monthStart)).length;
+  const pendingEvaluation = active.filter(task => task.status === 'revisao').length;
   $('teamSummary').innerHTML = manager
     ? [
-        teamSummaryCard('users-round', state.collaborators.length, 'Pessoas ativas'),
+        teamSummaryCard('users-round', operationalPeople.length, 'Colaboradores ativos'),
+        teamSummaryCard('briefcase-business', busyPeople, 'Pessoas atarefadas'),
         teamSummaryCard('clipboard-list', active.length, 'Demandas em aberto'),
+        teamSummaryCard('scan-eye', pendingEvaluation, 'Aguardando avaliação', pendingEvaluation ? 'attention' : ''),
+        teamSummaryCard('badge-check', peopleCompletedMonth, 'Pessoas com conclusão no mês'),
         teamSummaryCard('clock-4', `${Math.round(totalHours)}h`, 'Carga estimada'),
         teamSummaryCard('triangle-alert', overdue.length, 'Demandas atrasadas', overdue.length ? 'danger' : ''),
         teamSummaryCard('calendar-range', dueWeek.length, 'Vencem em 7 dias'),
-        teamSummaryCard('badge-check', completed30.length, 'Concluídas em 30 dias')
+        teamSummaryCard('circle-check-big', completed30.length, 'Concluídas em 30 dias')
       ].join('')
     : [
         teamSummaryCard('users-round', state.collaborators.length, 'Pessoas no setor'),
@@ -842,7 +905,7 @@ function teamManagerNarrative(stats) {
   return `A carga está equilibrada entre volume, esforço estimado e prazos registrados.`;
 }
 function activityIcon(type) {
-  return ({ criada: 'plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog', comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore' })[type] || 'activity';
+  return ({ criada: 'plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog', comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore', transferida: 'arrow-right-left', avaliacao: 'badge-check' })[type] || 'activity';
 }
 function showPersonTasks(personId) {
   closeDrawer('personDrawer'); state.smartFilter = ''; switchView('demandas'); populateAssigneeSelects();
@@ -856,19 +919,24 @@ function renderNotifications() {
     const title = notification.tarefa?.titulo || notification.lembrete?.titulo || 'Atualização';
     const heading = notification.mensagem || (notification.lembrete_id ? (notification.lembrete?.tipo === 'compromisso' ? 'Compromisso próximo' : 'Lembrete programado') : NOTIFICATION_TEXT[notification.tipo] || 'Atualização');
     const type = notification.tipo || '';
-    const icon = notification.lembrete_id ? (notification.lembrete?.tipo === 'compromisso' ? 'calendar-clock' : 'alarm-clock') : type === 'comentario' ? 'message-circle' : type.includes('prazo') ? 'calendar-clock' : 'clipboard-check';
+    const iconMap = { demanda_imediata: 'siren', comentario: 'message-circle', transferencia: 'arrow-right-left', avaliacao_pendente: 'scan-eye', avaliacao_aprovada: 'badge-check', avaliacao_ajustes: 'undo-2', status_mudou: 'refresh-cw' };
+    const icon = notification.lembrete_id ? (notification.lembrete?.tipo === 'compromisso' ? 'calendar-clock' : 'alarm-clock') : iconMap[type] || (type.includes('prazo') ? 'calendar-clock' : 'clipboard-check');
     const actor = resolveNotificationActor(notification);
     const visual = actor ? `<span class="notification-item-avatar">${avatarHTML(actor, 'sm')}</span>` : `<span class="notification-item-icon"><i data-lucide="${icon}"></i></span>`;
     const task = notification.tarefa_id ? state.tasks.find(item => item.id === notification.tarefa_id) : null;
     const context = task ? `${PRIORITY[task.prioridade] || 'Média'} · ${dueLabel(task)}` : relativeTime(notification.criado_em);
-    return `<div class="notification-item ${notification.lida ? '' : 'unread'}" data-notification-id="${notification.id}" data-task-id="${notification.tarefa_id || ''}" data-reminder-id="${notification.lembrete_id || ''}">${visual}<div class="notification-item-copy"><strong>${escapeHtml(heading)}</strong><p>${escapeHtml(title)}</p><span>${escapeHtml(context)} · ${relativeTime(notification.criado_em)}</span></div><i class="notification-item-arrow" data-lucide="chevron-right"></i></div>`;
+    return `<div class="notification-item ${notification.lida ? '' : 'unread'} type-${type}" data-notification-id="${notification.id}" data-task-id="${notification.tarefa_id || ''}" data-reminder-id="${notification.lembrete_id || ''}">${visual}<div class="notification-item-copy"><strong>${escapeHtml(heading)}</strong><p>${escapeHtml(title)}</p><span>${escapeHtml(context)} · ${relativeTime(notification.criado_em)}</span></div><i class="notification-item-arrow" data-lucide="chevron-right"></i></div>`;
   }).join('') : `<div class="empty-state" style="margin:16px"><i data-lucide="bell-off"></i>Nenhuma notificação por aqui.</div>`;
 }
 
 function switchView(view) {
   state.view = view; renderShell();
-  if (view === 'agenda') renderAgenda(); if (view === 'demandas') renderDemandas(); if (view === 'equipe') renderEquipe();
-  window.scrollTo({ top: 0, behavior: 'smooth' }); closeMobileSidebar(); refreshIcons();
+  if (view === 'agenda') renderAgenda();
+  if (view === 'calendario-setor') renderSectorCalendar();
+  if (view === 'academia') renderAcademy();
+  if (view === 'demandas') renderDemandas();
+  if (view === 'equipe') renderEquipe();
+  window.scrollTo({ top: 0, behavior: state.accessibility.reduceMotion ? 'auto' : 'smooth' }); closeMobileSidebar(); refreshIcons();
 }
 function applySmartFilter(filter) { state.smartFilter = filter; switchView('demandas'); renderDemandas(); }
 
@@ -933,11 +1001,15 @@ async function createTaskV2() {
   const dueAt = dueDate ? localDateTime(dueDate, dueTime) : null; const offset = $('itemReminderOffset').value;
   const remindAt = dueAt && offset !== '' ? new Date(new Date(dueAt).getTime() - Number(offset) * 60000).toISOString() : null;
   const tags = $('itemTags').value.split(',').map(item => item.trim()).filter(Boolean);
-  const { error } = await db.rpc('criar_tarefa_v2', {
+  const priority = $('itemPriority').value;
+  const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
+  if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
+  const { error } = await db.rpc('criar_tarefa_v3', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: $('itemPriority').value, p_responsavel_id: $('itemAssignee').value || null,
+    p_prioridade: priority, p_responsavel_id: $('itemAssignee').value || null,
     p_prazo_em: dueAt, p_lembrar_em: remindAt, p_tags: tags,
-    p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null
+    p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
+    p_alerta_para_todos: alertAll
   });
   if (error) throw error;
 }
@@ -981,62 +1053,111 @@ function renderTaskDrawer() {
   const task = state.selectedTask; if (!task) return;
   const person = collaborator(task.responsavel_id);
   const creator = collaborator(task.criado_por);
+  const evaluator = collaborator(task.avaliado_por);
   const personStats = person ? assigneeStats(person) : null;
   $('taskDrawerKicker').textContent = `Demanda #${task.id.slice(0, 5).toUpperCase()}`; $('taskDrawerTitle').textContent = task.titulo;
-  const canChangeStatus = isManager() || task.responsavel_id === state.me.id || task.criado_por === state.me.id;
-  const nextAction = STATUS_ACTION[task.status] || STATUS_ACTION.nova;
-  const canAssign = isManager() && !task.arquivada_em;
+  const canClaimImmediate = !task.responsavel_id && task.prioridade === 'imediata' && task.alerta_para_todos && task.status === 'nova';
+  const canChangeStatus = isManager() || task.responsavel_id === state.me.id || canClaimImmediate;
+  const nextAction = statusActionForTask(task);
+  const canAssign = isManager() && !task.arquivada_em && task.status !== 'concluida';
+  const immediate = task.prioridade === 'imediata';
+  const evaluationPending = task.status === 'revisao';
+  const evaluationFeedback = task.avaliacao_status === 'ajustes' && task.avaliacao_observacao;
+  const evaluationApproved = task.avaliacao_status === 'aprovada';
+
+  const evaluationPanel = evaluationPending
+    ? isManager()
+      ? `<section class="manager-evaluation-panel"><div class="manager-evaluation-icon"><i data-lucide="scan-eye"></i></div><div><span class="eyebrow">Sua ação é necessária</span><h3>O colaborador solicitou a conclusão</h3><p>Confira o resultado, comentários e briefing antes de encerrar. Você pode aprovar ou devolver para ajustes.</p></div><div class="manager-evaluation-actions"><button id="drawerRejectEvaluationBtn" type="button" class="btn secondary"><i data-lucide="undo-2"></i>Devolver para ajustes</button><button id="drawerApproveEvaluationBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Aprovar conclusão</button></div></section>`
+      : `<section class="manager-evaluation-panel waiting"><div class="manager-evaluation-icon"><i data-lucide="hourglass"></i></div><div><span class="eyebrow">Aguardando gestor</span><h3>Sua entrega foi enviada para avaliação</h3><p>O status final só será liberado depois que um gestor validar a conclusão. Se houver ajustes, eles aparecerão aqui e por notificação.</p></div></section>`
+    : evaluationFeedback
+      ? `<section class="evaluation-feedback adjustments"><span><i data-lucide="message-square-warning"></i></span><div><strong>Ajustes solicitados${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${escapeHtml(task.avaliacao_observacao)}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`
+      : evaluationApproved
+        ? `<section class="evaluation-feedback approved"><span><i data-lucide="badge-check"></i></span><div><strong>Conclusão aprovada${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${escapeHtml(task.avaliacao_observacao || 'Entrega validada e encerrada.')}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`
+        : '';
+
+  const nextActionMarkup = canChangeStatus && !task.arquivada_em && nextAction
+    ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimImmediate ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
+    : evaluationPending && !isManager()
+      ? `<div class="status-waiting-note"><i data-lucide="clock-3"></i><span><strong>Aguardando avaliação</strong><small>Você não precisa alterar o status enquanto o gestor revisa.</small></span></div>`
+      : '';
+
   $('taskDrawerContent').innerHTML = `
-    <section class="task-overview-hero">
+    ${immediate ? `<div class="task-immediate-strip"><span class="task-immediate-siren"><i data-lucide="siren"></i></span><div><strong>DEMANDA IMEDIATA</strong><span>Este item deve interromper as prioridades normais e ser tratado agora.${task.alerta_para_todos ? ' O alerta foi enviado para toda a equipe.' : ''}</span></div><span class="task-immediate-pulse">AGORA</span></div>` : ''}
+    <section class="task-overview-hero ${immediate ? 'immediate' : ''}">
       <div class="task-people-flow">
         <div class="task-person-identity"><span>${avatarHTML(creator, 'md')}</span><div><small>Criada por</small><strong>${escapeHtml(creator?.nome || 'Sistema')}</strong></div></div>
         <i data-lucide="arrow-right"></i>
         <div class="task-person-identity assigned"><span>${taskAvatarHTML(person, task, 'md')}</span><div><small>Responsável</small><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong></div></div>
       </div>
-      <div class="task-overview-meta"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span><span class="task-overview-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div>
+      <div class="task-overview-meta"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.alerta_para_todos ? '<span class="team-alert-pill"><i data-lucide="users-round"></i>Alerta para toda a equipe</span>' : ''}<span class="task-overview-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div>
       <p>${escapeHtml(task.descricao || 'Esta demanda ainda não possui descrição.')}</p>
       ${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     </section>
 
+    ${evaluationPanel}
+
     <section class="task-status-section">
       <div class="task-section-heading"><div><span class="eyebrow">Fluxo</span><h3>Status da demanda</h3></div><span class="current-status-label ${task.status}"><i data-lucide="${STATUS[task.status]?.icon || 'circle-dot'}"></i>${STATUS[task.status]?.label || task.status}</span></div>
       <div class="status-flow">${statusFlowHTML(task, canChangeStatus)}</div>
-      ${canChangeStatus && !task.arquivada_em ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${nextAction.label}</strong><small>${STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>` : ''}
+      ${nextActionMarkup}
     </section>
 
     <section class="task-assignee-section">
-      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Clique para alterar</span>' : ''}</div>
+      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Transferência preserva tudo</span>' : ''}</div>
       <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card ${canAssign ? 'editable' : ''}" ${canAssign ? '' : 'disabled'}>
         <span class="drawer-assignee-avatar">${person ? avatarStatusHTML(person, personStats, 'lg') : avatarHTML(null, 'lg')}</span>
-        <span class="drawer-assignee-copy"><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Aguardando atribuição')}</small><em>${escapeHtml(person ? assigneeLoadText(personStats) : 'A demanda ainda não pertence a ninguém.')}</em></span>
-        ${canAssign ? '<span class="drawer-assignee-change"><span>Alterar responsável</span><i data-lucide="chevron-right"></i></span>' : ''}
+        <span class="drawer-assignee-copy"><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Aguardando atribuição')}</small><em>${escapeHtml(person ? assigneeLoadText(personStats) : 'A demanda ainda não pertence a ninguém. Em alerta coletivo imediato, a primeira pessoa que iniciar assume o item.')}</em></span>
+        ${canAssign ? '<span class="drawer-assignee-change"><span>Transferir demanda</span><i data-lucide="arrow-right-left"></i></span>' : ''}
       </button>
     </section>
 
     <section class="task-detail-summary">
       <div><span><i data-lucide="calendar-days"></i>Prazo</span><strong class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</strong></div>
       <div><span><i data-lucide="gauge"></i>Esforço</span><strong>${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</strong></div>
-      <div><span><i data-lucide="flag"></i>Prioridade</span><strong>${PRIORITY[task.prioridade]}</strong></div>
+      <div><span><i data-lucide="flag"></i>Prioridade</span><strong class="${immediate ? 'immediate-text' : ''}">${PRIORITY[task.prioridade]}</strong></div>
+      <div><span><i data-lucide="badge-check"></i>Validação</span><strong>${task.avaliacao_status === 'pendente' ? 'Pendente' : task.avaliacao_status === 'aprovada' ? 'Aprovada' : task.avaliacao_status === 'ajustes' ? 'Ajustes solicitados' : 'Ainda não enviada'}</strong></div>
       <div><span><i data-lucide="activity"></i>Atualizada</span><strong>${relativeTime(task.atualizado_em)}</strong></div>
     </section>
 
     <section class="detail-section"><div class="detail-section-head"><h3>Comentários</h3><span>${state.comments.length}</span></div><div class="comment-list">${renderComments()}</div>${!task.arquivada_em ? `<form id="drawerCommentForm" class="comment-form"><textarea id="drawerCommentText" required placeholder="Escreva um comentário..."></textarea><button type="submit"><i data-lucide="send"></i></button></form>` : ''}</section>
     <section class="detail-section"><div class="detail-section-head"><h3>Histórico</h3><span>${state.taskActivities.length} registros</span></div><div class="activity-timeline">${renderTaskActivities()}</div></section>
-    <div class="drawer-footer-actions">${isManager() && !task.arquivada_em ? `<button id="editTaskBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar detalhes</button><button id="archiveTaskBtn" class="btn danger-soft"><i data-lucide="archive"></i>Arquivar</button>` : ''}${isManager() && task.arquivada_em ? `<button id="restoreTaskBtn" class="btn primary"><i data-lucide="archive-restore"></i>Restaurar</button>` : ''}</div>`;
+    <div class="drawer-footer-actions">${isManager() && !task.arquivada_em ? `<button id="editTaskBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar detalhes</button>${task.status !== 'concluida' ? `<button id="transferTaskBtn" class="btn secondary"><i data-lucide="arrow-right-left"></i>Transferir</button>` : ''}<button id="archiveTaskBtn" class="btn danger-soft"><i data-lucide="archive"></i>Arquivar</button>` : ''}${isManager() && task.arquivada_em ? `<button id="restoreTaskBtn" class="btn primary"><i data-lucide="archive-restore"></i>Restaurar</button>` : ''}</div>`;
   bindTaskDrawerEvents(); refreshIcons();
 }
 function renderComments() {
   return state.comments.length ? state.comments.map(comment => `<div class="comment">${activityAvatarHTML(comment.colaborador, 'comentario', 'sm')}<div class="comment-bubble"><div class="comment-meta"><strong>${escapeHtml(comment.colaborador?.nome || 'Colaborador')}</strong><span>${formatDateTime(comment.criado_em)}</span></div><p>${escapeHtml(comment.texto)}</p></div></div>`).join('') : `<div class="empty-state">Sem comentários ainda.</div>`;
 }
 function renderTaskActivities() {
-  return state.taskActivities.length ? state.taskActivities.map(activity => `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${activity.tipo === 'comentario' ? 'message-circle' : activity.tipo === 'status' ? 'refresh-cw' : activity.tipo === 'atribuida' ? 'user-round-check' : 'activity'}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou esta demanda')}</p><span>${formatDateTime(activity.criado_em)}</span></div></div>`).join('') : `<div class="empty-state">O histórico começará a aparecer nas próximas alterações.</div>`;
+  if (!state.taskActivities.length) return `<div class="empty-state">O histórico começará a aparecer nas próximas alterações.</div>`;
+  return state.taskActivities.map(activity => {
+    let text = `${escapeHtml(ACTIVITY_TEXT[activity.tipo] || 'atualizou esta demanda')}`;
+    let detail = '';
+    if (activity.tipo === 'transferida') {
+      const from = collaborator(activity.detalhes?.de);
+      const to = collaborator(activity.detalhes?.para);
+      text = 'transferiu a responsabilidade';
+      detail = `${escapeHtml(from?.nome || 'Sem responsável')} → ${escapeHtml(to?.nome || 'Sem responsável')}${activity.detalhes?.horas != null ? ` · ${Number(activity.detalhes.horas)}h transferidas` : ''}${activity.detalhes?.observacao ? ` · ${escapeHtml(activity.detalhes.observacao)}` : ''}`;
+    } else if (activity.tipo === 'avaliacao') {
+      const approved = activity.detalhes?.resultado === 'aprovada';
+      text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
+      detail = activity.detalhes?.observacao ? escapeHtml(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
+    }
+    return `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${ACTIVITY_ICON[activity.tipo] || (activity.tipo === 'status' ? 'refresh-cw' : 'activity')}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${text}</p>${detail ? `<em>${detail}</em>` : ''}<span>${formatDateTime(activity.criado_em)}</span></div></div>`;
+  }).join('');
 }
 function bindTaskDrawerEvents() {
   $$('#taskDrawerContent [data-task-status]').forEach(button => button.addEventListener('click', () => {
     if (!button.disabled && button.dataset.taskStatus !== state.selectedTask?.status) updateTaskStatus(state.selectedTask.id, button.dataset.taskStatus);
   }));
-  $('drawerNextStatusBtn')?.addEventListener('click', event => updateTaskStatus(state.selectedTask.id, event.currentTarget.dataset.nextStatus));
-  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ taskId: state.selectedTask.id, title: 'Alterar responsável' }));
+  $('drawerNextStatusBtn')?.addEventListener('click', event => {
+    const next = event.currentTarget.dataset.nextStatus;
+    if (next === '__avaliar__') openTaskEvaluation(state.selectedTask.id);
+    else updateTaskStatus(state.selectedTask.id, next);
+  });
+  $('drawerApproveEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'approve'));
+  $('drawerRejectEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'reject'));
+  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
+  $('transferTaskBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
   $('drawerCommentForm')?.addEventListener('submit', addComment);
   $('editTaskBtn')?.addEventListener('click', openEditTask);
   $('archiveTaskBtn')?.addEventListener('click', archiveTask);
@@ -1045,7 +1166,8 @@ function bindTaskDrawerEvents() {
 function openEditTask() {
   const task = state.selectedTask; if (!task) return; const due = splitDateTime(taskDue(task));
   $('editTaskId').value = task.id; $('editTaskTitle').value = task.titulo; $('editTaskDescription').value = task.descricao || '';
-  populateAssigneeSelects(); $('editTaskAssignee').value = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
+  populateAssigneeSelects(); $('editTaskAssignee').value = task.responsavel_id || ''; $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
+  if ($('editTaskAlertAll')) $('editTaskAlertAll').value = String(Boolean(task.alerta_para_todos));
   $('editTaskSize').value = task.tamanho || 'media'; $('editTaskDueDate').value = due.date; $('editTaskDueTime').value = due.time || '17:00';
   $('editTaskEstimate').value = task.estimativa_horas || ''; $('editTaskTags').value = (task.tags || []).join(', ');
   const reminderOffset = task.lembrar_em && taskDue(task) ? Math.round((new Date(taskDue(task)) - new Date(task.lembrar_em)) / 60000) : '';
@@ -1056,19 +1178,43 @@ function openEditTask() {
 async function saveEditedTask(event) {
   event.preventDefault(); setLoading(true);
   try {
+    const taskId = $('editTaskId').value;
+    const originalAssignee = $('editTaskAssignee').dataset.originalValue || '';
+    const desiredAssignee = $('editTaskAssignee').value || '';
     const date = $('editTaskDueDate').value; const dueAt = date ? localDateTime(date, $('editTaskDueTime').value || '17:00') : null;
     const offset = $('editTaskReminderOffset').value; const remindAt = dueAt && offset !== '' ? new Date(new Date(dueAt).getTime() - Number(offset) * 60000).toISOString() : null;
-    const { error } = await db.rpc('editar_tarefa_v2', {
-      p_tarefa_id: $('editTaskId').value, p_titulo: $('editTaskTitle').value.trim(), p_descricao: $('editTaskDescription').value.trim() || null,
-      p_prioridade: $('editTaskPriority').value, p_responsavel_id: $('editTaskAssignee').value || null, p_prazo_em: dueAt,
+    const priority = $('editTaskPriority').value;
+    const alertAll = priority === 'imediata' && $('editTaskAlertAll')?.value === 'true';
+    const { error } = await db.rpc('editar_tarefa_v3', {
+      p_tarefa_id: taskId, p_titulo: $('editTaskTitle').value.trim(), p_descricao: $('editTaskDescription').value.trim() || null,
+      p_prioridade: priority, p_responsavel_id: originalAssignee || null, p_prazo_em: dueAt,
       p_lembrar_em: remindAt, p_tags: $('editTaskTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
-      p_tamanho: $('editTaskSize').value, p_estimativa_horas: $('editTaskEstimate').value ? Number($('editTaskEstimate').value) : null
+      p_tamanho: $('editTaskSize').value, p_estimativa_horas: $('editTaskEstimate').value ? Number($('editTaskEstimate').value) : null,
+      p_alerta_para_todos: alertAll
     });
-    if (error) throw error; closeModal('editTaskModal'); await refreshData(); await openTask($('editTaskId').value); await dispatchPendingPush(); toast('Demanda atualizada.');
+    if (error) throw error;
+    if (desiredAssignee !== originalAssignee) {
+      if (!desiredAssignee) throw new Error('Para retirar um responsável, use o painel da demanda. Transferências precisam ter um destino.');
+      const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável alterado durante a edição da demanda.' });
+      if (transferError) throw transferError;
+    }
+    closeModal('editTaskModal'); await refreshData(); await openTask(taskId); await dispatchPendingPush(); toast('Demanda atualizada.');
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskStatus(taskId, status) {
-  setLoading(true); try { const { error } = await db.rpc('atualizar_status', { p_tarefa_id: taskId, p_status: status }); if (error) throw error; await refreshData(); if (!$('taskDrawer').classList.contains('hidden')) await openTask(taskId); await dispatchPendingPush(); toast('Status atualizado.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
+  const task = state.tasks.find(item => item.id === taskId);
+  if (status === 'concluida') {
+    if (!isManager()) return toast('Envie a demanda para avaliação. Somente um gestor pode aprovar a conclusão.', 'error');
+    if (task?.status !== 'revisao') return toast('A demanda precisa estar em revisão antes da aprovação final.', 'error');
+    return openTaskEvaluation(taskId);
+  }
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('atualizar_status', { p_tarefa_id: taskId, p_status: status });
+    if (error) throw error;
+    await refreshData(); if (!$('taskDrawer').classList.contains('hidden')) await openTask(taskId); await dispatchPendingPush();
+    toast(status === 'revisao' ? 'Demanda enviada para avaliação do gestor.' : 'Status atualizado.');
+  } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskAssignee(taskId, personId) {
   setLoading(true); try { const { error } = await db.rpc('atribuir_tarefa', { p_tarefa_id: taskId, p_responsavel_id: personId }); if (error) throw error; await refreshData(); await openTask(taskId); await dispatchPendingPush(); toast('Responsável atualizado.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
@@ -1166,11 +1312,16 @@ async function dispatchPendingPush() {
    ========================================================= */
 const INTRUSIVE_NOTIFICATION_TYPES = {
   nova_tarefa: { label: 'Nova demanda recebida', icon: 'clipboard-plus', tone: 'blue', action: 'Abrir demanda' },
+  demanda_imediata: { label: 'DEMANDA IMEDIATA', icon: 'siren', tone: 'immediate', action: 'ABRIR AGORA' },
   prazo_proximo: { label: 'Prazo próximo', icon: 'clock-alert', tone: 'amber', action: 'Ver prazo' },
   prazo_atrasado: { label: 'Demanda atrasada', icon: 'triangle-alert', tone: 'red', action: 'Resolver agora' },
   prazo_alterado: { label: 'Prazo alterado', icon: 'calendar-cog', tone: 'amber', action: 'Ver alteração' },
   comentario: { label: 'Novo comentário', icon: 'message-circle-more', tone: 'purple', action: 'Abrir conversa' },
   status_mudou: { label: 'Status atualizado', icon: 'refresh-cw', tone: 'green', action: 'Ver demanda' },
+  avaliacao_pendente: { label: 'Avaliação necessária', icon: 'scan-eye', tone: 'purple', action: 'Avaliar demanda' },
+  avaliacao_aprovada: { label: 'Conclusão aprovada', icon: 'badge-check', tone: 'green', action: 'Ver demanda' },
+  avaliacao_ajustes: { label: 'Ajustes solicitados', icon: 'undo-2', tone: 'amber', action: 'Ver ajustes' },
+  transferencia: { label: 'Demanda transferida', icon: 'arrow-right-left', tone: 'blue', action: 'Abrir demanda' },
   lembrete: { label: 'Lembrete programado', icon: 'alarm-clock', tone: 'green', action: 'Abrir lembrete' }
 };
 
@@ -1188,7 +1339,7 @@ function intrusiveMarkDismissed() {}
 
 
 function notificationActivityType(notificationType) {
-  return ({ nova_tarefa: 'criada', comentario: 'comentario', status_mudou: 'status', prazo_alterado: 'editada' })[notificationType] || '';
+  return ({ nova_tarefa: 'criada', demanda_imediata: 'criada', comentario: 'comentario', status_mudou: 'status', prazo_alterado: 'editada', transferencia: 'transferida', avaliacao_pendente: 'status', avaliacao_aprovada: 'avaliacao', avaliacao_ajustes: 'avaliacao' })[notificationType] || '';
 }
 
 function resolveNotificationActor(notification) {
@@ -1201,13 +1352,15 @@ function resolveNotificationActor(notification) {
     .map(activity => ({ activity, distance: Math.abs(new Date(activity.criado_em).getTime() - notificationTime) }))
     .sort((a, b) => a.distance - b.distance);
   if (candidates[0] && candidates[0].distance <= 45 * 60000) return candidates[0].activity.ator;
-  if (notification.tipo === 'nova_tarefa' && task?.criado_por) return collaborator(task.criado_por) || null;
+  if (['nova_tarefa', 'demanda_imediata'].includes(notification.tipo) && task?.criado_por) return collaborator(task.criado_por) || null;
   return null;
 }
 
 function intrusiveNotificationData(notification) {
-  const config = INTRUSIVE_NOTIFICATION_TYPES[notification.tipo] || { label: 'Atualização importante', icon: 'bell-ring', tone: 'blue', action: 'Abrir agora' };
+  let config = INTRUSIVE_NOTIFICATION_TYPES[notification.tipo] || { label: 'Atualização importante', icon: 'bell-ring', tone: 'blue', action: 'Abrir agora' };
   const task = notification.tarefa_id ? state.tasks.find(item => item.id === notification.tarefa_id) : null;
+  const isImmediate = notification.tipo === 'demanda_imediata' || task?.prioridade === 'imediata';
+  if (isImmediate) config = { label: 'DEMANDA IMEDIATA', icon: 'siren', tone: 'immediate', action: 'ABRIR AGORA' };
   const reminder = notification.lembrete_id ? state.reminders.find(item => item.id === notification.lembrete_id) : null;
   const actor = resolveNotificationActor(notification);
   const title = task?.titulo || reminder?.titulo || notification.tarefa?.titulo || notification.lembrete?.titulo || 'Atualização no PMG Connect';
@@ -1226,7 +1379,7 @@ function intrusiveNotificationData(notification) {
     meta.push({ icon: 'clock-3', label: 'Recebida', value: formatDateTime(notification.criado_em), tone: '' });
   }
 
-  return { config, task, reminder, actor, title, message, meta };
+  return { config, task, reminder, actor, title, message, meta, isImmediate };
 }
 
 function playIntrusiveNotificationSound(tone = 'blue') {
@@ -1234,18 +1387,29 @@ function playIntrusiveNotificationSound(tone = 'blue') {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
     const context = new AudioContextClass();
+    if (tone === 'immediate') {
+      [0, .18, .36, .62, .80, .98].forEach((offset, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = index % 2 ? 'square' : 'sawtooth';
+        oscillator.frequency.setValueAtTime(index % 2 ? 920 : 650, context.currentTime + offset);
+        gain.gain.setValueAtTime(.0001, context.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(.15, context.currentTime + offset + .02);
+        gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + offset + .14);
+        oscillator.connect(gain); gain.connect(context.destination);
+        oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + .16);
+      });
+      setTimeout(() => context.close().catch(() => {}), 1600);
+      try { navigator.vibrate?.([220, 80, 220, 80, 380]); } catch (_) {}
+      return;
+    }
     const baseFrequency = tone === 'red' ? 760 : tone === 'amber' ? 620 : tone === 'purple' ? 560 : 680;
     const notes = tone === 'red' ? [0, 0.16, 0.32] : [0, 0.2];
     notes.forEach((offset, index) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(baseFrequency + index * 90, context.currentTime + offset);
-      gain.gain.setValueAtTime(0.0001, context.currentTime + offset);
-      gain.gain.exponentialRampToValueAtTime(0.11, context.currentTime + offset + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + offset + 0.14);
-      oscillator.connect(gain); gain.connect(context.destination);
-      oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + 0.16);
+      const oscillator = context.createOscillator(); const gain = context.createGain();
+      oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(baseFrequency + index * 90, context.currentTime + offset);
+      gain.gain.setValueAtTime(0.0001, context.currentTime + offset); gain.gain.exponentialRampToValueAtTime(0.11, context.currentTime + offset + 0.025); gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + offset + 0.14);
+      oscillator.connect(gain); gain.connect(context.destination); oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + 0.16);
     });
     setTimeout(() => context.close().catch(() => {}), 900);
   } catch (_) {}
@@ -1255,13 +1419,15 @@ function playIntrusiveNotificationSound(tone = 'blue') {
 function renderIntrusiveNotification(notification) {
   const data = intrusiveNotificationData(notification);
   const card = $('intrusiveNotificationCard');
-  card.className = `intrusive-notification-card tone-${data.config.tone}`;
+  card.className = `intrusive-notification-card tone-${data.config.tone} ${data.isImmediate ? 'is-immediate' : ''}`;
   $('intrusiveNotificationIcon').innerHTML = `<i data-lucide="${data.config.icon}"></i>`;
   $('intrusiveNotificationType').textContent = data.config.label;
   $('intrusiveNotificationTitle').textContent = data.title;
   $('intrusiveNotificationMessage').textContent = data.message;
   $('intrusiveNotificationCounter').textContent = `1 de ${1 + state.intrusiveQueue.length}`;
   $('intrusiveNotificationOpenBtn').innerHTML = `<span>${escapeHtml(data.config.action)}</span><i data-lucide="arrow-up-right"></i>`;
+  $('intrusiveNotificationLaterBtn')?.classList.toggle('hidden', data.isImmediate);
+  if ($('intrusiveNotificationWarningText')) $('intrusiveNotificationWarningText').textContent = data.isImmediate ? 'Demanda imediata: este alerta permanece bloqueante até você abrir a solicitação.' : 'Este aviso não some sozinho. Abra agora ou escolha ver depois.';
 
   $('intrusiveNotificationActor').innerHTML = data.actor
     ? `${avatarHTML(data.actor, 'md')}<div><span>Atualização feita por</span><strong>${escapeHtml(data.actor.nome)}</strong><small>${escapeHtml(data.actor.cargo || 'Marketing')}</small></div>`
@@ -1284,7 +1450,7 @@ function maybeShowNextIntrusiveNotification() {
   renderIntrusiveNotification(notification);
   $('intrusiveNotificationModal').classList.remove('hidden');
   document.body.classList.add('intrusive-notification-open');
-  playIntrusiveNotificationSound((INTRUSIVE_NOTIFICATION_TYPES[notification.tipo] || {}).tone || 'blue');
+  playIntrusiveNotificationSound(intrusiveNotificationData(notification).config.tone || 'blue');
   setTimeout(() => $('intrusiveNotificationOpenBtn')?.focus(), 80);
 }
 
@@ -1352,6 +1518,8 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'lembretes' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comentarios' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atividades_tarefa' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'academia_reservas' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'transferencias_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => { await loadNotifications(); renderNotifications(); const inserted = state.notifications.find(item => item.id === payload.new?.id); if (inserted) enqueueIntrusiveNotification(inserted); await dispatchPendingPush(); refreshIcons(); })
     .subscribe(status => {
       const online = status === 'SUBSCRIBED'; const failed = ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status);
@@ -1401,7 +1569,7 @@ function closeMobileSidebar() { $('sidebar').classList.remove('open'); $('sideba
 /* =========================================================
    TUTORIAL DE PRIMEIRO ACESSO — GESTOR E COLABORADOR
    ========================================================= */
-const ONBOARDING_VERSION = '2026-08-demandas-v2-detalhado';
+const ONBOARDING_VERSION = '2026-08-demandas-v3-operacao';
 
 function onboardingStorageKey() {
   return `pmg-demandas-onboarding:${ONBOARDING_VERSION}:${state.me?.id || 'usuario'}`;
@@ -1431,7 +1599,7 @@ function onboardingTaskFormDemo() {
   return onboardingDemoWindow('Criar demanda', `<div class="onboarding-form-demo">
     <label><span>Título</span><strong>Finalizar campanha de agosto</strong></label>
     <div class="onboarding-form-demo-grid"><label><span>Responsável</span><b>FM Francielly</b></label><label><span>Prazo</span><b>12 ago · 17h</b></label></div>
-    <div class="onboarding-option-demo"><i class="urgent"></i><div><strong>Prioridade alta</strong><small>Precisa de atenção antes das tarefas normais</small></div></div>
+    <div class="onboarding-option-demo"><i class="urgent"></i><div><strong>Prioridade IMEDIATA</strong><small>O nível máximo pode disparar um alerta invasivo individual ou coletivo; sem responsável, a primeira pessoa que iniciar assume a demanda</small></div></div>
     <div class="onboarding-option-demo"><i class="medium"></i><div><strong>Tamanho médio</strong><small>Algumas horas de trabalho</small></div></div>
   </div>`, 'Briefing, responsabilidade e prazo');
 }
@@ -1444,7 +1612,7 @@ function onboardingAssigneeDemo() {
   </div>`, 'Distribuição consciente da carga');
 }
 
-function onboardingStatusDemo(active = 'andamento', action = 'Enviar para revisão') {
+function onboardingStatusDemo(active = 'andamento', action = 'Enviar para avaliação') {
   const stages = [
     ['nova', 'circle-dot-dashed', 'Nova', 'Aguardando início'],
     ['andamento', 'loader-circle', 'Em andamento', 'Trabalho sendo executado'],
@@ -1499,7 +1667,7 @@ function onboardingCalendarDemo() {
 }
 
 function onboardingCompleteDemo(manager) {
-  return `<div class="onboarding-complete"><div class="onboarding-complete-icon"><i data-lucide="${manager ? 'clipboard-check' : 'badge-check'}"></i></div><strong>${manager ? 'Sua gestão começa aqui' : 'Sua rotina está pronta'}</strong><span>${manager ? 'Crie a primeira demanda com briefing, responsável e prazo claros.' : 'Abra suas demandas, atualize o status e registre impedimentos no próprio item.'}</span></div>`;
+  return `<div class="onboarding-complete"><div class="onboarding-complete-icon"><i data-lucide="${manager ? 'clipboard-check' : 'badge-check'}"></i></div><strong>${manager ? 'Sua gestão começa aqui' : 'Sua rotina está pronta'}</strong><span>${manager ? 'Crie a primeira demanda com briefing, responsável e prazo claros.' : 'Abra suas demandas, atualize o status e envie a entrega para avaliação quando estiver pronta.'}</span></div>`;
 }
 
 function getManagerOnboardingSteps(userName) {
@@ -1511,7 +1679,7 @@ function getManagerOnboardingSteps(userName) {
         ['clipboard-plus', 'Criar com clareza', 'Toda demanda deve explicar o resultado esperado, o contexto necessário e o prazo real.'],
         ['users-round', 'Distribuir sem sobrecarregar', 'Use carga, atrasos e estimativas antes de escolher o responsável.'],
         ['scan-search', 'Acompanhar sem microgerenciar', 'Observe status, prazos e bloqueios; não dependa de cobrar atualização por mensagem.'],
-        ['badge-check', 'Validar e encerrar', 'Uma entrega só deve ser concluída depois da revisão ou confirmação necessária.']
+        ['badge-check', 'Validar e encerrar', 'Toda conclusão passa pela avaliação de um gestor: aprovar encerra; pedir ajustes devolve ao responsável.']
       ],
       tip: ['compass', 'Seu ponto de partida', 'Use Hoje para enxergar urgências e Equipe para decidir onde novas demandas devem entrar.'],
       demo: onboardingMetricsDemo(true)
@@ -1542,15 +1710,15 @@ function getManagerOnboardingSteps(userName) {
     },
     {
       icon: 'workflow', eyebrow: 'Fluxo e status', title: 'Use o status como informação real, não decoração colorida',
-      description: 'O status indica em que ponto a demanda está. O responsável normalmente move o trabalho conforme executa. O gestor acompanha, remove impedimentos e pode corrigir o fluxo quando necessário, sem transformar cada mudança em uma cerimônia corporativa.',
+      description: 'O status indica em que ponto a demanda está. O responsável move o trabalho até Em revisão; a partir daí, um gestor avalia a entrega. Aprovar encerra a demanda e pedir ajustes devolve o item para Em andamento com a orientação registrada.',
       points: [
         ['circle-dot-dashed', 'Nova', 'A demanda foi criada e ainda não começou. Briefing e responsabilidade devem estar definidos.'],
         ['loader-circle', 'Em andamento', 'O responsável iniciou a execução e o trabalho está ativo.'],
-        ['scan-eye', 'Em revisão', 'A entrega está pronta para análise, aprovação ou ajustes finais.'],
-        ['circle-check-big', 'Concluída', 'O resultado foi aceito e o ciclo foi encerrado. Se houver nova necessidade, reabra ou crie outra demanda.']
+        ['scan-eye', 'Em revisão', 'O colaborador terminou sua parte e aguarda a avaliação obrigatória de um gestor.'],
+        ['circle-check-big', 'Concluída', 'Somente aparece depois que um gestor aprova a entrega. A avaliação e eventual observação ficam no histórico.']
       ],
       tip: ['hand', 'Evite antecipar status', 'Não marque como concluída apenas para limpar o painel. O histórico precisa representar o trabalho de verdade.'],
-      demo: onboardingStatusDemo('revisao', 'Validar entrega')
+      demo: onboardingStatusDemo('revisao', 'Aprovar ou pedir ajustes')
     },
     {
       icon: 'users-round', eyebrow: 'Painel da equipe', title: 'Encontre gargalos antes que virem urgência coletiva',
@@ -1570,7 +1738,7 @@ function getManagerOnboardingSteps(userName) {
       points: [
         ['file-check-2', 'Compare com o briefing', 'Valide o resultado esperado, formato, prazo e critérios registrados.'],
         ['message-square-text', 'Peça ajustes no comentário', 'Registre correções de forma específica para manter o contexto acessível.'],
-        ['circle-check-big', 'Conclua após validar', 'Encerrar confirma que a entrega foi aceita e alimenta os indicadores.'],
+        ['circle-check-big', 'Aprove após validar', 'O botão Aprovar e concluir é a única conclusão oficial do fluxo e alimenta os indicadores mensais.'],
         ['rotate-ccw', 'Reabra quando necessário', 'Se houver mudança relevante ou erro após a conclusão, devolva a demanda ao fluxo correto.']
       ],
       tip: ['history', 'Tudo fica registrado', 'Comentários, responsáveis e mudanças de status formam o histórico da demanda.'],
@@ -1578,9 +1746,9 @@ function getManagerOnboardingSteps(userName) {
     },
     {
       icon: 'calendar-days', eyebrow: 'Planejamento', title: 'Use agenda, prazos e alertas para reduzir cobranças manuais',
-      description: 'A Agenda reúne demandas, compromissos e lembretes. Prazos aparecem automaticamente; lembretes podem ser pessoais ou da equipe conforme a permissão. Ative as notificações no navegador para receber avisos neste computador.',
+      description: 'O Connect agora separa três necessidades: Agenda pessoal, Calendário do setor e Academia PMG. A Academia mostra horários livres e reservas; o gestor também analisa solicitações importadas do Microsoft Forms. Ative as notificações no navegador para receber avisos neste computador.',
       points: [
-        ['calendar-range', 'Visão mensal', 'Abra um dia para conferir tudo que vence ou acontece naquela data.'],
+        ['calendar-range', 'Três calendários', 'Agenda organiza itens pessoais; Calendário do setor reúne o trabalho coletivo; Academia PMG controla disponibilidade do espaço.'],
         ['alarm-clock', 'Lembretes programados', 'Defina quando o sistema deve avisar antes de um prazo ou compromisso.'],
         ['bell-ring', 'Notificações', 'Novas atribuições, comentários e mudanças importantes aparecem na central de alertas.'],
         ['refresh-cw', 'Recorrência', 'Use repetição para rotinas reais, evitando recriar o mesmo lembrete toda semana.']
@@ -1623,7 +1791,7 @@ function getCollaboratorOnboardingSteps(userName) {
       points: [
         ['sun', 'Planeje o dia', 'A tela Hoje reúne atrasos, prazos, agenda e lembretes que pedem atenção.'],
         ['clipboard-check', 'Leia antes de começar', 'Abra a demanda e confirme briefing, prazo, prioridade e resultado esperado.'],
-        ['workflow', 'Atualize o status', 'Mova a demanda quando iniciar, enviar para revisão ou concluir.'],
+        ['workflow', 'Atualize o status', 'Mova a demanda quando iniciar e envie para avaliação quando a entrega estiver pronta. A conclusão final é validada por um gestor.'],
         ['message-circle', 'Registre impedimentos', 'Use comentários para avisar dependências, dúvidas e decisões importantes.']
       ],
       tip: ['compass', 'Seu ponto de partida', 'Comece pela tela Hoje e depois abra Minhas demandas para enxergar toda a sua fila.'],
@@ -1647,7 +1815,7 @@ function getCollaboratorOnboardingSteps(userName) {
       points: [
         ['file-text', 'Leia o briefing inteiro', 'Entenda objetivo, formato, público, materiais, restrições e aprovação esperada.'],
         ['calendar-clock', 'Confirme o prazo', 'Observe data e horário, especialmente quando existir revisão antes da entrega final.'],
-        ['badge-alert', 'Entenda a prioridade', 'Urgente interrompe prioridades; alta exige atenção; média e baixa seguem o fluxo normal.'],
+        ['badge-alert', 'Entenda a prioridade', 'IMEDIATA é o nível máximo e exige ação naquele instante; urgente vem logo abaixo. Alta, média e baixa seguem o fluxo normal.'],
         ['circle-help', 'Pergunte no próprio item', 'Registre dúvidas para que a resposta permaneça junto da demanda.']
       ],
       tip: ['hand', 'Não adivinhe o briefing', 'Quando a informação necessária não estiver registrada, sinalize antes de executar.'],
@@ -1658,12 +1826,12 @@ function getCollaboratorOnboardingSteps(userName) {
       description: 'O botão principal da demanda indica a próxima ação do fluxo. Atualizar o status permite que gestor e equipe acompanhem o andamento sem interromper você para pedir notícia. É uma troca bastante razoável: um clique por menos cobrança.',
       points: [
         ['play', 'Iniciar demanda', 'Ao começar a execução, mova de Nova para Em andamento.'],
-        ['scan-eye', 'Enviar para revisão', 'Quando a entrega estiver pronta para validação, mova para Em revisão e registre observações.'],
-        ['circle-check-big', 'Concluir', 'Finalize somente quando o resultado tiver sido aceito ou quando o fluxo não exigir revisão.'],
-        ['rotate-ccw', 'Reabrir', 'Caso surja ajuste relevante após conclusão, devolva a demanda ao estágio adequado.']
+        ['scan-eye', 'Enviar para avaliação', 'Quando a entrega estiver pronta, envie para Em revisão. A conclusão fica bloqueada até um gestor avaliar.'],
+        ['badge-check', 'Aguardar a validação', 'Se o gestor aprovar, a demanda é concluída. Se pedir ajustes, ela volta para Em andamento com a observação.'],
+        ['message-square-warning', 'Responder aos ajustes', 'Leia a observação do gestor, faça a correção e envie novamente para avaliação.']
       ],
       tip: ['timer-reset', 'Status desatualizado gera ruído', 'Não deixe “Nova” quando já começou nem “Em andamento” quando está aguardando revisão.'],
-      demo: onboardingStatusDemo('andamento', 'Enviar para revisão')
+      demo: onboardingStatusDemo('andamento', 'Enviar para avaliação')
     },
     {
       icon: 'message-circle', eyebrow: 'Comunicação e impedimentos', title: 'Registre o que afeta a entrega dentro da demanda',
@@ -1707,19 +1875,19 @@ function getCollaboratorOnboardingSteps(userName) {
       points: [
         ['search', 'Busque antes de criar contexto novo', 'Use Ctrl + K para encontrar demandas e lembretes existentes.'],
         ['copy-x', 'Evite duplicidades', 'Quando o ajuste pertence ao mesmo resultado, continue no item existente.'],
-        ['badge-check', 'Conclua com responsabilidade', 'Verifique se a entrega está pronta e se observações finais foram registradas.'],
+        ['badge-check', 'Envie para avaliação com responsabilidade', 'Verifique se a entrega está pronta e registre observações finais antes de pedir a validação do gestor.'],
         ['shield-alert', 'Não esconda atrasos', 'Atualize o item e sinalize o risco; status correto ajuda a equipe a reagir.']
       ],
-      tip: ['refresh-cw', 'Atualização mínima saudável', 'Ao iniciar, bloquear, enviar para revisão ou concluir, atualize o status ou deixe um comentário.'],
+      tip: ['refresh-cw', 'Atualização mínima saudável', 'Ao iniciar, bloquear, enviar para avaliação ou receber pedido de ajustes, atualize o status ou deixe um comentário.'],
       demo: onboardingTaskDetailDemo()
     },
     {
       icon: 'badge-check', eyebrow: 'Checklist do colaborador', title: 'Você está pronto para assumir suas primeiras demandas',
-      description: 'Quando uma demanda for atribuída a você, ela aparecerá em Hoje e em Minhas demandas. Leia o briefing, organize o prazo, inicie o trabalho, registre impedimentos e envie para revisão quando estiver pronto. Esse fluxo simples evita boa parte do caos artesanal que empresas chamam de alinhamento.',
+      description: 'Quando uma demanda for atribuída a você, ela aparecerá em Hoje e em Minhas demandas. Leia o briefing, organize o prazo, inicie o trabalho, registre impedimentos e envie para avaliação quando estiver pronto. Um gestor aprova a conclusão ou devolve com ajustes registrados.',
       points: [
         ['check', 'Entendi a entrega', 'Sei qual resultado é esperado, quais materiais existem e quem valida.'],
         ['check', 'Planejei o prazo', 'Considerei esforço, dependências e outras demandas da minha fila.'],
-        ['check', 'Vou atualizar o fluxo', 'Mudarei o status e registrarei bloqueios no momento adequado.'],
+        ['check', 'Vou atualizar o fluxo', 'Mudarei o status, registrarei bloqueios e enviarei a entrega para avaliação quando estiver pronta.'],
         ['circle-help', 'Tutorial disponível', 'Abra novamente em Avatar → Ver tutorial sempre que precisar.']
       ],
       tip: ['rocket', 'Próxima ação', 'Feche o tutorial, abra Minhas demandas e confira se existe algum item atribuído a você.'],
@@ -1784,6 +1952,266 @@ function moveOnboarding(direction) {
   state.onboardingStep = Math.max(0, next);
   renderOnboardingStep();
 }
+
+
+/* =========================================================
+   DEMANDAS V3 — OPERAÇÃO, ACADEMIA, RELATÓRIOS E ACESSIBILIDADE
+   ========================================================= */
+function isV3MissingError(error) {
+  const message = String(error?.message || error?.details || error || '');
+  return /academia_reservas|academia_config|transferencias_tarefa|does not exist|schema cache/i.test(message);
+}
+
+async function loadOperationalV3() {
+  try {
+    const [transferResult, academyResult, configResult] = await Promise.all([
+      db.from('transferencias_tarefa')
+        .select('*, de:colaboradores!transferencias_tarefa_de_colaborador_id_fkey(id,nome,foto_url,cargo,role), para:colaboradores!transferencias_tarefa_para_colaborador_id_fkey(id,nome,foto_url,cargo,role), por:colaboradores!transferencias_tarefa_transferido_por_fkey(id,nome,foto_url,cargo,role)')
+        .order('criado_em', { ascending: false }).limit(1200),
+      db.from('academia_reservas').select('*').order('inicio_em', { ascending: true }).limit(1800),
+      db.from('academia_config').select('*').eq('id', 1).maybeSingle()
+    ]);
+    const firstError = transferResult.error || academyResult.error || configResult.error;
+    if (firstError) throw firstError;
+    state.transfers = transferResult.data || [];
+    state.academyReservations = academyResult.data || [];
+    state.academyConfig = configResult.data || null;
+    state.v3Ready = true;
+  } catch (error) {
+    if (!isV3MissingError(error)) throw error;
+    console.warn('[Demandas V3] Migração ainda não disponível:', error);
+    state.transfers = []; state.academyReservations = []; state.academyConfig = null; state.v3Ready = false;
+  }
+}
+
+function formatHours(value) {
+  const num = Number(value || 0);
+  return Number.isInteger(num) ? `${num}h` : `${num.toFixed(1).replace('.', ',')}h`;
+}
+
+function openTaskEvaluation(taskId = state.selectedTask?.id) {
+  if (!isManager()) return toast('Somente gestores podem avaliar conclusões.', 'error');
+  const task = state.tasks.find(item => item.id === taskId);
+  if (!task || task.status !== 'revisao') return toast('Esta demanda não está aguardando avaliação.', 'error');
+  const person = collaborator(task.responsavel_id);
+  $('evaluationTaskId').value = task.id;
+  $('evaluationNote').value = task.avaliacao_observacao || '';
+  $('evaluationTaskSummary').innerHTML = `<div class="evaluation-summary-person">${avatarHTML(person, 'lg')}<div><span>Entrega enviada por</span><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Marketing')}</small></div></div><div class="evaluation-summary-task"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade] || 'Média'}</span><h3>${escapeHtml(task.titulo)}</h3><p>${escapeHtml(task.descricao || 'Sem descrição registrada.')}</p><div><span><i data-lucide="clock-3"></i>${formatHours(sizeWeight(task))} estimadas</span><span><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div></div>`;
+  $('taskEvaluationModal').classList.remove('hidden'); refreshIcons();
+}
+
+async function submitTaskEvaluation(approved) {
+  const taskId = $('evaluationTaskId').value;
+  const note = $('evaluationNote').value.trim();
+  if (!approved && !note) { $('evaluationNote').focus(); return toast('Informe o que precisa ser ajustado antes de devolver a demanda.', 'error'); }
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('avaliar_conclusao', { p_tarefa_id: taskId, p_aprovado: approved, p_observacao: note || null });
+    if (error) throw error;
+    closeModal('taskEvaluationModal'); await refreshData(); await dispatchPendingPush();
+    if (state.tasks.some(task => task.id === taskId)) await openTask(taskId);
+    toast(approved ? 'Conclusão aprovada. Demanda encerrada.' : 'Demanda devolvida para ajustes.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+function openTransferTask(taskId = state.selectedTask?.id) {
+  if (!isManager()) return toast('Somente gestores podem transferir demandas.', 'error');
+  const task = state.tasks.find(item => item.id === taskId); if (!task) return;
+  const from = collaborator(task.responsavel_id);
+  populateAssigneeSelects();
+  $('transferTaskId').value = task.id; $('transferAssignee').value = ''; $('transferNote').value = '';
+  $('transferFromCard').innerHTML = `${avatarHTML(from, 'lg')}<div><span>Responsável atual</span><strong>${escapeHtml(from?.nome || 'Sem responsável')}</strong><small>${escapeHtml(from?.cargo || 'Marketing')} · ${formatHours(sizeWeight(task))} desta demanda na carga</small></div>`;
+  $('transferHoursBadge').textContent = formatHours(sizeWeight(task));
+  renderAssigneePreview('transferAssignee', 'transferAssigneePreview');
+  $('transferTaskModal').classList.remove('hidden'); refreshIcons();
+}
+
+async function submitTransferTask(event) {
+  event.preventDefault();
+  const taskId = $('transferTaskId').value, personId = $('transferAssignee').value, note = $('transferNote').value.trim();
+  if (!personId) return toast('Selecione quem receberá a demanda.', 'error');
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: personId, p_observacao: note || null });
+    if (error) throw error;
+    closeModal('transferTaskModal'); await refreshData(); await dispatchPendingPush(); await openTask(taskId);
+    toast('Demanda transferida com briefing, histórico e horas preservados.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+function sectorCalendarItemsForDate(key) {
+  const personFilter = state.sectorPersonFilter || '';
+  const tasks = state.tasks.filter(task => !task.arquivada_em && taskDueKey(task) === key && (!personFilter || task.responsavel_id === personFilter))
+    .map(task => ({ kind: 'task', id: task.id, title: task.titulo, time: taskDue(task), task, person: collaborator(task.responsavel_id) }));
+  const reminders = state.reminders.filter(item => !item.concluido_em && item.visibilidade === 'equipe' && dateKey(reminderEffectiveTime(item)) === key && (!personFilter || item.colaborador_id === personFilter || item.criado_por === personFilter))
+    .map(item => ({ kind: item.tipo === 'compromisso' ? 'meeting' : 'reminder', id: item.id, title: item.titulo, time: reminderEffectiveTime(item), reminder: item, person: collaborator(item.colaborador_id || item.criado_por) }));
+  return [...tasks, ...reminders].sort((a, b) => new Date(a.time) - new Date(b.time));
+}
+
+function populateSectorPersonFilter() {
+  const select = $('sectorPersonFilter'); if (!select) return;
+  const value = state.sectorPersonFilter || '';
+  select.innerHTML = `<option value="">Toda a equipe</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
+  select.value = value;
+}
+
+function renderSectorCalendar() {
+  if (!$('sectorCalendarGrid')) return;
+  populateSectorPersonFilter();
+  const cursor = state.sectorCalendarCursor;
+  $('sectorCalendarMonthLabel').textContent = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
+  const selected = new Date(`${state.sectorSelectedDate}T12:00:00`);
+  $('sectorSelectedWeekday').textContent = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(selected);
+  $('sectorSelectedNumber').textContent = String(selected.getDate()).padStart(2, '0');
+  $('sectorSelectedMonth').textContent = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(selected);
+
+  const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`;
+  const monthTasks = state.tasks.filter(task => !task.arquivada_em && taskDueKey(task).startsWith(monthKey) && (!state.sectorPersonFilter || task.responsavel_id === state.sectorPersonFilter));
+  const monthMeetings = state.reminders.filter(r => !r.concluido_em && r.visibilidade === 'equipe' && dateKey(reminderEffectiveTime(r)).startsWith(monthKey));
+  const immediate = monthTasks.filter(task => task.prioridade === 'imediata' && task.status !== 'concluida').length;
+  const evaluation = monthTasks.filter(task => task.status === 'revisao').length;
+  $('sectorCalendarSummary').innerHTML = [
+    ['clipboard-list', monthTasks.length, 'Demandas com prazo'], ['calendar-clock', monthMeetings.length, 'Compromissos do setor'], ['siren', immediate, 'Imediatas abertas'], ['scan-eye', evaluation, 'Em avaliação']
+  ].map(([icon,value,label]) => `<div class="sector-summary-card"><i data-lucide="${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('');
+
+  const first = startOfMonth(cursor), gridStart = addDays(first, -first.getDay()); const cells=[];
+  for (let i=0;i<42;i++) {
+    const date=addDays(gridStart,i), key=dateKey(date), entries=sectorCalendarItemsForDate(key), outside=date.getMonth()!==cursor.getMonth();
+    const immediateDay=entries.some(e=>e.task?.prioridade==='imediata');
+    cells.push(`<button class="calendar-day sector-day ${outside?'outside':''} ${key===todayKey()?'today':''} ${key===state.sectorSelectedDate?'selected':''} ${immediateDay?'has-immediate':''}" data-sector-date="${key}"><span class="day-number">${date.getDate()}</span><div class="calendar-events">${entries.slice(0,3).map(e=>`<span class="calendar-event ${e.task?.prioridade==='imediata'?'immediate':e.kind}" title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span>`).join('')}${entries.length>3?`<span class="more-events">+${entries.length-3}</span>`:''}</div></button>`);
+  }
+  $('sectorCalendarGrid').innerHTML=cells.join('');
+  const entries=sectorCalendarItemsForDate(state.sectorSelectedDate);
+  $('sectorSelectedItems').innerHTML=entries.length?entries.map(e=>`<button class="sector-day-item ${e.task?.prioridade==='imediata'?'immediate':''}" data-open-${e.kind==='task'?'task':'reminder'}="${e.id}"><span class="sector-item-avatar">${e.person?avatarHTML(e.person,'sm'):`<i data-lucide="${e.kind==='task'?'clipboard-check':'calendar-clock'}"></i>`}</span><span><strong>${escapeHtml(e.title)}</strong><small>${formatTime(e.time)} · ${e.kind==='task'?`${PRIORITY[e.task.prioridade]||'Média'} · ${escapeHtml(e.person?.nome||'Sem responsável')}`:'Compromisso do setor'}</small></span><i data-lucide="chevron-right"></i></button>`).join(''):`<div class="empty-state"><i data-lucide="calendar-check"></i>Nada do setor programado neste dia.</div>`;
+  refreshIcons();
+}
+
+function academyTime(value, fallback='08:00') { return String(value || fallback).slice(0,5); }
+function academyStatusLabel(status) { return ({ solicitada:'Solicitada', aprovada:'Aprovada', recusada:'Recusada', cancelada:'Cancelada' })[status] || status; }
+function academyReservationsForDate(key, includeInactive=false) {
+  return state.academyReservations.filter(r => dateKey(r.inicio_em)===key && (includeInactive || ['solicitada','aprovada'].includes(r.status))).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em));
+}
+function academyConflicts(startIso,endIso,ignoreId='') {
+  const start=new Date(startIso), end=new Date(endIso);
+  return state.academyReservations.filter(r=>r.id!==ignoreId && r.status==='aprovada' && new Date(r.inicio_em)<end && new Date(r.fim_em)>start);
+}
+function minutesFromClock(clock) { const [h,m]=academyTime(clock).split(':').map(Number); return h*60+m; }
+function clockFromMinutes(total) { return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`; }
+function academyFreeSlots(key) {
+  const open=minutesFromClock(state.academyConfig?.horario_abertura||'08:00'), close=minutesFromClock(state.academyConfig?.horario_fechamento||'18:00');
+  const busy=academyReservationsForDate(key).filter(r=>r.status==='aprovada').map(r=>{ const a=splitDateTime(r.inicio_em).time,b=splitDateTime(r.fim_em).time; return [minutesFromClock(a),minutesFromClock(b)]; }).sort((a,b)=>a[0]-b[0]);
+  const slots=[]; let cursor=open;
+  busy.forEach(([a,b])=>{ if(a>cursor) slots.push([cursor,Math.min(a,close)]); cursor=Math.max(cursor,b); }); if(cursor<close) slots.push([cursor,close]);
+  return slots.filter(([a,b])=>b-a>=30).map(([a,b])=>`${clockFromMinutes(a)}–${clockFromMinutes(b)}`);
+}
+
+function renderAcademy() {
+  if (!$('academyCalendarGrid')) return;
+  const setup=$('academySetupNotice');
+  if (!state.v3Ready) {
+    setup.classList.remove('hidden'); setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>A Academia PMG precisa da migração V3.</strong><span>Execute <code>sql/demandas_v3_operacao.sql</code> no Supabase para liberar reservas, fila do Forms e disponibilidade.</span></div>`;
+  } else setup.classList.add('hidden');
+  const config=state.academyConfig||{horario_abertura:'08:00',horario_fechamento:'18:00'};
+  const formsReady=Boolean(config.forms_url);
+  $('academyFormsBtn').disabled=!formsReady; $('academyCopyFormsBtn').disabled=!formsReady;
+  const cursor=state.academyCursor; $('academyMonthLabel').textContent=new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(cursor);
+  const selected=new Date(`${state.academySelectedDate}T12:00:00`);
+  $('academySelectedWeekday').textContent=new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(selected); $('academySelectedNumber').textContent=String(selected.getDate()).padStart(2,'0'); $('academySelectedMonth').textContent=new Intl.DateTimeFormat('pt-BR',{month:'long'}).format(selected);
+  const pending=state.academyReservations.filter(r=>r.status==='solicitada'); const upcoming=state.academyReservations.filter(r=>r.status==='aprovada'&&new Date(r.fim_em)>=new Date()); const thisMonth=state.academyReservations.filter(r=>r.status==='aprovada'&&new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
+  const totalPeople=thisMonth.reduce((sum,r)=>sum+Number(r.participantes||0),0);
+  $('academySummary').innerHTML=[['calendar-check',thisMonth.length,'Reservas aprovadas no mês'],['inbox',pending.length,'Solicitações pendentes'],['users-round',totalPeople,'Pessoas previstas'],['clock-3',`${academyTime(config.horario_abertura)}–${academyTime(config.horario_fechamento)}`,'Horário padrão']].map(([i,v,l])=>`<div class="academy-summary-card"><i data-lucide="${i}"></i><div><strong>${v}</strong><span>${l}</span></div></div>`).join('');
+  const first=startOfMonth(cursor), gridStart=addDays(first,-first.getDay()), cells=[];
+  for(let i=0;i<42;i++){ const date=addDays(gridStart,i),key=dateKey(date),rs=academyReservationsForDate(key),approved=rs.filter(r=>r.status==='aprovada'),requested=rs.filter(r=>r.status==='solicitada'),outside=date.getMonth()!==cursor.getMonth();
+    const stateClass=approved.length?'academy-busy':requested.length?'academy-requested':'academy-free-day';
+    cells.push(`<button class="calendar-day academy-day ${outside?'outside':''} ${key===todayKey()?'today':''} ${key===state.academySelectedDate?'selected':''} ${stateClass}" data-academy-date="${key}"><span class="day-number">${date.getDate()}</span><div class="academy-day-state"><strong>${approved.length?`${approved.length} reserva${approved.length>1?'s':''}`:requested.length?`${requested.length} pendente${requested.length>1?'s':''}`:'Livre'}</strong>${approved.slice(0,2).map(r=>`<span>${formatTime(r.inicio_em)} ${escapeHtml(r.titulo)}</span>`).join('')}</div></button>`); }
+  $('academyCalendarGrid').innerHTML=cells.join('');
+  const selectedReservations=academyReservationsForDate(state.academySelectedDate,true).filter(r=>!['recusada','cancelada'].includes(r.status)); const free=academyFreeSlots(state.academySelectedDate);
+  $('academyAvailability').innerHTML=`<span class="academy-availability-label"><i data-lucide="clock"></i>Disponibilidade</span><strong>${free.length?free.join(' · '):'Sem janela livre no horário padrão'}</strong><small>${escapeHtml(config.observacoes||'Consulte reservas aprovadas e solicitações pendentes antes de confirmar.')}</small>`;
+  $('academySelectedItems').innerHTML=selectedReservations.length?selectedReservations.map(r=>academyReservationCard(r,true)).join(''):`<div class="empty-state"><i data-lucide="door-open"></i>O espaço está livre neste dia.</div>`;
+  $('academyPendingCount').textContent=`${pending.length} solicitaç${pending.length===1?'ão':'ões'}`;
+  $('academyPendingList').innerHTML=pending.length?pending.slice(0,30).map(r=>academyReservationCard(r,false)).join(''):`<div class="empty-state"><i data-lucide="badge-check"></i>Nenhuma solicitação aguardando análise.</div>`;
+  refreshIcons();
+}
+
+function academyReservationCard(r, compact=false) {
+  const conflict=academyConflicts(r.inicio_em,r.fim_em,r.id).length>0;
+  return `<article class="academy-reservation-card status-${r.status} ${conflict?'has-conflict':''}"><div class="academy-reservation-time"><strong>${formatTime(r.inicio_em)}</strong><span>${formatTime(r.fim_em)}</span></div><div class="academy-reservation-copy"><div><span class="academy-status-pill ${r.status}">${academyStatusLabel(r.status)}</span>${conflict&&r.status==='solicitada'?'<span class="academy-conflict-pill"><i data-lucide="triangle-alert"></i>Conflito</span>':''}</div><h4>${escapeHtml(r.titulo)}</h4><p>${escapeHtml(r.solicitante)}${r.setor?` · ${escapeHtml(r.setor)}`:''}${r.participantes?` · ${r.participantes} pessoas`:''}</p>${!compact&&r.finalidade?`<small>${escapeHtml(r.finalidade)}</small>`:''}</div>${isManager()?`<div class="academy-reservation-actions"><button type="button" class="icon-btn subtle" data-academy-edit="${r.id}" title="Editar"><i data-lucide="pencil"></i></button>${r.status==='solicitada'?`<button type="button" class="academy-status-action approve" data-academy-status="aprovada" data-academy-id="${r.id}"><i data-lucide="check"></i>Aprovar</button><button type="button" class="academy-status-action reject" data-academy-status="recusada" data-academy-id="${r.id}"><i data-lucide="x"></i>Recusar</button>`:r.status==='aprovada'?`<button type="button" class="academy-status-action reject" data-academy-status="cancelada" data-academy-id="${r.id}"><i data-lucide="ban"></i>Cancelar</button>`:''}</div>`:''}</article>`;
+}
+
+function openAcademyBooking(reservation=null,date=state.academySelectedDate) {
+  if (!isManager()) return toast('Somente gestores podem gerenciar reservas.', 'error');
+  const item=reservation || null, start=item?splitDateTime(item.inicio_em):{date,time:'09:00'}, end=item?splitDateTime(item.fim_em):{date,time:'10:00'};
+  $('academyBookingTitle').textContent=item?'Editar reserva':'Nova reserva'; $('academyBookingId').value=item?.id||''; $('academyBookingName').value=item?.titulo||''; $('academyRequester').value=item?.solicitante||''; $('academyDepartment').value=item?.setor||''; $('academyEmail').value=item?.email||''; $('academyPhone').value=item?.telefone||''; $('academyDate').value=start.date||date||todayKey(); $('academyStartTime').value=start.time||'09:00'; $('academyEndTime').value=end.time||'10:00'; $('academyParticipants').value=item?.participantes??''; $('academyPurpose').value=item?.finalidade||''; $('academyNotes').value=item?.observacoes||'';
+  updateAcademyConflictPreview(); $('academyBookingModal').classList.remove('hidden'); refreshIcons();
+}
+function updateAcademyConflictPreview() {
+  const date=$('academyDate')?.value,start=$('academyStartTime')?.value,end=$('academyEndTime')?.value,box=$('academyConflictPreview'); if(!box||!date||!start||!end)return;
+  const a=localDateTime(date,start),b=localDateTime(date,end); if(new Date(b)<=new Date(a)){box.className='academy-conflict-preview conflict';box.innerHTML='<i data-lucide="triangle-alert"></i><span>O horário final precisa ser posterior ao início.</span>';refreshIcons();return;}
+  const conflicts=academyConflicts(a,b,$('academyBookingId')?.value||''); box.className=`academy-conflict-preview ${conflicts.length?'conflict':'free'}`; box.innerHTML=conflicts.length?`<i data-lucide="triangle-alert"></i><span>Conflita com <strong>${escapeHtml(conflicts[0].titulo)}</strong>, ${formatTime(conflicts[0].inicio_em)}–${formatTime(conflicts[0].fim_em)}. Você pode salvar como solicitação, mas não conseguirá aprovar enquanto houver conflito.</span>`:`<i data-lucide="circle-check"></i><span>Horário sem conflito com reservas aprovadas.</span>`;refreshIcons();
+}
+async function saveAcademyBooking(event){event.preventDefault();const date=$('academyDate').value,start=$('academyStartTime').value,end=$('academyEndTime').value;if(!date||!start||!end)return;setLoading(true);try{const{error}=await db.rpc('salvar_reserva_academia',{p_id:$('academyBookingId').value||null,p_titulo:$('academyBookingName').value.trim(),p_solicitante:$('academyRequester').value.trim(),p_setor:$('academyDepartment').value.trim()||null,p_email:$('academyEmail').value.trim()||null,p_telefone:$('academyPhone').value.trim()||null,p_finalidade:$('academyPurpose').value.trim()||null,p_inicio_em:localDateTime(date,start),p_fim_em:localDateTime(date,end),p_participantes:$('academyParticipants').value?Number($('academyParticipants').value):null,p_observacoes:$('academyNotes').value.trim()||null});if(error)throw error;closeModal('academyBookingModal');await refreshData();toast('Reserva da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
+async function updateAcademyStatus(id,status){if(!isManager())return;setLoading(true);try{const{error}=await db.rpc('atualizar_status_reserva_academia',{p_id:id,p_status:status});if(error)throw error;await refreshData();toast(status==='aprovada'?'Reserva aprovada.':status==='recusada'?'Solicitação recusada.':'Reserva cancelada.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
+function openAcademyConfig(){const c=state.academyConfig||{};$('academyFormsUrl').value=c.forms_url||'';$('academyOpenTime').value=academyTime(c.horario_abertura,'08:00');$('academyCloseTime').value=academyTime(c.horario_fechamento,'18:00');$('academyConfigNotes').value=c.observacoes||'';$('academyConfigModal').classList.remove('hidden');}
+async function saveAcademyConfig(event){event.preventDefault();setLoading(true);try{const{error}=await db.rpc('salvar_config_academia',{p_forms_url:$('academyFormsUrl').value.trim()||null,p_horario_abertura:$('academyOpenTime').value||'08:00',p_horario_fechamento:$('academyCloseTime').value||'18:00',p_observacoes:$('academyConfigNotes').value.trim()||null});if(error)throw error;closeModal('academyConfigModal');await refreshData();toast('Configuração da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
+function openAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Microsoft Forms.', 'error');window.open(url,'_blank','noopener,noreferrer');}
+async function copyAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Microsoft Forms.', 'error');try{await navigator.clipboard.writeText(url);toast('Link do Forms copiado.');}catch(_){toast('Não foi possível copiar automaticamente.', 'error');}}
+
+function normalizeHeader(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+const ACADEMY_IMPORT_FIELDS=[['titulo','Título / evento',['titulo','evento','treinamento','assunto','nome do evento']],['solicitante','Solicitante',['solicitante','nome','responsavel','seu nome']],['setor','Setor',['setor','departamento','area']],['email','E-mail',['email','e mail']],['telefone','Telefone / ramal',['telefone','ramal','celular']],['data','Data',['data','dia','data desejada']],['inicio','Horário inicial',['inicio','horario inicial','hora inicio','horario de inicio']],['fim','Horário final',['fim','horario final','hora fim','horario de termino']],['participantes','Participantes',['participantes','quantidade','pessoas','numero de pessoas']],['finalidade','Finalidade',['finalidade','objetivo','motivo']],['observacoes','Observações',['observacoes','observacao','necessidades','comentarios']],['chave','ID / Data da resposta',['id','respondent id','data de conclusao','hora de conclusao','timestamp']]];
+function autoAcademyImportMap(headers){const normalized=headers.map(h=>[h,normalizeHeader(h)]);const map={};ACADEMY_IMPORT_FIELDS.forEach(([key,_label,candidates])=>{const found=normalized.find(([,n])=>candidates.some(c=>n===c||n.includes(c)));map[key]=found?.[0]||'';});return map;}
+function academyImportSelect(key,label,headers){const value=state.academyImportMap[key]||'';return `<label><span>${label}</span><select data-academy-map="${key}"><option value="">Não importar</option>${headers.map(h=>`<option value="${escapeHtml(h)}" ${h===value?'selected':''}>${escapeHtml(h)}</option>`).join('')}</select></label>`;}
+function renderAcademyImportMapping(){const box=$('academyImportMapping');if(!state.academyImportHeaders.length){box.classList.add('hidden');return;}box.classList.remove('hidden');box.innerHTML=`<div class="academy-import-map-head"><strong>Mapeamento das colunas</strong><span>Confira principalmente data, início e fim.</span></div><div class="academy-import-map-grid">${ACADEMY_IMPORT_FIELDS.map(([k,l])=>academyImportSelect(k,l,state.academyImportHeaders)).join('')}</div>`;renderAcademyImportPreview();}
+function academyMapped(row,key){const header=state.academyImportMap[key];return header?row[header]:'';}
+function parseFormsDate(value){if(value instanceof Date&&!isNaN(value))return dateKey(value);const text=String(value||'').trim();if(!text)return'';let m=text.match(/^(\d{1,2})[\/]([0-9]{1,2})[\/]([0-9]{2,4})/);if(m){let y=m[3].length===2?`20${m[3]}`:m[3];return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;}m=text.match(/^(\d{4})[-\/]([0-9]{1,2})[-\/]([0-9]{1,2})/);if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;const d=new Date(text);return isNaN(d)?'':dateKey(d);}
+function parseFormsTime(value,fallback='09:00'){if(value instanceof Date&&!isNaN(value))return `${String(value.getHours()).padStart(2,'0')}:${String(value.getMinutes()).padStart(2,'0')}`;const text=String(value||'').trim();const m=text.match(/(\d{1,2})[:h](\d{2})/i)||text.match(/^(\d{1,2})$/);if(!m)return fallback;return `${String(Math.min(23,Number(m[1]))).padStart(2,'0')}:${m[2]||'00'}`;}
+async function handleAcademyImportFile(event){const file=event.target.files?.[0];if(!file)return;if(!window.XLSX)return toast('Biblioteca de Excel não carregou. Atualize a página.', 'error');try{const data=await file.arrayBuffer();const workbook=XLSX.read(data,{type:'array',cellDates:true});const sheet=workbook.Sheets[workbook.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false});state.academyImportRows=rows;state.academyImportHeaders=rows.length?Object.keys(rows[0]):[];state.academyImportMap=autoAcademyImportMap(state.academyImportHeaders);renderAcademyImportMapping();$('academyImportConfirmBtn').disabled=!rows.length;toast(`${rows.length} resposta${rows.length===1?'':'s'} carregada${rows.length===1?'':'s'}.`);}catch(error){console.error(error);toast('Não foi possível ler esse relatório.', 'error');}}
+function renderAcademyImportPreview(){const rows=state.academyImportRows.slice(0,5);$('academyImportPreview').innerHTML=rows.length?`<div class="academy-import-preview-head"><strong>Prévia</strong><span>${state.academyImportRows.length} linhas no arquivo</span></div>${rows.map((r,i)=>`<div class="academy-import-preview-row"><b>${i+1}</b><span><strong>${escapeHtml(String(academyMapped(r,'titulo')||'Sem título'))}</strong><small>${escapeHtml(String(academyMapped(r,'solicitante')||'Sem solicitante'))} · ${escapeHtml(String(academyMapped(r,'data')||'Sem data'))}</small></span></div>`).join('')}`:'';}
+async function importAcademyFormsRows(){if(!state.academyImportRows.length)return;const required=['titulo','solicitante','data','inicio','fim'];const missing=required.filter(k=>!state.academyImportMap[k]);if(missing.length)return toast('Mapeie título, solicitante, data, início e fim antes de importar.', 'error');setLoading(true);let ok=0,failed=0;try{for(let i=0;i<state.academyImportRows.length;i++){const row=state.academyImportRows[i],date=parseFormsDate(academyMapped(row,'data')),start=parseFormsTime(academyMapped(row,'inicio'),'09:00'),end=parseFormsTime(academyMapped(row,'fim'),'10:00');if(!date){failed++;continue;}const rawKey=String(academyMapped(row,'chave')||'').trim();const key=rawKey||`${fileSafeKey(academyMapped(row,'solicitante'))}:${date}:${start}:${fileSafeKey(academyMapped(row,'titulo'))}`;const participants=parseInt(String(academyMapped(row,'participantes')||'').replace(/\D+/g,''),10);const {error}=await db.rpc('importar_reserva_academia_forms',{p_chave:key,p_titulo:String(academyMapped(row,'titulo')||'').trim(),p_solicitante:String(academyMapped(row,'solicitante')||'').trim(),p_setor:String(academyMapped(row,'setor')||'').trim()||null,p_email:String(academyMapped(row,'email')||'').trim()||null,p_telefone:String(academyMapped(row,'telefone')||'').trim()||null,p_finalidade:String(academyMapped(row,'finalidade')||'').trim()||null,p_inicio_em:localDateTime(date,start),p_fim_em:localDateTime(date,end),p_participantes:Number.isFinite(participants)?participants:null,p_observacoes:String(academyMapped(row,'observacoes')||'').trim()||null,p_payload:row});if(error){console.warn('[Forms import]',error);failed++;}else ok++;}closeModal('academyImportModal');await refreshData();toast(`${ok} solicitação${ok===1?'':'ões'} importada${ok===1?'':'s'}${failed?` · ${failed} ignorada${failed===1?'':'s'} por erro`:''}.`);}finally{setLoading(false);}}
+function fileSafeKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'linha';}
+
+function monthInputValue(date=new Date()){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;}
+function monthBounds(value){const [y,m]=String(value||monthInputValue()).split('-').map(Number);const start=new Date(y,m-1,1),end=new Date(y,m,1);return{start,end,label:new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(start)};}
+function buildMonthlyReport(value){
+  const {start,end,label}=monthBounds(value),operators=state.collaborators.filter(p=>p.role!=='gestor');
+  const rows=operators.map(person=>{
+    const completed=state.tasks.filter(t=>t.responsavel_id===person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
+    const created=state.tasks.filter(t=>t.responsavel_id===person.id&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
+    const overdue=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&isOverdue(t));
+    const active=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&t.status!=='concluida');
+    const approved=completed.filter(t=>t.avaliacao_status==='aprovada').length;
+    const immediates=completed.filter(t=>t.prioridade==='imediata').length;
+    const hours=completed.reduce((sum,t)=>sum+sizeWeight(t),0);
+    const deadlineCompleted=completed.filter(t=>taskDue(t)&&t.concluida_em);
+    const onTime=deadlineCompleted.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
+    const onTimeRate=deadlineCompleted.length?Math.round((onTime/deadlineCompleted.length)*100):null;
+    const cycleValues=completed.filter(t=>t.criado_em&&(t.concluida_em||t.atualizado_em)).map(t=>Math.max(0,(new Date(t.concluida_em||t.atualizado_em)-new Date(t.criado_em))/86400000));
+    const avgCycle=cycleValues.length?cycleValues.reduce((a,b)=>a+b,0)/cycleValues.length:null;
+    const transfersIn=state.transfers.filter(tr=>tr.para_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
+    const transfersOut=state.transfers.filter(tr=>tr.de_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
+    return{person,created:created.length,completed:completed.length,approved,immediates,hours,active:active.length,overdue:overdue.length,onTimeRate,avgCycle,transfersIn:transfersIn.length,transfersOut:transfersOut.length};
+  }).sort((a,b)=>b.completed-a.completed||b.hours-a.hours);
+  const completedWithDeadline=state.tasks.filter(t=>t.status==='concluida'&&t.responsavel_id&&operators.some(p=>p.id===t.responsavel_id)&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end&&taskDue(t)&&t.concluida_em);
+  const totalOnTime=completedWithDeadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
+  return{label,rows,totalCompleted:rows.reduce((s,r)=>s+r.completed,0),totalHours:rows.reduce((s,r)=>s+r.hours,0),totalCreated:rows.reduce((s,r)=>s+r.created,0),teamOnTimeRate:completedWithDeadline.length?Math.round(totalOnTime/completedWithDeadline.length*100):null};
+}
+function renderMonthlyReport(){
+  const value=$('monthlyReportMonth').value||monthInputValue();const report=buildMonthlyReport(value);state.monthlyReportData=report;
+  $('monthlyReportContent').innerHTML=`<div class="monthly-report-hero"><div><span class="eyebrow light">${escapeHtml(report.label)}</span><h3>Performance operacional da equipe</h3><p>Gestores ficam fora da comparação. O relatório combina volume concluído, horas estimadas, prazo, ciclo e transferências, sem fingir que um único número explica trabalho humano.</p></div><div class="monthly-report-totals"><span><strong>${report.totalCompleted}</strong>concluídas</span><span><strong>${formatHours(report.totalHours)}</strong>entregues</span><span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>no prazo</span></div></div><div class="monthly-report-table"><div class="monthly-report-row head"><span>Colaborador</span><span>Recebidas</span><span>Concluídas</span><span>Horas</span><span>No prazo</span><span>Ciclo médio</span><span>Ativas</span><span>Atrasadas</span><span>Transferências</span></div>${report.rows.map((r,i)=>`<div class="monthly-report-row"><span class="monthly-person">${avatarHTML(r.person,'sm')}<span><strong>${escapeHtml(r.person.nome)}</strong><small>${escapeHtml(r.person.cargo||'Marketing')} · #${i+1}${r.immediates?` · ${r.immediates} imediata(s)`:''}</small></span></span><strong>${r.created}</strong><strong>${r.completed}</strong><strong>${formatHours(r.hours)}</strong><strong>${r.onTimeRate===null?'—':r.onTimeRate+'%'}</strong><strong>${r.avgCycle===null?'—':r.avgCycle.toFixed(1).replace('.',',')+'d'}</strong><strong>${r.active}</strong><strong class="${r.overdue?'danger':''}">${r.overdue}</strong><span>${r.transfersIn} receb. · ${r.transfersOut} env.</span></div>`).join('')||'<div class="empty-state">Nenhum colaborador operacional encontrado.</div>'}</div>`;refreshIcons();
+}
+function openMonthlyReport(){if(!isManager())return;$('monthlyReportMonth').value=monthInputValue();renderMonthlyReport();$('monthlyReportModal').classList.remove('hidden');refreshIcons();}
+function csvCell(value){const text=String(value??'');return `"${text.replace(/"/g,'""')}"`;}
+function exportMonthlyReportCsv(){const report=state.monthlyReportData||buildMonthlyReport($('monthlyReportMonth').value);const lines=[['Colaborador','Cargo','Recebidas','Concluídas','Horas entregues','No prazo (%)','Ciclo médio (dias)','Imediatas concluídas','Ativas agora','Atrasadas agora','Transferências recebidas','Transferências enviadas'].map(csvCell).join(';'),...report.rows.map(r=>[r.person.nome,r.person.cargo||'',r.created,r.completed,r.hours,r.onTimeRate??'',r.avgCycle===null?'':r.avgCycle.toFixed(1),r.immediates,r.active,r.overdue,r.transfersIn,r.transfersOut].map(csvCell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`relatorio-demandas-${$('monthlyReportMonth').value}.csv`;a.click();URL.revokeObjectURL(url);}
+function printMonthlyReport(){const html=$('monthlyReportContent').innerHTML,w=window.open('','_blank','width=1200,height=800');if(!w)return toast('Permita pop-ups para imprimir o relatório.','error');w.document.write(`<!doctype html><html><head><title>Relatório mensal PMG Connect</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#17221b}.monthly-report-row{display:grid;grid-template-columns:2fr repeat(6,1fr);gap:10px;padding:10px;border-bottom:1px solid #ddd}.head{font-weight:bold;background:#f2f5f3}.avatar{display:none}.monthly-report-hero{padding:20px;background:#164b2d;color:white;margin-bottom:20px}.monthly-report-totals{display:flex;gap:30px}.monthly-person small{display:block;color:#777}</style></head><body>${html}</body></html>`);w.document.close();setTimeout(()=>w.print(),250);}
+
+const ACCESSIBILITY_KEY='pmg-demandas-accessibilidade-v1';
+function loadAccessibilityPreferences(){try{const saved=JSON.parse(localStorage.getItem(ACCESSIBILITY_KEY)||'{}');state.accessibility={scale:['large','xlarge'].includes(saved.scale)?saved.scale:'large',contrast:Boolean(saved.contrast),reduceMotion:Boolean(saved.reduceMotion)};}catch(_){state.accessibility={scale:'large',contrast:false,reduceMotion:false};}applyAccessibilityPreferences();}
+function applyAccessibilityPreferences(){document.body.classList.toggle('ui-scale-xlarge',state.accessibility.scale==='xlarge');document.body.classList.toggle('ui-high-contrast',state.accessibility.contrast);document.body.classList.toggle('ui-reduce-motion',state.accessibility.reduceMotion);$$('[data-ui-scale]').forEach(btn=>{const active=btn.dataset.uiScale===state.accessibility.scale;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));});if($('accessibilityContrast'))$('accessibilityContrast').checked=state.accessibility.contrast;if($('accessibilityMotion'))$('accessibilityMotion').checked=state.accessibility.reduceMotion;}
+function saveAccessibilityPreferences(){try{localStorage.setItem(ACCESSIBILITY_KEY,JSON.stringify(state.accessibility));}catch(_){}applyAccessibilityPreferences();}
+function openAccessibility(){applyAccessibilityPreferences();$('accessibilityModal').classList.remove('hidden');refreshIcons();}
+function setAccessibilityScale(scale){if(!['large','xlarge'].includes(scale))return;state.accessibility.scale=scale;saveAccessibilityPreferences();}
+function resetAccessibility(){state.accessibility={scale:'large',contrast:false,reduceMotion:false};saveAccessibilityPreferences();toast('Tamanho e contraste restaurados.');}
 
 /* =========================================================
    MENU DO USUÁRIO E LOGOUT
@@ -1875,6 +2303,38 @@ function bindEvents() {
   $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
   $('enablePushBtn').addEventListener('click', enablePush); $('disablePushBtn').addEventListener('click', disablePush); $('testPushBtn').addEventListener('click', testPush);
   $('profileBtn').addEventListener('click', () => openProfile(false));
+  $('accessibilityBtn')?.addEventListener('click', openAccessibility);
+  $$('[data-ui-scale]').forEach(button => button.addEventListener('click', () => setAccessibilityScale(button.dataset.uiScale)));
+  $('accessibilityContrast')?.addEventListener('change', event => { state.accessibility.contrast = event.target.checked; saveAccessibilityPreferences(); });
+  $('accessibilityMotion')?.addEventListener('change', event => { state.accessibility.reduceMotion = event.target.checked; saveAccessibilityPreferences(); });
+  $('accessibilityResetBtn')?.addEventListener('click', resetAccessibility);
+  $('transferTaskForm')?.addEventListener('submit', submitTransferTask);
+  $('transferAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'transferAssignee', previewId: 'transferAssigneePreview', title: 'Transferir para' }));
+  $('evaluationApproveBtn')?.addEventListener('click', () => submitTaskEvaluation(true));
+  $('evaluationRejectBtn')?.addEventListener('click', () => submitTaskEvaluation(false));
+  $('teamMonthlyReportBtn')?.addEventListener('click', openMonthlyReport);
+  $('monthlyReportMonth')?.addEventListener('change', renderMonthlyReport);
+  $('monthlyReportCsvBtn')?.addEventListener('click', exportMonthlyReportCsv);
+  $('monthlyReportPrintBtn')?.addEventListener('click', printMonthlyReport);
+  $('sectorPersonFilter')?.addEventListener('change', event => { state.sectorPersonFilter = event.target.value; renderSectorCalendar(); });
+  $('sectorCalendarPrev')?.addEventListener('click', () => { state.sectorCalendarCursor = addMonths(state.sectorCalendarCursor, -1); renderSectorCalendar(); });
+  $('sectorCalendarNext')?.addEventListener('click', () => { state.sectorCalendarCursor = addMonths(state.sectorCalendarCursor, 1); renderSectorCalendar(); });
+  $('sectorNewEventBtn')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.sectorSelectedDate, visibility: 'equipe' }));
+  $('sectorAddSelectedDay')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.sectorSelectedDate, visibility: 'equipe' }));
+  $('academyPrev')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, -1); renderAcademy(); });
+  $('academyNext')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, 1); renderAcademy(); });
+  $('academyNewBookingBtn')?.addEventListener('click', () => openAcademyBooking(null, state.academySelectedDate));
+  $('academyAddSelectedDay')?.addEventListener('click', () => openAcademyBooking(null, state.academySelectedDate));
+  $('academyFormsBtn')?.addEventListener('click', openAcademyForms);
+  $('academyCopyFormsBtn')?.addEventListener('click', copyAcademyForms);
+  $('academyConfigBtn')?.addEventListener('click', openAcademyConfig);
+  $('academyImportBtn')?.addEventListener('click', () => { state.academyImportRows=[]; state.academyImportHeaders=[]; state.academyImportMap={}; $('academyImportFile').value=''; $('academyImportMapping').classList.add('hidden'); $('academyImportPreview').innerHTML=''; $('academyImportConfirmBtn').disabled=true; $('academyImportModal').classList.remove('hidden'); });
+  $('academyBookingForm')?.addEventListener('submit', saveAcademyBooking);
+  $('academyConfigForm')?.addEventListener('submit', saveAcademyConfig);
+  $('academyImportFile')?.addEventListener('change', handleAcademyImportFile);
+  $('academyImportMapping')?.addEventListener('change', event => { const select = event.target.closest('[data-academy-map]'); if (!select) return; state.academyImportMap[select.dataset.academyMap] = select.value; renderAcademyImportPreview(); });
+  $('academyImportConfirmBtn')?.addEventListener('click', importAcademyFormsRows);
+  ['academyDate','academyStartTime','academyEndTime'].forEach(id => $(id)?.addEventListener('change', updateAcademyConflictPreview));
   $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', title: 'Selecionar responsável' }));
   $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', title: 'Alterar responsável' }));
   $('assigneePickerSearch')?.addEventListener('input', debounce(event => { state.assigneePicker.search = event.target.value; renderAssigneePicker(); }, 100));
@@ -1909,8 +2369,14 @@ function bindEvents() {
   $('openSidebarBtn').addEventListener('click', openMobileSidebar); $('closeSidebarBtn').addEventListener('click', closeMobileSidebar); $('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
   document.addEventListener('click', event => {
     if (!$('userMenuWrapper')?.contains(event.target)) closeUserMenu();
+    const immediateAudience = event.target.closest('[data-immediate-audience]');
+    if (immediateAudience) { setImmediateAudience(immediateAudience.dataset.immediateAudience === 'todos', false); return; }
+    const editImmediateAudience = event.target.closest('[data-edit-immediate-audience]');
+    if (editImmediateAudience) { setImmediateAudience(editImmediateAudience.dataset.editImmediateAudience === 'todos', true); return; }
+    const academyMap = event.target.closest('[data-academy-map]');
+    if (academyMap) return;
     const choice = event.target.closest('[data-choice-target]');
-    if (choice) { const select = $(choice.dataset.choiceTarget); if (select) { select.value = choice.dataset.choiceValue; syncChoiceCards(choice.dataset.choiceTarget); } return; }
+    if (choice) { const select = $(choice.dataset.choiceTarget); if (select) { select.value = choice.dataset.choiceValue; syncChoiceCards(choice.dataset.choiceTarget); if (['itemPriority','editTaskPriority'].includes(choice.dataset.choiceTarget)) syncImmediateAudience(choice.dataset.choiceTarget === 'editTaskPriority' ? 'editTask' : 'item'); } return; }
     const assigneeChoice = event.target.closest('[data-assignee-choice]');
     if (assigneeChoice) { chooseAssignee(assigneeChoice.dataset.assigneeChoice); return; }
     const avatarFilter = event.target.closest('[data-avatar-filter]');
@@ -1920,6 +2386,10 @@ function bindEvents() {
     const createFor = event.target.closest('[data-person-create-task]'); if (createFor) { const personId = createFor.dataset.personCreateTask; closeDrawer('personDrawer'); openQuickAdd('demanda', { assigneeId: personId }); }
     const task = event.target.closest('[data-open-task]'); if (task) { if (!$('personDrawer').classList.contains('hidden')) closeDrawer('personDrawer'); openTask(task.dataset.openTask); }
     const reminder = event.target.closest('[data-open-reminder]'); if (reminder) openReminder(reminder.dataset.openReminder);
+    const sectorDate = event.target.closest('[data-sector-date]'); if (sectorDate) { state.sectorSelectedDate = sectorDate.dataset.sectorDate; renderSectorCalendar(); refreshIcons(); return; }
+    const academyDate = event.target.closest('[data-academy-date]'); if (academyDate) { state.academySelectedDate = academyDate.dataset.academyDate; renderAcademy(); refreshIcons(); return; }
+    const academyEdit = event.target.closest('[data-academy-edit]'); if (academyEdit) { const reservation = state.academyReservations.find(item => item.id === academyEdit.dataset.academyEdit); if (reservation) openAcademyBooking(reservation); return; }
+    const academyStatus = event.target.closest('[data-academy-status]'); if (academyStatus) { updateAcademyStatus(academyStatus.dataset.academyId, academyStatus.dataset.academyStatus); return; }
     const date = event.target.closest('[data-calendar-date]'); if (date) { state.selectedDate = date.dataset.calendarDate; renderAgenda(); refreshIcons(); }
     const notification = event.target.closest('[data-notification-id]'); if (notification) { markNotificationAndOpen(notification); }
     const searchTask = event.target.closest('[data-search-task]'); if (searchTask) { closeSearch(); openTask(searchTask.dataset.searchTask); }
@@ -1936,7 +2406,7 @@ function bindEvents() {
       return;
     }
     if (!$('onboardingModal')?.classList.contains('hidden')) {
-      if (event.key === 'Escape') { event.preventDefault(); closeOnboarding(true); return; }
+      if (event.key === 'Escape') { event.preventDefault(); closeOnboarding(false); return; }
       if (event.key === 'ArrowRight') { event.preventDefault(); moveOnboarding(1); return; }
       if (event.key === 'ArrowLeft') { event.preventDefault(); moveOnboarding(-1); return; }
     }
