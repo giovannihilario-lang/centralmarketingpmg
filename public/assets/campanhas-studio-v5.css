@@ -737,3 +737,335 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
   .partial-progress-head{flex-direction:column}
   .ranking-compare-table{min-width:980px}
 }
+
+
+/* V5.11 — resultado de campanha como painel visual */
+.outcome-board{
+  margin:14px 0;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:var(--surface)
+}
+.outcome-board-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:13px
+}
+.outcome-board-head h3{margin:3px 0 4px;font-size:18px}
+.outcome-board-head p{margin:0;color:var(--muted);font-size:10.5px;line-height:1.45}
+.outcome-collective{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 9px;
+  border-radius:999px;
+  font-size:9.5px;
+  font-weight:850;
+  white-space:nowrap
+}
+.outcome-collective svg{width:14px;height:14px}
+.outcome-collective.hit{
+  color:#166534;
+  background:#f0fdf4;
+  border:1px solid #bbf7d0
+}
+.outcome-collective.pending{
+  color:#92400e;
+  background:#fffbeb;
+  border:1px solid #fde68a
+}
+
+.outcome-summary-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:12px
+}
+.outcome-summary-card{
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface-2)
+}
+.outcome-summary-card span{
+  display:block;
+  color:var(--muted);
+  font-size:9px;
+  font-weight:850;
+  text-transform:uppercase;
+  letter-spacing:.04em
+}
+.outcome-summary-card strong{
+  display:block;
+  margin:4px 0 2px;
+  font-size:23px
+}
+.outcome-summary-card small{
+  display:block;
+  color:var(--muted);
+  font-size:9.5px;
+  line-height:1.35
+}
+.outcome-summary-card.winners{border-color:color-mix(in srgb,var(--brand) 28%,var(--line));background:color-mix(in srgb,var(--brand) 4%,var(--surface))}
+.outcome-summary-card.eligible{border-color:color-mix(in srgb,#15803d 22%,var(--line))}
+.outcome-summary-card.ineligible{border-color:color-mix(in srgb,var(--danger) 22%,var(--line))}
+
+.outcome-winner-zone{
+  border:1px solid color-mix(in srgb,var(--brand) 28%,var(--line));
+  border-radius:14px;
+  overflow:hidden;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--brand) 4%,var(--surface)),var(--surface))
+}
+.outcome-winner-zone.pending{
+  border-color:color-mix(in srgb,#b7791f 28%,var(--line));
+  background:linear-gradient(180deg,#fffbeb,var(--surface))
+}
+.outcome-zone-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 12px;
+  border-bottom:1px solid var(--line)
+}
+.outcome-zone-head>div span{
+  display:block;
+  color:var(--muted);
+  font-size:8.5px;
+  text-transform:uppercase;
+  font-weight:850
+}
+.outcome-zone-head>div strong{display:block;margin-top:2px;font-size:13px}
+.outcome-zone-head>small{max-width:430px;color:var(--muted);font-size:9.5px;line-height:1.35;text-align:right}
+.outcome-winners-list{display:grid;gap:7px;padding:9px}
+
+.outcome-seller{
+  display:grid;
+  grid-template-columns:38px minmax(0,1fr) auto;
+  gap:9px;
+  align-items:center;
+  padding:9px 10px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--surface)
+}
+.outcome-seller.winner{
+  border-color:color-mix(in srgb,var(--brand) 28%,var(--line));
+  box-shadow:0 6px 18px -18px rgba(0,0,0,.35)
+}
+.outcome-seller.potential{border-color:color-mix(in srgb,#b7791f 30%,var(--line))}
+.outcome-seller.ineligible{background:color-mix(in srgb,var(--danger) 2%,var(--surface))}
+.outcome-seller-rank{
+  width:32px;
+  height:32px;
+  border-radius:9px;
+  display:grid;
+  place-items:center;
+  background:var(--surface-2);
+  color:var(--ink);
+  font-size:11px;
+  font-weight:900
+}
+.outcome-seller.winner:nth-child(1) .outcome-seller-rank{
+  background:var(--brand);
+  color:#fff
+}
+.outcome-seller-main{min-width:0}
+.outcome-seller-name{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
+  min-width:0
+}
+.outcome-seller-name strong{
+  font-size:11.5px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis
+}
+.outcome-seller-name small{color:var(--muted);font-size:8.5px;white-space:nowrap}
+.outcome-seller-metrics{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-top:5px
+}
+.outcome-seller-metrics span{display:flex;align-items:baseline;gap:4px}
+.outcome-seller-metrics small{
+  color:var(--muted);
+  font-size:8px;
+  text-transform:uppercase;
+  font-weight:800
+}
+.outcome-seller-metrics strong{font-size:10px}
+.outcome-prize,
+.outcome-reason{
+  display:flex;
+  align-items:flex-start;
+  gap:5px;
+  margin-top:5px;
+  font-size:9px;
+  line-height:1.35
+}
+.outcome-prize{color:var(--brand)}
+.outcome-reason{color:var(--danger)}
+.outcome-prize svg,.outcome-reason svg{width:12px;height:12px;flex:0 0 auto;margin-top:1px}
+.outcome-seller-side{
+  display:flex;
+  align-items:center;
+  gap:6px
+}
+.outcome-status{
+  display:inline-flex;
+  align-items:center;
+  padding:5px 7px;
+  border-radius:999px;
+  font-size:8.5px;
+  font-weight:850;
+  white-space:nowrap
+}
+.outcome-status.winner{
+  color:#fff;
+  background:var(--brand)
+}
+.outcome-status.potential{
+  color:#92400e;
+  background:#fffbeb;
+  border:1px solid #fde68a
+}
+.outcome-status.eligible{
+  color:#166534;
+  background:#f0fdf4;
+  border:1px solid #bbf7d0
+}
+.outcome-status.ineligible{
+  color:#991b1b;
+  background:#fef2f2;
+  border:1px solid #fecaca
+}
+.outcome-audit-btn{
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--muted);
+  cursor:pointer
+}
+.outcome-audit-btn:hover{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 30%,var(--line))}
+.outcome-audit-btn svg{width:13px;height:13px}
+
+.outcome-secondary-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+  margin-top:9px
+}
+.outcome-group{
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:var(--surface);
+  overflow:hidden
+}
+.outcome-group.eligible{border-color:color-mix(in srgb,#15803d 20%,var(--line))}
+.outcome-group.ineligible{border-color:color-mix(in srgb,var(--danger) 20%,var(--line))}
+.outcome-group-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:10px 11px;
+  border-bottom:1px solid var(--line);
+  background:var(--surface-2)
+}
+.outcome-group-head>span{display:flex;align-items:center;gap:6px}
+.outcome-group-head svg{width:14px;height:14px}
+.outcome-group-head strong{font-size:10.5px}
+.outcome-group-head b{
+  min-width:24px;
+  height:24px;
+  padding:0 6px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:var(--surface);
+  font-size:9px
+}
+.outcome-group-list{
+  display:grid;
+  gap:6px;
+  padding:7px;
+  max-height:320px;
+  overflow:auto
+}
+.outcome-group .outcome-seller{grid-template-columns:34px minmax(0,1fr) auto;padding:8px}
+.outcome-group .outcome-seller-rank{width:28px;height:28px;font-size:9px}
+.outcome-group .outcome-seller-metrics{margin-top:3px}
+.outcome-group .outcome-prize{display:none}
+.outcome-group-empty,
+.outcome-empty{
+  padding:18px;
+  text-align:center;
+  color:var(--muted);
+  font-size:9.5px
+}
+.outcome-empty{display:grid;place-items:center;gap:4px}
+.outcome-empty svg{width:22px;height:22px;color:var(--brand)}
+.outcome-empty strong{font-size:11px;color:var(--ink)}
+.outcome-empty span{font-size:9.5px}
+
+.ranking-detail-panel{
+  margin:10px 0 0;
+  border:1px solid var(--line);
+  border-radius:13px;
+  overflow:hidden;
+  background:var(--surface)
+}
+.ranking-detail-panel>summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:48px;
+  padding:9px 12px;
+  cursor:pointer;
+  background:var(--surface-2)
+}
+.ranking-detail-panel>summary>span:first-child{
+  display:flex;
+  align-items:center;
+  gap:7px
+}
+.ranking-detail-panel>summary svg{width:15px;height:15px;color:var(--brand)}
+.ranking-detail-panel>summary strong{font-size:10.5px}
+.ranking-detail-panel>summary small{display:inline;margin-left:4px;color:var(--muted);font-size:9px}
+.ranking-detail-meta{
+  padding:5px 7px;
+  border-radius:8px;
+  background:var(--surface);
+  color:var(--muted);
+  font-size:9px;
+  white-space:nowrap
+}
+.ranking-detail-panel .ranking-compare-section{
+  margin:0;
+  border:0;
+  border-radius:0
+}
+
+@media(max-width:900px){
+  .outcome-summary-grid,.outcome-secondary-grid{grid-template-columns:1fr}
+  .outcome-board-head,.outcome-zone-head{flex-direction:column}
+  .outcome-zone-head>small{text-align:left}
+}
+@media(max-width:620px){
+  .outcome-seller{grid-template-columns:34px minmax(0,1fr)}
+  .outcome-seller-side{grid-column:2;justify-content:flex-start}
+  .outcome-seller-metrics{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .ranking-detail-panel>summary small{display:none}
+}

@@ -2773,6 +2773,158 @@
   }
 
 
+
+  function prizeForPosition(campaign, position) {
+    return (campaign.prizes || []).find((prize) => Number(prize.position) === Number(position)) || null;
+  }
+
+  function resultPrimaryMetric(campaign, item) {
+    const metrics = campaign.rankingMetrics || [];
+    const primary = metrics[0] || 'points';
+    const secondary = metrics[1] || null;
+
+    return {
+      primary,
+      primaryLabel:metricLabel(primary),
+      primaryValue:metricDisplay(primary, rankMetric(item, primary)),
+      secondary,
+      secondaryLabel:secondary ? metricLabel(secondary) : '',
+      secondaryValue:secondary ? metricDisplay(secondary, rankMetric(item, secondary)) : '',
+    };
+  }
+
+  function outcomeSellerCompact(campaign, item, kind) {
+    const identity = sellerIdentity(item.name);
+    const metric = resultPrimaryMetric(campaign, item);
+    const prize = prizeForPosition(campaign, item.position);
+    const reason = item.reasons?.[0] || '';
+
+    const statusLabel = kind === 'winner'
+      ? 'Ganhador'
+      : kind === 'potential'
+        ? 'Na zona de classificação'
+        : kind === 'eligible'
+          ? 'Elegível'
+          : 'Inelegível';
+
+    return `<div class="outcome-seller ${kind}">
+      <div class="outcome-seller-rank">${number(item.position)}</div>
+      <div class="outcome-seller-main">
+        <div class="outcome-seller-name">
+          <strong>${esc(identity.name || item.name)}</strong>
+          ${identity.code ? `<small>ID ${esc(identity.code)}</small>` : ''}
+        </div>
+        <div class="outcome-seller-metrics">
+          <span><small>${esc(metric.primaryLabel)}</small><strong>${esc(metric.primaryValue)}</strong></span>
+          ${metric.secondary ? `<span><small>${esc(metric.secondaryLabel)}</small><strong>${esc(metric.secondaryValue)}</strong></span>` : ''}
+        </div>
+        ${prize?.description ? `<div class="outcome-prize"><i data-lucide="gift"></i><span>${esc(prize.description)}</span></div>` : ''}
+        ${kind === 'ineligible' && reason ? `<div class="outcome-reason"><i data-lucide="circle-x"></i><span>${esc(reason)}</span></div>` : ''}
+      </div>
+      <div class="outcome-seller-side">
+        <span class="outcome-status ${kind}">${esc(statusLabel)}</span>
+        <button class="outcome-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.name)}" title="Auditar origem">
+          <i data-lucide="scan-search"></i>
+        </button>
+      </div>
+    </div>`;
+  }
+
+  function performanceOutcomeBoard(campaign, result) {
+    const rows = result.results || [];
+    const collectiveHit = Boolean(result.collectiveHit);
+
+    const classified = rows.filter((item) => item.eligible && item.classified);
+    const winners = collectiveHit ? classified : [];
+    const potential = collectiveHit ? [] : classified;
+    const eligible = rows.filter((item) => item.eligible && !item.classified);
+    const ineligible = rows.filter((item) => !item.eligible);
+
+    const highlightRows = collectiveHit ? winners : potential;
+    const highlightKind = collectiveHit ? 'winner' : 'potential';
+
+    const rankingModeLabel = campaign.rankingMode === 'ALL_ELIGIBLE'
+      ? 'Todos que atingirem'
+      : campaign.rankingMode === 'TOP_N'
+        ? `Top ${number(campaign.topN)} geral`
+        : `Top ${number(campaign.topN)} entre elegíveis`;
+
+    return `<section class="outcome-board">
+      <div class="outcome-board-head">
+        <div>
+          <span class="eyebrow">Resultado da campanha</span>
+          <h3>Quem ganhou, quem está elegível e quem ficou de fora</h3>
+          <p>${esc(rankingModeLabel)} · prioridade: ${(campaign.rankingMetrics || []).map((metric) => esc(metricLabel(metric))).join(' → ') || 'ranking configurado'}.</p>
+        </div>
+        <span class="outcome-collective ${collectiveHit ? 'hit' : 'pending'}">
+          <i data-lucide="${collectiveHit ? 'circle-check' : 'clock-3'}"></i>
+          ${collectiveHit ? 'Meta coletiva liberada' : 'Meta coletiva pendente'}
+        </span>
+      </div>
+
+      <div class="outcome-summary-grid">
+        <div class="outcome-summary-card winners">
+          <span>${collectiveHit ? 'Ganhadores / classificados' : 'Na zona de classificação'}</span>
+          <strong>${number(highlightRows.length)}</strong>
+          <small>${collectiveHit ? 'Já estão dentro da classificação final atual.' : 'Seriam classificados se a meta coletiva fosse liberada agora.'}</small>
+        </div>
+        <div class="outcome-summary-card eligible">
+          <span>Elegíveis fora do corte</span>
+          <strong>${number(eligible.length)}</strong>
+          <small>Cumpriram a elegibilidade, mas estão fora da faixa de classificação.</small>
+        </div>
+        <div class="outcome-summary-card ineligible">
+          <span>Inelegíveis</span>
+          <strong>${number(ineligible.length)}</strong>
+          <small>Não cumpriram pelo menos uma condição obrigatória da campanha.</small>
+        </div>
+      </div>
+
+      <div class="outcome-winner-zone ${collectiveHit ? '' : 'pending'}">
+        <div class="outcome-zone-head">
+          <div>
+            <span>${collectiveHit ? 'Classificação atual' : 'Classificação provisória'}</span>
+            <strong>${collectiveHit ? 'Ganhadores em destaque' : 'Quem está na zona de prêmio'}</strong>
+          </div>
+          <small>${collectiveHit ? 'A ordem abaixo já considera ranking, elegibilidade e desempates.' : 'A ordem já considera ranking e elegibilidade, mas depende da meta coletiva.'}</small>
+        </div>
+
+        <div class="outcome-winners-list">
+          ${highlightRows.length
+            ? highlightRows.map((item) => outcomeSellerCompact(campaign, item, highlightKind)).join('')
+            : `<div class="outcome-empty"><i data-lucide="trophy"></i><strong>Ninguém classificado neste momento</strong><span>${collectiveHit ? 'Nenhum representante entrou na faixa de classificação.' : 'A campanha ainda não possui representantes na zona de classificação.'}</span></div>`}
+        </div>
+      </div>
+
+      <div class="outcome-secondary-grid">
+        <section class="outcome-group eligible">
+          <div class="outcome-group-head">
+            <span><i data-lucide="badge-check"></i><strong>Elegíveis fora do corte</strong></span>
+            <b>${number(eligible.length)}</b>
+          </div>
+          <div class="outcome-group-list">
+            ${eligible.length
+              ? eligible.map((item) => outcomeSellerCompact(campaign, item, 'eligible')).join('')
+              : `<div class="outcome-group-empty">Nenhum elegível fora do corte.</div>`}
+          </div>
+        </section>
+
+        <section class="outcome-group ineligible">
+          <div class="outcome-group-head">
+            <span><i data-lucide="badge-x"></i><strong>Inelegíveis</strong></span>
+            <b>${number(ineligible.length)}</b>
+          </div>
+          <div class="outcome-group-list">
+            ${ineligible.length
+              ? ineligible.map((item) => outcomeSellerCompact(campaign, item, 'ineligible')).join('')
+              : `<div class="outcome-group-empty">Nenhum representante inelegível.</div>`}
+          </div>
+        </section>
+      </div>
+    </section>`;
+  }
+
+
   function performanceHtml(campaign, result, data) {
     const summary = result.summary;
     const used = data.periodsUsed || {};
@@ -2838,26 +2990,35 @@
           </div>`).join('')}</div>`
       : '<div class="goal-status-grid"><div class="goal-status"><strong>Meta coletiva não configurada</strong><small>O ranking depende apenas das metas individuais, elegibilidade e métricas selecionadas.</small></div></div>'}
 
-    <section class="section-card ranking-compare-section" style="margin-top:12px">
-      <div class="section-head">
-        <div><span class="eyebrow">Performance</span><h3>Ranking e comparativo por vendedor</h3><p class="ranking-helper">Atual, anterior e variação ficam agrupados para você não precisar atravessar uma tabela de aeroporto.</p></div>
-        <span class="hint">${esc(data.source || 'SQL Server')} · ${number(data.durationMs || 0)} ms${apiCache.hit ? ` · cache API ${number((apiCache.ageMs || 0) / 1000, 1)}s` : ''}</span>
-      </div>
-      <div class="table-wrap ranking-compare-wrap" style="margin-top:12px">
-        <table class="ranking-compare-table">
-          <thead><tr>
-            <th>#</th>
-            <th>${auditHeader('Representante', ['O histórico é conciliado pelo ID final do vendedor quando disponível.', 'Se o registro histórico não tiver ID, o sistema usa o nome normalizado sem o sufixo.'])}</th>
-            <th>Faturamento</th>
-            <th>Volume</th>
-            <th>Clientes / positivação</th>
-            <th>Mix / pontos</th>
-            <th>Situação / meta</th>
-          </tr></thead>
-          <tbody>${result.results.map((item) => performanceRow(item, result.collectiveHit, audit, campaign)).join('') || '<tr><td colspan="7">Nenhuma venda encontrada no período.</td></tr>'}</tbody>
-        </table>
-      </div>
-    </section>
+    ${performanceOutcomeBoard(campaign, result)}
+
+    <details class="ranking-detail-panel">
+      <summary>
+        <span><i data-lucide="table-properties"></i><strong>Ver análise detalhada por vendedor</strong><small>Atual × anterior, positivação, mix, pontos, metas e auditoria</small></span>
+        <span class="ranking-detail-meta">${number(result.results.length)} vendedor(es)</span>
+      </summary>
+
+      <section class="section-card ranking-compare-section">
+        <div class="section-head">
+          <div><span class="eyebrow">Análise técnica</span><h3>Comparativo detalhado por vendedor</h3><p class="ranking-helper">Use esta visão quando precisar investigar números. O resultado principal da campanha fica no painel acima.</p></div>
+          <span class="hint">${esc(data.source || 'SQL Server')} · ${number(data.durationMs || 0)} ms${apiCache.hit ? ` · cache API ${number((apiCache.ageMs || 0) / 1000, 1)}s` : ''}</span>
+        </div>
+        <div class="table-wrap ranking-compare-wrap" style="margin-top:12px">
+          <table class="ranking-compare-table">
+            <thead><tr>
+              <th>#</th>
+              <th>${auditHeader('Representante', ['O histórico é conciliado pelo ID final do vendedor quando disponível.', 'Se o registro histórico não tiver ID, o sistema usa o nome normalizado sem o sufixo.'])}</th>
+              <th>Faturamento</th>
+              <th>Volume</th>
+              <th>Clientes / positivação</th>
+              <th>Mix / pontos</th>
+              <th>Situação / meta</th>
+            </tr></thead>
+            <tbody>${result.results.map((item) => performanceRow(item, result.collectiveHit, audit, campaign)).join('') || '<tr><td colspan="7">Nenhuma venda encontrada no período.</td></tr>'}</tbody>
+          </table>
+        </div>
+      </section>
+    </details>
 
     <div class="meta-block period-meta">
       <strong>Regra de período:</strong>
