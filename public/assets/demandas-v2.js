@@ -73,8 +73,8 @@ const ACTIVITY_ICON = {
 };
 const PRIORITY_ORDER = { imediata: -1, urgente: 0, alta: 1, media: 2, baixa: 3 };
 const VIEW_META = {
-  hoje: ['Sua rotina', 'Hoje'], agenda: ['Planejamento', 'Agenda'],
-  'calendario-setor': ['Planejamento coletivo', 'Calendário do setor'], academia: ['Espaço compartilhado', 'Academia PMG'],
+  hoje: ['Sua rotina', 'Hoje'], agenda: ['Planejamento unificado', 'Agenda'],
+  academia: ['Espaço compartilhado', 'Academia PMG'],
   demandas: ['Fluxo de trabalho', 'Demandas'], equipe: ['Capacidade do setor', 'Equipe']
 };
 
@@ -88,9 +88,9 @@ const state = {
   assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
   intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false,
   transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
-  sectorCalendarCursor: startOfMonth(new Date()), sectorSelectedDate: dateKey(new Date()), sectorPersonFilter: '',
+  agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
-  monthlyReportData: null, accessibility: { scale: 'large', contrast: false, reduceMotion: false }
+  monthlyReportData: null, accessibility: { scale: 'large', theme: 'system', contrast: false, reduceMotion: false }
 };
 
 const $ = id => document.getElementById(id);
@@ -447,7 +447,7 @@ async function loadActivities() {
 }
 
 function renderAll() {
-  renderShell(); renderToday(); renderAgenda(); renderSectorCalendar(); renderDemandas(); renderEquipe(); renderAcademy(); renderNotifications(); refreshIcons();
+  renderShell(); renderToday(); renderAgenda(); renderDemandas(); renderEquipe(); renderAcademy(); renderNotifications(); refreshIcons();
 }
 function renderShell() {
   $('sideUserAvatar').innerHTML = avatarHTML(state.me, 'sm');
@@ -537,25 +537,87 @@ function renderActivityFeed() {
     : `<div class="empty-state"><i data-lucide="activity"></i>As movimentações da equipe aparecerão aqui.</div>`;
 }
 
+function agendaPersonMatches(taskOrReminder, type = 'task') {
+  const filter = state.agendaPersonFilter || '';
+  if (!filter) return true;
+  if (type === 'task') return taskOrReminder.responsavel_id === filter;
+  return taskOrReminder.colaborador_id === filter || taskOrReminder.criado_por === filter;
+}
+
+function populateAgendaPersonFilter() {
+  const select = $('agendaPersonFilter');
+  if (!select) return;
+  const value = state.agendaPersonFilter || '';
+  select.innerHTML = `<option value="">Toda a equipe</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
+  select.value = value;
+  select.classList.toggle('hidden', state.agendaScope !== 'team');
+}
+
+function calendarItemsForDate(key) {
+  const teamMode = state.agendaScope === 'team';
+  const tasks = state.tasks.filter(task => {
+    if (task.arquivada_em || taskDueKey(task) !== key) return false;
+    if (teamMode) return agendaPersonMatches(task, 'task');
+    return task.responsavel_id === state.me?.id;
+  }).map(task => ({ kind: 'task', id: task.id, title: task.titulo, time: taskDue(task), item: task }));
+
+  const reminders = state.reminders.filter(reminder => {
+    if (reminder.concluido_em || dateKey(reminderEffectiveTime(reminder)) !== key) return false;
+    if (teamMode) return reminder.visibilidade === 'equipe' && agendaPersonMatches(reminder, 'reminder');
+    return reminder.colaborador_id === state.me?.id || reminder.criado_por === state.me?.id;
+  }).map(reminder => ({ kind: reminder.tipo === 'compromisso' ? 'meeting' : 'reminder', id: reminder.id, title: reminder.titulo, time: reminderEffectiveTime(reminder), item: reminder }));
+
+  return [...tasks, ...reminders].sort((a, b) => new Date(a.time) - new Date(b.time));
+}
+
+function renderAgendaScopeSummary() {
+  const container = $('agendaScopeSummary');
+  if (!container) return;
+  const cursor = state.calendarCursor;
+  const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+  const teamMode = state.agendaScope === 'team';
+  const tasks = state.tasks.filter(task => {
+    if (task.arquivada_em || !taskDueKey(task).startsWith(monthKey)) return false;
+    return teamMode ? agendaPersonMatches(task, 'task') : task.responsavel_id === state.me?.id;
+  });
+  const reminders = state.reminders.filter(reminder => {
+    if (reminder.concluido_em || !dateKey(reminderEffectiveTime(reminder)).startsWith(monthKey)) return false;
+    if (teamMode) return reminder.visibilidade === 'equipe' && agendaPersonMatches(reminder, 'reminder');
+    return reminder.colaborador_id === state.me?.id || reminder.criado_por === state.me?.id;
+  });
+  const immediate = tasks.filter(task => task.prioridade === 'imediata' && task.status !== 'concluida').length;
+  const evaluation = tasks.filter(task => task.status === 'revisao').length;
+  container.innerHTML = [
+    ['clipboard-list', tasks.length, teamMode ? 'Demandas do setor no mês' : 'Minhas demandas no mês'],
+    ['calendar-clock', reminders.length, teamMode ? 'Compromissos do setor' : 'Lembretes e compromissos'],
+    ['siren', immediate, 'Imediatas abertas'],
+    ['scan-eye', evaluation, 'Aguardando avaliação']
+  ].map(([icon, value, label]) => `<div class="sector-summary-card"><i data-lucide="${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('');
+}
+
 function renderAgenda() {
   const cursor = state.calendarCursor;
   $('calendarMonthLabel').textContent = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
+  populateAgendaPersonFilter();
+  $$('[data-agenda-scope]').forEach(button => {
+    const active = button.dataset.agendaScope === state.agendaScope;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  renderAgendaScopeSummary();
   renderSelectedDayHeader();
   const first = startOfMonth(cursor); const start = addDays(first, -first.getDay());
   const cells = [];
   for (let i = 0; i < 42; i++) {
     const date = addDays(start, i); const key = dateKey(date);
     const events = calendarItemsForDate(key); const outside = date.getMonth() !== cursor.getMonth();
-    cells.push(`<button class="calendar-day ${outside ? 'outside' : ''} ${key === todayKey() ? 'today' : ''} ${key === state.selectedDate ? 'selected' : ''}" data-calendar-date="${key}">
-      <span class="day-number">${date.getDate()}</span><div class="calendar-events">${events.slice(0, 3).map(item => `<span class="calendar-event ${item.kind}" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>`).join('')}${events.length > 3 ? `<span class="more-events">+${events.length - 3}</span>` : ''}</div></button>`);
+    const immediate = events.some(entry => entry.kind === 'task' && entry.item?.prioridade === 'imediata');
+    cells.push(`<button class="calendar-day ${outside ? 'outside' : ''} ${key === todayKey() ? 'today' : ''} ${key === state.selectedDate ? 'selected' : ''} ${immediate ? 'has-immediate' : ''}" data-calendar-date="${key}">
+      <span class="day-number">${date.getDate()}</span><div class="calendar-events">${events.slice(0, 3).map(item => `<span class="calendar-event ${item.kind === 'task' && item.item?.prioridade === 'imediata' ? 'immediate' : item.kind}" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>`).join('')}${events.length > 3 ? `<span class="more-events">+${events.length - 3}</span>` : ''}</div></button>`);
   }
-  $('calendarGrid').innerHTML = cells.join(''); renderSelectedDayItems();
+  $('calendarGrid').innerHTML = cells.join(''); renderSelectedDayItems(); refreshIcons();
 }
-function calendarItemsForDate(key) {
-  const tasks = state.tasks.filter(task => !task.arquivada_em && taskDueKey(task) === key).map(task => ({ kind: 'task', id: task.id, title: task.titulo, time: taskDue(task), item: task }));
-  const reminders = state.reminders.filter(reminder => !reminder.concluido_em && dateKey(reminderEffectiveTime(reminder)) === key).map(reminder => ({ kind: reminder.tipo === 'compromisso' ? 'meeting' : 'reminder', id: reminder.id, title: reminder.titulo, time: reminderEffectiveTime(reminder), item: reminder }));
-  return [...tasks, ...reminders].sort((a, b) => new Date(a.time) - new Date(b.time));
-}
+
 function renderSelectedDayHeader() {
   const date = new Date(`${state.selectedDate}T12:00:00`);
   $('selectedDayWeekday').textContent = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(date);
@@ -569,18 +631,20 @@ function renderSelectedDayItems() {
     const visual = entry.kind === 'task'
       ? `<span class="day-item-avatar">${taskAvatarHTML(taskPerson, entry.item, 'sm')}</span>`
       : `<span class="day-item-symbol ${entry.kind}"><i data-lucide="${entry.kind === 'meeting' ? 'calendar-clock' : 'bell'}"></i></span>`;
-    return `<div class="day-item enriched" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskPerson?.nome || 'Sem responsável')}</span>` : ''}</div></div>`;
+    const project = entry.kind === 'task' && entry.item.projeto ? `<span class="day-item-project"><i data-lucide="folder-kanban"></i>${escapeHtml(entry.item.projeto)}</span>` : '';
+    return `<div class="day-item enriched ${entry.kind === 'task' && entry.item.prioridade === 'imediata' ? 'immediate' : ''}" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskPerson?.nome || 'Sem responsável')}</span>${project}` : ''}</div></div>`;
   }).join('') : `<div class="empty-state"><i data-lucide="calendar-x-2"></i>Nenhum item neste dia.</div>`;
 }
 
 function filteredTasks() {
   const search = $('taskSearch')?.value.trim().toLowerCase() || '';
-  const assignee = $('taskAssigneeFilter')?.value || ''; const priority = $('taskPriorityFilter')?.value || '';
+  const assignee = $('taskAssigneeFilter')?.value || ''; const project = $('taskProjectFilter')?.value || ''; const priority = $('taskPriorityFilter')?.value || '';
   const archive = $('taskArchiveFilter')?.value || 'ativas'; const now = new Date(); const weekEnd = addDays(now, 7);
   return state.tasks.filter(task => {
     const blob = [task.titulo, task.descricao, ...(task.tags || [])].join(' ').toLowerCase();
     if (search && !blob.includes(search)) return false;
     if (assignee && (assignee === 'none' ? Boolean(task.responsavel_id) : task.responsavel_id !== assignee)) return false;
+    if (project && String(task.projeto || '') !== project) return false;
     if (priority && task.prioridade !== priority) return false;
     if (archive === 'ativas' && task.arquivada_em) return false;
     if (archive === 'arquivadas' && !task.arquivada_em) return false;
@@ -591,8 +655,23 @@ function filteredTasks() {
     return true;
   });
 }
+function projectNames() {
+  return [...new Set(state.tasks.map(task => String(task.projeto || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+function populateProjectOptions() {
+  const projects = projectNames();
+  const filter = $('taskProjectFilter');
+  if (filter) {
+    const value = filter.value;
+    filter.innerHTML = `<option value="">Todos os projetos</option>${projects.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}`;
+    filter.value = projects.includes(value) ? value : '';
+  }
+  const datalist = $('projectSuggestions');
+  if (datalist) datalist.innerHTML = projects.map(name => `<option value="${escapeHtml(name)}"></option>`).join('');
+}
+
 function renderDemandas() {
-  populateAssigneeSelects();
+  populateAssigneeSelects(); populateProjectOptions();
   $('taskBoard').classList.toggle('hidden', state.taskView !== 'board'); $('taskListView').classList.toggle('hidden', state.taskView !== 'list');
   $$('[data-task-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.taskView === state.taskView));
   const labels = { atrasadas: 'Mostrando demandas atrasadas', hoje: 'Mostrando demandas para hoje', semana: 'Mostrando os próximos 7 dias', minhas: 'Mostrando minhas demandas' };
@@ -631,7 +710,7 @@ function taskCardHTML(task) {
   const person = collaborator(task.responsavel_id);
   const canMove = !task.arquivada_em && (isManager() || task.responsavel_id === state.me?.id || task.criado_por === state.me?.id);
   return `<article class="task-card" data-open-task="${task.id}" data-task-id="${task.id}" data-priority="${task.prioridade}" draggable="${canMove}">
-    <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
+    <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(task.projeto)}</span>` : ''}${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
     <h3>${escapeHtml(task.titulo)}</h3>${task.descricao ? `<p>${escapeHtml(task.descricao)}</p>` : ''}
     ${(task.tags || []).length ? `<div class="task-tags">${task.tags.slice(0, 4).map(tag => `<span class="task-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     <div class="task-progress-meta"><span>${task.estimativa_horas ? `${Number(task.estimativa_horas)}h estimadas` : 'Sem estimativa'}</span><span>${STATUS[task.status]?.label}</span></div>
@@ -641,7 +720,7 @@ function taskCardHTML(task) {
 function renderTaskList() {
   const tasks = filteredTasks();
   $('taskRows').innerHTML = tasks.length ? tasks.map(task => { const person = collaborator(task.responsavel_id); return `<div class="task-row" data-open-task="${task.id}">
-    <div class="task-row-title"><i class="priority-line" style="background:${task.prioridade === 'urgente' ? 'var(--red)' : task.prioridade === 'alta' ? 'var(--amber)' : task.prioridade === 'baixa' ? 'var(--blue)' : 'var(--green-300)'}"></i><div><strong>${escapeHtml(task.titulo)}</strong><small>${escapeHtml((task.tags || []).join(' · ') || 'Sem tags')}</small></div></div>
+    <div class="task-row-title"><i class="priority-line" style="background:${task.prioridade === 'urgente' ? 'var(--red)' : task.prioridade === 'alta' ? 'var(--amber)' : task.prioridade === 'baixa' ? 'var(--blue)' : 'var(--green-300)'}"></i><div><strong>${escapeHtml(task.titulo)}</strong><small>${escapeHtml([task.projeto ? `Projeto: ${task.projeto}` : '', (task.tags || []).join(' · ')].filter(Boolean).join(' · ') || 'Sem projeto ou tags')}</small></div></div>
     <div class="task-row-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
     : `<div class="empty-state" style="margin:15px"><i data-lucide="search-x"></i>Nenhuma demanda encontrada.</div>`;
 }
@@ -932,7 +1011,6 @@ function renderNotifications() {
 function switchView(view) {
   state.view = view; renderShell();
   if (view === 'agenda') renderAgenda();
-  if (view === 'calendario-setor') renderSectorCalendar();
   if (view === 'academia') renderAcademy();
   if (view === 'demandas') renderDemandas();
   if (view === 'equipe') renderEquipe();
@@ -954,6 +1032,7 @@ function openQuickAdd(type = 'demanda', preset = {}) {
   if (type === 'demanda') {
     populateAssigneeSelects();
     $('itemAssignee').value = preset.assigneeId || '';
+    if ($('itemProject')) $('itemProject').value = preset.project || '';
     $('itemPriority').value = preset.priority || 'media';
     $('itemSize').value = preset.size || 'media';
     syncTaskFormVisuals('item');
@@ -1009,7 +1088,7 @@ async function createTaskV2() {
     p_prioridade: priority, p_responsavel_id: $('itemAssignee').value || null,
     p_prazo_em: dueAt, p_lembrar_em: remindAt, p_tags: tags,
     p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
-    p_alerta_para_todos: alertAll
+    p_alerta_para_todos: alertAll, p_projeto: $('itemProject')?.value.trim() || null
   });
   if (error) throw error;
 }
@@ -1114,6 +1193,7 @@ function renderTaskDrawer() {
     <section class="task-detail-summary">
       <div><span><i data-lucide="calendar-days"></i>Prazo</span><strong class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</strong></div>
       <div><span><i data-lucide="gauge"></i>Esforço</span><strong>${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</strong></div>
+      <div><span><i data-lucide="folder-kanban"></i>Projeto</span><strong>${escapeHtml(task.projeto || 'Sem projeto')}</strong></div>
       <div><span><i data-lucide="flag"></i>Prioridade</span><strong class="${immediate ? 'immediate-text' : ''}">${PRIORITY[task.prioridade]}</strong></div>
       <div><span><i data-lucide="badge-check"></i>Validação</span><strong>${task.avaliacao_status === 'pendente' ? 'Pendente' : task.avaliacao_status === 'aprovada' ? 'Aprovada' : task.avaliacao_status === 'ajustes' ? 'Ajustes solicitados' : 'Ainda não enviada'}</strong></div>
       <div><span><i data-lucide="activity"></i>Atualizada</span><strong>${relativeTime(task.atualizado_em)}</strong></div>
@@ -1169,7 +1249,7 @@ function openEditTask() {
   populateAssigneeSelects(); $('editTaskAssignee').value = task.responsavel_id || ''; $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
   if ($('editTaskAlertAll')) $('editTaskAlertAll').value = String(Boolean(task.alerta_para_todos));
   $('editTaskSize').value = task.tamanho || 'media'; $('editTaskDueDate').value = due.date; $('editTaskDueTime').value = due.time || '17:00';
-  $('editTaskEstimate').value = task.estimativa_horas || ''; $('editTaskTags').value = (task.tags || []).join(', ');
+  $('editTaskEstimate').value = task.estimativa_horas || ''; if ($('editTaskProject')) $('editTaskProject').value = task.projeto || ''; $('editTaskTags').value = (task.tags || []).join(', ');
   const reminderOffset = task.lembrar_em && taskDue(task) ? Math.round((new Date(taskDue(task)) - new Date(task.lembrar_em)) / 60000) : '';
   $('editTaskReminderOffset').value = ['0', '10', '30', '60', '1440'].includes(String(reminderOffset)) ? String(reminderOffset) : '';
   syncTaskFormVisuals('editTask');
@@ -1190,7 +1270,7 @@ async function saveEditedTask(event) {
       p_prioridade: priority, p_responsavel_id: originalAssignee || null, p_prazo_em: dueAt,
       p_lembrar_em: remindAt, p_tags: $('editTaskTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
       p_tamanho: $('editTaskSize').value, p_estimativa_horas: $('editTaskEstimate').value ? Number($('editTaskEstimate').value) : null,
-      p_alerta_para_todos: alertAll
+      p_alerta_para_todos: alertAll, p_projeto: $('editTaskProject')?.value.trim() || null
     });
     if (error) throw error;
     if (desiredAssignee !== originalAssignee) {
@@ -1542,12 +1622,12 @@ function parseQuickCapture(text) {
 function renderGlobalSearch() {
   const query = $('globalSearchInput').value.trim().toLowerCase();
   if (!query) { $('globalSearchResults').innerHTML = `<div class="empty-state" style="margin:8px"><i data-lucide="search"></i>Busque demandas, compromissos ou lembretes.</div>`; refreshIcons(); return; }
-  const tasks = state.tasks.filter(task => [task.titulo, task.descricao, ...(task.tags || [])].join(' ').toLowerCase().includes(query)).slice(0, 8);
+  const tasks = state.tasks.filter(task => [task.titulo, task.descricao, task.projeto, ...(task.tags || [])].join(' ').toLowerCase().includes(query)).slice(0, 8);
   const reminders = state.reminders.filter(item => [item.titulo, item.descricao].join(' ').toLowerCase().includes(query)).slice(0, 8);
   $('globalSearchResults').innerHTML = `${tasks.length ? `<div class="search-group-label">Demandas</div>${tasks.map(task => taskSearchResultHTML(task)).join('')}` : ''}${reminders.length ? `<div class="search-group-label">Agenda</div>${reminders.map(item => searchResultHTML('reminder', item.id, item.titulo, `${item.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'} · ${formatDateTime(item.inicio_em)}`, item.tipo === 'compromisso' ? 'calendar-clock' : 'bell')).join('')}` : ''}${!tasks.length && !reminders.length ? `<div class="empty-state" style="margin:8px"><i data-lucide="search-x"></i>Nenhum resultado encontrado.</div>` : ''}`; refreshIcons();
 }
 function searchResultHTML(type, id, title, meta, icon) { return `<button class="search-result" data-search-${type}="${id}"><span class="search-result-icon"><i data-lucide="${icon}"></i></span><span class="search-result-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
-function taskSearchResultHTML(task) { const person = collaborator(task.responsavel_id); return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar">${taskAvatarHTML(person, task, 'sm')}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${escapeHtml(person?.nome || 'Sem responsável')} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
+function taskSearchResultHTML(task) { const person = collaborator(task.responsavel_id); return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar">${taskAvatarHTML(person, task, 'sm')}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${task.projeto ? `${escapeHtml(task.projeto)} · ` : ''}${escapeHtml(person?.nome || 'Sem responsável')} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
 function openSearch() { $('searchModal').classList.remove('hidden'); $('globalSearchInput').value = ''; renderGlobalSearch(); setTimeout(() => $('globalSearchInput').focus(), 40); }
 function closeSearch() { $('searchModal').classList.add('hidden'); }
 
@@ -1746,9 +1826,9 @@ function getManagerOnboardingSteps(userName) {
     },
     {
       icon: 'calendar-days', eyebrow: 'Planejamento', title: 'Use agenda, prazos e alertas para reduzir cobranças manuais',
-      description: 'O Connect agora separa três necessidades: Agenda pessoal, Calendário do setor e Academia PMG. A Academia mostra horários livres e reservas; o gestor também analisa solicitações importadas do Microsoft Forms. Ative as notificações no navegador para receber avisos neste computador.',
+      description: 'O Connect trabalha com dois calendários claros: a Agenda unificada, que alterna entre sua rotina e a visão da equipe, e a Academia PMG, dedicada exclusivamente à disponibilidade do espaço. A Academia também recebe solicitações importadas do Microsoft Forms.',
       points: [
-        ['calendar-range', 'Três calendários', 'Agenda organiza itens pessoais; Calendário do setor reúne o trabalho coletivo; Academia PMG controla disponibilidade do espaço.'],
+        ['calendar-range', 'Dois calendários', 'Na Agenda, alterne entre Minha agenda e Equipe. A Academia PMG fica separada porque controla um recurso físico e reservas.'],
         ['alarm-clock', 'Lembretes programados', 'Defina quando o sistema deve avisar antes de um prazo ou compromisso.'],
         ['bell-ring', 'Notificações', 'Novas atribuições, comentários e mudanças importantes aparecem na central de alertas.'],
         ['refresh-cw', 'Recorrência', 'Use repetição para rotinas reais, evitando recriar o mesmo lembrete toda semana.']
@@ -2041,53 +2121,6 @@ async function submitTransferTask(event) {
   finally { setLoading(false); }
 }
 
-function sectorCalendarItemsForDate(key) {
-  const personFilter = state.sectorPersonFilter || '';
-  const tasks = state.tasks.filter(task => !task.arquivada_em && taskDueKey(task) === key && (!personFilter || task.responsavel_id === personFilter))
-    .map(task => ({ kind: 'task', id: task.id, title: task.titulo, time: taskDue(task), task, person: collaborator(task.responsavel_id) }));
-  const reminders = state.reminders.filter(item => !item.concluido_em && item.visibilidade === 'equipe' && dateKey(reminderEffectiveTime(item)) === key && (!personFilter || item.colaborador_id === personFilter || item.criado_por === personFilter))
-    .map(item => ({ kind: item.tipo === 'compromisso' ? 'meeting' : 'reminder', id: item.id, title: item.titulo, time: reminderEffectiveTime(item), reminder: item, person: collaborator(item.colaborador_id || item.criado_por) }));
-  return [...tasks, ...reminders].sort((a, b) => new Date(a.time) - new Date(b.time));
-}
-
-function populateSectorPersonFilter() {
-  const select = $('sectorPersonFilter'); if (!select) return;
-  const value = state.sectorPersonFilter || '';
-  select.innerHTML = `<option value="">Toda a equipe</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
-  select.value = value;
-}
-
-function renderSectorCalendar() {
-  if (!$('sectorCalendarGrid')) return;
-  populateSectorPersonFilter();
-  const cursor = state.sectorCalendarCursor;
-  $('sectorCalendarMonthLabel').textContent = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor);
-  const selected = new Date(`${state.sectorSelectedDate}T12:00:00`);
-  $('sectorSelectedWeekday').textContent = new Intl.DateTimeFormat('pt-BR', { weekday: 'long' }).format(selected);
-  $('sectorSelectedNumber').textContent = String(selected.getDate()).padStart(2, '0');
-  $('sectorSelectedMonth').textContent = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(selected);
-
-  const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`;
-  const monthTasks = state.tasks.filter(task => !task.arquivada_em && taskDueKey(task).startsWith(monthKey) && (!state.sectorPersonFilter || task.responsavel_id === state.sectorPersonFilter));
-  const monthMeetings = state.reminders.filter(r => !r.concluido_em && r.visibilidade === 'equipe' && dateKey(reminderEffectiveTime(r)).startsWith(monthKey));
-  const immediate = monthTasks.filter(task => task.prioridade === 'imediata' && task.status !== 'concluida').length;
-  const evaluation = monthTasks.filter(task => task.status === 'revisao').length;
-  $('sectorCalendarSummary').innerHTML = [
-    ['clipboard-list', monthTasks.length, 'Demandas com prazo'], ['calendar-clock', monthMeetings.length, 'Compromissos do setor'], ['siren', immediate, 'Imediatas abertas'], ['scan-eye', evaluation, 'Em avaliação']
-  ].map(([icon,value,label]) => `<div class="sector-summary-card"><i data-lucide="${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('');
-
-  const first = startOfMonth(cursor), gridStart = addDays(first, -first.getDay()); const cells=[];
-  for (let i=0;i<42;i++) {
-    const date=addDays(gridStart,i), key=dateKey(date), entries=sectorCalendarItemsForDate(key), outside=date.getMonth()!==cursor.getMonth();
-    const immediateDay=entries.some(e=>e.task?.prioridade==='imediata');
-    cells.push(`<button class="calendar-day sector-day ${outside?'outside':''} ${key===todayKey()?'today':''} ${key===state.sectorSelectedDate?'selected':''} ${immediateDay?'has-immediate':''}" data-sector-date="${key}"><span class="day-number">${date.getDate()}</span><div class="calendar-events">${entries.slice(0,3).map(e=>`<span class="calendar-event ${e.task?.prioridade==='imediata'?'immediate':e.kind}" title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span>`).join('')}${entries.length>3?`<span class="more-events">+${entries.length-3}</span>`:''}</div></button>`);
-  }
-  $('sectorCalendarGrid').innerHTML=cells.join('');
-  const entries=sectorCalendarItemsForDate(state.sectorSelectedDate);
-  $('sectorSelectedItems').innerHTML=entries.length?entries.map(e=>`<button class="sector-day-item ${e.task?.prioridade==='imediata'?'immediate':''}" data-open-${e.kind==='task'?'task':'reminder'}="${e.id}"><span class="sector-item-avatar">${e.person?avatarHTML(e.person,'sm'):`<i data-lucide="${e.kind==='task'?'clipboard-check':'calendar-clock'}"></i>`}</span><span><strong>${escapeHtml(e.title)}</strong><small>${formatTime(e.time)} · ${e.kind==='task'?`${PRIORITY[e.task.prioridade]||'Média'} · ${escapeHtml(e.person?.nome||'Sem responsável')}`:'Compromisso do setor'}</small></span><i data-lucide="chevron-right"></i></button>`).join(''):`<div class="empty-state"><i data-lucide="calendar-check"></i>Nada do setor programado neste dia.</div>`;
-  refreshIcons();
-}
-
 function academyTime(value, fallback='08:00') { return String(value || fallback).slice(0,5); }
 function academyStatusLabel(status) { return ({ solicitada:'Solicitada', aprovada:'Aprovada', recusada:'Recusada', cancelada:'Cancelada' })[status] || status; }
 function academyReservationsForDate(key, includeInactive=false) {
@@ -2111,7 +2144,7 @@ function renderAcademy() {
   if (!$('academyCalendarGrid')) return;
   const setup=$('academySetupNotice');
   if (!state.v3Ready) {
-    setup.classList.remove('hidden'); setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>A Academia PMG precisa da migração V3.</strong><span>Execute <code>sql/demandas_v3_operacao.sql</code> no Supabase para liberar reservas, fila do Forms e disponibilidade.</span></div>`;
+    setup.classList.remove('hidden'); setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>Instalação única para liberar a Academia PMG.</strong><span><b>1.</b> Abra Supabase → SQL Editor. <b>2.</b> Cole o arquivo <code>sql/INSTALAR-DEMANDAS-V3-1.sql</code>. <b>3.</b> Clique em Run. É a única etapa de banco desta atualização e deixa as reservas compartilhadas entre todos os computadores.</span></div>`;
   } else setup.classList.add('hidden');
   const config=state.academyConfig||{horario_abertura:'08:00',horario_fechamento:'18:00'};
   const formsReady=Boolean(config.forms_url);
@@ -2175,6 +2208,7 @@ function monthInputValue(date=new Date()){return `${date.getFullYear()}-${String
 function monthBounds(value){const [y,m]=String(value||monthInputValue()).split('-').map(Number);const start=new Date(y,m-1,1),end=new Date(y,m,1);return{start,end,label:new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(start)};}
 function buildMonthlyReport(value){
   const {start,end,label}=monthBounds(value),operators=state.collaborators.filter(p=>p.role!=='gestor');
+  const operatorIds=new Set(operators.map(p=>p.id));
   const rows=operators.map(person=>{
     const completed=state.tasks.filter(t=>t.responsavel_id===person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
     const created=state.tasks.filter(t=>t.responsavel_id===person.id&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
@@ -2192,26 +2226,75 @@ function buildMonthlyReport(value){
     const transfersOut=state.transfers.filter(tr=>tr.de_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
     return{person,created:created.length,completed:completed.length,approved,immediates,hours,active:active.length,overdue:overdue.length,onTimeRate,avgCycle,transfersIn:transfersIn.length,transfersOut:transfersOut.length};
   }).sort((a,b)=>b.completed-a.completed||b.hours-a.hours);
-  const completedWithDeadline=state.tasks.filter(t=>t.status==='concluida'&&t.responsavel_id&&operators.some(p=>p.id===t.responsavel_id)&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end&&taskDue(t)&&t.concluida_em);
+  const completedInMonth=state.tasks.filter(t=>t.status==='concluida'&&operatorIds.has(t.responsavel_id)&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
+  const createdInMonth=state.tasks.filter(t=>operatorIds.has(t.responsavel_id)&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
+  const projectSet=new Set([...completedInMonth,...createdInMonth].map(t=>String(t.projeto||'').trim()||'Sem projeto'));
+  const projects=[...projectSet].map(name=>{
+    const completed=completedInMonth.filter(t=>(String(t.projeto||'').trim()||'Sem projeto')===name);
+    const created=createdInMonth.filter(t=>(String(t.projeto||'').trim()||'Sem projeto')===name);
+    const active=state.tasks.filter(t=>operatorIds.has(t.responsavel_id)&&!t.arquivada_em&&t.status!=='concluida'&&(String(t.projeto||'').trim()||'Sem projeto')===name);
+    return{name,created:created.length,completed:completed.length,hours:completed.reduce((sum,t)=>sum+sizeWeight(t),0),active:active.length,overdue:active.filter(isOverdue).length,immediates:completed.filter(t=>t.prioridade==='imediata').length};
+  }).sort((a,b)=>b.completed-a.completed||b.hours-a.hours||a.name.localeCompare(b.name,'pt-BR'));
+  const completedWithDeadline=completedInMonth.filter(t=>taskDue(t)&&t.concluida_em);
   const totalOnTime=completedWithDeadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
-  return{label,rows,totalCompleted:rows.reduce((s,r)=>s+r.completed,0),totalHours:rows.reduce((s,r)=>s+r.hours,0),totalCreated:rows.reduce((s,r)=>s+r.created,0),teamOnTimeRate:completedWithDeadline.length?Math.round(totalOnTime/completedWithDeadline.length*100):null};
+  return{label,rows,projects,totalCompleted:rows.reduce((s,r)=>s+r.completed,0),totalHours:rows.reduce((s,r)=>s+r.hours,0),totalCreated:rows.reduce((s,r)=>s+r.created,0),teamOnTimeRate:completedWithDeadline.length?Math.round(totalOnTime/completedWithDeadline.length*100):null};
 }
 function renderMonthlyReport(){
   const value=$('monthlyReportMonth').value||monthInputValue();const report=buildMonthlyReport(value);state.monthlyReportData=report;
-  $('monthlyReportContent').innerHTML=`<div class="monthly-report-hero"><div><span class="eyebrow light">${escapeHtml(report.label)}</span><h3>Performance operacional da equipe</h3><p>Gestores ficam fora da comparação. O relatório combina volume concluído, horas estimadas, prazo, ciclo e transferências, sem fingir que um único número explica trabalho humano.</p></div><div class="monthly-report-totals"><span><strong>${report.totalCompleted}</strong>concluídas</span><span><strong>${formatHours(report.totalHours)}</strong>entregues</span><span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>no prazo</span></div></div><div class="monthly-report-table"><div class="monthly-report-row head"><span>Colaborador</span><span>Recebidas</span><span>Concluídas</span><span>Horas</span><span>No prazo</span><span>Ciclo médio</span><span>Ativas</span><span>Atrasadas</span><span>Transferências</span></div>${report.rows.map((r,i)=>`<div class="monthly-report-row"><span class="monthly-person">${avatarHTML(r.person,'sm')}<span><strong>${escapeHtml(r.person.nome)}</strong><small>${escapeHtml(r.person.cargo||'Marketing')} · #${i+1}${r.immediates?` · ${r.immediates} imediata(s)`:''}</small></span></span><strong>${r.created}</strong><strong>${r.completed}</strong><strong>${formatHours(r.hours)}</strong><strong>${r.onTimeRate===null?'—':r.onTimeRate+'%'}</strong><strong>${r.avgCycle===null?'—':r.avgCycle.toFixed(1).replace('.',',')+'d'}</strong><strong>${r.active}</strong><strong class="${r.overdue?'danger':''}">${r.overdue}</strong><span>${r.transfersIn} receb. · ${r.transfersOut} env.</span></div>`).join('')||'<div class="empty-state">Nenhum colaborador operacional encontrado.</div>'}</div>`;refreshIcons();
+  const projectsHTML=report.projects.length?`<section class="monthly-project-section"><div class="monthly-section-title"><div><span class="eyebrow">Projetos</span><h4>Onde o esforço do mês foi aplicado</h4></div><span>${report.projects.length} projeto${report.projects.length===1?'':'s'}</span></div><div class="monthly-project-grid">${report.projects.map(project=>`<article class="monthly-project-card ${project.name==='Sem projeto'?'unclassified':''}"><div class="monthly-project-card-head"><span><i data-lucide="folder-kanban"></i></span><div><strong>${escapeHtml(project.name)}</strong><small>${project.created} recebida(s) · ${project.completed} concluída(s)</small></div></div><div class="monthly-project-stats"><span><strong>${formatHours(project.hours)}</strong><small>entregues</small></span><span><strong>${project.active}</strong><small>ativas</small></span><span class="${project.overdue?'danger':''}"><strong>${project.overdue}</strong><small>atrasadas</small></span><span><strong>${project.immediates}</strong><small>imediatas</small></span></div></article>`).join('')}</div></section>`:'<section class="monthly-project-section"><div class="empty-state"><i data-lucide="folder-kanban"></i>Nenhum projeto com atividade neste mês.</div></section>';
+  $('monthlyReportContent').innerHTML=`<div class="monthly-report-hero"><div><span class="eyebrow light">${escapeHtml(report.label)}</span><h3>Performance operacional da equipe</h3><p>Gestores ficam fora da comparação. O relatório combina volume concluído, horas estimadas, prazo, ciclo, projetos e transferências.</p></div><div class="monthly-report-totals"><span><strong>${report.totalCompleted}</strong>concluídas</span><span><strong>${formatHours(report.totalHours)}</strong>entregues</span><span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>no prazo</span></div></div>${projectsHTML}<section class="monthly-people-section"><div class="monthly-section-title"><div><span class="eyebrow">Equipe</span><h4>Performance por colaborador</h4></div></div><div class="monthly-report-table"><div class="monthly-report-row head"><span>Colaborador</span><span>Recebidas</span><span>Concluídas</span><span>Horas</span><span>No prazo</span><span>Ciclo médio</span><span>Ativas</span><span>Atrasadas</span><span>Transferências</span></div>${report.rows.map((r,i)=>`<div class="monthly-report-row"><span class="monthly-person">${avatarHTML(r.person,'sm')}<span><strong>${escapeHtml(r.person.nome)}</strong><small>${escapeHtml(r.person.cargo||'Marketing')} · #${i+1}${r.immediates?` · ${r.immediates} imediata(s)`:''}</small></span></span><strong>${r.created}</strong><strong>${r.completed}</strong><strong>${formatHours(r.hours)}</strong><strong>${r.onTimeRate===null?'—':r.onTimeRate+'%'}</strong><strong>${r.avgCycle===null?'—':r.avgCycle.toFixed(1).replace('.',',')+'d'}</strong><strong>${r.active}</strong><strong class="${r.overdue?'danger':''}">${r.overdue}</strong><span>${r.transfersIn} receb. · ${r.transfersOut} env.</span></div>`).join('')||'<div class="empty-state">Nenhum colaborador operacional encontrado.</div>'}</div></section>`;refreshIcons();
 }
 function openMonthlyReport(){if(!isManager())return;$('monthlyReportMonth').value=monthInputValue();renderMonthlyReport();$('monthlyReportModal').classList.remove('hidden');refreshIcons();}
 function csvCell(value){const text=String(value??'');return `"${text.replace(/"/g,'""')}"`;}
-function exportMonthlyReportCsv(){const report=state.monthlyReportData||buildMonthlyReport($('monthlyReportMonth').value);const lines=[['Colaborador','Cargo','Recebidas','Concluídas','Horas entregues','No prazo (%)','Ciclo médio (dias)','Imediatas concluídas','Ativas agora','Atrasadas agora','Transferências recebidas','Transferências enviadas'].map(csvCell).join(';'),...report.rows.map(r=>[r.person.nome,r.person.cargo||'',r.created,r.completed,r.hours,r.onTimeRate??'',r.avgCycle===null?'':r.avgCycle.toFixed(1),r.immediates,r.active,r.overdue,r.transfersIn,r.transfersOut].map(csvCell).join(';'))];const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`relatorio-demandas-${$('monthlyReportMonth').value}.csv`;a.click();URL.revokeObjectURL(url);}
+function exportMonthlyReportCsv(){
+  const report=state.monthlyReportData||buildMonthlyReport($('monthlyReportMonth').value);
+  const lines=[
+    ['COLABORADORES'],
+    ['Colaborador','Cargo','Recebidas','Concluídas','Horas entregues','No prazo (%)','Ciclo médio (dias)','Imediatas concluídas','Ativas agora','Atrasadas agora','Transferências recebidas','Transferências enviadas'],
+    ...report.rows.map(r=>[r.person.nome,r.person.cargo||'',r.created,r.completed,r.hours,r.onTimeRate??'',r.avgCycle===null?'':r.avgCycle.toFixed(1),r.immediates,r.active,r.overdue,r.transfersIn,r.transfersOut]),
+    [],
+    ['PROJETOS'],
+    ['Projeto','Recebidas','Concluídas','Horas entregues','Ativas agora','Atrasadas agora','Imediatas concluídas'],
+    ...report.projects.map(project=>[project.name,project.created,project.completed,project.hours,project.active,project.overdue,project.immediates])
+  ].map(row=>row.map(csvCell).join(';'));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`relatorio-demandas-${$('monthlyReportMonth').value}.csv`;a.click();URL.revokeObjectURL(url);
+}
 function printMonthlyReport(){const html=$('monthlyReportContent').innerHTML,w=window.open('','_blank','width=1200,height=800');if(!w)return toast('Permita pop-ups para imprimir o relatório.','error');w.document.write(`<!doctype html><html><head><title>Relatório mensal PMG Connect</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#17221b}.monthly-report-row{display:grid;grid-template-columns:2fr repeat(6,1fr);gap:10px;padding:10px;border-bottom:1px solid #ddd}.head{font-weight:bold;background:#f2f5f3}.avatar{display:none}.monthly-report-hero{padding:20px;background:#164b2d;color:white;margin-bottom:20px}.monthly-report-totals{display:flex;gap:30px}.monthly-person small{display:block;color:#777}</style></head><body>${html}</body></html>`);w.document.close();setTimeout(()=>w.print(),250);}
 
-const ACCESSIBILITY_KEY='pmg-demandas-accessibilidade-v1';
-function loadAccessibilityPreferences(){try{const saved=JSON.parse(localStorage.getItem(ACCESSIBILITY_KEY)||'{}');state.accessibility={scale:['large','xlarge'].includes(saved.scale)?saved.scale:'large',contrast:Boolean(saved.contrast),reduceMotion:Boolean(saved.reduceMotion)};}catch(_){state.accessibility={scale:'large',contrast:false,reduceMotion:false};}applyAccessibilityPreferences();}
-function applyAccessibilityPreferences(){document.body.classList.toggle('ui-scale-xlarge',state.accessibility.scale==='xlarge');document.body.classList.toggle('ui-high-contrast',state.accessibility.contrast);document.body.classList.toggle('ui-reduce-motion',state.accessibility.reduceMotion);$$('[data-ui-scale]').forEach(btn=>{const active=btn.dataset.uiScale===state.accessibility.scale;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));});if($('accessibilityContrast'))$('accessibilityContrast').checked=state.accessibility.contrast;if($('accessibilityMotion'))$('accessibilityMotion').checked=state.accessibility.reduceMotion;}
+const ACCESSIBILITY_KEY='pmg-demandas-accessibilidade-v2';
+function resolvedTheme(theme=state.accessibility.theme){
+  if(theme==='system') return window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light';
+  return theme==='dark'?'dark':'light';
+}
+function loadAccessibilityPreferences(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(ACCESSIBILITY_KEY)||localStorage.getItem('pmg-demandas-accessibilidade-v1')||'{}');
+    state.accessibility={
+      scale:['medium','large','xlarge'].includes(saved.scale)?saved.scale:'large',
+      theme:['light','dark','system'].includes(saved.theme)?saved.theme:'system',
+      contrast:Boolean(saved.contrast),reduceMotion:Boolean(saved.reduceMotion)
+    };
+  }catch(_){state.accessibility={scale:'large',theme:'system',contrast:false,reduceMotion:false};}
+  applyAccessibilityPreferences();
+}
+function applyAccessibilityPreferences(){
+  ['medium','large','xlarge'].forEach(scale=>document.body.classList.toggle(`ui-scale-${scale}`,state.accessibility.scale===scale));
+  const theme=resolvedTheme();
+  document.body.classList.toggle('ui-theme-dark',theme==='dark');
+  document.body.classList.toggle('ui-theme-light',theme==='light');
+  document.body.dataset.themePreference=state.accessibility.theme;
+  document.body.classList.toggle('ui-high-contrast',state.accessibility.contrast);
+  document.body.classList.toggle('ui-reduce-motion',state.accessibility.reduceMotion);
+  $$('[data-ui-scale]').forEach(btn=>{const active=btn.dataset.uiScale===state.accessibility.scale;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));});
+  $$('[data-ui-theme]').forEach(btn=>{const active=btn.dataset.uiTheme===state.accessibility.theme;btn.classList.toggle('active',active);btn.setAttribute('aria-pressed',String(active));});
+  if($('accessibilityContrast'))$('accessibilityContrast').checked=state.accessibility.contrast;
+  if($('accessibilityMotion'))$('accessibilityMotion').checked=state.accessibility.reduceMotion;
+}
 function saveAccessibilityPreferences(){try{localStorage.setItem(ACCESSIBILITY_KEY,JSON.stringify(state.accessibility));}catch(_){}applyAccessibilityPreferences();}
 function openAccessibility(){applyAccessibilityPreferences();$('accessibilityModal').classList.remove('hidden');refreshIcons();}
-function setAccessibilityScale(scale){if(!['large','xlarge'].includes(scale))return;state.accessibility.scale=scale;saveAccessibilityPreferences();}
-function resetAccessibility(){state.accessibility={scale:'large',contrast:false,reduceMotion:false};saveAccessibilityPreferences();toast('Tamanho e contraste restaurados.');}
+function setAccessibilityScale(scale){if(!['medium','large','xlarge'].includes(scale))return;state.accessibility.scale=scale;saveAccessibilityPreferences();}
+function setAccessibilityTheme(theme){if(!['light','dark','system'].includes(theme))return;state.accessibility.theme=theme;saveAccessibilityPreferences();}
+function resetAccessibility(){state.accessibility={scale:'large',theme:'system',contrast:false,reduceMotion:false};saveAccessibilityPreferences();toast('Acessibilidade e tema restaurados.');}
 
 /* =========================================================
    MENU DO USUÁRIO E LOGOUT
@@ -2305,6 +2388,8 @@ function bindEvents() {
   $('profileBtn').addEventListener('click', () => openProfile(false));
   $('accessibilityBtn')?.addEventListener('click', openAccessibility);
   $$('[data-ui-scale]').forEach(button => button.addEventListener('click', () => setAccessibilityScale(button.dataset.uiScale)));
+  $$('[data-ui-theme]').forEach(button => button.addEventListener('click', () => setAccessibilityTheme(button.dataset.uiTheme)));
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (state.accessibility.theme === 'system') applyAccessibilityPreferences(); });
   $('accessibilityContrast')?.addEventListener('change', event => { state.accessibility.contrast = event.target.checked; saveAccessibilityPreferences(); });
   $('accessibilityMotion')?.addEventListener('change', event => { state.accessibility.reduceMotion = event.target.checked; saveAccessibilityPreferences(); });
   $('accessibilityResetBtn')?.addEventListener('click', resetAccessibility);
@@ -2316,11 +2401,9 @@ function bindEvents() {
   $('monthlyReportMonth')?.addEventListener('change', renderMonthlyReport);
   $('monthlyReportCsvBtn')?.addEventListener('click', exportMonthlyReportCsv);
   $('monthlyReportPrintBtn')?.addEventListener('click', printMonthlyReport);
-  $('sectorPersonFilter')?.addEventListener('change', event => { state.sectorPersonFilter = event.target.value; renderSectorCalendar(); });
-  $('sectorCalendarPrev')?.addEventListener('click', () => { state.sectorCalendarCursor = addMonths(state.sectorCalendarCursor, -1); renderSectorCalendar(); });
-  $('sectorCalendarNext')?.addEventListener('click', () => { state.sectorCalendarCursor = addMonths(state.sectorCalendarCursor, 1); renderSectorCalendar(); });
-  $('sectorNewEventBtn')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.sectorSelectedDate, visibility: 'equipe' }));
-  $('sectorAddSelectedDay')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.sectorSelectedDate, visibility: 'equipe' }));
+  $$('[data-agenda-scope]').forEach(button => button.addEventListener('click', () => { state.agendaScope = button.dataset.agendaScope === 'team' ? 'team' : 'mine'; if (state.agendaScope === 'mine') state.agendaPersonFilter = ''; renderAgenda(); }));
+  $('agendaPersonFilter')?.addEventListener('change', event => { state.agendaPersonFilter = event.target.value; renderAgenda(); });
+  $('agendaNewEventBtn')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.selectedDate, visibility: state.agendaScope === 'team' && isManager() ? 'equipe' : 'pessoal' }));
   $('academyPrev')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, -1); renderAcademy(); });
   $('academyNext')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, 1); renderAcademy(); });
   $('academyNewBookingBtn')?.addEventListener('click', () => openAcademyBooking(null, state.academySelectedDate));
@@ -2360,12 +2443,12 @@ function bindEvents() {
   $('quickCaptureForm').addEventListener('submit', event => { event.preventDefault(); const text = $('quickCaptureText').value.trim(); if (!text) return; const preset = parseQuickCapture(text); openQuickAdd(state.quickCaptureType, preset); $('quickCaptureText').value = ''; });
   $$('[data-smart-filter]').forEach(button => button.addEventListener('click', () => applySmartFilter(button.dataset.smartFilter)));
   $('clearSmartFilter').addEventListener('click', () => { state.smartFilter = ''; renderDemandas(); });
-  ['taskSearch', 'taskAssigneeFilter', 'taskPriorityFilter', 'taskArchiveFilter'].forEach(id => $(id).addEventListener(id === 'taskSearch' ? 'input' : 'change', debounce(renderDemandas, 120)));
+  ['taskSearch', 'taskAssigneeFilter', 'taskProjectFilter', 'taskPriorityFilter', 'taskArchiveFilter'].forEach(id => $(id).addEventListener(id === 'taskSearch' ? 'input' : 'change', debounce(renderDemandas, 120)));
   $('taskViewToggle').addEventListener('click', event => { const button = event.target.closest('[data-task-view]'); if (!button) return; state.taskView = button.dataset.taskView; renderDemandas(); refreshIcons(); });
   $('calendarPrev').addEventListener('click', () => { state.calendarCursor = addMonths(state.calendarCursor, -1); renderAgenda(); refreshIcons(); });
   $('calendarNext').addEventListener('click', () => { state.calendarCursor = addMonths(state.calendarCursor, 1); renderAgenda(); refreshIcons(); });
   $('agendaTodayBtn').addEventListener('click', () => { state.calendarCursor = startOfMonth(new Date()); state.selectedDate = todayKey(); renderAgenda(); refreshIcons(); });
-  $('addOnSelectedDay').addEventListener('click', () => openQuickAdd('lembrete', { date: state.selectedDate }));
+  $('addOnSelectedDay').addEventListener('click', () => openQuickAdd(state.agendaScope === 'team' && isManager() ? 'compromisso' : 'lembrete', { date: state.selectedDate, visibility: state.agendaScope === 'team' && isManager() ? 'equipe' : 'pessoal' }));
   $('openSidebarBtn').addEventListener('click', openMobileSidebar); $('closeSidebarBtn').addEventListener('click', closeMobileSidebar); $('sidebarBackdrop').addEventListener('click', closeMobileSidebar);
   document.addEventListener('click', event => {
     if (!$('userMenuWrapper')?.contains(event.target)) closeUserMenu();
@@ -2386,7 +2469,6 @@ function bindEvents() {
     const createFor = event.target.closest('[data-person-create-task]'); if (createFor) { const personId = createFor.dataset.personCreateTask; closeDrawer('personDrawer'); openQuickAdd('demanda', { assigneeId: personId }); }
     const task = event.target.closest('[data-open-task]'); if (task) { if (!$('personDrawer').classList.contains('hidden')) closeDrawer('personDrawer'); openTask(task.dataset.openTask); }
     const reminder = event.target.closest('[data-open-reminder]'); if (reminder) openReminder(reminder.dataset.openReminder);
-    const sectorDate = event.target.closest('[data-sector-date]'); if (sectorDate) { state.sectorSelectedDate = sectorDate.dataset.sectorDate; renderSectorCalendar(); refreshIcons(); return; }
     const academyDate = event.target.closest('[data-academy-date]'); if (academyDate) { state.academySelectedDate = academyDate.dataset.academyDate; renderAcademy(); refreshIcons(); return; }
     const academyEdit = event.target.closest('[data-academy-edit]'); if (academyEdit) { const reservation = state.academyReservations.find(item => item.id === academyEdit.dataset.academyEdit); if (reservation) openAcademyBooking(reservation); return; }
     const academyStatus = event.target.closest('[data-academy-status]'); if (academyStatus) { updateAcademyStatus(academyStatus.dataset.academyId, academyStatus.dataset.academyStatus); return; }

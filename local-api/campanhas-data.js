@@ -88,7 +88,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.12.0',
+    version: '5.13.0',
   };
 }
 
@@ -611,10 +611,10 @@ async function queryPerformance(payload = {}) {
         SELECT
           s0.rawSeller,
           sc.sellerCode,
-          UPPER(REPLACE(LTRIM(RTRIM(CASE
+          UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
             WHEN sc.sellerCode IS NOT NULL THEN LEFT(s0.rawSeller, LEN(s0.rawSeller) - s0.dashPos)
             ELSE s0.rawSeller
-          END)), ' ', '')) AS sellerNameKey
+          END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
       ) s
       WHERE NULLIF(s.rawSeller, '') IS NOT NULL
         AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
@@ -679,10 +679,10 @@ async function queryPerformance(payload = {}) {
       SELECT
         sellerRaw.rawSeller,
         sellerCodePart.sellerCode,
-        UPPER(REPLACE(LTRIM(RTRIM(CASE
+        UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
           WHEN sellerCodePart.sellerCode IS NOT NULL THEN LEFT(sellerRaw.rawSeller, LEN(sellerRaw.rawSeller) - sellerRaw.dashPos)
           ELSE sellerRaw.rawSeller
-        END)), ' ', '')) AS sellerNameKey
+        END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
     ) sellerKey
     WHERE NULLIF(sellerKey.rawSeller, '') IS NOT NULL
       AND (
@@ -711,10 +711,13 @@ async function queryPerformance(payload = {}) {
       FROM #ActiveSellers a
       WHERE
         (b.sellerCode IS NOT NULL AND a.sellerCode = b.sellerCode)
-        OR (b.sellerCode IS NULL AND a.sellerNameKey = b.sellerNameKey)
-        OR (a.sellerCode IS NULL AND a.sellerNameKey = b.sellerNameKey)
+        OR (
+          NULLIF(b.sellerNameKey, '') IS NOT NULL
+          AND a.sellerNameKey COLLATE Latin1_General_100_CI_AI = b.sellerNameKey COLLATE Latin1_General_100_CI_AI
+        )
       ORDER BY
         CASE WHEN b.sellerCode IS NOT NULL AND a.sellerCode = b.sellerCode THEN 0 ELSE 1 END,
+        CASE WHEN a.sellerNameKey COLLATE Latin1_General_100_CI_AI = b.sellerNameKey COLLATE Latin1_General_100_CI_AI THEN 0 ELSE 1 END,
         a.seller
     ) matchedSeller
     ${sellers.length ? `WHERE matchedSeller.seller IN (${explicitSellerParams})` : ''};
@@ -890,7 +893,7 @@ async function queryPerformance(payload = {}) {
     },
     filters: {
       activeSeller:"Ranking usa representantes atuais de dbo.Clientes com Status ATIV%; histórico é conciliado por ID do vendedor ou nome normalizado",
-      sellerHistory:'ID numérico no final de dbo.Vendas.[Vendedor]; fallback por nome normalizado sem sufixo quando o histórico não possui ID',
+      sellerHistory:'ID final do vendedor como prioridade; fallback pelo nome sem código e sem (TLMK), com comparação accent-insensitive',
       saleType:'SEM FILTRO EXPLÍCITO em dbo.Vendas.[Tipo]',
       saleForm:'SEM FILTRO EXPLÍCITO em dbo.Vendas.[Forma de Venda]',
       returnsAndCancellations:'SEM REGRA EXPLÍCITA adicional para devoluções/cancelamentos nesta versão',
@@ -899,7 +902,7 @@ async function queryPerformance(payload = {}) {
       'Faturamento usa o valor das linhas participantes em dbo.VendasProdutos.[Valor], não dbo.Vendas.[Valor Total] do pedido inteiro.',
       'A data usada é dbo.Vendas.[Data], com YYYY-MM-DD convertido diretamente para DATE no SQL, sem deslocamento de horário/timezone.',
       'Se outro relatório usa faturamento, nota fiscal ou entrega, os números podem divergir.',
-      'O histórico individual é conciliado por ID numérico no final do campo Vendedor; se não houver ID no registro histórico, usa nome normalizado sem sufixo.',
+      'O histórico individual usa ID final como prioridade e nome sem código/(TLMK) como fallback, inclusive quando o código histórico mudou.',
       'Tipo, forma de venda, devoluções e cancelamentos ainda não possuem filtro corporativo explícito nesta consulta. Audite um vendedor para ver quais registros entraram.',
     ],
   };
@@ -1731,10 +1734,10 @@ async function querySellerAudit(payload = {}) {
     DECLARE @sellerAuditTrim nvarchar(200) = LTRIM(RTRIM(@sellerAudit));
     DECLARE @sellerAuditDash int = CHARINDEX('-', REVERSE(@sellerAuditTrim));
     DECLARE @sellerAuditCode int = TRY_CONVERT(int, CASE WHEN @sellerAuditDash > 1 THEN RIGHT(@sellerAuditTrim, @sellerAuditDash - 1) END);
-    DECLARE @sellerAuditNameKey nvarchar(200) = UPPER(REPLACE(LTRIM(RTRIM(CASE
+    DECLARE @sellerAuditNameKey nvarchar(200) = UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
       WHEN @sellerAuditCode IS NOT NULL THEN LEFT(@sellerAuditTrim, LEN(@sellerAuditTrim) - @sellerAuditDash)
       ELSE @sellerAuditTrim
-    END)), ' ', ''));
+    END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI;
 
     WITH VendasRank AS (
       SELECT
@@ -1802,15 +1805,17 @@ async function querySellerAudit(payload = {}) {
       SELECT TRY_CONVERT(int, CASE WHEN sellerRaw.dashPos > 1 THEN RIGHT(sellerRaw.rawSeller, sellerRaw.dashPos - 1) END) AS sellerCode
     ) sellerCodePart
     CROSS APPLY (
-      SELECT UPPER(REPLACE(LTRIM(RTRIM(CASE
+      SELECT UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
         WHEN sellerCodePart.sellerCode IS NOT NULL THEN LEFT(sellerRaw.rawSeller, LEN(sellerRaw.rawSeller) - sellerRaw.dashPos)
         ELSE sellerRaw.rawSeller
-      END)), ' ', '')) AS sellerNameKey
+      END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
     ) sellerNamePart
     WHERE (
         (@sellerAuditCode IS NOT NULL AND sellerCodePart.sellerCode = @sellerAuditCode)
-        OR (sellerCodePart.sellerCode IS NULL AND sellerNamePart.sellerNameKey = @sellerAuditNameKey)
-        OR (@sellerAuditCode IS NULL AND sellerNamePart.sellerNameKey = @sellerAuditNameKey)
+        OR (
+          NULLIF(sellerNamePart.sellerNameKey, '') IS NOT NULL
+          AND sellerNamePart.sellerNameKey COLLATE Latin1_General_100_CI_AI = @sellerAuditNameKey COLLATE Latin1_General_100_CI_AI
+        )
       )
       AND (
         (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
@@ -1823,9 +1828,81 @@ async function querySellerAudit(payload = {}) {
       v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Tipo], v.[Forma de Venda], v.[Valor Total],
       vp.[ID Produto], p.[Produto], p.[ID Fornecedor], p.[Fornecedor]
     ORDER BY period DESC, v.[Data] DESC, v.[ID Pedido de Venda] DESC, vp.[ID Produto];
+
+    -- Paridade vendedor × escopo da campanha.
+    WITH VendasRankParity AS (
+      SELECT
+        v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
+        ROW_NUMBER() OVER (
+          PARTITION BY v.[ID Pedido de Venda]
+          ORDER BY
+            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
+            v.[Data] DESC,
+            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
+            v.[ID Cliente] DESC
+        ) AS rn
+      FROM dbo.Vendas v
+    ),
+    VendasUnicasParity AS (
+      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]
+      FROM VendasRankParity
+      WHERE rn = 1
+    ),
+    SellerLines AS (
+      SELECT
+        CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
+        v.[ID Pedido de Venda] AS orderId,
+        v.[ID Cliente] AS clientId,
+        ISNULL(vp.[Qtde PC], 0) AS pieces,
+        ISNULL(vp.[Qtde Kg], 0) AS kg,
+        ISNULL(vp.[Valor], 0) AS revenue,
+        CASE WHEN ${scopeFilter} THEN 1 ELSE 0 END AS inCampaignScope
+      FROM VendasUnicasParity v
+      INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
+      CROSS APPLY (
+        SELECT
+          LTRIM(RTRIM(v.[Vendedor])) AS rawSeller,
+          CHARINDEX('-', REVERSE(LTRIM(RTRIM(v.[Vendedor])))) AS dashPos
+      ) sr
+      CROSS APPLY (
+        SELECT TRY_CONVERT(int, CASE WHEN sr.dashPos > 1 THEN RIGHT(sr.rawSeller, sr.dashPos - 1) END) AS sellerCode
+      ) sc
+      CROSS APPLY (
+        SELECT UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
+          WHEN sc.sellerCode IS NOT NULL THEN LEFT(sr.rawSeller, LEN(sr.rawSeller) - sr.dashPos)
+          ELSE sr.rawSeller
+        END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
+      ) sn
+      WHERE (
+          (@sellerAuditCode IS NOT NULL AND sc.sellerCode = @sellerAuditCode)
+          OR (
+            NULLIF(sn.sellerNameKey, '') IS NOT NULL
+            AND sn.sellerNameKey COLLATE Latin1_General_100_CI_AI = @sellerAuditNameKey COLLATE Latin1_General_100_CI_AI
+          )
+        )
+        AND (
+          (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
+          OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
+        )
+    )
+    SELECT
+      period,
+      SUM(revenue) AS sellerRevenueAllProducts,
+      SUM(kg) AS sellerKgAllProducts,
+      SUM(pieces) AS sellerPiecesAllProducts,
+      COUNT(DISTINCT orderId) AS sellerOrdersAllProducts,
+      COUNT(DISTINCT clientId) AS sellerCustomersAllProducts,
+      SUM(CASE WHEN inCampaignScope = 1 THEN revenue ELSE 0 END) AS campaignRevenue,
+      SUM(CASE WHEN inCampaignScope = 1 THEN kg ELSE 0 END) AS campaignKg,
+      SUM(CASE WHEN inCampaignScope = 1 THEN pieces ELSE 0 END) AS campaignPieces,
+      COUNT(DISTINCT CASE WHEN inCampaignScope = 1 THEN orderId END) AS campaignOrders,
+      COUNT(DISTINCT CASE WHEN inCampaignScope = 1 THEN clientId END) AS campaignCustomers
+    FROM SellerLines
+    GROUP BY period
+    ORDER BY period;
   `);
 
-  const rows = (result.recordset || []).map((row) => ({
+  const rows = (result.recordsets?.[0] || result.recordset || []).map((row) => ({
     period:row.period,
     seller:text(row.seller),
     orderId:String(row.orderId),
@@ -1858,6 +1935,20 @@ async function querySellerAudit(payload = {}) {
   const distinctValues = (field) => [...new Set(rows.map((row) => row[field]).filter(Boolean))].sort((a,b) => String(a).localeCompare(String(b), 'pt-BR'));
   const sellerAliases = distinctValues('seller');
 
+  const powerBiParity = (result.recordsets?.[1] || []).map((row) => ({
+    period:text(row.period),
+    sellerRevenueAllProducts:Number(row.sellerRevenueAllProducts) || 0,
+    sellerKgAllProducts:Number(row.sellerKgAllProducts) || 0,
+    sellerPiecesAllProducts:Number(row.sellerPiecesAllProducts) || 0,
+    sellerOrdersAllProducts:Number(row.sellerOrdersAllProducts) || 0,
+    sellerCustomersAllProducts:Number(row.sellerCustomersAllProducts) || 0,
+    campaignRevenue:Number(row.campaignRevenue) || 0,
+    campaignKg:Number(row.campaignKg) || 0,
+    campaignPieces:Number(row.campaignPieces) || 0,
+    campaignOrders:Number(row.campaignOrders) || 0,
+    campaignCustomers:Number(row.campaignCustomers) || 0,
+  }));
+
   return {
     ok:true,
     source:'SQL Server · Power BI',
@@ -1865,7 +1956,8 @@ async function querySellerAudit(payload = {}) {
     handler:'local-api/campanhas-data.js → querySellerAudit()',
     seller,
     sellerAliases,
-    sellerMatchPolicy:'ID final do vendedor; fallback por nome normalizado sem sufixo',
+    powerBiParity,
+    sellerMatchPolicy:'ID final primeiro; fallback pelo nome sem código e sem (TLMK), com comparação accent-insensitive',
     dateReference:'dbo.Vendas.[Data]',
     partial:Boolean(periods?.partial),
     comparisonPolicy:periods?.comparisonPolicy || '6_SEGUNDAS_VS_6_SEGUNDAS',
@@ -1913,7 +2005,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.12.0',
+    versao: '5.13.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
   };
 }
@@ -1945,7 +2037,7 @@ export default async function handler(req, res) {
       const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
       return res.status(200).json({
         ok: true,
-        version: '5.12.0',
+        version: '5.13.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),

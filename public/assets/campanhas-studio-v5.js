@@ -2253,7 +2253,7 @@
         <span class="eyebrow">${esc(identity.code ? `ID ${identity.code}` : 'Representante')}</span>
         <h3>${esc(identity.name || data.seller)}</h3>
         <p>Linhas participantes exatamente como a API local recebeu do SQL.</p>
-        ${data.sellerAliases?.length > 1 ? `<small class="seller-alias-note">Registros históricos conciliados: ${esc(data.sellerAliases.join(' · '))}</small>` : ''}
+        ${data.sellerAliases?.length ? `<small class="seller-alias-note"><strong>Aliases encontrados no SQL:</strong> ${esc(data.sellerAliases.join(' · '))}</small>` : ''}
       </div>
       <div class="audit-source-chip"><i data-lucide="database"></i><span><strong>${esc(data.source || 'SQL Server')}</strong><small>${esc(data.endpoint || '')}</small></span></div>
     </div>
@@ -2264,6 +2264,33 @@
       <span>Referência anterior: ${dateBR(used.previousStart)} a ${dateBR(used.previousLastInclusive)}</span>
       <small>${data.partial ? 'A campanha está parcial; a referência anterior oficial permanece completa.' : 'Campanha e referência anterior estão fechadas no período configurado.'}</small>
     </div>
+
+    ${(data.powerBiParity || []).length ? `<section class="powerbi-parity">
+      <div class="powerbi-parity-head">
+        <span><i data-lucide="split"></i><strong>Correspondência com a consulta do Power BI</strong></span>
+        <small>Primeiro toda venda encontrada para a representante; depois o mesmo dado com o escopo da campanha.</small>
+      </div>
+      <div class="powerbi-parity-grid">
+        ${(data.powerBiParity || []).sort((a,b) => a.period === 'previous' ? -1 : 1).map((row) => `
+          <div class="powerbi-parity-period">
+            <span>${row.period === 'previous' ? 'Período anterior' : 'Período atual'}</span>
+            <div class="powerbi-parity-flow">
+              <div>
+                <small>Representante · todos os produtos</small>
+                <strong>${number(row.sellerKgAllProducts,2)} KG</strong>
+                <em>${money(row.sellerRevenueAllProducts)} · ${number(row.sellerOrdersAllProducts)} pedidos</em>
+              </div>
+              <i data-lucide="arrow-right"></i>
+              <div>
+                <small>Após fornecedor/produtos</small>
+                <strong>${number(row.campaignKg,2)} KG</strong>
+                <em>${money(row.campaignRevenue)} · ${number(row.campaignOrders)} pedidos</em>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+      <p class="powerbi-parity-help"><strong>Leitura:</strong> se o primeiro valor existir e o segundo zerar, o corte está no escopo da campanha. Se ambos existirem, o vendedor foi conciliado. Se o primeiro zerar, a divergência ainda está na identificação do vendedor ou na data.</p>
+    </section>` : ''}
 
     <div class="audit-summary-grid">
       ${auditSummaryCard('Faturamento', current.revenue, previous.revenue, money)}

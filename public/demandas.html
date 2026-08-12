@@ -59,7 +59,6 @@
         <span class="nav-group">Organização</span>
         <button class="nav-item active" data-view="hoje"><i data-lucide="sun"></i><span>Hoje</span><b id="navTodayCount" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="agenda"><i data-lucide="calendar-days"></i><span>Agenda</span></button>
-        <button class="nav-item" data-view="calendario-setor"><i data-lucide="calendar-range"></i><span>Calendário do setor</span></button>
         <button class="nav-item" data-view="academia"><i data-lucide="presentation"></i><span>Academia PMG</span><b id="navAcademyPending" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="demandas"><i data-lucide="layout-dashboard"></i><span>Demandas</span><b id="navTaskCount" class="nav-badge">0</b></button>
         <button class="nav-item" data-view="equipe"><i data-lucide="users-round"></i><span>Equipe</span></button>
@@ -211,10 +210,20 @@
         </section>
 
         <section id="viewAgenda" class="view" data-page="agenda">
-          <div class="page-toolbar agenda-toolbar">
-            <div class="toolbar-title"><span class="eyebrow">Planejamento</span><h2>Agenda</h2><p>Demandas, compromissos e lembretes no mesmo calendário.</p></div>
-            <div class="toolbar-actions"><button id="agendaTodayBtn" class="btn secondary">Hoje</button><button class="btn primary" data-quick-type="compromisso"><i data-lucide="calendar-plus"></i>Novo compromisso</button></div>
+          <div class="page-toolbar agenda-toolbar unified-agenda-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Planejamento unificado</span><h2>Agenda</h2><p>Um único calendário para sua rotina e para o setor. Alterne a visão sem ficar pulando entre calendários diferentes.</p></div>
+            <div class="toolbar-actions agenda-scope-actions">
+              <div id="agendaScopeToggle" class="segmented agenda-scope-toggle" aria-label="Visão da agenda">
+                <button type="button" class="active" data-agenda-scope="mine"><i data-lucide="circle-user-round"></i><span>Minha agenda</span></button>
+                <button type="button" data-agenda-scope="team"><i data-lucide="users-round"></i><span>Equipe</span></button>
+              </div>
+              <select id="agendaPersonFilter" class="toolbar-select hidden" aria-label="Filtrar por colaborador"><option value="">Toda a equipe</option></select>
+              <button id="agendaTodayBtn" class="btn secondary">Hoje</button>
+              <button id="agendaNewEventBtn" class="btn primary"><i data-lucide="calendar-plus"></i><span>Novo compromisso</span></button>
+            </div>
           </div>
+
+          <div id="agendaScopeSummary" class="sector-calendar-summary unified-agenda-summary"></div>
 
           <div class="calendar-layout">
             <section class="calendar-card card">
@@ -231,35 +240,6 @@
               <div class="selected-day-head"><span id="selectedDayWeekday">Quarta-feira</span><strong id="selectedDayNumber">05</strong><small id="selectedDayMonth">Agosto</small></div>
               <button id="addOnSelectedDay" class="btn soft wide"><i data-lucide="plus"></i>Adicionar neste dia</button>
               <div id="selectedDayItems" class="day-items"></div>
-            </aside>
-          </div>
-        </section>
-
-        <section id="viewCalendarioSetor" class="view" data-page="calendario-setor">
-          <div class="page-toolbar sector-calendar-toolbar">
-            <div class="toolbar-title"><span class="eyebrow">Planejamento coletivo</span><h2>Calendário do setor</h2><p>Veja prazos, compromissos da equipe e a distribuição do trabalho em um calendário separado da sua agenda pessoal.</p></div>
-            <div class="toolbar-actions">
-              <select id="sectorPersonFilter" class="toolbar-select"><option value="">Toda a equipe</option></select>
-              <button id="sectorNewEventBtn" class="btn primary manager-only"><i data-lucide="calendar-plus"></i><span>Novo compromisso do setor</span></button>
-            </div>
-          </div>
-
-          <div id="sectorCalendarSummary" class="sector-calendar-summary"></div>
-
-          <div class="calendar-layout sector-calendar-layout">
-            <section class="calendar-card card">
-              <div class="calendar-head">
-                <div class="calendar-nav"><button id="sectorCalendarPrev" class="icon-btn subtle"><i data-lucide="chevron-left"></i></button><button id="sectorCalendarNext" class="icon-btn subtle"><i data-lucide="chevron-right"></i></button></div>
-                <h3 id="sectorCalendarMonthLabel">Agosto de 2026</h3>
-                <div class="calendar-legend"><span><i class="legend-dot task"></i>Demanda</span><span><i class="legend-dot meeting"></i>Compromisso do setor</span><span><i class="legend-dot immediate"></i>Imediata</span></div>
-              </div>
-              <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
-              <div id="sectorCalendarGrid" class="calendar-grid sector-calendar-grid"></div>
-            </section>
-            <aside class="selected-day card sector-selected-day">
-              <div class="selected-day-head"><span id="sectorSelectedWeekday">Quarta-feira</span><strong id="sectorSelectedNumber">05</strong><small id="sectorSelectedMonth">Agosto</small></div>
-              <button id="sectorAddSelectedDay" class="btn soft wide manager-only"><i data-lucide="plus"></i>Adicionar compromisso neste dia</button>
-              <div id="sectorSelectedItems" class="day-items"></div>
             </aside>
           </div>
         </section>
@@ -315,6 +295,7 @@
           <section class="task-toolbar card">
             <div class="search-input"><i data-lucide="search"></i><input id="taskSearch" placeholder="Buscar por título, descrição ou tag"></div>
             <select id="taskAssigneeFilter"><option value="">Todos os responsáveis</option></select>
+            <select id="taskProjectFilter"><option value="">Todos os projetos</option></select>
             <select id="taskPriorityFilter"><option value="">Todas as prioridades</option><option value="imediata">Imediata</option><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
             <select id="taskArchiveFilter"><option value="ativas">Ativas</option><option value="arquivadas">Arquivadas</option><option value="todas">Todas</option></select>
             <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
@@ -479,10 +460,12 @@
                 <label class="field"><span>Horário</span><input id="itemDueTime" type="time" value="17:00"></label>
                 <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="itemEstimate" type="number" min="0" step="0.5" placeholder="2"><span>horas</span></div></label>
               </div>
-              <div class="form-grid two">
+              <div class="form-grid three">
+                <label class="field"><span>Projeto <em>opcional</em></span><input id="itemProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
                 <label class="field"><span>Lembrar</span><select id="itemReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
                 <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
               </div>
+              <datalist id="projectSuggestions"></datalist>
             </section>
           </div>
 
@@ -560,7 +543,8 @@
             <label class="field"><span>Horário</span><input id="editTaskDueTime" type="time"></label>
             <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="editTaskEstimate" type="number" min="0" step="0.5"><span>horas</span></div></label>
           </div>
-          <div class="form-grid two">
+          <div class="form-grid three">
+            <label class="field"><span>Projeto <em>opcional</em></span><input id="editTaskProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
             <label class="field"><span>Lembrar</span><select id="editTaskReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
             <label class="field"><span>Tags</span><input id="editTaskTags"></label>
           </div>
@@ -677,10 +661,11 @@
 
   <div id="accessibilityModal" class="modal-layer hidden">
     <div class="modal-card accessibility-modal">
-      <div class="modal-head"><div><span class="eyebrow">Acessibilidade</span><h2>Deixe a Central confortável de ler</h2><p>As preferências ficam salvas neste navegador. O tutorial mantém seu próprio layout.</p></div><button class="icon-btn subtle" data-close-modal="accessibilityModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Acessibilidade e aparência</span><h2>Deixe a Central confortável para cada pessoa</h2><p>O tamanho altera a interface inteira: textos, cartões, botões, avatares, imagens, campos e calendários. O tutorial mantém seu próprio layout para não quebrar em zoom de 100%.</p></div><button class="icon-btn subtle" data-close-modal="accessibilityModal"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
-        <div class="accessibility-section"><strong>Tamanho da interface</strong><div class="accessibility-size-grid"><button type="button" data-ui-scale="large"><span>A</span><strong>Grande</strong><small>Padrão recomendado</small></button><button type="button" data-ui-scale="xlarge"><span>A+</span><strong>Extra grande</strong><small>Textos, botões e avatares maiores</small></button></div></div>
-        <div class="accessibility-switches"><label><span><strong>Alto contraste</strong><small>Aumenta separação entre textos, bordas e fundos.</small></span><input id="accessibilityContrast" type="checkbox"></label><label><span><strong>Reduzir animações</strong><small>Evita movimentos que possam atrapalhar a leitura. Alertas imediatos ainda permanecem bem visíveis.</small></span><input id="accessibilityMotion" type="checkbox"></label></div>
+        <div class="accessibility-section"><strong>Tamanho da interface</strong><div class="accessibility-size-grid three-options"><button type="button" data-ui-scale="medium"><span>A</span><strong>Médio</strong><small>Mais compacto, ainda confortável</small></button><button type="button" data-ui-scale="large"><span>A+</span><strong>Grande</strong><small>Recomendado para uso diário</small></button><button type="button" data-ui-scale="xlarge"><span>A++</span><strong>Extra grande</strong><small>Máxima leitura e alvos maiores</small></button></div></div>
+        <div class="accessibility-section appearance-section"><strong>Tema</strong><div class="theme-choice-grid"><button type="button" data-ui-theme="light"><i data-lucide="sun"></i><span><strong>Claro</strong><small>Fundo claro e alto contraste</small></span></button><button type="button" data-ui-theme="dark"><i data-lucide="moon-star"></i><span><strong>Escuro</strong><small>Verdes profundos, superfícies separadas e cores vivas</small></span></button><button type="button" data-ui-theme="system"><i data-lucide="monitor-cog"></i><span><strong>Sistema</strong><small>Acompanha o tema do computador</small></span></button></div></div>
+        <div class="accessibility-switches"><label><span><strong>Alto contraste</strong><small>Aumenta separação entre textos, bordas e fundos.</small></span><input id="accessibilityContrast" type="checkbox"></label><label><span><strong>Reduzir animações</strong><small>Evita movimentos que possam atrapalhar a leitura. Alertas imediatos continuam bem visíveis.</small></span><input id="accessibilityMotion" type="checkbox"></label></div>
       </div>
       <div class="modal-footer"><button id="accessibilityResetBtn" class="btn secondary" type="button"><i data-lucide="rotate-ccw"></i>Restaurar padrão</button><button class="btn primary" type="button" data-close-modal="accessibilityModal"><i data-lucide="check"></i>Pronto</button></div>
     </div>

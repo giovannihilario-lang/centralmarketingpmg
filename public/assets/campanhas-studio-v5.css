@@ -1225,3 +1225,31 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
 .drawer-backdrop{display:none!important}
 .performance-drawer{all:unset}
 .drawer-body{all:unset}
+
+
+/* V5.13 — paridade vendedor × Power BI */
+.powerbi-parity{
+  margin:10px 0 12px;padding:11px;
+  border:1px solid color-mix(in srgb,var(--brand) 24%,var(--line));
+  border-radius:12px;background:color-mix(in srgb,var(--brand) 3%,var(--surface))
+}
+.powerbi-parity-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
+.powerbi-parity-head>span{display:flex;align-items:center;gap:6px}
+.powerbi-parity-head svg{width:15px;height:15px;color:var(--brand)}
+.powerbi-parity-head strong{font-size:10.5px}
+.powerbi-parity-head small{color:var(--muted);font-size:9px;text-align:right}
+.powerbi-parity-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.powerbi-parity-period{padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.powerbi-parity-period>span{display:block;margin-bottom:6px;color:var(--muted);font-size:8.5px;font-weight:850;text-transform:uppercase}
+.powerbi-parity-flow{display:grid;grid-template-columns:1fr 18px 1fr;gap:6px;align-items:center}
+.powerbi-parity-flow>i{width:15px;height:15px;color:var(--muted)}
+.powerbi-parity-flow small{display:block;color:var(--muted);font-size:8.5px}
+.powerbi-parity-flow strong{display:block;margin:2px 0;font-size:13px}
+.powerbi-parity-flow em{display:block;color:var(--muted);font-size:8.5px;font-style:normal}
+.powerbi-parity-help{margin:8px 0 0;color:var(--muted);font-size:9px;line-height:1.4}
+.seller-alias-note strong{color:var(--ink)}
+@media(max-width:760px){
+  .powerbi-parity-grid{grid-template-columns:1fr}
+  .powerbi-parity-head{flex-direction:column}
+  .powerbi-parity-head small{text-align:left}
+}
