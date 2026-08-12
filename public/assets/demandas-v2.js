@@ -1400,6 +1400,101 @@ async function dispatchPendingPush() {
 }
 
 
+
+
+/* =========================================================
+   V3.4.6 — ESTABILIDADE DE OVERLAYS / SCROLL
+   ========================================================= */
+const UI_OVERLAY_VISIBLE_SELECTOR = [
+  '.modal-layer:not(.hidden)',
+  '.onboarding-layer:not(.hidden)',
+  '.intrusive-notification-layer:not(.hidden)',
+  '.right-drawer:not(.hidden)'
+].join(',');
+
+let uiOverlayLocked = false;
+let uiOverlayScrollY = 0;
+
+function lockPageBehindOverlay() {
+  if (uiOverlayLocked) return;
+  uiOverlayLocked = true;
+  uiOverlayScrollY = window.scrollY || window.pageYOffset || 0;
+
+  document.documentElement.classList.add('ui-overlay-open');
+  document.body.classList.add('ui-overlay-open');
+
+  // Mantém visualmente a página exatamente no ponto em que estava.
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${uiOverlayScrollY}px`;
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.width = '100%';
+}
+
+function unlockPageBehindOverlay() {
+  if (!uiOverlayLocked) return;
+  uiOverlayLocked = false;
+
+  const restoreY = uiOverlayScrollY;
+  document.documentElement.classList.remove('ui-overlay-open');
+  document.body.classList.remove('ui-overlay-open');
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
+
+  window.scrollTo({ top: restoreY, left: 0, behavior: 'auto' });
+}
+
+function syncOverlayScrollLock() {
+  const open = Boolean(document.querySelector(UI_OVERLAY_VISIBLE_SELECTOR));
+  if (open) lockPageBehindOverlay();
+  else unlockPageBehindOverlay();
+}
+
+function initOverlayStability() {
+  syncOverlayScrollLock();
+
+  const observer = new MutationObserver(mutations => {
+    if (mutations.some(mutation => mutation.type === 'attributes' && mutation.attributeName === 'class')) {
+      requestAnimationFrame(syncOverlayScrollLock);
+    }
+  });
+
+  observer.observe(document.body, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class']
+  });
+
+  // O alerta invasivo nunca deve usar a roda do mouse para deslocar a camada/cartão.
+  // A roda só é aceita dentro do corpo rolável do próprio alerta.
+  const intrusiveLayer = $('intrusiveNotificationModal');
+  intrusiveLayer?.addEventListener('wheel', event => {
+    const scrollArea = event.target.closest('.intrusive-notification-body');
+    if (!scrollArea) {
+      event.preventDefault();
+      return;
+    }
+
+    const delta = event.deltaY;
+    const atTop = scrollArea.scrollTop <= 0;
+    const atBottom = Math.ceil(scrollArea.scrollTop + scrollArea.clientHeight) >= scrollArea.scrollHeight;
+
+    if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  // Em modais comuns, impede a roda no backdrop de movimentar a página atrás.
+  $$('.modal-layer').forEach(layer => {
+    layer.addEventListener('wheel', event => {
+      if (event.target === layer) event.preventDefault();
+    }, { passive: false });
+  });
+}
+
 /* =========================================================
    ALERTAS INVASIVOS EM TELA
    ========================================================= */
@@ -3203,4 +3298,4 @@ renderTaskDrawer = function renderTaskDrawerV34() {
 };
 
 
-bindEvents(); bindProductivityV4Events(); refreshIcons(); bootstrap();
+bindEvents(); bindProductivityV4Events(); initOverlayStability(); refreshIcons(); bootstrap();

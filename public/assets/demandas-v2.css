@@ -1573,3 +1573,530 @@ body.ui-theme-dark .onboarding-layer svg{stroke:currentColor;fill:none}
 html[data-theme="dark"] body .academy-section-tabs{background:#111914;border-color:#293a30}
 html[data-theme="dark"] body .academy-training-rules span{background:#1a2720;border-color:#384c3e;color:#cbbcf5}
 
+
+
+/* =========================================================
+   V3.4.6 — CAMADA DE ESTABILIDADE DE LAYOUT / POP-UPS
+   Corrige scroll do alerta invasivo, modais que "andam" com a roda,
+   vazamento de scroll para a página e sobreposição em zoom/acessibilidade.
+   ========================================================= */
+
+/* Viewport moderno + prevenção de saltos quando overlays bloqueiam o body. */
+html{scrollbar-gutter:stable;min-height:100%;overscroll-behavior-y:none}
+body{min-height:100dvh}
+html.ui-overlay-open{
+  overscroll-behavior:none!important;
+}
+body.ui-overlay-open,
+body.intrusive-notification-open{
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+
+/* Todos os overlays ficam presos ao viewport real. A camada NÃO rola.
+   Somente a área de conteúdo do cartão pode rolar. */
+.modal-layer,
+.intrusive-notification-layer{
+  position:fixed!important;
+  inset:0!important;
+  width:100%!important;
+  height:100dvh!important;
+  max-height:100dvh!important;
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+  touch-action:none;
+  align-items:center;
+  justify-items:center;
+  padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+}
+
+/* Cartões de modal não são mais o elemento rolável. Isso mantém cabeçalho,
+   rodapé e posição visual estáveis mesmo com a roda do mouse. */
+.modal-layer .modal-card{
+  display:flex;
+  flex-direction:column;
+  width:min(var(--modal-safe-width,1120px),100%);
+  max-width:calc(100vw - 20px);
+  max-height:calc(100dvh - 20px)!important;
+  min-height:0;
+  overflow:hidden!important;
+  overscroll-behavior:contain;
+  transform:translateZ(0);
+}
+.modal-layer .modal-card.small{--modal-safe-width:560px}
+.modal-layer .quick-add-modal{--modal-safe-width:1120px}
+.modal-layer .task-edit-modal{--modal-safe-width:1120px}
+.modal-layer .assignee-picker-modal{--modal-safe-width:1040px}
+.modal-layer .transfer-task-modal{--modal-safe-width:980px}
+.modal-layer .evaluation-modal{--modal-safe-width:860px}
+.modal-layer .monthly-report-modal{--modal-safe-width:1440px}
+.modal-layer .academy-training-modal{--modal-safe-width:980px}
+.modal-layer .academy-booking-modal{--modal-safe-width:980px}
+.modal-layer .academy-import-modal{--modal-safe-width:1040px}
+.modal-layer .accessibility-modal{--modal-safe-width:900px}
+
+.modal-layer .modal-head,
+.modal-layer .modal-footer{
+  position:relative;
+  z-index:2;
+  flex:0 0 auto;
+  min-width:0;
+  background:var(--surface,#fff);
+}
+.modal-layer .modal-head>div,
+.modal-layer .modal-footer>*{min-width:0}
+.modal-layer .modal-body{
+  min-width:0;
+  min-height:0;
+  max-width:100%;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  touch-action:pan-y;
+}
+.modal-layer .modal-card>form{
+  display:flex;
+  flex:1 1 auto;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  max-height:100%;
+  overflow:hidden;
+}
+.modal-layer .modal-card>form>.modal-body{
+  flex:1 1 auto;
+}
+.modal-layer .modal-card>form>.modal-footer{
+  flex:0 0 auto;
+}
+
+/* Overrides das regras antigas que faziam criação/edição rolar a camada inteira. */
+#quickAddModal,
+#editTaskModal{
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+#quickAddModal .quick-add-modal,
+#editTaskModal .task-edit-modal{
+  overflow:hidden!important;
+  max-height:calc(100dvh - 20px)!important;
+}
+
+/* ALERTA INVASIVO: cartão 100% ancorado. Nunca acompanha o scroll da página. */
+.intrusive-notification-layer{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  z-index:10000!important;
+  contain:layout paint;
+}
+.intrusive-notification-layer.hidden{display:none!important}
+.intrusive-notification-card{
+  position:relative!important;
+  display:grid!important;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  width:min(900px,calc(100vw - 28px))!important;
+  max-width:900px;
+  max-height:calc(100dvh - 28px)!important;
+  margin:0!important;
+  overflow:hidden!important;
+  overscroll-behavior:contain!important;
+  transform:translateZ(0);
+  isolation:isolate;
+  will-change:auto;
+}
+.intrusive-notification-header,
+.intrusive-notification-footer{
+  min-width:0;
+  flex:none;
+}
+.intrusive-notification-body{
+  min-width:0;
+  min-height:0;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  scrollbar-gutter:stable;
+  touch-action:pan-y;
+}
+.intrusive-notification-hero>div,
+.intrusive-notification-actor>div,
+.intrusive-meta-card{min-width:0}
+.intrusive-notification-title,
+.intrusive-notification-message,
+.intrusive-notification-actor strong,
+.intrusive-meta-card strong{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+/* Drawers presos ao viewport dinâmico. Só o conteúdo interno rola. */
+.right-drawer{
+  height:100dvh!important;
+  max-height:100dvh!important;
+  overflow:hidden!important;
+  overscroll-behavior:contain;
+}
+.notification-list,
+.task-drawer-content,
+.person-drawer-content{
+  min-height:0;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+}
+.person-drawer-actions{
+  position:sticky!important;
+  inset:auto 0 0 0!important;
+  width:100%!important;
+  margin-top:auto;
+  flex:0 0 auto;
+}
+
+/* Robustez geral de grids e cards: conteúdo grande não força sobreposição. */
+:where(
+  .form-grid,.task-setup-grid,.priority-choice-grid,.size-choice-grid,
+  .immediate-audience-options,.metric-grid,.team-summary,.academy-summary,
+  .academy-bottom-grid,.academy-training-hub,.monthly-project-grid,
+  .intrusive-notification-meta,.detail-grid,.drawer-status-grid,
+  .task-template-toolbar,.task-execution-grid,.productivity-grid
+)>*{min-width:0;max-width:100%}
+
+:where(.card,.task-card,.person-card,.modal-card,.academy-card,.academy-reservation-card,
+.academy-training-list-card,.productivity-card,.choice-card,.assignee-option){
+  min-width:0;
+  max-width:100%;
+}
+
+img,svg,video,canvas{max-width:100%}
+img{height:auto}
+.avatar img,.side-logo img,.auth-brand img,.intrusive-notification-brand img{height:100%}
+
+:where(h1,h2,h3,h4,strong,p,small,span){overflow-wrap:break-word}
+
+/* Zoom / telas menores: o conteúdo se reorganiza antes de colidir. */
+@media(max-width:900px){
+  .modal-layer{padding:8px}
+  .modal-layer .modal-card{max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px)!important;border-radius:18px}
+  .intrusive-notification-card{width:calc(100vw - 16px)!important;max-height:calc(100dvh - 16px)!important;border-radius:20px}
+  .intrusive-notification-hero{grid-template-columns:64px minmax(0,1fr)}
+  .intrusive-notification-icon{width:64px;height:64px;border-radius:18px}
+}
+
+@media(max-width:620px){
+  .modal-layer .modal-head,.modal-layer .modal-body,.modal-layer .modal-footer{padding-left:16px;padding-right:16px}
+  .modal-layer .modal-footer{flex-wrap:wrap}
+  .modal-layer .modal-footer .btn{flex:1 1 180px;white-space:normal}
+  .intrusive-notification-header{padding:14px 15px 12px 20px}
+  .intrusive-notification-body{padding:19px 17px 16px}
+  .intrusive-notification-footer{padding:13px 17px 17px;grid-template-columns:1fr}
+  .intrusive-notification-hero{grid-template-columns:1fr}
+  .intrusive-notification-icon{width:58px;height:58px}
+  .intrusive-notification-hero h2{font-size:clamp(24px,8vw,31px)}
+  .intrusive-notification-meta{grid-template-columns:1fr}
+}
+
+/* Alto contraste continua legível sem criar bordas gigantes que alteram layout. */
+body.ui-high-contrast .modal-card,
+body.ui-high-contrast .intrusive-notification-card,
+body.ui-high-contrast .right-drawer{outline-offset:-1px}
+
+/* Dark mode da camada de estabilidade. */
+body.ui-theme-dark .modal-layer .modal-head,
+body.ui-theme-dark .modal-layer .modal-footer{background:#101813}
+body.ui-theme-dark .intrusive-notification-body{scrollbar-color:#42594a transparent}
+
+
+/* Pino geométrico do alerta: nem scroll nem mudança de scrollbar deslocam o cartão. */
+.intrusive-notification-card{
+  position:absolute!important;
+  top:50%!important;
+  left:50%!important;
+  right:auto!important;
+  bottom:auto!important;
+  margin:0!important;
+  transform:translate(-50%,-50%) translateZ(0)!important;
+  animation:intrusiveStableIn .28s var(--ease)!important;
+}
+.intrusive-notification-card.tone-immediate{
+  animation:intrusiveStableIn .28s var(--ease),immediateGlow 1.15s ease-in-out .28s infinite alternate!important;
+}
+@keyframes intrusiveStableIn{
+  from{opacity:0;transform:translate(-50%,calc(-50% + 14px)) scale(.985)}
+  to{opacity:1;transform:translate(-50%,-50%) scale(1)}
+}
+
+
+/* =========================================================
+   AJUSTE VISUAL V3.4.7 — REBALANCEAMENTO DE CORES E CONTRASTE
+   Objetivo: remover excesso de tons muito claros, aumentar contraste
+   e dar mais leitura às áreas de destaque no modo claro.
+   ========================================================= */
+body:not(.ui-theme-dark){
+  --bg:#e9efeb;
+  --surface:#ffffff;
+  --surface-2:#f3f7f4;
+  --surface-3:#eef4f0;
+  --panel:#ffffff;
+  --soft:#f2f6f3;
+  --surface-elevated:#ffffff;
+  --surface-hover:#edf4ef;
+  --surface-inset:#f1f5f2;
+  --icon-surface:#ecf2ee;
+
+  --ink:#0e1c14;
+  --text:#23362b;
+  --muted:#5b6f63;
+  --faint:#84958b;
+  --line:#d2ddd6;
+  --line-strong:#bfd0c6;
+
+  --green-50:#edf5f0;
+  --green-100:#dcebe1;
+  --green-200:#b8d4c3;
+  --green-300:#8ebe9f;
+  --green-400:#5ca97b;
+  --green-500:#3e9362;
+  --green-600:#2f7b50;
+  --green-700:#256543;
+  --green-800:#1b5035;
+  --green-900:#143e2b;
+  --green-950:#0c291d;
+
+  --amber:#d7890d;
+  --amber-soft:#fff0d8;
+  --red:#ca3f47;
+  --red-soft:#fff0f1;
+  --blue:#2f6fe0;
+  --blue-soft:#edf4ff;
+  --purple:#7150c4;
+  --purple-soft:#f0ebff;
+}
+
+body:not(.ui-theme-dark){
+  background:radial-gradient(circle at 18% 0,#f4f8f5 0,transparent 34%),var(--bg);
+  color:var(--text);
+}
+
+body:not(.ui-theme-dark) .topbar{
+  background:rgba(248,250,249,.94);
+  border-bottom:1px solid rgba(191,208,198,.88);
+}
+body:not(.ui-theme-dark) .global-search,
+body:not(.ui-theme-dark) .search-input,
+body:not(.ui-theme-dark) .quick-capture textarea,
+body:not(.ui-theme-dark) .task-toolbar select,
+body:not(.ui-theme-dark) .team-search-field,
+body:not(.ui-theme-dark) .team-controls select,
+body:not(.ui-theme-dark) .toolbar-select,
+body:not(.ui-theme-dark) .field input,
+body:not(.ui-theme-dark) .field textarea,
+body:not(.ui-theme-dark) .field select,
+body:not(.ui-theme-dark) .input-shell,
+body:not(.ui-theme-dark) .suffix-input,
+body:not(.ui-theme-dark) .comment-form textarea,
+body:not(.ui-theme-dark) .assignee-picker-search,
+body:not(.ui-theme-dark) .academy-import-map-grid select{
+  background:#f8fbf9;
+  border-color:var(--line);
+  color:var(--text);
+}
+body:not(.ui-theme-dark) .global-search:hover,
+body:not(.ui-theme-dark) .search-input:focus-within,
+body:not(.ui-theme-dark) .quick-capture textarea:focus,
+body:not(.ui-theme-dark) .field input:focus,
+body:not(.ui-theme-dark) .field textarea:focus,
+body:not(.ui-theme-dark) .field select:focus{
+  background:#fff;
+  border-color:var(--green-300);
+}
+
+body:not(.ui-theme-dark) :where(.card,.metric-card,.task-card,.person-card,.calendar-card,.selected-day,.task-list-view,.team-summary-card,.team-insight-card,.team-avatar-strip,.person-drawer-section,.task-status-section,.task-assignee-section,.task-detail-summary>div,.academy-command-bar,.academy-reservation-card,.academy-summary-card,.manager-evaluation-panel,.evaluation-feedback,.intrusive-meta-card,.accessibility-size-grid button,.assignee-selector-button,.assignee-option,.evaluation-choice,.transfer-person-card.choose,.academy-training-list-card,.productivity-card){
+  background:var(--surface);
+  border-color:var(--line);
+  color:var(--text);
+  box-shadow:0 4px 16px rgba(12,41,29,.04);
+}
+body:not(.ui-theme-dark) :where(.metric-card,.task-card,.person-card,.team-summary-card,.team-insight-card,.academy-training-list-card):hover{
+  border-color:var(--green-200);
+  box-shadow:0 12px 28px rgba(12,41,29,.08);
+}
+
+/* Banners principais com contraste real */
+body:not(.ui-theme-dark) .today-hero,
+body:not(.ui-theme-dark) .team-manager-banner{
+  background:linear-gradient(135deg,#163f2c 0%,#21583d 58%,#2f7650 100%)!important;
+  color:#fff!important;
+  box-shadow:0 22px 48px rgba(19,62,43,.18);
+}
+body:not(.ui-theme-dark) .today-hero::before,
+body:not(.ui-theme-dark) .team-manager-banner::after{
+  opacity:.95;
+}
+body:not(.ui-theme-dark) .today-hero p,
+body:not(.ui-theme-dark) .team-manager-banner p{
+  color:rgba(255,255,255,.82)!important;
+}
+body:not(.ui-theme-dark) .team-updated-at{
+  color:#eef8f1;
+  background:rgba(255,255,255,.12);
+  border-color:rgba(255,255,255,.18);
+}
+body:not(.ui-theme-dark) .hero-date-card{
+  background:#ffffff;
+  color:#163f2c;
+  box-shadow:0 18px 44px rgba(6,24,16,.22);
+}
+body:not(.ui-theme-dark) .hero-date-card span,
+body:not(.ui-theme-dark) .hero-date-card small{color:#2a6a47}
+
+/* Home - captura rápida mais legível */
+body:not(.ui-theme-dark) .quick-capture{
+  background:linear-gradient(180deg,#11281d 0%,#0d1d15 100%);
+  border-color:#1d402c;
+}
+body:not(.ui-theme-dark) .quick-capture .card-heading h3,
+body:not(.ui-theme-dark) .quick-capture .card-heading p,
+body:not(.ui-theme-dark) .quick-capture .segmented button,
+body:not(.ui-theme-dark) .quick-capture textarea,
+body:not(.ui-theme-dark) .quick-capture textarea::placeholder{
+  color:#ecf6ef;
+}
+body:not(.ui-theme-dark) .quick-capture textarea{
+  background:rgba(255,255,255,.04);
+  border-color:rgba(255,255,255,.12);
+}
+body:not(.ui-theme-dark) .quick-capture .segmented{
+  background:rgba(255,255,255,.06);
+  border-color:rgba(255,255,255,.12);
+}
+body:not(.ui-theme-dark) .quick-capture .segmented button.active{
+  background:#61c98a;
+  color:#0d1c13;
+}
+
+/* Demanda/Eq. - filtros e faixas de responsáveis */
+body:not(.ui-theme-dark) .task-toolbar,
+body:not(.ui-theme-dark) .team-controls,
+body:not(.ui-theme-dark) .academy-section-tabs{
+  background:#f6faf7;
+  border-color:var(--line);
+}
+body:not(.ui-theme-dark) .team-avatar-strip,
+body:not(.ui-theme-dark) .responsavel-strip,
+body:not(.ui-theme-dark) .task-avatar-strip{
+  background:#f6f8f7;
+  border-color:var(--line);
+}
+body:not(.ui-theme-dark) .team-avatar-person,
+body:not(.ui-theme-dark) .task-avatar-filter{
+  background:#ffffff;
+  border-color:var(--line);
+}
+body:not(.ui-theme-dark) .team-avatar-person.active,
+body:not(.ui-theme-dark) .task-avatar-filter.active{
+  background:#183b2a;
+  color:#fff;
+  border-color:#183b2a;
+}
+body:not(.ui-theme-dark) .team-avatar-person.active span,
+body:not(.ui-theme-dark) .task-avatar-filter.active span,
+body:not(.ui-theme-dark) .team-avatar-person.active small,
+body:not(.ui-theme-dark) .task-avatar-filter.active small{
+  color:rgba(255,255,255,.85);
+}
+
+/* Academia com menos lavado */
+body:not(.ui-theme-dark) .academy-section-tab{
+  background:transparent;
+}
+body:not(.ui-theme-dark) .academy-section-tab:hover{
+  background:#f1f6f3;
+}
+body:not(.ui-theme-dark) .academy-section-tab>svg{
+  background:#eef2f0;
+  color:#4f6458;
+}
+body:not(.ui-theme-dark) .academy-section-tab.active{
+  background:linear-gradient(135deg,#4e3d82 0%,#5d4a97 100%);
+  border-color:#5d4a97;
+  box-shadow:0 14px 30px rgba(93,74,151,.18);
+}
+body:not(.ui-theme-dark) .academy-section-tab.active strong,
+body:not(.ui-theme-dark) .academy-section-tab.active small,
+body:not(.ui-theme-dark) .academy-section-tab.active .academy-tab-count{
+  color:#fff;
+}
+body:not(.ui-theme-dark) .academy-section-tab.active>svg{
+  background:rgba(255,255,255,.16);
+  color:#fff;
+}
+body:not(.ui-theme-dark) .academy-training-hub{
+  background:linear-gradient(135deg,#f1ebff 0%,#f6f3ff 44%,#ffffff 100%);
+  border-color:#d9cdf6;
+}
+body:not(.ui-theme-dark) .academy-training-rules span{
+  background:#fff;
+  border-color:#ddd4f3;
+  color:#5c4797;
+}
+body:not(.ui-theme-dark) .academy-day{
+  background:#ffffff;
+}
+body:not(.ui-theme-dark) .academy-day:hover{
+  background:#f6faf7;
+}
+body:not(.ui-theme-dark) .academy-day.free .academy-day-status,
+body:not(.ui-theme-dark) .academy-day .status-livre{
+  color:#4a6356;
+}
+
+/* Barras, pills e pequenos componentes */
+body:not(.ui-theme-dark) .soft-count,
+body:not(.ui-theme-dark) .academy-tab-count,
+body:not(.ui-theme-dark) .role-chip,
+body:not(.ui-theme-dark) .project-pill,
+body:not(.ui-theme-dark) .checklist-progress-label{
+  background:#edf4ef;
+  color:#2a5b40;
+  border-color:#d8e4dc;
+}
+body:not(.ui-theme-dark) .insight-count.neutral,
+body:not(.ui-theme-dark) .metric-card.green .metric-icon,
+body:not(.ui-theme-dark) .team-summary-icon,
+body:not(.ui-theme-dark) .focus-check:hover{
+  background:#e7f2eb;
+  color:#2f7b50;
+}
+
+/* Calendário e data card mais legíveis */
+body:not(.ui-theme-dark) .calendar-day.selected{
+  background:#f1f8f3;
+  box-shadow:inset 0 0 0 2px #2f7b50;
+}
+body:not(.ui-theme-dark) .selected-day{
+  background:linear-gradient(180deg,#f7fbf8 0%,#ffffff 100%);
+}
+
+/* Popups e overlays com leitura melhor */
+body:not(.ui-theme-dark) .modal-card,
+body:not(.ui-theme-dark) .right-drawer,
+body:not(.ui-theme-dark) .search-command{
+  background:#ffffff;
+  border-color:var(--line);
+}
+body:not(.ui-theme-dark) .modal-head,
+body:not(.ui-theme-dark) .modal-footer,
+body:not(.ui-theme-dark) .drawer-footer-actions,
+body:not(.ui-theme-dark) .person-drawer-actions{
+  background:#fbfcfb;
+  border-color:var(--line);
+}
+
+/* Garante contraste nas áreas que estavam claro sobre claro */
+body:not(.ui-theme-dark) .muted-on-soft,
+body:not(.ui-theme-dark) .section-subcopy,
+body:not(.ui-theme-dark) .ghost-copy,
+body:not(.ui-theme-dark) .low-contrast-fix{
+  color:var(--muted)!important;
+}
