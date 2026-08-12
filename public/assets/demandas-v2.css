@@ -2551,3 +2551,175 @@ body.ui-theme-dark .feature-setup-notice{background:#2b2416;border-color:#5e4b28
 @media(max-width:1280px){.smart-day-board{grid-template-columns:1fr 1fr}.project-grid{grid-template-columns:1fr 1fr}.team-capacity-forecast-grid{grid-template-columns:1fr 1fr}.automation-example-grid{grid-template-columns:1fr 1fr}.monthly-comparison-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:820px){.project-summary,.automation-summary{grid-template-columns:1fr 1fr}.project-grid,.team-capacity-forecast-grid{grid-template-columns:1fr}.capacity-range-list{grid-template-columns:1fr 1fr 1fr}.project-timeline-task{grid-template-columns:36px minmax(0,1fr) 16px}.project-timeline-task .priority-pill{display:none}.monthly-comparison-grid{grid-template-columns:1fr 1fr}.automation-flow-builder>section{grid-template-columns:48px minmax(0,1fr)}}
 @media(max-width:560px){.smart-day-board{grid-template-columns:1fr}.projects-filter-row{flex-direction:column}.project-summary,.automation-summary{grid-template-columns:1fr 1fr}.project-grid{grid-template-columns:1fr}.project-card-metrics{grid-template-columns:1fr 1fr}.automation-example-grid{grid-template-columns:1fr}.automation-card{align-items:flex-start;flex-direction:column}.automation-card-actions{width:100%;justify-content:flex-end}.automation-condition-grid{grid-template-columns:1fr}.monthly-comparison-grid{grid-template-columns:1fr 1fr}.notification-levels-settings{grid-template-columns:1fr}.evolution-metrics{grid-template-columns:1fr 1fr 1fr}}
+
+
+/* =========================================================
+   V3.5.1 — CORREÇÃO DE EMPILHAMENTO DE MODAIS
+   O seletor de responsável é um modal secundário e precisa
+   ficar SEMPRE acima do modal/painel que o abriu.
+   ========================================================= */
+
+/* camada base dos modais normais */
+.modal-layer{
+  z-index:200;
+}
+
+/* modais que podem abrir por cima de outro modal */
+#assigneePickerModal{
+  z-index:420 !important;
+}
+
+/* garante que o próprio card do seletor crie uma camada isolada */
+#assigneePickerModal .assignee-picker-modal{
+  position:relative;
+  z-index:421;
+}
+
+/* o fundo do seletor também precisa cobrir o modal anterior */
+#assigneePickerModal:not(.hidden){
+  background:rgba(7,26,16,.62);
+  backdrop-filter:blur(7px);
+}
+
+/* dark mode */
+body.ui-theme-dark #assigneePickerModal:not(.hidden){
+  background:rgba(1,5,3,.86);
+}
+
+/* alertas invasivos continuam acima de tudo */
+.intrusive-notification-layer{
+  z-index:700 !important;
+}
+
+/* tutorial permanece como experiência máxima de primeiro acesso */
+.onboarding-layer{
+  z-index:800 !important;
+}
+
+
+/* =========================================================
+   V3.5.2 — ACADEMIA PMG: CARD VERTICAL / COLUNA ESTREITA
+   Corrige texto espremido letra por letra no painel lateral.
+   ========================================================= */
+
+/* O painel lateral da data selecionada é estreito por definição.
+   Dentro dele, a reserva deve empilhar, não tentar manter 3 colunas. */
+.selected-day .academy-reservation-card{
+  grid-template-columns:minmax(0,1fr) !important;
+  align-items:stretch !important;
+  gap:10px !important;
+  padding:14px !important;
+}
+
+.selected-day .academy-reservation-time{
+  width:100%;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  text-align:left;
+  padding:10px 12px;
+}
+
+.selected-day .academy-reservation-time strong,
+.selected-day .academy-reservation-time span{
+  margin:0;
+}
+
+.selected-day .academy-reservation-copy{
+  width:100%;
+  min-width:0;
+}
+
+.selected-day .academy-reservation-copy h4,
+.selected-day .academy-reservation-copy p,
+.selected-day .academy-reservation-copy small{
+  width:100%;
+  min-width:0;
+  white-space:normal !important;
+  word-break:normal !important;
+  overflow-wrap:break-word !important;
+  hyphens:none;
+}
+
+.selected-day .academy-reservation-copy h4{
+  line-height:1.35;
+}
+
+.selected-day .academy-reservation-actions{
+  width:100%;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  flex-wrap:wrap;
+  gap:8px;
+  padding-top:2px;
+}
+
+.selected-day .academy-reservation-actions .icon-btn{
+  flex:0 0 42px;
+}
+
+.selected-day .academy-reservation-actions .academy-status-action{
+  min-height:40px;
+  flex:1 1 120px;
+  justify-content:center;
+}
+
+/* A pílula nunca deve roubar toda a largura do texto. */
+.selected-day .academy-training-pill,
+.selected-day .academy-status-pill,
+.selected-day .academy-conflict-pill{
+  max-width:100%;
+  white-space:normal;
+  line-height:1.2;
+}
+
+/* Segurança para qualquer card de Academia que fique estreito. */
+@media (max-width:820px){
+  .academy-reservation-card{
+    grid-template-columns:minmax(0,1fr) !important;
+    align-items:stretch !important;
+  }
+
+  .academy-reservation-time{
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    text-align:left;
+  }
+
+  .academy-reservation-actions{
+    grid-column:1 !important;
+    width:100%;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:flex-start;
+    gap:8px;
+  }
+
+  .academy-reservation-copy h4,
+  .academy-reservation-copy p,
+  .academy-reservation-copy small{
+    white-space:normal !important;
+    word-break:normal !important;
+    overflow-wrap:break-word !important;
+  }
+}
+
+/* Celular muito estreito: botões ocupam a largura, sem esmagar conteúdo. */
+@media (max-width:460px){
+  .selected-day .academy-reservation-card{
+    padding:12px !important;
+  }
+
+  .selected-day .academy-reservation-actions .icon-btn,
+  .selected-day .academy-reservation-actions .academy-status-action{
+    flex:1 1 100%;
+    width:100%;
+  }
+}
