@@ -13,7 +13,7 @@ self.addEventListener('push', event => {
       badge: data.badge || '/imagenssite/pmglogo.png',
       tag: data.tag || undefined,
       renotify: false,
-      requireInteraction: Boolean(data.reminderId),
+      requireInteraction: Boolean(data.reminderId) || ['critica','importante'].includes(data.level),
       actions: Array.isArray(data.actions) ? data.actions : [],
       data: {
         url: data.url || '/central.html',

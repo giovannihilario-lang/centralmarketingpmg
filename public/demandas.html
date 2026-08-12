@@ -76,6 +76,8 @@
         <button class="nav-item" data-view="agenda"><i data-lucide="calendar-days"></i><span>Agenda</span></button>
         <button class="nav-item" data-view="academia"><i data-lucide="presentation"></i><span>Academia PMG</span><b id="navAcademyPending" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="demandas"><i data-lucide="layout-dashboard"></i><span>Demandas</span><b id="navTaskCount" class="nav-badge">0</b></button>
+        <button class="nav-item" data-view="projetos"><i data-lucide="folder-kanban"></i><span>Projetos</span><b id="navProjectCount" class="nav-badge hidden">0</b></button>
+        <button class="nav-item manager-only" data-view="automacoes"><i data-lucide="workflow"></i><span>Automações</span><b id="navAutomationCount" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="equipe"><i data-lucide="users-round"></i><span>Equipe</span></button>
 
         <span class="nav-group">PMG Connect</span>
@@ -104,7 +106,7 @@
           <div><span id="pageEyebrow" class="page-eyebrow">Sua rotina</span><h1 id="pageTitle">Hoje</h1></div>
         </div>
         <div class="topbar-center">
-          <button id="globalSearchBtn" class="global-search"><i data-lucide="search"></i><span>Buscar demanda ou lembrete</span><kbd>Ctrl K</kbd></button>
+          <button id="globalSearchBtn" class="global-search"><i data-lucide="search"></i><span>Buscar tudo ou executar um comando</span><kbd>Ctrl K</kbd></button>
         </div>
         <div class="topbar-actions">
           <button id="refreshBtn" class="icon-btn subtle" title="Atualizar dados"><i data-lucide="refresh-cw"></i></button>
@@ -212,6 +214,14 @@
             <button class="metric-card green" data-smart-filter="semana"><span class="metric-icon"><i data-lucide="calendar-range"></i></span><span><strong id="metricWeek">0</strong><small>Próximos 7 dias</small></span><i data-lucide="chevron-right"></i></button>
             <button class="metric-card blue" data-smart-filter="minhas"><span class="metric-icon"><i data-lucide="circle-user-round"></i></span><span><strong id="metricMine">0</strong><small>Minhas demandas</small></span><i data-lucide="chevron-right"></i></button>
           </div>
+
+          <section class="smart-day card" aria-labelledby="smartDayTitle">
+            <div class="section-header smart-day-head">
+              <div><span class="eyebrow">Meu Dia inteligente</span><h3 id="smartDayTitle">O que merece atenção, na ordem certa</h3><p>O Connect separa automaticamente urgências, hoje, próximos dias e o que pode esperar.</p></div>
+              <span id="smartDayCount" class="soft-count">0 itens</span>
+            </div>
+            <div id="smartDayBoard" class="smart-day-board"></div>
+          </section>
 
           <div class="today-layout">
             <section class="card agenda-today-card">
@@ -385,6 +395,43 @@
           </section>
         </section>
 
+        <section id="viewProjetos" class="view" data-page="projetos">
+          <div class="page-toolbar projects-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Planejamento conectado</span><h2>Projetos</h2><p>Agrupe demandas por objetivo, acompanhe progresso, horas, gargalos e dependências em uma visão só.</p></div>
+            <div class="toolbar-actions">
+              <button id="projectNewDemandBtn" class="btn secondary manager-only"><i data-lucide="clipboard-plus"></i><span>Nova demanda</span></button>
+              <button id="projectNewBtn" class="btn primary manager-only"><i data-lucide="folder-plus"></i><span>Novo projeto</span></button>
+            </div>
+          </div>
+          <div id="projectSetupNotice" class="feature-setup-notice hidden"></div>
+          <div id="projectSummary" class="project-summary"></div>
+          <div class="projects-filter-row">
+            <div class="search-input projects-search"><i data-lucide="search"></i><input id="projectSearch" type="search" placeholder="Buscar projeto, objetivo ou responsável..."></div>
+            <select id="projectStatusFilter" class="toolbar-select" aria-label="Filtrar status"><option value="">Todos os status</option><option value="planejado">Planejado</option><option value="ativo">Ativo</option><option value="pausado">Pausado</option><option value="concluido">Concluído</option></select>
+          </div>
+          <div id="projectGrid" class="project-grid"></div>
+          <section id="projectDetail" class="project-detail card hidden"></section>
+        </section>
+
+        <section id="viewAutomacoes" class="view" data-page="automacoes">
+          <div class="page-toolbar automations-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Rotinas automáticas</span><h2>Automações</h2><p>Crie regras do tipo SE → ENTÃO para reduzir cobrança manual e avisar a pessoa certa no momento certo.</p></div>
+            <div class="toolbar-actions"><button id="automationNewBtn" class="btn primary manager-only"><i data-lucide="workflow"></i><span>Nova automação</span></button></div>
+          </div>
+          <div id="automationSetupNotice" class="feature-setup-notice hidden"></div>
+          <div id="automationSummary" class="automation-summary"></div>
+          <section class="automation-examples card">
+            <div class="section-header"><div><span class="eyebrow">Exemplos úteis</span><h3>Regras que combinam com o fluxo da PMG</h3></div></div>
+            <div class="automation-example-grid">
+              <button type="button" data-automation-template="imediata"><i data-lucide="siren"></i><span><strong>Demanda imediata</strong><small>Ao criar prioridade IMEDIATA → alerta crítico para o responsável.</small></span></button>
+              <button type="button" data-automation-template="revisao"><i data-lucide="scan-eye"></i><span><strong>Chegou em revisão</strong><small>Ao entrar em revisão → alerta importante para gestores.</small></span></button>
+              <button type="button" data-automation-template="prazo"><i data-lucide="clock-alert"></i><span><strong>Prazo em 24h</strong><small>Quando faltar um dia → avisar o responsável.</small></span></button>
+              <button type="button" data-automation-template="parada"><i data-lucide="hourglass"></i><span><strong>Sem movimentação</strong><small>3 dias sem atualizar → avisar gestores.</small></span></button>
+            </div>
+          </section>
+          <div id="automationList" class="automation-list"></div>
+        </section>
+
         <section id="viewEquipe" class="view" data-page="equipe">
           <div class="page-toolbar team-page-toolbar">
             <div class="toolbar-title">
@@ -405,7 +452,16 @@
           </div>
 
           <div id="teamSummary" class="team-summary"></div>
+          <div id="teamAvatarStrip" class="team-avatar-strip"></div>
           <div id="teamInsights" class="team-insights manager-only"></div>
+
+          <section class="team-capacity-forecast card manager-only">
+            <div class="section-header">
+              <div><span class="eyebrow">Previsão de capacidade</span><h3>Carga dos próximos 7, 14 e 30 dias</h3><p>Antes de delegar ou transferir, veja quanto trabalho já está concentrado em cada pessoa.</p></div>
+              <span class="capacity-reference"><i data-lucide="gauge"></i> Base semanal: 24h estimadas</span>
+            </div>
+            <div id="teamCapacityForecast" class="team-capacity-forecast-grid"></div>
+          </section>
 
           <div class="team-controls manager-only">
             <div class="team-search-field"><i data-lucide="search"></i><input id="teamSearch" type="search" placeholder="Buscar colaborador ou cargo..."></div>
@@ -867,11 +923,59 @@
     </div>
   </div>
 
+  <div id="projectModal" class="modal-layer hidden">
+    <div class="modal-card medium project-modal-card">
+      <div class="modal-head"><div><span class="eyebrow">Projetos</span><h2 id="projectModalTitle">Novo projeto</h2><p>Defina o objetivo e conecte as demandas usando o mesmo nome do projeto.</p></div><button class="icon-btn subtle" data-close-modal="projectModal"><i data-lucide="x"></i></button></div>
+      <form id="projectForm">
+        <input id="projectId" type="hidden">
+        <div class="modal-body">
+          <label class="field"><span>Nome do projeto</span><input id="projectName" maxlength="100" required placeholder="Ex.: Campanha Black Friday"></label>
+          <label class="field"><span>Objetivo</span><textarea id="projectObjective" rows="4" maxlength="1000" placeholder="Qual resultado esse projeto precisa entregar?"></textarea></label>
+          <div class="form-grid two">
+            <label class="field"><span>Responsável</span><select id="projectOwner"><option value="">Sem responsável principal</option></select></label>
+            <label class="field"><span>Status</span><select id="projectStatus"><option value="planejado">Planejado</option><option value="ativo" selected>Ativo</option><option value="pausado">Pausado</option><option value="concluido">Concluído</option></select></label>
+          </div>
+          <div class="form-grid two">
+            <label class="field"><span>Início</span><input id="projectStart" type="date"></label>
+            <label class="field"><span>Prazo final</span><input id="projectDue" type="date"></label>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="projectModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar projeto</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="automationModal" class="modal-layer hidden">
+    <div class="modal-card medium automation-modal-card">
+      <div class="modal-head"><div><span class="eyebrow">Automações</span><h2 id="automationModalTitle">Nova automação</h2><p>Escolha o gatilho, uma condição opcional e quem deve ser avisado.</p></div><button class="icon-btn subtle" data-close-modal="automationModal"><i data-lucide="x"></i></button></div>
+      <form id="automationForm">
+        <input id="automationId" type="hidden">
+        <div class="modal-body">
+          <label class="field"><span>Nome da regra</span><input id="automationName" maxlength="100" required placeholder="Ex.: Cobrar revisão do gestor"></label>
+          <div class="automation-flow-builder">
+            <section><span class="automation-flow-step">SE</span><label class="field"><span>Gatilho</span><select id="automationTrigger" required><option value="tarefa_criada">Uma demanda for criada</option><option value="status_alterado">O status mudar</option><option value="prioridade_alterada">A prioridade mudar</option><option value="revisao">Entrar em revisão</option><option value="conclusao">For concluída</option><option value="prazo_24h">Faltar até 24h para o prazo</option><option value="atrasada">Ficar atrasada</option><option value="sem_movimentacao_3d">Ficar 3 dias sem movimentação</option></select></label></section>
+            <section><span class="automation-flow-step muted">E</span><div class="automation-condition-grid"><label class="field"><span>Condição</span><select id="automationConditionField"><option value="qualquer">Qualquer demanda</option><option value="prioridade">Prioridade</option><option value="status">Status</option><option value="projeto">Projeto</option><option value="responsavel">Responsável</option></select></label><label class="field"><span>Valor</span><input id="automationConditionValue" placeholder="Ex.: urgente, revisao ou nome do projeto"></label></div></section>
+            <section><span class="automation-flow-step then">ENTÃO</span><div class="automation-condition-grid"><label class="field"><span>Notificar</span><select id="automationDestination"><option value="responsavel">Responsável da demanda</option><option value="criador">Quem criou a demanda</option><option value="gestores">Todos os gestores</option><option value="equipe">Toda a equipe</option></select></label><label class="field"><span>Nível</span><select id="automationLevel"><option value="critica">Crítica</option><option value="importante">Importante</option><option value="normal" selected>Normal</option><option value="informativa">Informativa</option></select></label></div></section>
+          </div>
+          <label class="field"><span>Mensagem</span><textarea id="automationMessage" rows="3" maxlength="240" placeholder="Ex.: Esta demanda está há 3 dias sem movimentação."></textarea></label>
+          <label class="academy-full-day-toggle automation-enabled-toggle"><span><strong>Automação ativa</strong><small>Desative sem excluir a regra.</small></span><input id="automationEnabled" type="checkbox" checked></label>
+        </div>
+        <div class="modal-footer"><button id="automationDeleteBtn" type="button" class="btn danger-soft hidden"><i data-lucide="trash-2"></i>Excluir</button><span class="modal-footer-spacer"></span><button type="button" class="btn secondary" data-close-modal="automationModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar automação</button></div>
+      </form>
+    </div>
+  </div>
+
   <div id="notificationSettingsModal" class="modal-layer hidden">
     <div class="modal-card small">
       <div class="modal-head"><div><span class="eyebrow">Notificações</span><h2>Alertas deste computador</h2><p>Controle quando o Windows pode avisar você.</p></div><button class="icon-btn subtle" data-close-modal="notificationSettingsModal"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
         <div class="setting-status-card"><span id="notificationStatusIcon" class="setting-icon"><i data-lucide="bell-off"></i></span><div><strong id="notificationStatusTitle">Notificações desativadas</strong><p id="notificationStatusText">Ative para receber lembretes mesmo com a aba fechada.</p></div></div>
+        <div class="notification-levels-settings">
+          <div><span class="notification-level-dot critical"></span><strong>Crítica</strong><small>Bloqueia a tela e exige ação. Ex.: demanda imediata.</small></div>
+          <div><span class="notification-level-dot important"></span><strong>Importante</strong><small>Pop-up grande. Ex.: atraso, revisão ou transferência.</small></div>
+          <div><span class="notification-level-dot normal"></span><strong>Normal</strong><small>Fica na central e pode gerar aviso do Windows.</small></div>
+          <div><span class="notification-level-dot info"></span><strong>Informativa</strong><small>Atualizações de contexto e resumos.</small></div>
+        </div>
         <button id="enablePushBtn" class="btn primary wide"><i data-lucide="bell-ring"></i>Ativar notificações</button>
         <button id="testPushBtn" class="btn secondary wide"><i data-lucide="send"></i>Testar neste computador</button>
         <button id="disablePushBtn" class="btn danger-soft wide hidden"><i data-lucide="bell-off"></i>Desativar neste computador</button>
@@ -882,7 +986,7 @@
 
   <div id="searchModal" class="modal-layer search-layer hidden">
     <div class="search-command">
-      <div class="search-command-input"><i data-lucide="search"></i><input id="globalSearchInput" placeholder="Digite para buscar..."><kbd>Esc</kbd></div>
+      <div class="search-command-input"><i data-lucide="search"></i><input id="globalSearchInput" placeholder="Busque demandas, pessoas, projetos ou digite um comando..."><kbd>Esc</kbd></div>
       <div id="globalSearchResults" class="search-results"></div>
     </div>
   </div>

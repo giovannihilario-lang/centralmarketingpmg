@@ -115,7 +115,8 @@ function payloadFor(notification) {
     url,
     actions,
     reminderId: notification.lembrete_id || null,
-    taskId: notification.tarefa_id || null
+    taskId: notification.tarefa_id || null,
+    level: notification.nivel || 'normal'
   });
 }
 
@@ -216,6 +217,16 @@ async function processPending(supabase) {
     throw generationError;
   }
 
+  const { error: automationError } = await supabase.rpc('processar_automacoes_periodicas');
+  if (automationError && !/function .* does not exist/i.test(automationError.message || '')) {
+    console.warn('[Demandas automacoes]', automationError.message);
+  }
+
+  const { error: summaryError } = await supabase.rpc('gerar_resumo_diario_demandas');
+  if (summaryError && !/function .* does not exist/i.test(summaryError.message || '')) {
+    console.warn('[Demandas resumo diario]', summaryError.message);
+  }
+
   const { data: notifications, error: notificationsError } = await supabase
     .from('notificacoes')
     .select(`
@@ -224,6 +235,7 @@ async function processPending(supabase) {
       lembrete_id,
       colaborador_id,
       tipo,
+      nivel,
       mensagem,
       criado_em,
       tarefa:tarefas(id,titulo),

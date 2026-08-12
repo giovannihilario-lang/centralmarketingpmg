@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Demandas V3 / Operação */
+/* PMG Connect — Central de Demandas V3.5 / Gestão Inteligente */
 let db = null;
 let VAPID_PUBLIC_KEY = '';
 let publicConfigPromise = null;
@@ -76,7 +76,7 @@ const PRIORITY_ORDER = { imediata: -1, urgente: 0, alta: 1, media: 2, baixa: 3 }
 const VIEW_META = {
   hoje: ['Sua rotina', 'Hoje'], agenda: ['Planejamento unificado', 'Agenda'],
   academia: ['Espaço compartilhado', 'Academia PMG'],
-  demandas: ['Fluxo de trabalho', 'Demandas'], equipe: ['Capacidade do setor', 'Equipe']
+  demandas: ['Fluxo de trabalho', 'Demandas'], projetos: ['Planejamento conectado', 'Projetos'], automacoes: ['Rotinas automáticas', 'Automações'], equipe: ['Capacidade do setor', 'Equipe']
 };
 
 const state = {
@@ -92,7 +92,7 @@ const state = {
   agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyTab: 'calendar', academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
   templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
-  monthlyReportData: null, accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
+  monthlyReportData: null, projects: [], automations: [], intelligenceReady: false, selectedProjectId: null, projectSearch: '', projectStatusFilter: '', accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
 
 const $ = id => document.getElementById(id);
@@ -270,25 +270,32 @@ function renderAssigneePicker() {
   const currentId = state.assigneePicker.taskId
     ? state.tasks.find(task => task.id === state.assigneePicker.taskId)?.responsavel_id || ''
     : $(state.assigneePicker.selectId)?.value || '';
+  const transferTask = state.assigneePicker.taskId ? state.tasks.find(task => task.id === state.assigneePicker.taskId) : null;
   const people = state.collaborators
     .filter(person => !query || [person.nome, person.cargo, person.role].join(' ').toLowerCase().includes(query))
-    .map(person => ({ person, stats: assigneeStats(person) }))
+    .map(person => {
+      const stats = assigneeStats(person);
+      const extra = transferTask && person.id !== currentId ? sizeWeight(transferTask) : 0;
+      const projectedHours = Math.max(0, stats.hours + extra);
+      const projectedUtilization = Math.round(projectedHours / TEAM_CAPACITY_HOURS * 100);
+      return { person, stats, projectedHours, projectedUtilization, extra };
+    })
     .sort((a, b) => {
       const selectedDiff = Number(b.person.id === currentId) - Number(a.person.id === currentId);
       const riskDiff = (TEAM_RISK[a.stats.risk]?.score || 0) - (TEAM_RISK[b.stats.risk]?.score || 0);
       return selectedDiff || riskDiff || a.stats.hours - b.stats.hours || String(a.person.nome || '').localeCompare(String(b.person.nome || ''), 'pt-BR');
     });
 
-  $('assigneePickerContext').innerHTML = `<i data-lucide="info"></i><span>${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}. Carga calculada pelas demandas abertas e estimativas registradas.</span>`;
+  $('assigneePickerContext').innerHTML = `<i data-lucide="info"></i><span>${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}. ${transferTask ? `A projeção já inclui as ${formatHours(sizeWeight(transferTask))} desta demanda caso ela seja transferida.` : 'Carga calculada pelas demandas abertas e estimativas registradas.'}</span>`;
   const noneOption = !query || 'sem responsável'.includes(query)
     ? `<button type="button" class="assignee-option none ${currentId === '' ? 'selected' : ''}" data-assignee-choice=""><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsável</strong><small>Deixar na fila para atribuir depois</small></span><span class="assignee-option-state"><i data-lucide="${currentId === '' ? 'check' : 'chevron-right'}"></i></span></button>`
     : '';
-  $('assigneePickerList').innerHTML = noneOption + (people.length ? people.map(({ person, stats }) => {
+  $('assigneePickerList').innerHTML = noneOption + (people.length ? people.map(({ person, stats, projectedHours, projectedUtilization, extra }) => {
     const risk = teamRiskLabel(stats);
     return `<button type="button" class="assignee-option risk-${stats.risk} ${currentId === person.id ? 'selected' : ''}" data-assignee-choice="${person.id}">
       <span class="assignee-option-avatar">${avatarStatusHTML(person, stats, 'md')}</span>
-      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}</em></span>
-      <span class="assignee-option-load"><b>${Math.round(stats.hours)}h</b><small>${risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, stats.utilization || 0)}%"></span></i></span>
+      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}${extra ? ` · após transferência: ${formatHours(projectedHours)}` : ''}</em></span>
+      <span class="assignee-option-load"><b>${extra ? `${Math.round(stats.hours)}h → ${Math.round(projectedHours)}h` : `${Math.round(stats.hours)}h`}</b><small>${extra ? `${projectedUtilization}% projetado` : risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, extra ? projectedUtilization : (stats.utilization || 0))}%"></span></i></span>
       <span class="assignee-option-state"><i data-lucide="${currentId === person.id ? 'check' : 'chevron-right'}"></i></span>
     </button>`;
   }).join('') : `<div class="assignee-picker-empty"><i data-lucide="user-search"></i><strong>Ninguém encontrado</strong><span>Tente outro nome ou cargo.</span></div>`);
@@ -419,7 +426,7 @@ async function initializeUser() {
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
 }
 async function loadAll() {
-  await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4()]);
+  await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4(), loadIntelligenceV5()]);
 }
 async function loadCollaborators() {
   const { data, error } = await db.from('colaboradores').select('id,nome,foto_url,cargo,role,ativo,perfil_configurado,criado_em,atualizado_em').eq('ativo', true).order('nome');
@@ -449,7 +456,7 @@ async function loadActivities() {
 }
 
 function renderAll() {
-  renderShell(); renderToday(); renderAgenda(); renderDemandas(); renderEquipe(); renderAcademy(); renderNotifications(); refreshIcons();
+  renderShell(); renderToday(); renderAgenda(); renderDemandas(); renderProjects(); renderAutomations(); renderEquipe(); renderAcademy(); renderNotifications(); refreshIcons();
 }
 function renderShell() {
   $('sideUserAvatar').innerHTML = avatarHTML(state.me, 'sm');
@@ -463,6 +470,8 @@ function renderShell() {
   $('navTodayCount').classList.toggle('hidden', Number($('navTodayCount').textContent) === 0);
   const academyPending = state.academyReservations.filter(item => item.status === 'solicitada').length;
   if ($('navAcademyPending')) { $('navAcademyPending').textContent = academyPending; $('navAcademyPending').classList.toggle('hidden', academyPending === 0); }
+  const projectCount = projectCatalog().filter(item => item.status !== 'concluido').length; if ($('navProjectCount')) { $('navProjectCount').textContent = projectCount; $('navProjectCount').classList.toggle('hidden', projectCount === 0); }
+  const automationCount = state.automations.filter(item => item.ativo).length; if ($('navAutomationCount')) { $('navAutomationCount').textContent = automationCount; $('navAutomationCount').classList.toggle('hidden', !isManager() || automationCount === 0); }
   const [eyebrow, title] = VIEW_META[state.view] || VIEW_META.hoje; $('pageEyebrow').textContent = eyebrow; $('pageTitle').textContent = title;
   $$('.nav-item[data-view]').forEach(btn => btn.classList.toggle('active', btn.dataset.view === state.view));
   $$('.view').forEach(view => view.classList.toggle('active', view.dataset.page === state.view));
@@ -501,6 +510,7 @@ function renderToday() {
     ? `Você tem ${totalNow} ${totalNow === 1 ? 'item importante' : 'itens importantes'} pedindo atenção hoje. Vamos tirar isso da frente sem transformar o WhatsApp em sistema de gestão.`
     : 'Sua agenda está limpa por enquanto. Um raro momento de paz administrativa. Aproveite com responsabilidade.';
 
+  renderSmartDay(mine);
   renderTodayTimeline(todayTasks, todayReminders);
   renderFocusList(mine);
   renderActivityFeed();
@@ -834,7 +844,7 @@ function renderEquipe() {
         teamSummaryCard('badge-check', completed30.length, 'Concluídas em 30 dias')
       ].join('');
 
-  if (manager) renderTeamInsights(stats, active, unassigned);
+  if (manager) { renderTeamInsights(stats, active, unassigned); renderTeamCapacityForecast(stats); }
 
   if (manager) {
     const search = (state.teamSearch || '').trim().toLowerCase();
@@ -1015,6 +1025,8 @@ function switchView(view) {
   if (view === 'agenda') renderAgenda();
   if (view === 'academia') renderAcademy();
   if (view === 'demandas') renderDemandas();
+  if (view === 'projetos') renderProjects();
+  if (view === 'automacoes') renderAutomations();
   if (view === 'equipe') renderEquipe();
   window.scrollTo({ top: 0, behavior: state.accessibility.reduceMotion ? 'auto' : 'smooth' }); closeMobileSidebar(); refreshIcons();
 }
@@ -1644,6 +1656,7 @@ function maybeShowNextIntrusiveNotification() {
 
 function enqueueIntrusiveNotification(notification) {
   if (!notification?.id || notification.lida || intrusiveWasDismissed(notification.id)) return;
+  if (!['critica','importante'].includes(notificationLevel(notification))) return;
   if (state.intrusiveActive?.id === notification.id || state.intrusiveShownIds.has(notification.id) || state.intrusiveQueue.some(item => item.id === notification.id)) return;
   state.intrusiveQueue.push(notification);
   maybeShowNextIntrusiveNotification();
@@ -1652,7 +1665,7 @@ function enqueueIntrusiveNotification(notification) {
 function queueUnreadIntrusiveNotifications() {
   if (state.intrusiveBootstrapped) return;
   state.intrusiveBootstrapped = true;
-  state.notifications.filter(item => !item.lida).slice(0, 20).forEach(enqueueIntrusiveNotification);
+  state.notifications.filter(item => !item.lida && ['critica','importante'].includes(notificationLevel(item))).slice(0, 20).forEach(enqueueIntrusiveNotification);
   maybeShowNextIntrusiveNotification();
 }
 
@@ -3298,4 +3311,214 @@ renderTaskDrawer = function renderTaskDrawerV34() {
 };
 
 
-bindEvents(); bindProductivityV4Events(); initOverlayStability(); refreshIcons(); bootstrap();
+
+/* =========================================================
+   PMG CONNECT V3.5 — GESTÃO INTELIGENTE
+   Meu Dia, Projetos, Automações, Capacidade, níveis de alerta,
+   busca por comandos, relatório comparativo e evolução individual.
+   ========================================================= */
+
+function isMissingV5Schema(error) {
+  return /projetos_marketing|automacoes_demanda|salvar_projeto_marketing|salvar_automacao_demanda|schema cache|does not exist/i.test(error?.message || error?.details || String(error || ''));
+}
+
+async function loadIntelligenceV5() {
+  try {
+    const [projects, automations] = await Promise.all([
+      db.from('projetos_marketing').select('*').order('atualizado_em', { ascending: false }).limit(500),
+      db.from('automacoes_demanda').select('*').order('atualizado_em', { ascending: false }).limit(500)
+    ]);
+    const firstError = projects.error || automations.error;
+    if (firstError) throw firstError;
+    state.projects = projects.data || [];
+    state.automations = automations.data || [];
+    state.intelligenceReady = true;
+    await maybeProcessPeriodicAutomations();
+  } catch (error) {
+    if (!isMissingV5Schema(error)) console.warn('[v3.5]', error);
+    state.projects = [];
+    state.automations = [];
+    state.intelligenceReady = false;
+  }
+}
+
+async function maybeProcessPeriodicAutomations() {
+  if (!state.intelligenceReady) return;
+  const key = 'pmg:v35:automation-scan';
+  const last = Number(localStorage.getItem(key) || 0);
+  if (Date.now() - last < 15 * 60 * 1000) return;
+  localStorage.setItem(key, String(Date.now()));
+  try {
+    await db.rpc('processar_automacoes_periodicas');
+    await db.rpc('gerar_resumo_diario_demandas');
+  } catch (error) { if (!isMissingV5Schema(error)) console.warn('[automacoes periodicas]', error); }
+}
+
+function renderV5SetupNotice(id, feature) {
+  const el = $(id); if (!el) return;
+  el.classList.toggle('hidden', state.intelligenceReady);
+  if (!state.intelligenceReady) el.innerHTML = `<i data-lucide="database-zap"></i><div><strong>${feature} aguardando a migração V3.5</strong><span>O restante do PMG Connect continua funcionando. Execute <b>sql/05-GESTAO-INTELIGENTE-V3-5.sql</b> no Supabase para liberar gravação e automações.</span></div>`;
+}
+
+function renderSmartDay(mine) {
+  const board = $('smartDayBoard'); if (!board) return;
+  const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
+  const evaluation = isManager() ? active.filter(task => task.status === 'revisao') : [];
+  const unique = new Map([...mine, ...evaluation].map(task => [task.id, task]));
+  const candidates = [...unique.values()];
+  const used = new Set();
+  const take = predicate => candidates.filter(task => !used.has(task.id) && predicate(task)).sort(taskSortByAttention).filter(task => { used.add(task.id); return true; });
+  const now = take(task => task.prioridade === 'imediata' || isOverdue(task) || (isManager() && task.status === 'revisao'));
+  const today = take(task => taskDueKey(task) === todayKey());
+  const weekLimit = addDays(new Date(), 7).getTime();
+  const week = take(task => { const due = taskDue(task); return due && new Date(due).getTime() <= weekLimit; });
+  const later = take(() => true);
+  const buckets = [
+    ['agora', 'Agora', 'siren', now, 'Críticas, atrasadas e revisões'],
+    ['hoje', 'Hoje', 'clock-3', today, 'Precisa sair ainda hoje'],
+    ['semana', 'Esta semana', 'calendar-range', week, 'Próximos 7 dias'],
+    ['depois', 'Pode esperar', 'layers-3', later, 'Sem pressão imediata']
+  ];
+  $('smartDayCount').textContent = `${candidates.length} ${candidates.length === 1 ? 'item' : 'itens'}`;
+  board.innerHTML = buckets.map(([tone, title, icon, tasks, desc]) => `<section class="smart-day-column ${tone}"><header><span><i data-lucide="${icon}"></i></span><div><strong>${title}</strong><small>${desc}</small></div><b>${tasks.length}</b></header><div class="smart-day-items">${tasks.length ? tasks.slice(0, 7).map(smartDayTaskHTML).join('') : `<div class="smart-day-empty"><i data-lucide="circle-check"></i><span>Nada aqui</span></div>`}</div></section>`).join('');
+  refreshIcons();
+}
+
+function smartDayTaskHTML(task) {
+  const blocked = typeof taskIsBlocked === 'function' && taskIsBlocked(task.id);
+  const person = collaborator(task.responsavel_id);
+  return `<button type="button" class="smart-day-task ${isOverdue(task) ? 'late' : ''}" data-open-task="${task.id}"><i class="focus-priority ${task.prioridade}"></i><span><strong>${escapeHtml(task.titulo)}</strong><small>${blocked ? 'Bloqueada · ' : ''}${escapeHtml(task.projeto || person?.nome || 'Sem projeto')} · ${escapeHtml(dueLabel(task))}</small></span><i data-lucide="chevron-right"></i></button>`;
+}
+
+function forecastHours(personId, days) {
+  const limit = addDays(new Date(), days).getTime();
+  return state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === personId).filter(task => {
+    const due = taskDue(task); if (!due) return days >= 30;
+    return new Date(due).getTime() <= limit;
+  }).reduce((sum, task) => sum + sizeWeight(task), 0);
+}
+function forecastPercent(hours, days) {
+  const capacity = TEAM_CAPACITY_HOURS * Math.max(1, days / 7);
+  return Math.round(hours / capacity * 100);
+}
+function capacityTone(percent) { return percent >= 100 ? 'critical' : percent >= 80 ? 'attention' : percent >= 55 ? 'busy' : 'balanced'; }
+function renderTeamCapacityForecast(stats) {
+  const el = $('teamCapacityForecast'); if (!el || !isManager()) return;
+  const people = stats.filter(item => item.person.role !== 'gestor').sort((a,b) => b.hours - a.hours || a.person.nome.localeCompare(b.person.nome,'pt-BR'));
+  el.innerHTML = people.length ? people.map(item => {
+    const ranges = [7,14,30].map(days => { const h=forecastHours(item.person.id, days), p=forecastPercent(h,days); return {days,h,p,tone:capacityTone(p)}; });
+    return `<button type="button" class="capacity-person" data-open-person="${item.person.id}"><div class="capacity-person-head">${avatarHTML(item.person,'sm')}<span><strong>${escapeHtml(item.person.nome)}</strong><small>${escapeHtml(item.person.cargo || 'Marketing')}</small></span><i data-lucide="chevron-right"></i></div><div class="capacity-range-list">${ranges.map(r=>`<div class="capacity-range"><span><b>${r.days} dias</b><small>${formatHours(r.h)} · ${r.p}%</small></span><div class="capacity-bar"><i class="${r.tone}" style="width:${Math.min(100,r.p)}%"></i></div></div>`).join('')}</div></button>`;
+  }).join('') : `<div class="empty-state"><i data-lucide="users-round"></i>Nenhum colaborador operacional encontrado.</div>`;
+  refreshIcons();
+}
+
+function formatPlainDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return formatDate(value, { year: true });
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+function projectCatalog() {
+  const registered = new Map(state.projects.map(project => [String(project.nome || '').trim().toLocaleLowerCase('pt-BR'), { ...project, registered: true }]));
+  for (const name of projectNames()) {
+    const key = name.toLocaleLowerCase('pt-BR');
+    if (!registered.has(key)) registered.set(key, { id: `derived:${name}`, nome: name, objetivo: '', status: 'ativo', registered: false, responsavel_id: null, inicio_em: null, prazo_em: null });
+  }
+  return [...registered.values()].sort((a,b) => String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+}
+function projectTasks(project) { const key=String(project?.nome||'').trim().toLocaleLowerCase('pt-BR'); return state.tasks.filter(task => String(task.projeto||'').trim().toLocaleLowerCase('pt-BR')===key && !task.arquivada_em); }
+function timeEntryTotalMinutes(entry) {
+  if (!entry) return 0;
+  if (entry.fim_em && Number.isFinite(Number(entry.minutos)) && Number(entry.minutos) > 0) return Number(entry.minutos);
+  const start = new Date(entry.inicio_em).getTime();
+  const end = new Date(entry.fim_em || Date.now()).getTime();
+  return Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, (end - start) / 60000) : 0;
+}
+function projectStats(project) {
+  const tasks=projectTasks(project), completed=tasks.filter(t=>t.status==='concluida'), active=tasks.filter(t=>t.status!=='concluida'), overdue=active.filter(isOverdue);
+  const estimated=tasks.reduce((s,t)=>s+sizeWeight(t),0);
+  const taskIds=new Set(tasks.map(t=>t.id));
+  const actual=state.timeEntries.filter(e=>taskIds.has(e.tarefa_id)).reduce((s,e)=>s+timeEntryTotalMinutes(e),0)/60;
+  const progress=tasks.length?Math.round(completed.length/tasks.length*100):0;
+  const blocked=active.filter(t=>typeof taskIsBlocked==='function'&&taskIsBlocked(t.id));
+  return {tasks,completed,active,overdue,estimated,actual,progress,blocked};
+}
+function renderProjects() {
+  const grid=$('projectGrid'); if(!grid)return;
+  renderV5SetupNotice('projectSetupNotice','Projetos completos');
+  let projects=projectCatalog();
+  const q=(state.projectSearch||'').trim().toLowerCase(), status=state.projectStatusFilter||'';
+  if(q) projects=projects.filter(p=>[p.nome,p.objetivo,collaborator(p.responsavel_id)?.nome].join(' ').toLowerCase().includes(q));
+  if(status) projects=projects.filter(p=>(p.status||'ativo')===status);
+  const statsAll=projects.map(p=>[p,projectStats(p)]);
+  const activeCount=projectCatalog().filter(p=>(p.status||'ativo')==='ativo').length;
+  const totalOpen=projectCatalog().reduce((s,p)=>s+projectStats(p).active.length,0);
+  const totalOverdue=projectCatalog().reduce((s,p)=>s+projectStats(p).overdue.length,0);
+  $('projectSummary').innerHTML=[teamSummaryCard('folder-kanban',projectCatalog().length,'Projetos'),teamSummaryCard('play-circle',activeCount,'Ativos'),teamSummaryCard('clipboard-list',totalOpen,'Demandas abertas'),teamSummaryCard('triangle-alert',totalOverdue,'Atrasadas',totalOverdue?'danger':'')].join('');
+  grid.innerHTML=statsAll.length?statsAll.map(([p,s])=>projectCardHTML(p,s)).join(''):`<div class="team-empty"><i data-lucide="folder-search"></i><strong>Nenhum projeto encontrado</strong><span>Crie um projeto ou use o campo Projeto em uma demanda.</span></div>`;
+  if(state.selectedProjectId){const p=projectCatalog().find(x=>x.id===state.selectedProjectId||x.nome===state.selectedProjectId); if(p)renderProjectDetail(p); else $('projectDetail').classList.add('hidden');}
+  refreshIcons();
+}
+function projectCardHTML(project,stats){const owner=collaborator(project.responsavel_id);const status=project.status||'ativo';return `<article class="project-card status-${status}" data-open-project="${escapeHtml(project.id||project.nome)}"><div class="project-card-head"><span class="project-card-icon"><i data-lucide="folder-kanban"></i></span><div><span class="project-status ${status}">${status==='concluido'?'Concluído':status==='planejado'?'Planejado':status==='pausado'?'Pausado':'Ativo'}</span><h3>${escapeHtml(project.nome)}</h3><p>${escapeHtml(project.objetivo||'Projeto criado a partir das demandas existentes.')}</p></div><button class="icon-btn subtle manager-only" type="button" data-edit-project="${escapeHtml(project.id||'')}" ${project.registered?'':'disabled'} title="Editar projeto"><i data-lucide="pencil"></i></button></div><div class="project-progress"><span><strong>${stats.progress}%</strong><small>${stats.completed.length}/${stats.tasks.length} concluídas</small></span><div><i style="width:${stats.progress}%"></i></div></div><div class="project-card-metrics"><span><strong>${stats.active.length}</strong><small>abertas</small></span><span class="${stats.overdue.length?'danger':''}"><strong>${stats.overdue.length}</strong><small>atrasadas</small></span><span><strong>${formatHours(stats.actual)}</strong><small>reais</small></span><span><strong>${formatHours(stats.estimated)}</strong><small>estimadas</small></span></div><footer>${owner?avatarHTML(owner,'sm'):`<span class="project-owner-empty"><i data-lucide="user-round"></i></span>`}<span>${escapeHtml(owner?.nome||'Sem responsável principal')}</span><small>${project.prazo_em?`Prazo ${formatPlainDate(project.prazo_em)}`:'Sem prazo final'}</small></footer></article>`;}
+function renderProjectDetail(project){const el=$('projectDetail');if(!el)return;const s=projectStats(project);const ordered=[...s.tasks].sort((a,b)=>new Date(taskDue(a)||'9999-12-31')-new Date(taskDue(b)||'9999-12-31'));const ids=new Set(ordered.map(t=>t.id));const edges=state.dependencies.filter(d=>ids.has(d.tarefa_id)&&ids.has(d.depende_de_tarefa_id));el.classList.remove('hidden');el.innerHTML=`<div class="project-detail-head"><div><span class="eyebrow">Timeline e dependências</span><h3>${escapeHtml(project.nome)}</h3><p>${escapeHtml(project.objetivo||'Acompanhe a sequência das entregas e onde o fluxo está bloqueado.')}</p></div><button class="icon-btn subtle" data-close-project-detail title="Fechar"><i data-lucide="x"></i></button></div><div class="project-timeline">${ordered.length?ordered.map((t,i)=>{const deps=edges.filter(d=>d.tarefa_id===t.id).map(d=>state.tasks.find(x=>x.id===d.depende_de_tarefa_id)).filter(Boolean);return `<button class="project-timeline-task ${t.status} ${isOverdue(t)?'late':''} ${taskIsBlocked(t.id)?'blocked':''}" data-open-task="${t.id}"><span class="project-timeline-index">${i+1}</span><div><strong>${escapeHtml(t.titulo)}</strong><small>${STATUS[t.status]?.label||t.status} · ${escapeHtml(dueLabel(t))}${deps.length?` · depende de ${deps.map(x=>x.titulo).join(', ')}`:''}</small></div><span class="priority-pill ${t.prioridade}">${PRIORITY[t.prioridade]}</span><i data-lucide="chevron-right"></i></button>`}).join(''):`<div class="empty-state"><i data-lucide="workflow"></i>Nenhuma demanda vinculada a este projeto.</div>`}</div>`;refreshIcons();}
+
+function openProjectModal(project=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de cadastrar projetos.','error');$('projectForm').reset();$('projectId').value=project?.id||'';$('projectModalTitle').textContent=project?'Editar projeto':'Novo projeto';$('projectName').value=project?.nome||'';$('projectObjective').value=project?.objetivo||'';$('projectStatus').value=project?.status||'ativo';$('projectStart').value=String(project?.inicio_em||'').slice(0,10);$('projectDue').value=String(project?.prazo_em||'').slice(0,10);$('projectOwner').innerHTML=`<option value="">Sem responsável principal</option>${state.collaborators.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}`;$('projectOwner').value=project?.responsavel_id||'';$('projectModal').classList.remove('hidden');refreshIcons();}
+async function saveProject(event){event.preventDefault();if(!state.intelligenceReady)return;setLoading(true);try{const {error}=await db.rpc('salvar_projeto_marketing',{p_id:$('projectId').value||null,p_nome:$('projectName').value.trim(),p_objetivo:$('projectObjective').value.trim()||null,p_responsavel_id:$('projectOwner').value||null,p_inicio_em:$('projectStart').value||null,p_prazo_em:$('projectDue').value||null,p_status:$('projectStatus').value});if(error)throw error;closeModal('projectModal');await loadIntelligenceV5();await loadTasks();renderProjects();renderShell();toast('Projeto salvo.');}catch(error){toast(errorMessage(error),'error')}finally{setLoading(false)}}
+
+const AUTOMATION_TRIGGER_LABELS={tarefa_criada:'Demanda criada',status_alterado:'Status alterado',prioridade_alterada:'Prioridade alterada',revisao:'Entrou em revisão',conclusao:'Concluída',prazo_24h:'Prazo em até 24h',atrasada:'Demanda atrasada',sem_movimentacao_3d:'3 dias sem movimentação'};
+const AUTOMATION_DEST_LABELS={responsavel:'Responsável',criador:'Criador',gestores:'Gestores',equipe:'Toda a equipe'};
+function renderAutomations(){const list=$('automationList');if(!list)return;renderV5SetupNotice('automationSetupNotice','Central de Automações');if(!isManager()){list.innerHTML='<div class="empty-state"><i data-lucide="lock-keyhole"></i>Somente gestores configuram automações.</div>';return}const active=state.automations.filter(a=>a.ativo).length;$('automationSummary').innerHTML=[teamSummaryCard('workflow',state.automations.length,'Regras criadas'),teamSummaryCard('toggle-right',active,'Ativas'),teamSummaryCard('bell-ring',state.automations.filter(a=>['critica','importante'].includes(a.nivel)).length,'Alertas prioritários')].join('');list.innerHTML=state.intelligenceReady?(state.automations.length?state.automations.map(automationCardHTML).join(''):`<div class="automation-empty card"><i data-lucide="workflow"></i><strong>Nenhuma automação criada</strong><span>Use um dos exemplos acima ou crie uma regra personalizada.</span></div>`):'';refreshIcons();}
+function automationCardHTML(rule){const condition=rule.condicao_campo&&rule.condicao_campo!=='qualquer'?`${rule.condicao_campo} = ${rule.condicao_valor}`:'qualquer demanda';return `<article class="automation-card ${rule.ativo?'active':'disabled'} level-${rule.nivel||'normal'}"><div class="automation-card-main"><span class="automation-card-level ${rule.nivel||'normal'}"><i data-lucide="${rule.nivel==='critica'?'siren':rule.nivel==='importante'?'triangle-alert':rule.nivel==='informativa'?'info':'bell'}"></i></span><div><div class="automation-card-title"><strong>${escapeHtml(rule.nome)}</strong><span>${rule.ativo?'Ativa':'Pausada'}</span></div><p><b>SE</b> ${escapeHtml(AUTOMATION_TRIGGER_LABELS[rule.gatilho]||rule.gatilho)} <b>E</b> ${escapeHtml(condition)} <b>ENTÃO</b> notificar ${escapeHtml(AUTOMATION_DEST_LABELS[rule.acao_destino]||rule.acao_destino)}.</p><small>${escapeHtml(rule.mensagem||'Mensagem padrão do PMG Connect')}</small></div></div><div class="automation-card-actions"><button type="button" class="btn soft" data-toggle-automation="${rule.id}"><i data-lucide="${rule.ativo?'pause':'play'}"></i>${rule.ativo?'Pausar':'Ativar'}</button><button type="button" class="icon-btn subtle" data-edit-automation="${rule.id}"><i data-lucide="pencil"></i></button></div></article>`;}
+function openAutomationModal(rule=null,template=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de criar automações.','error');$('automationForm').reset();$('automationId').value=rule?.id||'';$('automationModalTitle').textContent=rule?'Editar automação':'Nova automação';$('automationName').value=rule?.nome||'';$('automationTrigger').value=rule?.gatilho||'tarefa_criada';$('automationConditionField').value=rule?.condicao_campo||'qualquer';$('automationConditionValue').value=rule?.condicao_valor||'';$('automationDestination').value=rule?.acao_destino||'responsavel';$('automationLevel').value=rule?.nivel||'normal';$('automationMessage').value=rule?.mensagem||'';$('automationEnabled').checked=rule?.ativo!==false;$('automationDeleteBtn').classList.toggle('hidden',!rule);if(template)applyAutomationTemplate(template);$('automationModal').classList.remove('hidden');refreshIcons();}
+function applyAutomationTemplate(template){const presets={imediata:{name:'Alerta de demanda imediata',trigger:'tarefa_criada',field:'prioridade',value:'imediata',dest:'responsavel',level:'critica',message:'Você recebeu uma demanda IMEDIATA. Abra agora e verifique o briefing.'},revisao:{name:'Revisão aguardando gestor',trigger:'revisao',field:'qualquer',value:'',dest:'gestores',level:'importante',message:'Uma demanda entrou em revisão e aguarda avaliação do gestor.'},prazo:{name:'Prazo em 24 horas',trigger:'prazo_24h',field:'qualquer',value:'',dest:'responsavel',level:'importante',message:'Esta demanda vence em até 24 horas. Revise o andamento e o prazo.'},parada:{name:'Demanda sem movimentação',trigger:'sem_movimentacao_3d',field:'qualquer',value:'',dest:'gestores',level:'importante',message:'Esta demanda está há pelo menos 3 dias sem movimentação.'}};const p=presets[template];if(!p)return;$('automationName').value=p.name;$('automationTrigger').value=p.trigger;$('automationConditionField').value=p.field;$('automationConditionValue').value=p.value;$('automationDestination').value=p.dest;$('automationLevel').value=p.level;$('automationMessage').value=p.message;}
+async function saveAutomation(event){event.preventDefault();setLoading(true);try{const {error}=await db.rpc('salvar_automacao_demanda',{p_id:$('automationId').value||null,p_nome:$('automationName').value.trim(),p_gatilho:$('automationTrigger').value,p_condicao_campo:$('automationConditionField').value,p_condicao_valor:$('automationConditionValue').value.trim()||null,p_acao_destino:$('automationDestination').value,p_nivel:$('automationLevel').value,p_mensagem:$('automationMessage').value.trim()||null,p_ativo:$('automationEnabled').checked});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação salva.');}catch(error){toast(errorMessage(error),'error')}finally{setLoading(false)}}
+async function toggleAutomation(id){const r=state.automations.find(x=>x.id===id);if(!r)return;setLoading(true);try{const {error}=await db.rpc('alternar_automacao_demanda',{p_id:id,p_ativo:!r.ativo});if(error)throw error;await loadIntelligenceV5();renderAutomations();renderShell();toast(!r.ativo?'Automação ativada.':'Automação pausada.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
+async function deleteAutomation(){const id=$('automationId').value;if(!id||!confirm('Excluir esta automação?'))return;setLoading(true);try{const {error}=await db.rpc('excluir_automacao_demanda',{p_id:id});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação excluída.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
+
+function notificationLevel(notification){if(notification?.nivel)return notification.nivel;const type=notification?.tipo||'';if(type==='demanda_imediata')return'critica';if(['prazo_atrasado','avaliacao_pendente','avaliacao_ajustes','transferencia'].includes(type))return'importante';if(['avaliacao_aprovada'].includes(type))return'informativa';return'normal';}
+const renderNotificationsV34=renderNotifications;
+renderNotifications=function renderNotificationsV35(){const unread=state.notifications.filter(i=>!i.lida).length;$('notificationBadge').textContent=unread;$('notificationBadge').classList.toggle('hidden',unread===0);$('notificationList').innerHTML=state.notifications.length?state.notifications.map(notification=>{const title=notification.tarefa?.titulo||notification.lembrete?.titulo||'Atualização';const heading=notification.mensagem||(notification.lembrete_id?(notification.lembrete?.tipo==='compromisso'?'Compromisso próximo':'Lembrete programado'):NOTIFICATION_TEXT[notification.tipo]||'Atualização');const type=notification.tipo||'',level=notificationLevel(notification);const iconMap={demanda_imediata:'siren',comentario:'message-circle',transferencia:'arrow-right-left',avaliacao_pendente:'scan-eye',avaliacao_aprovada:'badge-check',avaliacao_ajustes:'undo-2',status_mudou:'refresh-cw'};const icon=notification.lembrete_id?(notification.lembrete?.tipo==='compromisso'?'calendar-clock':'alarm-clock'):iconMap[type]||(type.includes('prazo')?'calendar-clock':'clipboard-check');const actor=resolveNotificationActor(notification);const visual=actor?`<span class="notification-item-avatar">${avatarHTML(actor,'sm')}</span>`:`<span class="notification-item-icon"><i data-lucide="${icon}"></i></span>`;const task=notification.tarefa_id?state.tasks.find(i=>i.id===notification.tarefa_id):null;const context=task?`${PRIORITY[task.prioridade]||'Média'} · ${dueLabel(task)}`:relativeTime(notification.criado_em);return `<div class="notification-item ${notification.lida?'':'unread'} type-${type} level-${level}" data-notification-id="${notification.id}" data-task-id="${notification.tarefa_id||''}" data-reminder-id="${notification.lembrete_id||''}">${visual}<div class="notification-item-copy"><div class="notification-heading-row"><strong>${escapeHtml(heading)}</strong><span class="notification-level-pill ${level}">${level==='critica'?'Crítica':level==='importante'?'Importante':level==='informativa'?'Info':'Normal'}</span></div><p>${escapeHtml(title)}</p><span>${escapeHtml(context)} · ${relativeTime(notification.criado_em)}</span></div><i class="notification-item-arrow" data-lucide="chevron-right"></i></div>`}).join(''):`<div class="empty-state" style="margin:16px"><i data-lucide="bell-off"></i>Nenhuma notificação por aqui.</div>`;refreshIcons();}
+
+const renderGlobalSearchV34=renderGlobalSearch;
+function commandMatches(query,label,aliases=[]){const q=query.toLowerCase();return !q||[label,...aliases].some(v=>v.toLowerCase().includes(q)||q.includes(v.toLowerCase()));}
+function commandResultHTML(command,icon,title,meta){return `<button class="search-result command-result" data-search-command="${command}"><span class="search-result-icon"><i data-lucide="${icon}"></i></span><span class="search-result-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></span><kbd>Enter</kbd></button>`;}
+renderGlobalSearch=function renderGlobalSearchV35(){const raw=$('globalSearchInput').value.trim(),query=raw.toLowerCase();const commands=[['nova-demanda','clipboard-plus','Criar nova demanda','Abre o cadastro de demanda',['criar demanda','nova demanda']],['atrasadas','triangle-alert','Ver demandas atrasadas','Abre Demandas filtrando atrasos',['atrasadas','atrasos']],['projetos','folder-kanban','Abrir Projetos','Progresso, timeline e dependências',['projeto','projetos']],['equipe','users-round','Abrir Equipe','Carga e capacidade da equipe',['equipe','carga']],['agenda','calendar-days','Abrir Agenda','Minha agenda e equipe',['agenda','calendario']],['academia','presentation','Abrir Academia PMG','Reservas e treinamentos',['academia']],['automacoes','workflow','Abrir Automações','Regras SE → ENTÃO',['automacao','automações','automacoes']]].filter(c=>c[0]!=='automacoes'||isManager()).filter(c=>commandMatches(query,c[2],c[4]));const tasks=query?state.tasks.filter(task=>[task.titulo,task.descricao,task.projeto,...(task.tags||[])].join(' ').toLowerCase().includes(query)).slice(0,7):[];const reminders=query?state.reminders.filter(item=>[item.titulo,item.descricao].join(' ').toLowerCase().includes(query)).slice(0,5):[];const people=query?state.collaborators.filter(p=>[p.nome,p.cargo].join(' ').toLowerCase().includes(query)).slice(0,5):[];const projects=query?projectCatalog().filter(p=>[p.nome,p.objetivo].join(' ').toLowerCase().includes(query)).slice(0,5):[];$('globalSearchResults').innerHTML=`${commands.length?`<div class="search-group-label">Comandos rápidos</div>${commands.slice(0,6).map(c=>commandResultHTML(c[0],c[1],c[2],c[3])).join('')}`:''}${tasks.length?`<div class="search-group-label">Demandas</div>${tasks.map(taskSearchResultHTML).join('')}`:''}${projects.length?`<div class="search-group-label">Projetos</div>${projects.map(p=>searchResultHTML('project',p.id||p.nome,p.nome,`${projectStats(p).progress}% concluído · ${projectStats(p).active.length} abertas`,'folder-kanban')).join('')}`:''}${people.length?`<div class="search-group-label">Pessoas</div>${people.map(p=>searchResultHTML('person',p.id,p.nome,p.cargo||'Marketing','user-round')).join('')}`:''}${reminders.length?`<div class="search-group-label">Agenda</div>${reminders.map(item=>searchResultHTML('reminder',item.id,item.titulo,`${item.tipo==='compromisso'?'Compromisso':'Lembrete'} · ${formatDateTime(item.inicio_em)}`,item.tipo==='compromisso'?'calendar-clock':'bell')).join('')}`:''}${!commands.length&&!tasks.length&&!reminders.length&&!people.length&&!projects.length?`<div class="empty-state" style="margin:8px"><i data-lucide="search-x"></i>Nenhum resultado encontrado.</div>`:''}`;refreshIcons();}
+function runSearchCommand(command){closeSearch();if(command==='nova-demanda')return openQuickAdd('demanda');if(command==='atrasadas')return applySmartFilter('atrasadas');if(['projetos','equipe','agenda','academia','automacoes'].includes(command))return switchView(command);}
+
+function monthValueShift(value,offset){const [y,m]=String(value).split('-').map(Number),d=new Date(y,m-1+offset,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+function pctDelta(current,previous){if(previous===0)return current===0?0:null;return Math.round((current-previous)/previous*100);}
+function average(values){return values.length?values.reduce((a,b)=>a+b,0)/values.length:null;}
+const buildMonthlyReportV34=buildMonthlyReport;
+buildMonthlyReport=function buildMonthlyReportV35(value){const report=buildMonthlyReportV34(value);report.version='3.5';report.rows=(report.rows||[]).map(row=>{const bounds=monthBounds(value);const completed=state.tasks.filter(t=>t.responsavel_id===row.person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const rework=completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0);const accuracy=row.estimatedHours>0&&row.actualHours>0?Math.max(0,Math.round(100-Math.abs(row.actualHours-row.estimatedHours)/row.estimatedHours*100)):null;return{...row,rework,accuracy}}).sort((a,b)=>a.person.nome.localeCompare(b.person.nome,'pt-BR'));report.totalRework=report.rows.reduce((s,r)=>s+r.rework,0);const acc=report.rows.map(r=>r.accuracy).filter(v=>v!==null);report.estimateAccuracy=acc.length?Math.round(acc.reduce((a,b)=>a+b,0)/acc.length):null;const cycles=report.rows.map(r=>r.avgCycle).filter(v=>v!==null);report.teamAvgCycle=average(cycles);report.totalTransfers=report.rows.reduce((s,r)=>s+r.transfersIn+r.transfersOut,0)/2;const previous=buildMonthlyReportV34(monthValueShift(value,-1));report.comparison={previousLabel:previous.label,completed:pctDelta(report.totalCompleted,previous.totalCompleted),created:pctDelta(report.totalCreated,previous.totalCreated),hours:pctDelta(report.totalActualHours,previous.totalActualHours),onTime:report.teamOnTimeRate!==null&&previous.teamOnTimeRate!==null?report.teamOnTimeRate-previous.teamOnTimeRate:null};return report;}
+function deltaHTML(value,suffix='%'){if(value===null||value===undefined)return'<span class="monthly-delta neutral">sem base</span>';const tone=value>0?'up':value<0?'down':'neutral';return`<span class="monthly-delta ${tone}"><i data-lucide="${value>0?'trending-up':value<0?'trending-down':'minus'}"></i>${value>0?'+':''}${value}${suffix}</span>`;}
+const renderMonthlyReportV34=renderMonthlyReport;
+renderMonthlyReport=function renderMonthlyReportV35(){renderMonthlyReportV34();const report=state.monthlyReportData;if(!report)return;const hero=$('monthlyReportContent')?.querySelector('.monthly-report-hero');if(!hero)return;const attention=[];if((report.teamOnTimeRate??100)<85)attention.push(`Pontualidade em ${report.teamOnTimeRate}%`);if(report.totalRework>0)attention.push(`${report.totalRework} ciclo(s) de retrabalho`);if((report.estimateAccuracy??100)<75)attention.push(`Precisão das estimativas em ${report.estimateAccuracy}%`);if((report.totalTransfers||0)>=5)attention.push(`${Math.round(report.totalTransfers)} transferências no mês`);const compare=document.createElement('section');compare.className='monthly-comparison';compare.innerHTML=`<div class="monthly-section-title"><div><span class="eyebrow">Comparação</span><h4>Em relação a ${escapeHtml(report.comparison?.previousLabel||'mês anterior')}</h4></div></div><div class="monthly-comparison-grid"><div><span>Concluídas</span><strong>${report.totalCompleted}</strong>${deltaHTML(report.comparison?.completed)}</div><div><span>Demandas recebidas</span><strong>${report.totalCreated}</strong>${deltaHTML(report.comparison?.created)}</div><div><span>Horas reais</span><strong>${formatHours(report.totalActualHours||0)}</strong>${deltaHTML(report.comparison?.hours)}</div><div><span>No prazo</span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>${deltaHTML(report.comparison?.onTime,' p.p.')}</div><div><span>Estimativa x real</span><strong>${report.estimateAccuracy===null?'—':report.estimateAccuracy+'%'}</strong><small>precisão média</small></div><div><span>Retrabalho</span><strong>${report.totalRework||0}</strong><small>retornos para ajustes</small></div></div><div class="monthly-attention ${attention.length?'has-alerts':'clean'}"><i data-lucide="${attention.length?'scan-search':'circle-check-big'}"></i><div><strong>${attention.length?'O que merece atenção':'Mês operacionalmente saudável'}</strong><span>${attention.length?escapeHtml(attention.join(' · ')):'Nenhum sinal relevante de prazo, retrabalho ou estimativa fora da faixa definida.'}</span></div></div>`;hero.insertAdjacentElement('afterend',compare);const rankMarkers=$('monthlyReportContent').querySelectorAll('.monthly-person small');rankMarkers.forEach(el=>{el.textContent=el.textContent.replace(/\s·\s#\d+/,'')});refreshIcons();}
+
+function personMonthMetrics(personId,offset){const now=new Date(),base=new Date(now.getFullYear(),now.getMonth()+offset,1),value=`${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}`,bounds=monthBounds(value);const completed=state.tasks.filter(t=>t.responsavel_id===personId&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const deadline=completed.filter(t=>taskDue(t)&&t.concluida_em),onTime=deadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;const entries=state.timeEntries.filter(e=>e.colaborador_id===personId&&new Date(e.inicio_em)<bounds.end&&new Date(e.fim_em||Date.now())>=bounds.start);const hours=entries.reduce((s,e)=>s+entryMinutesInsideMonth(e,bounds.start,bounds.end),0)/60;return{label:new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(base).replace('.',''),completed:completed.length,onTime:deadline.length?Math.round(onTime/deadline.length*100):null,rework:completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0),hours};}
+function performanceEvolutionHTML(person){if(person.role==='gestor')return'';const months=[-2,-1,0].map(o=>personMonthMetrics(person.id,o));const maxCompleted=Math.max(1,...months.map(m=>m.completed));return `<section class="person-drawer-section person-evolution"><div class="person-section-head"><div><span class="eyebrow">Evolução pessoal</span><h3>Últimos 3 meses</h3></div><span>Sem ranking</span></div><div class="evolution-chart">${months.map(m=>`<div class="evolution-month"><div class="evolution-bar"><i style="height:${Math.max(8,Math.round(m.completed/maxCompleted*100))}%"></i></div><strong>${m.completed}</strong><span>${escapeHtml(m.label)}</span></div>`).join('')}</div><div class="evolution-metrics">${months.map(m=>`<div><span>${escapeHtml(m.label)}</span><strong>${m.onTime===null?'—':m.onTime+'%'}</strong><small>no prazo</small><b>${formatHours(m.hours)} · ${m.rework} ajuste(s)</b></div>`).join('')}</div></section>`;}
+const renderPersonDrawerV34=renderPersonDrawer;
+renderPersonDrawer=function renderPersonDrawerV35(person){renderPersonDrawerV34(person);const actions=$('personDrawerContent')?.querySelector('.person-drawer-actions');if(actions){actions.insertAdjacentHTML('beforebegin',performanceEvolutionHTML(person));refreshIcons();}}
+
+function bindIntelligenceV5Events(){
+  $('projectNewBtn')?.addEventListener('click',()=>openProjectModal());
+  $('projectNewDemandBtn')?.addEventListener('click',()=>openQuickAdd('demanda',{project:state.selectedProjectId?projectCatalog().find(p=>p.id===state.selectedProjectId)?.nome||'':''}));
+  $('projectSearch')?.addEventListener('input',debounce(event=>{state.projectSearch=event.target.value;renderProjects()},120));
+  $('projectStatusFilter')?.addEventListener('change',event=>{state.projectStatusFilter=event.target.value;renderProjects()});
+  $('projectForm')?.addEventListener('submit',saveProject);
+  $('automationNewBtn')?.addEventListener('click',()=>openAutomationModal());
+  $('automationForm')?.addEventListener('submit',saveAutomation);
+  $('automationDeleteBtn')?.addEventListener('click',deleteAutomation);
+  document.addEventListener('click',event=>{
+    const projectOpen=event.target.closest('[data-open-project]');if(projectOpen&&!event.target.closest('[data-edit-project]')){state.selectedProjectId=projectOpen.dataset.openProject;renderProjects();$('projectDetail')?.scrollIntoView({behavior:state.accessibility.reduceMotion?'auto':'smooth',block:'start'});return;}
+    const editProject=event.target.closest('[data-edit-project]');if(editProject&&!editProject.disabled){const p=state.projects.find(x=>x.id===editProject.dataset.editProject);if(p)openProjectModal(p);return;}
+    const closeProject=event.target.closest('[data-close-project-detail]');if(closeProject){state.selectedProjectId=null;$('projectDetail')?.classList.add('hidden');return;}
+    const editAuto=event.target.closest('[data-edit-automation]');if(editAuto){const r=state.automations.find(x=>x.id===editAuto.dataset.editAutomation);if(r)openAutomationModal(r);return;}
+    const toggleAuto=event.target.closest('[data-toggle-automation]');if(toggleAuto){toggleAutomation(toggleAuto.dataset.toggleAutomation);return;}
+    const template=event.target.closest('[data-automation-template]');if(template){openAutomationModal(null,template.dataset.automationTemplate);return;}
+    const command=event.target.closest('[data-search-command]');if(command){runSearchCommand(command.dataset.searchCommand);return;}
+    const searchProject=event.target.closest('[data-search-project]');if(searchProject){closeSearch();state.selectedProjectId=searchProject.dataset.searchProject;switchView('projetos');renderProjects();return;}
+    const searchPerson=event.target.closest('[data-search-person]');if(searchPerson){closeSearch();if(isManager())openPerson(searchPerson.dataset.searchPerson);else{switchView('equipe');}return;}
+  });
+  $('globalSearchInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=$('globalSearchResults')?.querySelector('[data-search-command], [data-search-task], [data-search-project], [data-search-person], [data-search-reminder]');if(first){event.preventDefault();first.click();}}});
+}
+
+bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); initOverlayStability(); refreshIcons(); bootstrap();
