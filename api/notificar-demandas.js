@@ -20,15 +20,14 @@ const NOTIFICATION_TEXT = {
   nova_tarefa: 'Você recebeu uma nova demanda',
   prazo_proximo: 'Uma demanda está perto do prazo',
   prazo_atrasado: 'Uma demanda está atrasada',
-  prazo_alterado: 'O prazo de uma demanda mudou',
   comentario: 'Há um novo comentário em uma demanda',
   status_mudou: 'Uma demanda foi atualizada',
-  demanda_imediata: 'DEMANDA IMEDIATA · abra agora',
-  avaliacao_pendente: 'Uma demanda aguarda sua avaliação',
-  avaliacao_aprovada: 'A conclusão da demanda foi aprovada',
+  demanda_imediata: 'DEMANDA IMEDIATA. Verifique agora',
+  avaliacao_pendente: 'Uma demanda aguarda avaliação',
+  avaliacao_aprovada: 'A conclusão foi aprovada',
   avaliacao_ajustes: 'A demanda voltou para ajustes',
   transferencia: 'Uma demanda foi transferida para você',
-  lembrete: 'Está na hora do seu lembrete'
+  lembrete: 'Está na hora do lembrete'
 };
 
 function makeSupabase() {
@@ -90,7 +89,6 @@ function payloadFor(notification) {
   const task = notification.tarefa;
   const reminder = notification.lembrete;
   const isReminder = Boolean(notification.lembrete_id);
-  const isImmediate = notification.tipo === 'demanda_imediata' || task?.prioridade === 'imediata';
   const itemTitle = task?.titulo || reminder?.titulo || 'Atualização';
   const heading = notification.mensagem
     || (isReminder
@@ -106,24 +104,108 @@ function payloadFor(notification) {
         { action: 'snooze-10', title: 'Adiar 10 min' },
         { action: 'complete', title: 'Concluir' }
       ]
-    : [{ action: 'open', title: isImmediate ? 'ABRIR AGORA' : 'Abrir demanda' }];
-
-  const taskMeta = task
-    ? [task.prioridade ? `Prioridade: ${String(task.prioridade).toUpperCase()}` : '', task.prazo_em ? `Prazo: ${new Date(task.prazo_em).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''].filter(Boolean).join(' · ')
-    : '';
+    : [{ action: 'open', title: 'Abrir demanda' }];
 
   return JSON.stringify({
-    title: isImmediate ? 'PMG CONNECT · DEMANDA IMEDIATA' : isReminder ? 'PMG Connect · Agenda' : 'PMG Connect · Demandas',
-    body: isImmediate ? `${itemTitle}\n${taskMeta || heading}` : `${heading}: ${itemTitle}${taskMeta ? ` · ${taskMeta}` : ''}`,
+    title: isReminder ? 'PMG Connect · Agenda' : 'PMG Connect · Demandas',
+    body: `${heading}: ${itemTitle}`,
     icon: '/imagenssite/pmglogo.png',
     badge: '/imagenssite/pmglogo.png',
-    tag: isImmediate ? `pmg-imediata-${notification.tarefa_id}` : `pmg-${notification.id}`,
+    tag: `pmg-${notification.id}`,
     url,
     actions,
     reminderId: notification.lembrete_id || null,
-    taskId: notification.tarefa_id || null,
-    immediate: isImmediate
+    taskId: notification.tarefa_id || null
   });
+}
+
+
+function academyWebhookAuthorized(req) {
+  const expected = process.env.ACADEMIA_FORMS_WEBHOOK_SECRET;
+  if (!expected) throw new Error('ACADEMIA_FORMS_WEBHOOK_SECRET não configurado');
+  const provided = String(req.headers['x-academia-secret'] || req.headers['x-pmg-secret'] || '');
+  if (!provided || provided !== expected) throw new Error('Webhook da Academia não autorizado');
+}
+
+function cleanText(value) {
+  const text = String(value ?? '').trim();
+  return text || null;
+}
+
+function normalizeDate(value) {
+  const text = String(value || '').trim();
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) return `${match[3]}-${String(match[2]).padStart(2, '0')}-${String(match[1]).padStart(2, '0')}`;
+  return '';
+}
+
+function normalizeClock(value, fallback) {
+  const text = String(value || '').trim();
+  const match = text.match(/(\d{1,2})[:h](\d{2})/) || text.match(/^(\d{1,2})$/);
+  if (!match) return fallback;
+  const hour = Math.min(23, Math.max(0, Number(match[1])));
+  const minute = Math.min(59, Math.max(0, Number(match[2] || 0)));
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function academyIso(date, time) {
+  const d = normalizeDate(date);
+  if (!d) return null;
+  const t = normalizeClock(time, '09:00');
+  const parsed = new Date(`${d}T${t}:00-03:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+async function processAcademyFormsWebhook(req, supabase) {
+  academyWebhookAuthorized(req);
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  const key = cleanText(body.responseId || body.response_id || body.chave || body.id);
+  const title = cleanText(body.titulo || body.title || body.evento || body.nome_evento);
+  const requester = cleanText(body.solicitante || body.requester || body.nome);
+  const start = cleanText(body.inicio_em) || academyIso(body.data || body.date, body.inicio || body.start || body.horario_inicio);
+  const end = cleanText(body.fim_em) || academyIso(body.data || body.date, body.fim || body.end || body.horario_fim);
+  if (!key) throw new Error('Informe responseId/chave da resposta do Forms');
+  if (!title) throw new Error('Informe titulo da reserva');
+  if (!requester) throw new Error('Informe solicitante');
+  if (!start || !end || new Date(end) <= new Date(start)) throw new Error('Data/horário da reserva inválidos');
+
+  const participantsRaw = body.participantes ?? body.participants ?? body.quantidade_pessoas;
+  const participants = participantsRaw === undefined || participantsRaw === null || participantsRaw === ''
+    ? null : Number(String(participantsRaw).replace(/[^0-9]/g, ''));
+  const payload = {
+    titulo: title,
+    solicitante: requester,
+    setor: cleanText(body.setor || body.department),
+    email: cleanText(body.email),
+    telefone: cleanText(body.telefone || body.phone || body.ramal),
+    finalidade: cleanText(body.finalidade || body.purpose),
+    inicio_em: new Date(start).toISOString(),
+    fim_em: new Date(end).toISOString(),
+    participantes: Number.isFinite(participants) ? participants : null,
+    observacoes: cleanText(body.observacoes || body.notes),
+    origem: 'forms',
+    forms_linha_chave: key,
+    forms_payload: body,
+    atualizado_em: new Date().toISOString()
+  };
+
+  const { data: existing, error: findError } = await supabase
+    .from('academia_reservas').select('id,status').eq('forms_linha_chave', key).maybeSingle();
+  if (findError) throw findError;
+
+  let result;
+  if (existing?.id) {
+    const { data, error } = await supabase.from('academia_reservas').update(payload).eq('id', existing.id).select('id,status').single();
+    if (error) throw error;
+    result = data;
+  } else {
+    const { data, error } = await supabase.from('academia_reservas').insert({ ...payload, status: 'solicitada' }).select('id,status').single();
+    if (error) throw error;
+    result = data;
+  }
+  return { ok: true, reservaId: result.id, status: result.status, chave: key };
 }
 
 async function processPending(supabase) {
@@ -144,7 +226,7 @@ async function processPending(supabase) {
       tipo,
       mensagem,
       criado_em,
-      tarefa:tarefas(id,titulo,prioridade,prazo_em,status),
+      tarefa:tarefas(id,titulo),
       lembrete:lembretes(id,titulo,tipo)
     `)
     .is('push_enviada_em', null)
@@ -242,6 +324,15 @@ export default async function handler(req, res) {
   }
 
   try {
+    // O mesmo endpoint recebe respostas do Forms via Power Automate sem criar
+    // outra função Serverless. Isso preserva o limite do plano Hobby da Vercel.
+    if (req.method === 'POST' && String(req.query?.academia || '') === 'forms') {
+      await loadDependencies();
+      const supabase = makeSupabase();
+      const result = await processAcademyFormsWebhook(req, supabase);
+      return res.status(200).json(result);
+    }
+
     // Carrega dependências pesadas somente nas chamadas de envio.
     // A rota pública ?config=1 funciona sem importar web-push ou Supabase Admin.
     await loadDependencies();
@@ -251,7 +342,7 @@ export default async function handler(req, res) {
     const result = await processPending(supabase);
     return res.status(200).json({ ok: true, ...result });
   } catch (error) {
-    const unauthorized = /autorizado|sessão inválida/i.test(error.message);
+    const unauthorized = /autorizado|sessão inválida|webhook.*não autorizado/i.test(error.message);
     console.error('[notificar-demandas]', error);
     return res.status(unauthorized ? 401 : 500).json({ erro: error.message });
   }

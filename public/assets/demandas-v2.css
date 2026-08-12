@@ -561,3 +561,383 @@ body.ui-theme-dark .loading-screen{background:rgba(13,21,17,.96);color:#bce6ca}
 body.ui-theme-dark .onboarding-layer{color-scheme:light}
 
 @media(max-width:560px){.theme-toggle{width:60px}.theme-toggle-track{width:52px}.theme-toggle.active .theme-toggle-thumb{transform:translateX(24px)}}
+
+/* =========================================================
+   V3.3 — HARDENING DE LAYOUT DOS FORMULÁRIOS DE DEMANDA
+   Evita sobreposição em 100% de zoom e nas escalas de acessibilidade.
+   ========================================================= */
+
+/* O modal de criação precisa crescer com o conteúdo, nunca empilhar cards. */
+#quickAddModal,
+#editTaskModal {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(12px, 2.3vw, 28px);
+}
+
+#quickAddModal .quick-add-modal,
+#editTaskModal .task-edit-modal {
+  width: min(1120px, 100%);
+  max-width: 1120px;
+  max-height: calc(100dvh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  contain: layout paint;
+}
+
+#quickAddModal form,
+#editTaskModal form,
+#quickAddModal .modal-body,
+#editTaskModal .modal-body,
+#quickAddModal #demandFields,
+#editTaskModal .edit-task-config,
+#quickAddModal .task-config-section,
+#editTaskModal .task-config-section,
+#quickAddModal .visual-field,
+#editTaskModal .visual-field {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Organização deixa de competir em três colunas de alturas diferentes.
+   Responsável, prioridade e tamanho passam a ter uma linha própria. */
+#quickAddModal .task-setup-grid,
+#editTaskModal .task-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 18px;
+  align-items: start;
+}
+
+#quickAddModal .assignee-visual-field,
+#editTaskModal .assignee-visual-field {
+  grid-column: 1 / -1;
+}
+
+/* Cards de prioridade: cinco cards estáveis no desktop, sem largura fixa. */
+#quickAddModal .priority-choice-grid,
+#editTaskModal .priority-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* Tamanho: três escolhas simétricas. */
+#quickAddModal .size-choice-grid,
+#editTaskModal .size-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px;
+  align-items: stretch;
+}
+
+#quickAddModal .choice-card,
+#editTaskModal .choice-card {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  height: auto !important;
+  min-height: 84px;
+  padding: 14px;
+  gap: 10px;
+  overflow: hidden;
+  align-items: center;
+  justify-content: flex-start;
+  transform: none;
+}
+
+#quickAddModal .choice-card:hover,
+#editTaskModal .choice-card:hover {
+  transform: none;
+}
+
+#quickAddModal .choice-card > span,
+#editTaskModal .choice-card > span {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+#quickAddModal .choice-card strong,
+#editTaskModal .choice-card strong,
+#quickAddModal .choice-card small,
+#editTaskModal .choice-card small {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.3;
+}
+
+#quickAddModal .choice-card strong,
+#editTaskModal .choice-card strong {
+  font-size: 12px;
+}
+
+#quickAddModal .choice-card small,
+#editTaskModal .choice-card small {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+#quickAddModal .choice-card > svg,
+#editTaskModal .choice-card > svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+/* Seletor de responsável cresce de acordo com nome/cargo/carga. */
+#quickAddModal .assignee-selector-button,
+#editTaskModal .assignee-selector-button {
+  min-height: 104px;
+  height: auto !important;
+  overflow: hidden;
+  align-items: center;
+}
+
+#quickAddModal .assignee-selector-preview,
+#editTaskModal .assignee-selector-preview,
+#quickAddModal .assignee-selector-copy,
+#editTaskModal .assignee-selector-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+#quickAddModal .assignee-selector-copy strong,
+#quickAddModal .assignee-selector-copy small,
+#editTaskModal .assignee-selector-copy strong,
+#editTaskModal .assignee-selector-copy small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Alerta imediato nunca invade o bloco seguinte. */
+#quickAddModal .immediate-audience-section,
+#editTaskModal .immediate-audience-section {
+  position: relative;
+  clear: both;
+  width: 100%;
+  height: auto !important;
+  overflow: hidden;
+  margin-top: 20px;
+}
+
+#quickAddModal .immediate-audience-options,
+#editTaskModal .immediate-audience-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px;
+  align-items: stretch;
+}
+
+#quickAddModal .immediate-audience-option,
+#editTaskModal .immediate-audience-option {
+  width: 100%;
+  min-width: 0;
+  min-height: 96px;
+  height: auto !important;
+  overflow: hidden;
+}
+
+#quickAddModal .immediate-audience-option span,
+#editTaskModal .immediate-audience-option span {
+  min-width: 0;
+}
+
+#quickAddModal .immediate-audience-option strong,
+#quickAddModal .immediate-audience-option small,
+#editTaskModal .immediate-audience-option strong,
+#editTaskModal .immediate-audience-option small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Campos de prazo/projeto/tags: grades cedem antes de esmagar conteúdo. */
+#quickAddModal .form-grid,
+#editTaskModal .form-grid {
+  min-width: 0;
+  align-items: start;
+}
+
+#quickAddModal .form-grid > *,
+#editTaskModal .form-grid > * {
+  min-width: 0;
+}
+
+/* Escala acessível aumenta o card, não apenas a fonte. */
+body.ui-scale-large #quickAddModal .choice-card,
+body.ui-scale-large #editTaskModal .choice-card {
+  min-height: 100px;
+  padding: 17px;
+}
+body.ui-scale-large #quickAddModal .choice-card strong,
+body.ui-scale-large #editTaskModal .choice-card strong { font-size: 14px; }
+body.ui-scale-large #quickAddModal .choice-card small,
+body.ui-scale-large #editTaskModal .choice-card small { font-size: 12px; }
+body.ui-scale-large #quickAddModal .assignee-selector-button,
+body.ui-scale-large #editTaskModal .assignee-selector-button { min-height: 126px; }
+
+body.ui-scale-xlarge #quickAddModal .choice-card,
+body.ui-scale-xlarge #editTaskModal .choice-card {
+  min-height: 118px;
+  padding: 20px;
+}
+body.ui-scale-xlarge #quickAddModal .choice-card strong,
+body.ui-scale-xlarge #editTaskModal .choice-card strong { font-size: 17px; }
+body.ui-scale-xlarge #quickAddModal .choice-card small,
+body.ui-scale-xlarge #editTaskModal .choice-card small { font-size: 14px; }
+body.ui-scale-xlarge #quickAddModal .choice-card > svg,
+body.ui-scale-xlarge #editTaskModal .choice-card > svg {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+body.ui-scale-xlarge #quickAddModal .assignee-selector-button,
+body.ui-scale-xlarge #editTaskModal .assignee-selector-button { min-height: 148px; }
+
+/* Dark mode específico para criação/edição: nenhum card branco ou ícone sem contraste. */
+body.ui-theme-dark #quickAddModal .task-config-section,
+body.ui-theme-dark #editTaskModal .task-config-section {
+  background: linear-gradient(180deg, #142219, #101b14);
+  border-color: #304638;
+}
+body.ui-theme-dark #quickAddModal .choice-card,
+body.ui-theme-dark #editTaskModal .choice-card,
+body.ui-theme-dark #quickAddModal .assignee-selector-button,
+body.ui-theme-dark #editTaskModal .assignee-selector-button {
+  background: #18271e;
+  border-color: #38513f;
+  color: #dfece3;
+}
+body.ui-theme-dark #quickAddModal .choice-card:hover,
+body.ui-theme-dark #editTaskModal .choice-card:hover,
+body.ui-theme-dark #quickAddModal .assignee-selector-button:hover,
+body.ui-theme-dark #editTaskModal .assignee-selector-button:hover {
+  background: #203127;
+  border-color: #5fbe7d;
+}
+body.ui-theme-dark #quickAddModal .choice-card > svg,
+body.ui-theme-dark #editTaskModal .choice-card > svg,
+body.ui-theme-dark #quickAddModal .assignee-selector-action svg,
+body.ui-theme-dark #editTaskModal .assignee-selector-action svg {
+  color: #8bd8a4;
+  stroke: currentColor;
+}
+body.ui-theme-dark #quickAddModal .choice-card.active,
+body.ui-theme-dark #editTaskModal .choice-card.active {
+  background: #21402c;
+  border-color: #63ca85;
+  color: #f3fff7;
+}
+body.ui-theme-dark #quickAddModal .choice-card.priority-immediate,
+body.ui-theme-dark #editTaskModal .choice-card.priority-immediate {
+  background: #35191d;
+  border-color: #81424a;
+}
+body.ui-theme-dark #quickAddModal .choice-card.priority-immediate.active,
+body.ui-theme-dark #editTaskModal .choice-card.priority-immediate.active {
+  background: #8f232c;
+  border-color: #ff828a;
+}
+body.ui-theme-dark #quickAddModal .choice-card.priority-immediate > svg,
+body.ui-theme-dark #editTaskModal .choice-card.priority-immediate > svg {
+  color: #ff9aa1;
+}
+
+/* Responsividade defensiva. */
+@media (max-width: 1180px) {
+  #quickAddModal .priority-choice-grid,
+  #editTaskModal .priority-choice-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 840px) {
+  #quickAddModal,
+  #editTaskModal { padding: 8px; }
+  #quickAddModal .quick-add-modal,
+  #editTaskModal .task-edit-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
+  }
+  #quickAddModal .priority-choice-grid,
+  #editTaskModal .priority-choice-grid,
+  #quickAddModal .size-choice-grid,
+  #editTaskModal .size-choice-grid,
+  #quickAddModal .immediate-audience-options,
+  #editTaskModal .immediate-audience-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  #quickAddModal .form-grid.three,
+  #editTaskModal .form-grid.three {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  #quickAddModal .priority-choice-grid,
+  #editTaskModal .priority-choice-grid,
+  #quickAddModal .size-choice-grid,
+  #editTaskModal .size-choice-grid,
+  #quickAddModal .immediate-audience-options,
+  #editTaskModal .immediate-audience-options,
+  #quickAddModal .form-grid.two,
+  #quickAddModal .form-grid.three,
+  #editTaskModal .form-grid.two,
+  #editTaskModal .form-grid.three {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  #quickAddModal .choice-card,
+  #editTaskModal .choice-card {
+    min-height: 76px;
+  }
+}
+
+/* =========================================================
+   V3.4 — PRODUTIVIDADE, MODELOS E LAYOUT FINAL
+   ========================================================= */
+
+/* Modelos rápidos */
+.task-template-toolbar{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:16px;align-items:center;padding:16px 18px;margin-bottom:18px;border:1px solid var(--green-200);border-radius:16px;background:linear-gradient(135deg,var(--green-50),#fff);box-shadow:var(--shadow-xs)}
+.task-template-copy{display:flex;align-items:center;gap:12px;min-width:0}.task-template-icon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--green-100);color:var(--green-700);flex:none}.task-template-icon svg{width:20px}.task-template-copy strong{display:block;font:750 12px Sora,sans-serif;color:var(--ink)}.task-template-copy small{display:block;margin-top:4px;font-size:9px;line-height:1.45;color:var(--muted)}.task-template-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.task-template-actions select{height:42px;min-width:210px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--text);padding:0 34px 0 11px;font-size:10px;font-weight:700;outline:0}.task-template-actions select:focus{border-color:var(--green-400);box-shadow:0 0 0 3px rgba(83,184,118,.1)}
+
+/* Checklist + dependências no formulário. Nada de duas caixas brigando pela mesma coordenada. */
+.task-execution-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}.task-execution-grid>.field{margin:0;min-width:0}.task-execution-grid textarea{min-height:132px}.task-dependencies-field select[multiple]{min-height:132px;padding:8px!important;overflow:auto}.task-dependencies-field select[multiple] option{padding:7px 8px;border-radius:7px;margin:1px 0;white-space:normal}.field-help{display:block;margin-top:6px;font-size:8px;line-height:1.45;color:var(--faint)}
+
+/* Garante que criação/edição sempre use fluxo vertical estável. */
+#quickAddModal .task-config-section,#editTaskModal .task-config-section{display:block;overflow:visible!important}
+#quickAddModal .task-config-heading,#editTaskModal .task-config-heading{min-width:0}
+#quickAddModal .task-setup-grid,#editTaskModal .task-setup-grid{grid-auto-flow:row;position:relative}
+#quickAddModal .choice-card-grid,#editTaskModal .choice-card-grid{position:relative;z-index:1}
+#quickAddModal .choice-card,#editTaskModal .choice-card{box-sizing:border-box;max-width:100%}
+#quickAddModal .compact-config-section,#editTaskModal .edit-execution-grid{clear:both}
+
+/* Painéis de produtividade no drawer */
+.productivity-v4-wrap{display:flex;flex-direction:column;gap:12px;margin:14px 0}.productivity-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.productivity-card{border:1px solid var(--line);border-radius:16px;background:#fff;padding:15px;box-shadow:var(--shadow-xs);min-width:0}.productivity-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}.productivity-card-head h3{font:750 12px Sora,sans-serif;color:var(--ink);margin-top:4px}.productivity-empty{min-height:82px;border:1px dashed var(--line);border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;color:var(--muted);font-size:9px;text-align:center}.productivity-empty svg{width:19px;color:var(--green-500);flex:none}
+.task-blocked-banner{display:flex;align-items:flex-start;gap:11px;padding:14px 15px;border-radius:14px;background:var(--amber-soft);border:1px solid #efd49e;color:#875500}.task-blocked-banner>svg{width:21px;flex:none}.task-blocked-banner strong{display:block;font:750 11px Sora,sans-serif}.task-blocked-banner span{display:block;font-size:9px;line-height:1.5;margin-top:3px}
+
+.checklist-progress-label{font-size:9px;font-weight:800;color:var(--green-700);background:var(--green-100);padding:5px 8px;border-radius:99px}.checklist-progress-track,.time-progress-track{height:7px;background:#edf2ef;border-radius:99px;overflow:hidden}.checklist-progress-track i,.time-progress-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--green-400),var(--green-600));transition:width .3s var(--ease)}.time-progress-track i.near{background:linear-gradient(90deg,var(--green-500),var(--amber))}.time-progress-track i.over{background:linear-gradient(90deg,var(--amber),var(--red))}.checklist-items{display:flex;flex-direction:column;gap:6px;margin-top:10px}.checklist-item{width:100%;border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:9px 10px;display:grid;grid-template-columns:26px minmax(0,1fr);align-items:center;gap:8px;text-align:left;color:var(--text);transition:.16s}.checklist-item:not(:disabled):hover{background:var(--green-50);border-color:var(--green-200);transform:translateX(2px)}.checklist-item>span{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:#fff;border:1px solid var(--line);color:var(--faint)}.checklist-item>span svg{width:14px}.checklist-item strong{font-size:9px;line-height:1.4}.checklist-item.done{opacity:.68}.checklist-item.done strong{text-decoration:line-through}.checklist-item.done>span{background:var(--green-100);border-color:var(--green-200);color:var(--green-700)}
+
+.time-total{font:800 13px Sora,sans-serif;color:var(--green-700)}.time-comparison{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}.time-comparison>div{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:9px}.time-comparison span{display:block;font-size:7px;text-transform:uppercase;letter-spacing:.45px;color:var(--faint);font-weight:800}.time-comparison strong{display:block;margin-top:5px;font:800 13px Sora,sans-serif;color:var(--ink)}.time-comparison strong.attention{color:#a66900}.time-comparison strong.danger{color:var(--red)}.time-action{width:100%;min-height:58px;margin-top:11px;border:0;border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;text-align:left;transition:.18s}.time-action>svg{width:20px;flex:none}.time-action span{min-width:0;display:block}.time-action strong{display:block;font:750 10px Sora,sans-serif}.time-action small{display:block;font-size:8px;line-height:1.4;margin-top:3px;opacity:.75}.time-action.start{background:var(--green-700);color:#fff}.time-action.start:hover{background:var(--green-600);transform:translateY(-1px)}.time-action.stop{background:var(--red-soft);color:#a7242d;border:1px solid #f4c4c7}.time-action.stop:hover{background:#ffe7e9}.time-entry-count{display:block;margin-top:8px;font-size:7px;color:var(--faint)}
+
+.dependency-card.blocked{border-color:#efd49e;background:#fffdf8}.dependency-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:99px;font-size:8px;font-weight:800}.dependency-badge svg{width:12px}.dependency-badge.blocked{background:var(--amber-soft);color:#966000}.dependency-badge.free{background:var(--green-100);color:var(--green-700)}.dependency-list{display:flex;flex-direction:column;gap:6px}.dependency-task{width:100%;border:1px solid var(--line);background:var(--surface-2);border-radius:11px;padding:9px;display:grid;grid-template-columns:30px minmax(0,1fr) 14px;gap:9px;align-items:center;text-align:left;color:var(--text);transition:.16s}.dependency-task:hover{background:var(--green-50);border-color:var(--green-200);transform:translateX(2px)}.dependency-state{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--amber-soft);color:var(--amber)}.dependency-task.done .dependency-state{background:var(--green-100);color:var(--green-700)}.dependency-state svg{width:14px}.dependency-task strong{display:block;font-size:9px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dependency-task small{display:block;font-size:7px;color:var(--muted);margin-top:3px}.dependency-task>svg{width:13px;color:var(--faint)}.dependency-releases{display:flex;align-items:center;gap:8px;margin-top:9px;padding:9px 10px;border-radius:10px;background:var(--blue-soft);color:#285bb4;font-size:8px}.dependency-releases svg{width:14px;flex:none}
+
+/* Fechamento mensal */
+.monthly-report-toolbar-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.monthly-snapshot-status{display:flex;align-items:flex-start;gap:10px;margin-bottom:13px;padding:12px 14px;border-radius:12px;border:1px solid #c8d9cd;background:var(--green-50);color:var(--green-800)}.monthly-snapshot-status>svg{width:18px;flex:none}.monthly-snapshot-status strong{display:block;font-size:10px}.monthly-snapshot-status span{display:block;font-size:8px;line-height:1.45;margin-top:3px;color:var(--muted)}.monthly-report-table.v34 .monthly-report-row{grid-template-columns:minmax(190px,2fr) repeat(8,minmax(64px,.75fr)) minmax(110px,1fr)}
+
+/* Dark mode — novos componentes */
+body.ui-theme-dark .task-template-toolbar{background:linear-gradient(135deg,#13271b,#101b14);border-color:#35503d}body.ui-theme-dark .task-template-icon{background:#203b29;color:#8bd8a4}body.ui-theme-dark .task-template-actions select{background:#18251d;color:var(--ink);border-color:#354c3c}
+body.ui-theme-dark .task-dependencies-field select[multiple]{background:#18251d;color:#eef7f1;border-color:#354c3c}body.ui-theme-dark .task-dependencies-field select[multiple] option:checked{background:#28543a;color:#fff}
+body.ui-theme-dark .productivity-card{background:var(--surface);border-color:var(--line)}body.ui-theme-dark .productivity-empty,body.ui-theme-dark .checklist-item,body.ui-theme-dark .time-comparison>div,body.ui-theme-dark .dependency-task{background:var(--surface-2);border-color:var(--line)}body.ui-theme-dark .checklist-item>span{background:#18251d;border-color:#354c3c}body.ui-theme-dark .dependency-card.blocked{background:#211d13;border-color:#695a2f}body.ui-theme-dark .task-blocked-banner{background:#2a2315;border-color:#6c5828;color:#f2cf7d}body.ui-theme-dark .time-action.stop{background:#35191d;border-color:#714047;color:#ffb6bb}body.ui-theme-dark .monthly-snapshot-status{background:#17291d;border-color:#35503d;color:#dff2e5}
+
+/* Acessibilidade escala a estrutura destes componentes também. */
+body.ui-scale-large .task-template-toolbar{padding:19px 21px;gap:18px}body.ui-scale-large .task-template-copy strong{font-size:14px}body.ui-scale-large .task-template-copy small{font-size:11px}body.ui-scale-large .task-template-actions select{height:48px;font-size:12px}body.ui-scale-large .task-execution-grid textarea,body.ui-scale-large .task-dependencies-field select[multiple]{min-height:158px;font-size:12px}body.ui-scale-large .productivity-card{padding:18px}body.ui-scale-large .productivity-card-head h3{font-size:14px}body.ui-scale-large .checklist-item{min-height:48px}body.ui-scale-large .checklist-item strong{font-size:11px}body.ui-scale-large .time-comparison strong{font-size:15px}body.ui-scale-large .dependency-task{min-height:54px}body.ui-scale-large .dependency-task strong{font-size:11px}
+body.ui-scale-xlarge .task-template-toolbar{grid-template-columns:1fr;padding:22px 24px}body.ui-scale-xlarge .task-template-copy strong{font-size:17px}body.ui-scale-xlarge .task-template-copy small{font-size:14px}body.ui-scale-xlarge .task-template-actions{justify-content:flex-start}body.ui-scale-xlarge .task-template-actions select{height:56px;min-width:280px;font-size:14px}body.ui-scale-xlarge .task-execution-grid{grid-template-columns:1fr}body.ui-scale-xlarge .task-execution-grid textarea,body.ui-scale-xlarge .task-dependencies-field select[multiple]{min-height:190px;font-size:15px}body.ui-scale-xlarge .productivity-grid{grid-template-columns:1fr}body.ui-scale-xlarge .productivity-card{padding:22px}body.ui-scale-xlarge .productivity-card-head h3{font-size:17px}body.ui-scale-xlarge .checklist-item{min-height:60px;padding:12px 14px}body.ui-scale-xlarge .checklist-item strong{font-size:14px}body.ui-scale-xlarge .time-comparison strong{font-size:19px}body.ui-scale-xlarge .time-action{min-height:74px}body.ui-scale-xlarge .time-action strong{font-size:14px}body.ui-scale-xlarge .time-action small{font-size:11px}body.ui-scale-xlarge .dependency-task{min-height:68px;padding:12px}body.ui-scale-xlarge .dependency-task strong{font-size:14px}body.ui-scale-xlarge .dependency-task small{font-size:11px}
+
+@media(max-width:980px){.task-template-toolbar{grid-template-columns:1fr}.task-template-actions{justify-content:flex-start}.task-execution-grid,.productivity-grid{grid-template-columns:1fr}.monthly-report-toolbar-actions{justify-content:flex-start}.monthly-report-table.v34{overflow-x:auto}.monthly-report-table.v34 .monthly-report-row{min-width:1050px}}
+@media(max-width:620px){.task-template-actions{display:grid;grid-template-columns:1fr 1fr}.task-template-actions select{grid-column:1/-1;width:100%;min-width:0}.task-template-actions .icon-btn{width:100%}.time-comparison{grid-template-columns:1fr}.monthly-report-toolbar-actions{display:grid;grid-template-columns:1fr 1fr}.monthly-report-toolbar-actions .btn{width:100%}}

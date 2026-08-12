@@ -402,6 +402,11 @@
             <button type="button" data-item-type="compromisso"><i data-lucide="calendar-clock"></i><span><strong>Compromisso</strong><small>Evento com horário</small></span></button>
           </div>
 
+          <section id="taskTemplateToolbar" class="task-template-toolbar manager-only">
+            <div class="task-template-copy"><span class="task-template-icon"><i data-lucide="copy-check"></i></span><div><strong>Começar por um modelo</strong><small>Preencha briefing, prazo-base, tamanho, tags, projeto e checklist sem repetir o mesmo trabalho todo mês.</small></div></div>
+            <div class="task-template-actions"><select id="taskTemplateSelect" aria-label="Modelo de demanda"><option value="">Sem modelo</option></select><button id="taskTemplateApplyBtn" class="btn secondary" type="button"><i data-lucide="wand-sparkles"></i>Aplicar</button><button id="taskTemplateSaveBtn" class="btn soft" type="button"><i data-lucide="save"></i>Salvar atual</button><button id="taskTemplateDeleteBtn" class="icon-btn subtle hidden" type="button" title="Excluir modelo"><i data-lucide="trash-2"></i></button></div>
+          </section>
+
           <input id="itemType" type="hidden" value="demanda">
           <label class="field"><span>Título</span><input id="itemTitle" required maxlength="160" placeholder="O que precisa acontecer?"></label>
           <label class="field"><span>Descrição <em>opcional</em></span><textarea id="itemDescription" rows="3" placeholder="Contexto, briefing ou observações"></textarea></label>
@@ -473,6 +478,10 @@
                 <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
               </div>
               <datalist id="projectSuggestions"></datalist>
+              <div class="task-execution-grid">
+                <label class="field task-checklist-field"><span>Checklist <em>um item por linha</em></span><textarea id="itemChecklist" rows="5" placeholder="Ex.: Receber briefing&#10;Criar primeira versão&#10;Enviar para revisão&#10;Publicar"></textarea></label>
+                <label class="field task-dependencies-field"><span>Dependências <em>opcional</em></span><select id="itemDependencies" multiple size="5" aria-label="Demandas que precisam ser concluídas antes"></select><small class="field-help">Use Ctrl para selecionar mais de uma. A demanda fica bloqueada até todas serem concluídas.</small></label>
+              </div>
             </section>
           </div>
 
@@ -555,6 +564,10 @@
             <label class="field"><span>Lembrar</span><select id="editTaskReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
             <label class="field"><span>Tags</span><input id="editTaskTags"></label>
           </div>
+          <div class="task-execution-grid edit-execution-grid">
+            <label class="field task-checklist-field"><span>Checklist <em>um item por linha</em></span><textarea id="editTaskChecklist" rows="5" placeholder="Itens de execução"></textarea></label>
+            <label class="field task-dependencies-field"><span>Dependências <em>opcional</em></span><select id="editTaskDependencies" multiple size="5" aria-label="Demandas que precisam ser concluídas antes"></select><small class="field-help">Uma demanda bloqueada não pode começar até todas as dependências serem concluídas.</small></label>
+          </div>
         </div>
         <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="editTaskModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar alterações</button></div>
       </form>
@@ -615,11 +628,22 @@
     </div>
   </div>
 
+  <div id="taskTemplateModal" class="modal-layer hidden">
+    <div class="modal-card small task-template-modal">
+      <div class="modal-head"><div><span class="eyebrow">Modelo de demanda</span><h2>Salvar configuração atual</h2><p>O modelo reaproveita briefing, prioridade, tamanho, prazo-base, projeto, tags e checklist.</p></div><button class="icon-btn subtle" data-close-modal="taskTemplateModal"><i data-lucide="x"></i></button></div>
+      <form id="taskTemplateForm">
+        <div class="modal-body"><label class="field"><span>Nome do modelo</span><input id="taskTemplateName" required maxlength="80" placeholder="Ex.: Campanha mensal"></label><label class="field"><span>Título-base <em>opcional</em></span><input id="taskTemplateBaseTitle" maxlength="160" placeholder="Ex.: Campanha mensal — "></label><label class="field"><span>Prazo-base</span><div class="suffix-input"><input id="taskTemplateDeadlineHours" type="number" min="0" step="1" value="48"><span>horas</span></div></label><div class="settings-note"><i data-lucide="info"></i><span>O responsável não é salvo no modelo, para evitar delegações automáticas acidentais.</span></div></div>
+        <div class="modal-footer"><button class="btn secondary" type="button" data-close-modal="taskTemplateModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar modelo</button></div>
+      </form>
+    </div>
+  </div>
+
   <div id="monthlyReportModal" class="modal-layer hidden">
     <div class="modal-card monthly-report-modal">
-      <div class="modal-head"><div><span class="eyebrow">Gestão do setor</span><h2>Relatório mensal da equipe</h2><p>Gestores não entram no ranking operacional. Os números usam as demandas e horas estimadas registradas no Connect.</p></div><button class="icon-btn subtle" data-close-modal="monthlyReportModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Gestão do setor</span><h2>Relatório mensal da equipe</h2><p>Gestores não entram no ranking operacional. O relatório compara entregas, prazos, transferências e horas reais x estimadas, com opção de fechar o mês.</p></div><button class="icon-btn subtle" data-close-modal="monthlyReportModal"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
-        <div class="monthly-report-toolbar"><label class="field"><span>Mês</span><input id="monthlyReportMonth" type="month"></label><div><button id="monthlyReportCsvBtn" class="btn secondary" type="button"><i data-lucide="download"></i>Exportar CSV</button><button id="monthlyReportPrintBtn" class="btn primary" type="button"><i data-lucide="printer"></i>Imprimir / PDF</button></div></div>
+        <div class="monthly-report-toolbar"><label class="field"><span>Mês</span><input id="monthlyReportMonth" type="month"></label><div class="monthly-report-toolbar-actions"><button id="monthlySnapshotBtn" class="btn soft" type="button"><i data-lucide="lock-keyhole"></i>Fechar mês</button><button id="monthlyReopenBtn" class="btn danger-soft hidden" type="button"><i data-lucide="lock-keyhole-open"></i>Reabrir</button><button id="monthlyReportCsvBtn" class="btn secondary" type="button"><i data-lucide="download"></i>Exportar CSV</button><button id="monthlyReportPrintBtn" class="btn primary" type="button"><i data-lucide="printer"></i>Imprimir / PDF</button></div></div>
+        <div id="monthlySnapshotStatus" class="monthly-snapshot-status hidden"></div>
         <div id="monthlyReportContent" class="monthly-report-content"></div>
       </div>
     </div>

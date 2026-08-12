@@ -64,12 +64,13 @@ const NOTIFICATION_TEXT = {
 const ACTIVITY_TEXT = {
   criada: 'criou a demanda', editada: 'editou a demanda', status: 'alterou o status de',
   atribuida: 'alterou o responsável de', comentario: 'comentou em', arquivada: 'arquivou', restaurada: 'restaurou',
-  transferida: 'transferiu a demanda', avaliacao: 'avaliou a conclusão de'
+  transferida: 'transferiu a demanda', avaliacao: 'avaliou a conclusão de', tempo: 'registrou tempo em',
+  checklist: 'atualizou o checklist de', dependencia: 'alterou as dependências de'
 };
 const ACTIVITY_ICON = {
   criada: 'clipboard-plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog',
   comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore',
-  transferida: 'arrow-right-left', avaliacao: 'badge-check'
+  transferida: 'arrow-right-left', avaliacao: 'badge-check', tempo: 'timer', checklist: 'list-checks', dependencia: 'git-branch'
 };
 const PRIORITY_ORDER = { imediata: -1, urgente: 0, alta: 1, media: 2, baixa: 3 };
 const VIEW_META = {
@@ -90,6 +91,7 @@ const state = {
   transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
   agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
+  templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
   monthlyReportData: null, accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
 
@@ -417,7 +419,7 @@ async function initializeUser() {
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
 }
 async function loadAll() {
-  await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3()]);
+  await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4()]);
 }
 async function loadCollaborators() {
   const { data, error } = await db.from('colaboradores').select('id,nome,foto_url,cargo,role,ativo,perfil_configurado,criado_em,atualizado_em').eq('ativo', true).order('nome');
@@ -984,7 +986,7 @@ function teamManagerNarrative(stats) {
   return `A carga está equilibrada entre volume, esforço estimado e prazos registrados.`;
 }
 function activityIcon(type) {
-  return ({ criada: 'plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog', comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore', transferida: 'arrow-right-left', avaliacao: 'badge-check' })[type] || 'activity';
+  return ({ criada: 'plus', editada: 'pencil', status: 'refresh-cw', atribuida: 'user-round-cog', comentario: 'message-circle', arquivada: 'archive', restaurada: 'archive-restore', transferida: 'arrow-right-left', avaliacao: 'badge-check', tempo: 'timer', checklist: 'list-checks', dependencia: 'git-branch' })[type] || 'activity';
 }
 function showPersonTasks(personId) {
   closeDrawer('personDrawer'); state.smartFilter = ''; switchView('demandas'); populateAssigneeSelects();
@@ -1031,8 +1033,11 @@ function openQuickAdd(type = 'demanda', preset = {}) {
   $('reminderVisibility').value = isManager() ? (preset.visibility || 'pessoal') : 'pessoal';
   if (type === 'demanda') {
     populateAssigneeSelects();
+    populateDependencySelects('itemDependencies', null);
+    renderTaskTemplateSelect();
     $('itemAssignee').value = preset.assigneeId || '';
     if ($('itemProject')) $('itemProject').value = preset.project || '';
+    if ($('itemChecklist')) $('itemChecklist').value = '';
     $('itemPriority').value = preset.priority || 'media';
     $('itemSize').value = preset.size || 'media';
     syncTaskFormVisuals('item');
@@ -1046,7 +1051,8 @@ function setQuickType(type) {
   $('demandFields').classList.toggle('hidden', type !== 'demanda'); $('reminderFields').classList.toggle('hidden', type === 'demanda');
   $('meetingEndFields').classList.toggle('hidden', type !== 'compromisso');
   $('visibilityField').classList.toggle('hidden', !isManager());
-  if (type === 'demanda') { populateAssigneeSelects(); syncTaskFormVisuals('item'); }
+  if ($('taskTemplateToolbar')) $('taskTemplateToolbar').classList.toggle('hidden', type !== 'demanda' || !isManager());
+  if (type === 'demanda') { populateAssigneeSelects(); populateDependencySelects('itemDependencies', null); renderTaskTemplateSelect(); syncTaskFormVisuals('item'); }
   $('saveItemBtn').innerHTML = `<i data-lucide="check"></i>${state.editingReminderId ? 'Salvar alterações' : type === 'demanda' ? 'Criar demanda' : type === 'compromisso' ? 'Criar compromisso' : 'Criar lembrete'}`;
   refreshIcons();
 }
@@ -1083,12 +1089,15 @@ async function createTaskV2() {
   const priority = $('itemPriority').value;
   const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
   if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
-  const { error } = await db.rpc('criar_tarefa_v3', {
+  const checklist = checklistFromText($('itemChecklist')?.value || '');
+  const dependencies = selectedValues($('itemDependencies'));
+  const { error } = await db.rpc('criar_tarefa_v4', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
     p_prioridade: priority, p_responsavel_id: $('itemAssignee').value || null,
     p_prazo_em: dueAt, p_lembrar_em: remindAt, p_tags: tags,
     p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
-    p_alerta_para_todos: alertAll, p_projeto: $('itemProject')?.value.trim() || null
+    p_alerta_para_todos: alertAll, p_projeto: $('itemProject')?.value.trim() || null,
+    p_checklist: checklist, p_dependencias: dependencies
   });
   if (error) throw error;
 }
@@ -1250,6 +1259,9 @@ function openEditTask() {
   if ($('editTaskAlertAll')) $('editTaskAlertAll').value = String(Boolean(task.alerta_para_todos));
   $('editTaskSize').value = task.tamanho || 'media'; $('editTaskDueDate').value = due.date; $('editTaskDueTime').value = due.time || '17:00';
   $('editTaskEstimate').value = task.estimativa_horas || ''; if ($('editTaskProject')) $('editTaskProject').value = task.projeto || ''; $('editTaskTags').value = (task.tags || []).join(', ');
+  if ($('editTaskChecklist')) $('editTaskChecklist').value = checklistToText(task.checklist);
+  populateDependencySelects('editTaskDependencies', task.id);
+  setSelectedValues($('editTaskDependencies'), dependenciesForTask(task.id).map(item => item.depende_de_tarefa_id));
   const reminderOffset = task.lembrar_em && taskDue(task) ? Math.round((new Date(taskDue(task)) - new Date(task.lembrar_em)) / 60000) : '';
   $('editTaskReminderOffset').value = ['0', '10', '30', '60', '1440'].includes(String(reminderOffset)) ? String(reminderOffset) : '';
   syncTaskFormVisuals('editTask');
@@ -1265,12 +1277,13 @@ async function saveEditedTask(event) {
     const offset = $('editTaskReminderOffset').value; const remindAt = dueAt && offset !== '' ? new Date(new Date(dueAt).getTime() - Number(offset) * 60000).toISOString() : null;
     const priority = $('editTaskPriority').value;
     const alertAll = priority === 'imediata' && $('editTaskAlertAll')?.value === 'true';
-    const { error } = await db.rpc('editar_tarefa_v3', {
+    const { error } = await db.rpc('editar_tarefa_v4', {
       p_tarefa_id: taskId, p_titulo: $('editTaskTitle').value.trim(), p_descricao: $('editTaskDescription').value.trim() || null,
       p_prioridade: priority, p_responsavel_id: originalAssignee || null, p_prazo_em: dueAt,
       p_lembrar_em: remindAt, p_tags: $('editTaskTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
       p_tamanho: $('editTaskSize').value, p_estimativa_horas: $('editTaskEstimate').value ? Number($('editTaskEstimate').value) : null,
-      p_alerta_para_todos: alertAll, p_projeto: $('editTaskProject')?.value.trim() || null
+      p_alerta_para_todos: alertAll, p_projeto: $('editTaskProject')?.value.trim() || null,
+      p_checklist: checklistFromText($('editTaskChecklist')?.value || ''), p_dependencias: selectedValues($('editTaskDependencies'))
     });
     if (error) throw error;
     if (desiredAssignee !== originalAssignee) {
@@ -1600,6 +1613,10 @@ function setupRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atividades_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'academia_reservas' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'transferencias_tarefa' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'dependencias_tarefa' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_tempo' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'modelos_demanda' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'fechamentos_mensais' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => { await loadNotifications(); renderNotifications(); const inserted = state.notifications.find(item => item.id === payload.new?.id); if (inserted) enqueueIntrusiveNotification(inserted); await dispatchPendingPush(); refreshIcons(); })
     .subscribe(status => {
       const online = status === 'SUBSCRIBED'; const failed = ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status);
@@ -2516,4 +2533,488 @@ async function markNotificationAndOpen(element) {
   closeDrawer('notificationDrawer'); if (element.dataset.taskId) openTask(element.dataset.taskId); else if (element.dataset.reminderId) openReminder(element.dataset.reminderId);
 }
 
-bindEvents(); refreshIcons(); bootstrap();
+/* =========================================================
+   DEMANDAS V3.4 — MODELOS, DEPENDÊNCIAS, CHECKLIST E TEMPO
+   ========================================================= */
+function isV4MissingError(error) {
+  const message = String(error?.message || error?.details || error || '');
+  return /modelos_demanda|dependencias_tarefa|registros_tempo|fechamentos_mensais|criar_tarefa_v4|editar_tarefa_v4|schema cache|does not exist/i.test(message);
+}
+
+async function loadProductivityV4() {
+  try {
+    const [templatesResult, dependenciesResult, timeResult, closuresResult] = await Promise.all([
+      db.from('modelos_demanda').select('*').eq('ativo', true).order('sistema', { ascending: false }).order('nome'),
+      db.from('dependencias_tarefa').select('*').order('criado_em', { ascending: true }).limit(4000),
+      db.from('registros_tempo').select('*').order('inicio_em', { ascending: false }).limit(6000),
+      db.from('fechamentos_mensais').select('*').order('mes', { ascending: false }).limit(120)
+    ]);
+    const firstError = templatesResult.error || dependenciesResult.error || timeResult.error || closuresResult.error;
+    if (firstError) throw firstError;
+    state.templates = templatesResult.data || [];
+    state.dependencies = dependenciesResult.data || [];
+    state.timeEntries = timeResult.data || [];
+    state.monthlyClosures = closuresResult.data || [];
+    state.v4Ready = true;
+  } catch (error) {
+    if (!isV4MissingError(error)) throw error;
+    console.warn('[Demandas V4] Migração de produtividade ainda não disponível:', error);
+    state.templates = [];
+    state.dependencies = [];
+    state.timeEntries = [];
+    state.monthlyClosures = [];
+    state.v4Ready = false;
+  }
+}
+
+function normalizeChecklist(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item, index) => {
+    if (typeof item === 'string') return { texto: item.trim(), concluido: false, ordem: index };
+    return {
+      texto: String(item?.texto ?? item?.text ?? '').trim(),
+      concluido: Boolean(item?.concluido ?? item?.done),
+      ordem: Number.isFinite(Number(item?.ordem)) ? Number(item.ordem) : index
+    };
+  }).filter(item => item.texto).sort((a, b) => a.ordem - b.ordem);
+}
+
+function checklistFromText(text) {
+  return String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((texto, ordem) => ({ texto, concluido: false, ordem }));
+}
+
+function checklistToText(value) {
+  return normalizeChecklist(value).map(item => item.texto).join('\n');
+}
+
+function selectedValues(select) {
+  if (!select) return [];
+  return [...select.selectedOptions].map(option => option.value).filter(Boolean);
+}
+
+function setSelectedValues(select, values = []) {
+  if (!select) return;
+  const wanted = new Set(values || []);
+  [...select.options].forEach(option => { option.selected = wanted.has(option.value); });
+}
+
+function dependenciesForTask(taskId) {
+  return state.dependencies.filter(item => item.tarefa_id === taskId);
+}
+
+function tasksDependingOn(taskId) {
+  return state.dependencies.filter(item => item.depende_de_tarefa_id === taskId);
+}
+
+function dependencyTask(id) {
+  return state.tasks.find(task => task.id === id);
+}
+
+function dependencyIsOpen(dep) {
+  const task = dependencyTask(dep.depende_de_tarefa_id);
+  return !task || task.arquivada_em || task.status !== 'concluida';
+}
+
+function taskIsBlocked(taskId) {
+  return dependenciesForTask(taskId).some(dependencyIsOpen);
+}
+
+function populateDependencySelects(selectId, currentTaskId = null) {
+  const select = $(selectId);
+  if (!select) return;
+  const selected = selectedValues(select);
+  const items = state.tasks
+    .filter(task => !task.arquivada_em && task.id !== currentTaskId)
+    .sort((a, b) => Number(a.status === 'concluida') - Number(b.status === 'concluida') || String(a.titulo).localeCompare(String(b.titulo), 'pt-BR'));
+  select.innerHTML = items.map(task => `<option value="${task.id}">${task.status === 'concluida' ? '✓ ' : ''}${escapeHtml(task.titulo)}${task.projeto ? ` · ${escapeHtml(task.projeto)}` : ''} · ${STATUS[task.status]?.label || task.status}</option>`).join('');
+  setSelectedValues(select, selected.filter(id => items.some(task => task.id === id)));
+}
+
+function renderTaskTemplateSelect() {
+  const select = $('taskTemplateSelect');
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = `<option value="">Sem modelo</option>${state.templates.map(template => `<option value="${template.id}">${template.sistema ? 'PMG · ' : ''}${escapeHtml(template.nome)}</option>`).join('')}`;
+  if (state.templates.some(template => template.id === current)) select.value = current;
+  updateTaskTemplateActions();
+}
+
+function updateTaskTemplateActions() {
+  const id = $('taskTemplateSelect')?.value || '';
+  const template = state.templates.find(item => item.id === id);
+  $('taskTemplateApplyBtn')?.toggleAttribute('disabled', !template);
+  if ($('taskTemplateDeleteBtn')) $('taskTemplateDeleteBtn').classList.toggle('hidden', !template || template.sistema);
+}
+
+function templateDueDate(hours) {
+  const amount = Number(hours);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return new Date(Date.now() + amount * 3600000);
+}
+
+function applyTaskTemplate() {
+  const template = state.templates.find(item => item.id === $('taskTemplateSelect')?.value);
+  if (!template) return toast('Escolha um modelo primeiro.', 'error');
+  $('itemTitle').value = template.titulo_base || '';
+  $('itemDescription').value = template.descricao_padrao || '';
+  $('itemPriority').value = template.prioridade || 'media';
+  $('itemSize').value = template.tamanho || 'media';
+  $('itemEstimate').value = template.estimativa_horas ?? '';
+  if ($('itemProject')) $('itemProject').value = template.projeto || '';
+  $('itemTags').value = (template.tags || []).join(', ');
+  if ($('itemChecklist')) $('itemChecklist').value = checklistToText(template.checklist);
+  const due = templateDueDate(template.prazo_horas);
+  if (due) {
+    const parts = splitDateTime(due.toISOString());
+    $('itemDueDate').value = parts.date;
+    $('itemDueTime').value = parts.time || '17:00';
+  }
+  syncTaskFormVisuals('item');
+  $('itemTitle').focus();
+  refreshIcons();
+  toast(`Modelo “${template.nome}” aplicado.`);
+}
+
+function openSaveTaskTemplate() {
+  if (!isManager()) return;
+  $('taskTemplateForm').reset();
+  $('taskTemplateDeadlineHours').value = '48';
+  $('taskTemplateBaseTitle').value = $('itemTitle').value.trim();
+  $('taskTemplateModal').classList.remove('hidden');
+  setTimeout(() => $('taskTemplateName').focus(), 50);
+  refreshIcons();
+}
+
+async function saveTaskTemplate(event) {
+  event.preventDefault();
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('salvar_modelo_demanda', {
+      p_nome: $('taskTemplateName').value.trim(),
+      p_titulo_base: $('taskTemplateBaseTitle').value.trim() || null,
+      p_descricao_padrao: $('itemDescription').value.trim() || null,
+      p_prioridade: $('itemPriority').value,
+      p_tamanho: $('itemSize').value,
+      p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
+      p_prazo_horas: $('taskTemplateDeadlineHours').value ? Number($('taskTemplateDeadlineHours').value) : null,
+      p_tags: $('itemTags').value.split(',').map(value => value.trim()).filter(Boolean),
+      p_projeto: $('itemProject')?.value.trim() || null,
+      p_checklist: checklistFromText($('itemChecklist')?.value || '')
+    });
+    if (error) throw error;
+    closeModal('taskTemplateModal');
+    await loadProductivityV4();
+    renderTaskTemplateSelect();
+    toast('Modelo salvo. Agora o trabalho repetitivo tem menos oportunidades de se reproduzir.');
+  } catch (error) {
+    toast(errorMessage(error), 'error');
+  } finally { setLoading(false); }
+}
+
+async function deleteSelectedTaskTemplate() {
+  const template = state.templates.find(item => item.id === $('taskTemplateSelect')?.value);
+  if (!template || template.sistema) return;
+  if (!confirm(`Excluir o modelo “${template.nome}”?`)) return;
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('excluir_modelo_demanda', { p_id: template.id });
+    if (error) throw error;
+    await loadProductivityV4();
+    renderTaskTemplateSelect();
+    toast('Modelo removido.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+function taskTimeEntries(taskId) {
+  return state.timeEntries.filter(entry => entry.tarefa_id === taskId);
+}
+
+function entryElapsedMinutes(entry, now = new Date()) {
+  if (entry.fim_em) return Number(entry.minutos || Math.max(0, (new Date(entry.fim_em) - new Date(entry.inicio_em)) / 60000));
+  return Math.max(0, (now - new Date(entry.inicio_em)) / 60000);
+}
+
+function taskActualMinutes(taskId) {
+  const now = new Date();
+  return taskTimeEntries(taskId).reduce((sum, entry) => sum + entryElapsedMinutes(entry, now), 0);
+}
+
+function activeTimerFor(personId = state.me?.id, taskId = null) {
+  return state.timeEntries.find(entry => entry.colaborador_id === personId && !entry.fim_em && (!taskId || entry.tarefa_id === taskId));
+}
+
+function formatMinutesHuman(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes || 0)));
+  const h = Math.floor(total / 60), m = total % 60;
+  if (!h) return `${m} min`;
+  return `${h}h ${String(m).padStart(2, '0')}min`;
+}
+
+function dependencyPanelHTML(task) {
+  const dependencies = dependenciesForTask(task.id);
+  const reverse = tasksDependingOn(task.id);
+  const pending = dependencies.filter(dependencyIsOpen);
+  const dependencyRows = dependencies.length ? dependencies.map(dep => {
+    const item = dependencyTask(dep.depende_de_tarefa_id);
+    if (!item) return '';
+    const done = item.status === 'concluida' && !item.arquivada_em;
+    return `<button type="button" class="dependency-task ${done ? 'done' : 'pending'}" data-open-task="${item.id}"><span class="dependency-state"><i data-lucide="${done ? 'circle-check-big' : 'lock-keyhole'}"></i></span><span><strong>${escapeHtml(item.titulo)}</strong><small>${escapeHtml(STATUS[item.status]?.label || item.status)}${item.projeto ? ` · ${escapeHtml(item.projeto)}` : ''}</small></span><i data-lucide="chevron-right"></i></button>`;
+  }).join('') : `<div class="productivity-empty"><i data-lucide="git-branch"></i><span>Esta demanda pode começar sem depender de outra entrega.</span></div>`;
+  const reverseText = reverse.length ? `<div class="dependency-releases"><i data-lucide="unlock-keyhole"></i><span>Ao concluir esta demanda, você libera <strong>${reverse.length}</strong> outra${reverse.length === 1 ? '' : 's'}.</span></div>` : '';
+  return `<section class="productivity-card dependency-card ${pending.length ? 'blocked' : ''}"><div class="productivity-card-head"><div><span class="eyebrow">Dependências</span><h3>${pending.length ? `Bloqueada por ${pending.length} entrega${pending.length === 1 ? '' : 's'}` : 'Fluxo liberado'}</h3></div><span class="dependency-badge ${pending.length ? 'blocked' : 'free'}"><i data-lucide="${pending.length ? 'lock-keyhole' : 'unplug'}"></i>${pending.length ? 'Bloqueada' : 'Livre'}</span></div><div class="dependency-list">${dependencyRows}</div>${reverseText}</section>`;
+}
+
+function checklistPanelHTML(task) {
+  const list = normalizeChecklist(task.checklist);
+  const done = list.filter(item => item.concluido).length;
+  const canEdit = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
+  const percent = list.length ? Math.round(done / list.length * 100) : 0;
+  return `<section class="productivity-card checklist-card"><div class="productivity-card-head"><div><span class="eyebrow">Execução</span><h3>Checklist da demanda</h3></div><span class="checklist-progress-label">${done}/${list.length || 0} · ${percent}%</span></div>${list.length ? `<div class="checklist-progress-track"><i style="width:${percent}%"></i></div><div class="checklist-items">${list.map((item, index) => `<button type="button" class="checklist-item ${item.concluido ? 'done' : ''}" data-checklist-toggle="${index}" ${canEdit ? '' : 'disabled'}><span><i data-lucide="${item.concluido ? 'check' : 'circle'}"></i></span><strong>${escapeHtml(item.texto)}</strong></button>`).join('')}</div>` : `<div class="productivity-empty"><i data-lucide="list-checks"></i><span>Sem checklist. O gestor pode adicionar itens em Editar detalhes.</span></div>`}</section>`;
+}
+
+function timerPanelHTML(task) {
+  const entries = taskTimeEntries(task.id);
+  const actualMinutes = taskActualMinutes(task.id);
+  const actualHours = actualMinutes / 60;
+  const estimated = Number(task.estimativa_horas || sizeWeight(task) || 0);
+  const percent = estimated > 0 ? Math.min(160, Math.round(actualHours / estimated * 100)) : 0;
+  const active = activeTimerFor(state.me?.id, task.id);
+  const another = activeTimerFor(state.me?.id);
+  const canTrack = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
+  const action = active
+    ? `<button type="button" class="time-action stop" data-task-time-stop="${task.id}"><i data-lucide="square"></i><span><strong>Pausar cronômetro</strong><small id="taskLiveTimer">${formatMinutesHuman(entryElapsedMinutes(active))}</small></span></button>`
+    : canTrack
+      ? `<button type="button" class="time-action start" data-task-time-start="${task.id}"><i data-lucide="play"></i><span><strong>Iniciar trabalho</strong><small>${another && another.tarefa_id !== task.id ? 'O cronômetro da outra demanda será pausado automaticamente.' : 'Registra o tempo real desta execução.'}</small></span></button>`
+      : '';
+  return `<section class="productivity-card time-card"><div class="productivity-card-head"><div><span class="eyebrow">Tempo</span><h3>Real x estimado</h3></div><span class="time-total">${formatMinutesHuman(actualMinutes)}</span></div><div class="time-comparison"><div><span>Real registrado</span><strong>${actualHours.toFixed(1).replace('.', ',')}h</strong></div><div><span>Estimativa</span><strong>${estimated ? `${estimated.toFixed(1).replace('.', ',')}h` : '—'}</strong></div><div><span>Uso da estimativa</span><strong class="${percent > 110 ? 'danger' : percent > 85 ? 'attention' : ''}">${estimated ? `${percent}%` : '—'}</strong></div></div>${estimated ? `<div class="time-progress-track"><i class="${percent > 110 ? 'over' : percent > 85 ? 'near' : ''}" style="width:${Math.min(100, percent)}%"></i></div>` : ''}${action}${entries.length ? `<small class="time-entry-count">${entries.length} sessão${entries.length === 1 ? '' : 'ões'} registrada${entries.length === 1 ? '' : 's'} nesta demanda.</small>` : ''}</section>`;
+}
+
+function injectProductivityTaskPanels() {
+  const task = state.selectedTask;
+  const root = $('taskDrawerContent');
+  if (!task || !root) return;
+  root.querySelectorAll('.productivity-v4-wrap').forEach(el => el.remove());
+  const wrap = document.createElement('div');
+  wrap.className = 'productivity-v4-wrap';
+  wrap.innerHTML = `${taskIsBlocked(task.id) ? `<div class="task-blocked-banner"><i data-lucide="shield-alert"></i><div><strong>Esta demanda está bloqueada</strong><span>Ela só poderá iniciar ou voltar para revisão depois que todas as dependências pendentes forem concluídas.</span></div></div>` : ''}<div class="productivity-grid">${checklistPanelHTML(task)}${timerPanelHTML(task)}</div>${dependencyPanelHTML(task)}`;
+  const firstDetail = root.querySelector('.detail-section');
+  root.insertBefore(wrap, firstDetail || root.firstChild);
+  if (state.activeTimerTick) clearInterval(state.activeTimerTick);
+  const active = activeTimerFor(state.me?.id, task.id);
+  if (active) {
+    state.activeTimerTick = setInterval(() => {
+      const label = $('taskLiveTimer');
+      if (label && activeTimerFor(state.me?.id, task.id)) label.textContent = formatMinutesHuman(entryElapsedMinutes(active));
+      else { clearInterval(state.activeTimerTick); state.activeTimerTick = null; }
+    }, 1000);
+  }
+  refreshIcons();
+}
+
+async function toggleChecklistItem(index) {
+  const task = state.selectedTask;
+  if (!task) return;
+  const checklist = normalizeChecklist(task.checklist);
+  if (!checklist[index]) return;
+  checklist[index].concluido = !checklist[index].concluido;
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('atualizar_checklist_tarefa', { p_tarefa_id: task.id, p_checklist: checklist });
+    if (error) throw error;
+    await refreshData();
+    await openTask(task.id);
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+async function startTaskTimer(taskId) {
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('iniciar_tempo_tarefa', { p_tarefa_id: taskId });
+    if (error) throw error;
+    await refreshData();
+    await openTask(taskId);
+    toast('Cronômetro iniciado.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+async function stopTaskTimer(taskId) {
+  setLoading(true);
+  try {
+    const { data, error } = await db.rpc('parar_tempo_tarefa', { p_tarefa_id: taskId, p_observacao: null });
+    if (error) throw error;
+    await refreshData();
+    await openTask(taskId);
+    toast(`Tempo registrado: ${formatMinutesHuman(data || 0)}.`);
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+function closureForMonth(value) {
+  const key = `${String(value || monthInputValue())}-01`;
+  return state.monthlyClosures.find(item => String(item.mes).slice(0, 10) === key) || null;
+}
+
+function entryMinutesInsideMonth(entry, start, end) {
+  const a = Math.max(new Date(entry.inicio_em).getTime(), start.getTime());
+  const rawEnd = entry.fim_em ? new Date(entry.fim_em).getTime() : Date.now();
+  const b = Math.min(rawEnd, end.getTime());
+  return Math.max(0, (b - a) / 60000);
+}
+
+function buildMonthlyReport(value) {
+  const { start, end, label } = monthBounds(value);
+  const operators = state.collaborators.filter(person => person.role !== 'gestor');
+  const operatorIds = new Set(operators.map(person => person.id));
+  const monthTimes = state.timeEntries.filter(entry => operatorIds.has(entry.colaborador_id) && new Date(entry.inicio_em) < end && new Date(entry.fim_em || Date.now()) >= start);
+  const actualHoursForPerson = personId => monthTimes.filter(entry => entry.colaborador_id === personId).reduce((sum, entry) => sum + entryMinutesInsideMonth(entry, start, end), 0) / 60;
+
+  const rows = operators.map(person => {
+    const completed = state.tasks.filter(task => task.responsavel_id === person.id && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= start && new Date(task.concluida_em || task.atualizado_em) < end);
+    const created = state.tasks.filter(task => task.responsavel_id === person.id && new Date(task.criado_em) >= start && new Date(task.criado_em) < end);
+    const overdue = state.tasks.filter(task => task.responsavel_id === person.id && !task.arquivada_em && isOverdue(task));
+    const active = state.tasks.filter(task => task.responsavel_id === person.id && !task.arquivada_em && task.status !== 'concluida');
+    const approved = completed.filter(task => task.avaliacao_status === 'aprovada').length;
+    const immediates = completed.filter(task => task.prioridade === 'imediata').length;
+    const estimatedHours = completed.reduce((sum, task) => sum + sizeWeight(task), 0);
+    const actualHours = actualHoursForPerson(person.id);
+    const deadlineCompleted = completed.filter(task => taskDue(task) && task.concluida_em);
+    const onTime = deadlineCompleted.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
+    const onTimeRate = deadlineCompleted.length ? Math.round(onTime / deadlineCompleted.length * 100) : null;
+    const cycleValues = completed.filter(task => task.criado_em && (task.concluida_em || task.atualizado_em)).map(task => Math.max(0, (new Date(task.concluida_em || task.atualizado_em) - new Date(task.criado_em)) / 86400000));
+    const avgCycle = cycleValues.length ? cycleValues.reduce((a, b) => a + b, 0) / cycleValues.length : null;
+    const transfersIn = state.transfers.filter(item => item.para_colaborador_id === person.id && new Date(item.criado_em) >= start && new Date(item.criado_em) < end);
+    const transfersOut = state.transfers.filter(item => item.de_colaborador_id === person.id && new Date(item.criado_em) >= start && new Date(item.criado_em) < end);
+    return { person, created: created.length, completed: completed.length, approved, immediates, estimatedHours, actualHours, hours: actualHours, active: active.length, overdue: overdue.length, onTimeRate, avgCycle, transfersIn: transfersIn.length, transfersOut: transfersOut.length };
+  }).sort((a, b) => b.completed - a.completed || b.actualHours - a.actualHours);
+
+  const completedInMonth = state.tasks.filter(task => task.status === 'concluida' && operatorIds.has(task.responsavel_id) && new Date(task.concluida_em || task.atualizado_em) >= start && new Date(task.concluida_em || task.atualizado_em) < end);
+  const createdInMonth = state.tasks.filter(task => operatorIds.has(task.responsavel_id) && new Date(task.criado_em) >= start && new Date(task.criado_em) < end);
+  const projectSet = new Set([...completedInMonth, ...createdInMonth, ...monthTimes.map(entry => state.tasks.find(task => task.id === entry.tarefa_id)).filter(Boolean)].map(task => String(task.projeto || '').trim() || 'Sem projeto'));
+  const projects = [...projectSet].map(name => {
+    const taskMatches = task => (String(task?.projeto || '').trim() || 'Sem projeto') === name;
+    const completed = completedInMonth.filter(taskMatches);
+    const created = createdInMonth.filter(taskMatches);
+    const active = state.tasks.filter(task => operatorIds.has(task.responsavel_id) && !task.arquivada_em && task.status !== 'concluida' && taskMatches(task));
+    const projectEntries = monthTimes.filter(entry => taskMatches(state.tasks.find(task => task.id === entry.tarefa_id)));
+    const actualHours = projectEntries.reduce((sum, entry) => sum + entryMinutesInsideMonth(entry, start, end), 0) / 60;
+    const estimatedHours = completed.reduce((sum, task) => sum + sizeWeight(task), 0);
+    return { name, created: created.length, completed: completed.length, actualHours, estimatedHours, hours: actualHours, active: active.length, overdue: active.filter(isOverdue).length, immediates: completed.filter(task => task.prioridade === 'imediata').length };
+  }).sort((a, b) => b.completed - a.completed || b.actualHours - a.actualHours || a.name.localeCompare(b.name, 'pt-BR'));
+  const completedWithDeadline = completedInMonth.filter(task => taskDue(task) && task.concluida_em);
+  const totalOnTime = completedWithDeadline.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
+  return {
+    version: '3.4', label, rows, projects,
+    totalCompleted: rows.reduce((sum, row) => sum + row.completed, 0),
+    totalActualHours: rows.reduce((sum, row) => sum + row.actualHours, 0),
+    totalEstimatedHours: rows.reduce((sum, row) => sum + row.estimatedHours, 0),
+    totalHours: rows.reduce((sum, row) => sum + row.actualHours, 0),
+    totalCreated: rows.reduce((sum, row) => sum + row.created, 0),
+    teamOnTimeRate: completedWithDeadline.length ? Math.round(totalOnTime / completedWithDeadline.length * 100) : null
+  };
+}
+
+function renderMonthlyReport() {
+  const value = $('monthlyReportMonth').value || monthInputValue();
+  const closure = closureForMonth(value);
+  const report = closure?.dados || buildMonthlyReport(value);
+  state.monthlyReportData = report;
+  const closedBy = collaborator(closure?.fechado_por)?.nome || 'gestor';
+  if ($('monthlySnapshotStatus')) {
+    $('monthlySnapshotStatus').classList.toggle('hidden', !closure);
+    $('monthlySnapshotStatus').innerHTML = closure ? `<i data-lucide="lock-keyhole"></i><div><strong>Mês fechado</strong><span>Este relatório está congelado desde ${formatDateTime(closure.fechado_em)} por ${escapeHtml(closedBy)}. Alterações posteriores não mudam estes números.</span></div>` : '';
+  }
+  $('monthlySnapshotBtn')?.classList.toggle('hidden', Boolean(closure));
+  $('monthlyReopenBtn')?.classList.toggle('hidden', !closure);
+  const projectsHTML = report.projects?.length ? `<section class="monthly-project-section"><div class="monthly-section-title"><div><span class="eyebrow">Projetos</span><h4>Onde o esforço do mês foi aplicado</h4></div><span>${report.projects.length} projeto${report.projects.length === 1 ? '' : 's'}</span></div><div class="monthly-project-grid">${report.projects.map(project => `<article class="monthly-project-card ${project.name === 'Sem projeto' ? 'unclassified' : ''}"><div class="monthly-project-card-head"><span><i data-lucide="folder-kanban"></i></span><div><strong>${escapeHtml(project.name)}</strong><small>${project.created} recebida(s) · ${project.completed} concluída(s)</small></div></div><div class="monthly-project-stats"><span><strong>${formatHours(project.actualHours || 0)}</strong><small>reais</small></span><span><strong>${formatHours(project.estimatedHours || 0)}</strong><small>estimadas</small></span><span class="${project.overdue ? 'danger' : ''}"><strong>${project.overdue}</strong><small>atrasadas</small></span><span><strong>${project.immediates}</strong><small>imediatas</small></span></div></article>`).join('')}</div></section>` : '<section class="monthly-project-section"><div class="empty-state"><i data-lucide="folder-kanban"></i>Nenhum projeto com atividade neste mês.</div></section>';
+  const totalActual = report.totalActualHours ?? report.totalHours ?? 0;
+  const totalEstimated = report.totalEstimatedHours ?? 0;
+  $('monthlyReportContent').innerHTML = `<div class="monthly-report-hero"><div><span class="eyebrow light">${escapeHtml(report.label)}</span><h3>Performance operacional da equipe</h3><p>Gestores ficam fora da comparação. O relatório mostra volume, prazo, ciclo, transferências e agora compara horas reais com as estimadas.</p></div><div class="monthly-report-totals"><span><strong>${report.totalCompleted}</strong>concluídas</span><span><strong>${formatHours(totalActual)}</strong>horas reais</span><span><strong>${formatHours(totalEstimated)}</strong>estimadas</span><span><strong>${report.teamOnTimeRate === null ? '—' : report.teamOnTimeRate + '%'}</strong>no prazo</span></div></div>${projectsHTML}<section class="monthly-people-section"><div class="monthly-section-title"><div><span class="eyebrow">Equipe</span><h4>Performance por colaborador</h4></div></div><div class="monthly-report-table v34"><div class="monthly-report-row head"><span>Colaborador</span><span>Recebidas</span><span>Concluídas</span><span>Real</span><span>Estimado</span><span>No prazo</span><span>Ciclo</span><span>Ativas</span><span>Atrasadas</span><span>Transferências</span></div>${(report.rows || []).map((row, i) => `<div class="monthly-report-row"><span class="monthly-person">${avatarHTML(row.person, 'sm')}<span><strong>${escapeHtml(row.person.nome)}</strong><small>${escapeHtml(row.person.cargo || 'Marketing')} · #${i + 1}${row.immediates ? ` · ${row.immediates} imediata(s)` : ''}</small></span></span><strong>${row.created}</strong><strong>${row.completed}</strong><strong>${formatHours(row.actualHours ?? row.hours ?? 0)}</strong><strong>${formatHours(row.estimatedHours ?? 0)}</strong><strong>${row.onTimeRate === null ? '—' : row.onTimeRate + '%'}</strong><strong>${row.avgCycle === null ? '—' : row.avgCycle.toFixed(1).replace('.', ',') + 'd'}</strong><strong>${row.active}</strong><strong class="${row.overdue ? 'danger' : ''}">${row.overdue}</strong><span>${row.transfersIn} receb. · ${row.transfersOut} env.</span></div>`).join('') || '<div class="empty-state">Nenhum colaborador operacional encontrado.</div>'}</div></section>`;
+  refreshIcons();
+}
+
+async function saveMonthlySnapshot() {
+  if (!isManager()) return;
+  const value = $('monthlyReportMonth').value || monthInputValue();
+  if (!confirm(`Fechar ${monthBounds(value).label}? O relatório ficará congelado até um gestor reabrir o mês.`)) return;
+  setLoading(true);
+  try {
+    const report = buildMonthlyReport(value);
+    const { error } = await db.rpc('salvar_fechamento_mensal', { p_mes: `${value}-01`, p_dados: report });
+    if (error) throw error;
+    await loadProductivityV4();
+    renderMonthlyReport();
+    toast('Mês fechado e relatório congelado.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+async function reopenMonthlySnapshot() {
+  if (!isManager()) return;
+  const value = $('monthlyReportMonth').value || monthInputValue();
+  if (!confirm(`Reabrir ${monthBounds(value).label}? O relatório voltará a refletir os dados atuais.`)) return;
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('reabrir_fechamento_mensal', { p_mes: `${value}-01` });
+    if (error) throw error;
+    await loadProductivityV4();
+    renderMonthlyReport();
+    toast('Mês reaberto.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+function exportMonthlyReportCsv() {
+  const report = state.monthlyReportData || buildMonthlyReport($('monthlyReportMonth').value);
+  const lines = [
+    ['COLABORADORES'],
+    ['Colaborador','Cargo','Recebidas','Concluídas','Horas reais','Horas estimadas','No prazo (%)','Ciclo médio (dias)','Imediatas concluídas','Ativas agora','Atrasadas agora','Transferências recebidas','Transferências enviadas'],
+    ...(report.rows || []).map(row => [row.person.nome,row.person.cargo || '',row.created,row.completed,row.actualHours ?? row.hours ?? 0,row.estimatedHours ?? '',row.onTimeRate ?? '',row.avgCycle === null ? '' : row.avgCycle.toFixed(1),row.immediates,row.active,row.overdue,row.transfersIn,row.transfersOut]),
+    [],
+    ['PROJETOS'],
+    ['Projeto','Recebidas','Concluídas','Horas reais','Horas estimadas','Ativas agora','Atrasadas agora','Imediatas concluídas'],
+    ...(report.projects || []).map(project => [project.name,project.created,project.completed,project.actualHours ?? project.hours ?? 0,project.estimatedHours ?? '',project.active,project.overdue,project.immediates])
+  ].map(row => row.map(csvCell).join(';'));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = `relatorio-demandas-${$('monthlyReportMonth').value}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+
+function printMonthlyReport() {
+  const html = $('monthlyReportContent').innerHTML;
+  const w = window.open('', '_blank', 'width=1400,height=900');
+  if (!w) return toast('Permita pop-ups para imprimir o relatório.', 'error');
+  w.document.write(`<!doctype html><html><head><title>Relatório mensal PMG Connect</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#17221b}.monthly-report-row{display:grid;grid-template-columns:2.2fr repeat(9,minmax(70px,1fr));gap:8px;padding:10px;border-bottom:1px solid #ddd;align-items:center;font-size:11px}.head{font-weight:bold;background:#f2f5f3}.avatar{display:none}.monthly-report-hero{padding:22px;background:#164b2d;color:white;margin-bottom:20px}.monthly-report-totals{display:flex;gap:30px}.monthly-report-totals span{display:grid}.monthly-project-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:15px 0}.monthly-project-card{border:1px solid #ddd;padding:12px;border-radius:10px}.monthly-project-stats{display:flex;gap:15px;margin-top:10px}.monthly-project-stats span{display:grid}.monthly-person small{display:block;color:#777}</style></head><body>${html}</body></html>`);
+  w.document.close(); setTimeout(() => w.print(), 250);
+}
+
+function bindProductivityV4Events() {
+  $('taskTemplateSelect')?.addEventListener('change', updateTaskTemplateActions);
+  $('taskTemplateApplyBtn')?.addEventListener('click', applyTaskTemplate);
+  $('taskTemplateSaveBtn')?.addEventListener('click', openSaveTaskTemplate);
+  $('taskTemplateDeleteBtn')?.addEventListener('click', deleteSelectedTaskTemplate);
+  $('taskTemplateForm')?.addEventListener('submit', saveTaskTemplate);
+  $('monthlySnapshotBtn')?.addEventListener('click', saveMonthlySnapshot);
+  $('monthlyReopenBtn')?.addEventListener('click', reopenMonthlySnapshot);
+
+  document.addEventListener('click', event => {
+    const checklist = event.target.closest('[data-checklist-toggle]');
+    if (checklist) { toggleChecklistItem(Number(checklist.dataset.checklistToggle)); return; }
+    const start = event.target.closest('[data-task-time-start]');
+    if (start) { startTaskTimer(start.dataset.taskTimeStart); return; }
+    const stop = event.target.closest('[data-task-time-stop]');
+    if (stop) { stopTaskTimer(stop.dataset.taskTimeStop); return; }
+  });
+}
+
+// Injeta os novos painéis sem duplicar a lógica já estável do drawer.
+const renderTaskDrawerV33 = renderTaskDrawer;
+renderTaskDrawer = function renderTaskDrawerV34() {
+  renderTaskDrawerV33();
+  injectProductivityTaskPanels();
+};
+
+
+bindEvents(); bindProductivityV4Events(); refreshIcons(); bootstrap();
