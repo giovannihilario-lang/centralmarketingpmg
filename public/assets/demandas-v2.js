@@ -90,7 +90,7 @@ const state = {
   intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false,
   transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
   agendaScope: 'mine', agendaPersonFilter: '',
-  academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
+  academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyTab: 'calendar', academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
   templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
   monthlyReportData: null, accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
@@ -2139,7 +2139,15 @@ async function submitTransferTask(event) {
 }
 
 function academyTime(value, fallback='08:00') { return String(value || fallback).slice(0,5); }
+function weekdayShortPt(value) {
+  const d=value instanceof Date?value:new Date(value);
+  if(isNaN(d))return'';
+  return ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()];
+}
 function academyStatusLabel(status) { return ({ solicitada:'Solicitada', aprovada:'Aprovada', recusada:'Recusada', cancelada:'Cancelada' })[status] || status; }
+function isAcademyTraining(item){return item?.tipo_registro==='treinamento'||item?.origem==='treinamento'||item?.origem==='legado';}
+function academyTrainingCategory(item){return String(item?.categoria_treinamento||'PMG Geral').trim()||'PMG Geral';}
+function academyTrainingClass(item){const c=academyTrainingCategory(item).toLowerCase();return c==='mkt'?'mkt':c==='avulso'?'avulso':c==='pmg geral'?'geral':'outro';}
 function academyReservationsForDate(key, includeInactive=false) {
   return state.academyReservations.filter(r => dateKey(r.inicio_em)===key && (includeInactive || ['solicitada','aprovada'].includes(r.status))).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em));
 }
@@ -2157,37 +2165,160 @@ function academyFreeSlots(key) {
   return slots.filter(([a,b])=>b-a>=30).map(([a,b])=>`${clockFromMinutes(a)}–${clockFromMinutes(b)}`);
 }
 
+function setAcademyTab(tab, render=true) {
+  const allowed=['calendar','trainings','requests'];
+  state.academyTab=allowed.includes(tab)?tab:'calendar';
+  document.querySelectorAll('[data-academy-tab]').forEach(button=>{
+    const active=button.dataset.academyTab===state.academyTab;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-selected',String(active));
+  });
+  const panels={calendar:'academyPanelCalendar',trainings:'academyPanelTrainings',requests:'academyPanelRequests'};
+  Object.entries(panels).forEach(([key,id])=>$(id)?.classList.toggle('hidden',key!==state.academyTab));
+  if(render){renderAcademy();refreshIcons();}
+}
+
 function renderAcademy() {
   if (!$('academyCalendarGrid')) return;
   const setup=$('academySetupNotice');
   if (!state.v3Ready) {
-    setup.classList.remove('hidden'); setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>Instalação única para liberar a Academia PMG.</strong><span><b>1.</b> Abra Supabase → SQL Editor. <b>2.</b> Cole o arquivo <code>sql/INSTALAR-DEMANDAS-V3-1.sql</code>. <b>3.</b> Clique em Run. É a única etapa de banco desta atualização e deixa as reservas compartilhadas entre todos os computadores.</span></div>`;
+    setup.classList.remove('hidden'); setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>Instalação única para liberar a Academia PMG.</strong><span>Execute o SQL mais recente da Academia no Supabase. As reservas, solicitações e treinamentos ficam compartilhados entre todos os computadores.</span></div>`;
   } else setup.classList.add('hidden');
   const config=state.academyConfig||{horario_abertura:'08:00',horario_fechamento:'18:00'};
   const formsReady=Boolean(config.forms_url);
   $('academyFormsBtn').disabled=!formsReady; $('academyCopyFormsBtn').disabled=!formsReady;
   const cursor=state.academyCursor; $('academyMonthLabel').textContent=new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(cursor);
   const selected=new Date(`${state.academySelectedDate}T12:00:00`);
-  $('academySelectedWeekday').textContent=new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(selected); $('academySelectedNumber').textContent=String(selected.getDate()).padStart(2,'0'); $('academySelectedMonth').textContent=new Intl.DateTimeFormat('pt-BR',{month:'long'}).format(selected);
-  const pending=state.academyReservations.filter(r=>r.status==='solicitada'); const upcoming=state.academyReservations.filter(r=>r.status==='aprovada'&&new Date(r.fim_em)>=new Date()); const thisMonth=state.academyReservations.filter(r=>r.status==='aprovada'&&new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
-  const totalPeople=thisMonth.reduce((sum,r)=>sum+Number(r.participantes||0),0);
-  $('academySummary').innerHTML=[['calendar-check',thisMonth.length,'Reservas aprovadas no mês'],['inbox',pending.length,'Solicitações pendentes'],['users-round',totalPeople,'Pessoas previstas'],['clock-3',`${academyTime(config.horario_abertura)}–${academyTime(config.horario_fechamento)}`,'Horário padrão']].map(([i,v,l])=>`<div class="academy-summary-card"><i data-lucide="${i}"></i><div><strong>${v}</strong><span>${l}</span></div></div>`).join('');
+  $('academySelectedWeekday').textContent=weekdayShortPt(selected); $('academySelectedNumber').textContent=String(selected.getDate()).padStart(2,'0'); $('academySelectedMonth').textContent=new Intl.DateTimeFormat('pt-BR',{month:'long'}).format(selected);
+
+  const pending=state.academyReservations.filter(r=>r.status==='solicitada');
+  const approved=state.academyReservations.filter(r=>r.status==='aprovada');
+  const trainings=approved.filter(isAcademyTraining);
+  const reservations=approved.filter(r=>!isAcademyTraining(r));
+  const futureTrainingsForTab=trainings.filter(r=>new Date(r.fim_em)>=new Date()).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em));
+  if($('academyTrainingTabCount')) $('academyTrainingTabCount').textContent=String(futureTrainingsForTab.length);
+  if($('academyRequestTabCount')) { $('academyRequestTabCount').textContent=String(pending.length); $('academyRequestTabCount').classList.toggle('has-items',pending.length>0); }
+  setAcademyTab(state.academyTab,false);
+  const thisMonthTrainings=trainings.filter(r=>new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
+  const thisMonthReservations=reservations.filter(r=>new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
+  const totalPeople=[...thisMonthReservations,...thisMonthTrainings].reduce((sum,r)=>sum+Number(r.participantes||0),0);
+  $('academySummary').innerHTML=[
+    ['presentation',thisMonthTrainings.length,'Treinamentos no mês'],
+    ['calendar-check',thisMonthReservations.length,'Reservas no mês'],
+    ['inbox',pending.length,'Solicitações pendentes'],
+    ['users-round',totalPeople,'Pessoas previstas'],
+    ['clock-3',`${academyTime(config.horario_abertura)}–${academyTime(config.horario_fechamento)}`,'Horário padrão']
+  ].map(([i,v,l])=>`<div class="academy-summary-card"><i data-lucide="${i}"></i><div><strong>${v}</strong><span>${l}</span></div></div>`).join('');
+
   const first=startOfMonth(cursor), gridStart=addDays(first,-first.getDay()), cells=[];
-  for(let i=0;i<42;i++){ const date=addDays(gridStart,i),key=dateKey(date),rs=academyReservationsForDate(key),approved=rs.filter(r=>r.status==='aprovada'),requested=rs.filter(r=>r.status==='solicitada'),outside=date.getMonth()!==cursor.getMonth();
-    const stateClass=approved.length?'academy-busy':requested.length?'academy-requested':'academy-free-day';
-    cells.push(`<button class="calendar-day academy-day ${outside?'outside':''} ${key===todayKey()?'today':''} ${key===state.academySelectedDate?'selected':''} ${stateClass}" data-academy-date="${key}"><span class="day-number">${date.getDate()}</span><div class="academy-day-state"><strong>${approved.length?`${approved.length} reserva${approved.length>1?'s':''}`:requested.length?`${requested.length} pendente${requested.length>1?'s':''}`:'Livre'}</strong>${approved.slice(0,2).map(r=>`<span>${formatTime(r.inicio_em)} ${escapeHtml(r.titulo)}</span>`).join('')}</div></button>`); }
+  for(let i=0;i<42;i++){
+    const date=addDays(gridStart,i),key=dateKey(date),rs=academyReservationsForDate(key),approvedDay=rs.filter(r=>r.status==='aprovada'),trainingDay=approvedDay.filter(isAcademyTraining),bookingDay=approvedDay.filter(r=>!isAcademyTraining(r)),requested=rs.filter(r=>r.status==='solicitada'),outside=date.getMonth()!==cursor.getMonth();
+    const stateClass=trainingDay.length?'academy-training-day':bookingDay.length?'academy-busy':requested.length?'academy-requested':'academy-free-day';
+    let headline='Livre';
+    if(trainingDay.length&&bookingDay.length)headline=`${trainingDay.length} treinamento${trainingDay.length>1?'s':''} · ${bookingDay.length} reserva${bookingDay.length>1?'s':''}`;
+    else if(trainingDay.length)headline=`${trainingDay.length} treinamento${trainingDay.length>1?'s':''}`;
+    else if(bookingDay.length)headline=`${bookingDay.length} reserva${bookingDay.length>1?'s':''}`;
+    else if(requested.length)headline=`${requested.length} pendente${requested.length>1?'s':''}`;
+    const previews=approvedDay.slice(0,2).map(r=>`<span class="${isAcademyTraining(r)?'training-preview '+academyTrainingClass(r):''}">${isAcademyTraining(r)?`<b>${escapeHtml(academyTrainingCategory(r))}</b> `:''}${formatTime(r.inicio_em)} ${escapeHtml(r.titulo)}</span>`).join('');
+    cells.push(`<button class="calendar-day academy-day ${outside?'outside':''} ${key===todayKey()?'today':''} ${key===state.academySelectedDate?'selected':''} ${stateClass}" data-academy-date="${key}"><span class="day-number">${date.getDate()}</span><div class="academy-day-state"><strong>${headline}</strong>${previews}</div></button>`);
+  }
   $('academyCalendarGrid').innerHTML=cells.join('');
-  const selectedReservations=academyReservationsForDate(state.academySelectedDate,true).filter(r=>!['recusada','cancelada'].includes(r.status)); const free=academyFreeSlots(state.academySelectedDate);
-  $('academyAvailability').innerHTML=`<span class="academy-availability-label"><i data-lucide="clock"></i>Disponibilidade</span><strong>${free.length?free.join(' · '):'Sem janela livre no horário padrão'}</strong><small>${escapeHtml(config.observacoes||'Consulte reservas aprovadas e solicitações pendentes antes de confirmar.')}</small>`;
+
+  const selectedReservations=academyReservationsForDate(state.academySelectedDate,true).filter(r=>!['recusada','cancelada'].includes(r.status));
+  const free=academyFreeSlots(state.academySelectedDate);
+  $('academyAvailability').innerHTML=`<span class="academy-availability-label"><i data-lucide="clock"></i>Disponibilidade</span><strong>${free.length?free.join(' · '):'Sem janela livre no horário padrão'}</strong><small>${escapeHtml(config.observacoes||'Treinamentos e reservas aprovadas bloqueiam automaticamente o período.')}</small>`;
   $('academySelectedItems').innerHTML=selectedReservations.length?selectedReservations.map(r=>academyReservationCard(r,true)).join(''):`<div class="empty-state"><i data-lucide="door-open"></i>O espaço está livre neste dia.</div>`;
   $('academyPendingCount').textContent=`${pending.length} solicitaç${pending.length===1?'ão':'ões'}`;
   $('academyPendingList').innerHTML=pending.length?pending.slice(0,30).map(r=>academyReservationCard(r,false)).join(''):`<div class="empty-state"><i data-lucide="badge-check"></i>Nenhuma solicitação aguardando análise.</div>`;
+
+  const futureTrainings=futureTrainingsForTab;
+  if($('academyTrainingCount'))$('academyTrainingCount').textContent=`${futureTrainings.length} programado${futureTrainings.length===1?'':'s'}`;
+  if($('academyTrainingList'))$('academyTrainingList').innerHTML=futureTrainings.length?futureTrainings.slice(0,12).map(r=>academyTrainingListCard(r)).join(''):`<div class="empty-state"><i data-lucide="calendar-plus"></i>Nenhum treinamento futuro cadastrado.</div>`;
   refreshIcons();
 }
 
 function academyReservationCard(r, compact=false) {
-  const conflict=academyConflicts(r.inicio_em,r.fim_em,r.id).length>0;
-  return `<article class="academy-reservation-card status-${r.status} ${conflict?'has-conflict':''}"><div class="academy-reservation-time"><strong>${formatTime(r.inicio_em)}</strong><span>${formatTime(r.fim_em)}</span></div><div class="academy-reservation-copy"><div><span class="academy-status-pill ${r.status}">${academyStatusLabel(r.status)}</span>${conflict&&r.status==='solicitada'?'<span class="academy-conflict-pill"><i data-lucide="triangle-alert"></i>Conflito</span>':''}</div><h4>${escapeHtml(r.titulo)}</h4><p>${escapeHtml(r.solicitante)}${r.setor?` · ${escapeHtml(r.setor)}`:''}${r.participantes?` · ${r.participantes} pessoas`:''}</p>${!compact&&r.finalidade?`<small>${escapeHtml(r.finalidade)}</small>`:''}</div>${isManager()?`<div class="academy-reservation-actions"><button type="button" class="icon-btn subtle" data-academy-edit="${r.id}" title="Editar"><i data-lucide="pencil"></i></button>${r.status==='solicitada'?`<button type="button" class="academy-status-action approve" data-academy-status="aprovada" data-academy-id="${r.id}"><i data-lucide="check"></i>Aprovar</button><button type="button" class="academy-status-action reject" data-academy-status="recusada" data-academy-id="${r.id}"><i data-lucide="x"></i>Recusar</button>`:r.status==='aprovada'?`<button type="button" class="academy-status-action reject" data-academy-status="cancelada" data-academy-id="${r.id}"><i data-lucide="ban"></i>Cancelar</button>`:''}</div>`:''}</article>`;
+  const training=isAcademyTraining(r),conflict=academyConflicts(r.inicio_em,r.fim_em,r.id).length>0;
+  const category=training?academyTrainingCategory(r):'';
+  const editAttr=training?`data-academy-training-edit="${r.id}"`:`data-academy-edit="${r.id}"`;
+  return `<article class="academy-reservation-card status-${r.status} ${training?'is-training training-'+academyTrainingClass(r):''} ${conflict?'has-conflict':''}"><div class="academy-reservation-time"><strong>${formatTime(r.inicio_em)}</strong><span>${formatTime(r.fim_em)}</span></div><div class="academy-reservation-copy"><div>${training?`<span class="academy-training-pill ${academyTrainingClass(r)}"><i data-lucide="presentation"></i>${escapeHtml(category)}</span>`:`<span class="academy-status-pill ${r.status}">${academyStatusLabel(r.status)}</span>`}${conflict&&r.status==='solicitada'?'<span class="academy-conflict-pill"><i data-lucide="triangle-alert"></i>Conflito</span>':''}</div><h4>${escapeHtml(r.titulo)}</h4><p>${training?'Treinamento interno':escapeHtml(r.solicitante)}${r.setor?` · ${escapeHtml(r.setor)}`:''}${r.participantes?` · ${r.participantes} pessoas`:''}</p>${!compact&&r.finalidade?`<small>${escapeHtml(r.finalidade)}</small>`:''}</div>${isManager()?`<div class="academy-reservation-actions"><button type="button" class="icon-btn subtle" ${editAttr} title="Editar"><i data-lucide="pencil"></i></button>${r.status==='solicitada'?`<button type="button" class="academy-status-action approve" data-academy-status="aprovada" data-academy-id="${r.id}"><i data-lucide="check"></i>Aprovar</button><button type="button" class="academy-status-action reject" data-academy-status="recusada" data-academy-id="${r.id}"><i data-lucide="x"></i>Recusar</button>`:r.status==='aprovada'?`<button type="button" class="academy-status-action reject" data-academy-status="cancelada" data-academy-id="${r.id}"><i data-lucide="ban"></i>Cancelar</button>`:''}</div>`:''}</article>`;
+}
+
+function academyTrainingListCard(r){
+  const d=new Date(r.inicio_em);
+  return `<article class="academy-training-list-card training-${academyTrainingClass(r)}"><div class="academy-training-date"><span>${weekdayShortPt(d)}</span><strong>${String(d.getDate()).padStart(2,'0')}</strong><small>${new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(d).replace('.','')}</small></div><div class="academy-training-copy"><span class="academy-training-pill ${academyTrainingClass(r)}">${escapeHtml(academyTrainingCategory(r))}</span><strong>${escapeHtml(r.titulo)}</strong><small>${formatTime(r.inicio_em)}–${formatTime(r.fim_em)}${r.participantes?` · ${r.participantes} pessoas`:''}</small></div>${isManager()?`<button type="button" class="icon-btn subtle" data-academy-training-edit="${r.id}" title="Editar treinamento"><i data-lucide="pencil"></i></button>`:''}</article>`;
+}
+
+function setAcademyTrainingType(type){
+  const value=['PMG Geral','MKT','Avulso','Outro'].includes(type)?type:'Outro';
+  $('academyTrainingType').value=value;
+  document.querySelectorAll('[data-training-type]').forEach(btn=>btn.classList.toggle('active',btn.dataset.trainingType===value));
+  const input=$('academyTrainingName');
+  if(input && (!input.value.trim() || /^Treinamento PMG( Geral)?$|^Treinamento MKT$|^Treinamento Avulso$/i.test(input.value.trim()))){
+    input.value=value==='PMG Geral'?'Treinamento PMG Geral':value==='MKT'?'Treinamento MKT':value==='Avulso'?'Treinamento Avulso':'Treinamento Academia PMG';
+  }
+}
+function updateAcademyTrainingTimeState(){
+  const full=$('academyTrainingFullDay')?.checked;
+  const start=$('academyTrainingStart'),end=$('academyTrainingEnd');
+  if(!start||!end)return;
+  if(full){start.value=academyTime(state.academyConfig?.horario_abertura,'08:00');end.value=academyTime(state.academyConfig?.horario_fechamento,'18:00');}
+  start.disabled=Boolean(full);end.disabled=Boolean(full);
+  updateAcademyTrainingConflictPreview();
+}
+function openAcademyTraining(training=null,date=state.academySelectedDate){
+  if(!isManager())return toast('Somente gestores podem cadastrar treinamentos.','error');
+  const item=training||null,start=item?splitDateTime(item.inicio_em):{date,time:academyTime(state.academyConfig?.horario_abertura,'08:00')},end=item?splitDateTime(item.fim_em):{date,time:academyTime(state.academyConfig?.horario_fechamento,'18:00')};
+  $('academyTrainingTitle').textContent=item?'Editar treinamento':'Novo treinamento';
+  $('academyTrainingId').value=item?.id||'';
+  $('academyTrainingDate').value=start.date||date||todayKey();
+  $('academyTrainingName').value=item?.titulo||'Treinamento PMG Geral';
+  $('academyTrainingParticipants').value=item?.participantes??'';
+  $('academyTrainingNotes').value=item?.observacoes||'';
+  $('academyTrainingStart').value=start.time||academyTime(state.academyConfig?.horario_abertura,'08:00');
+  $('academyTrainingEnd').value=end.time||academyTime(state.academyConfig?.horario_fechamento,'18:00');
+  $('academyTrainingFullDay').checked=item?Boolean(item.dia_inteiro):true;
+  setAcademyTrainingType(item?academyTrainingCategory(item):'PMG Geral');
+  updateAcademyTrainingTimeState();
+  $('academyTrainingModal').classList.remove('hidden');refreshIcons();
+}
+function updateAcademyTrainingConflictPreview(){
+  const box=$('academyTrainingConflictPreview'),date=$('academyTrainingDate')?.value,start=$('academyTrainingStart')?.value,end=$('academyTrainingEnd')?.value;
+  if(!box||!date||!start||!end)return;
+  const a=localDateTime(date,start),b=localDateTime(date,end);
+  if(new Date(b)<=new Date(a)){box.className='academy-conflict-preview conflict';box.innerHTML='<i data-lucide="triangle-alert"></i><span>O horário final precisa ser posterior ao início.</span>';refreshIcons();return;}
+  const conflicts=academyConflicts(a,b,$('academyTrainingId')?.value||'');
+  box.className=`academy-conflict-preview ${conflicts.length?'conflict':'free'}`;
+  box.innerHTML=conflicts.length?`<i data-lucide="triangle-alert"></i><span>Este treinamento conflita com <strong>${escapeHtml(conflicts[0].titulo)}</strong>, ${formatTime(conflicts[0].inicio_em)}–${formatTime(conflicts[0].fim_em)}. Ajuste o horário antes de salvar.</span>`:`<i data-lucide="shield-check"></i><span>Período livre. Ao salvar, o treinamento já bloqueia a Academia.</span>`;
+  refreshIcons();
+}
+async function saveAcademyTraining(event){
+  event.preventDefault();
+  if(!isManager())return;
+  const date=$('academyTrainingDate').value,start=$('academyTrainingStart').value,end=$('academyTrainingEnd').value;
+  if(!date||!start||!end)return toast('Informe data e horário do treinamento.','error');
+  setLoading(true);
+  try{
+    const {data,error}=await db.rpc('salvar_treinamento_academia',{
+      p_id:$('academyTrainingId').value||null,
+      p_titulo:$('academyTrainingName').value.trim(),
+      p_categoria:$('academyTrainingType').value||'PMG Geral',
+      p_data:date,
+      p_inicio:start,
+      p_fim:end,
+      p_dia_inteiro:Boolean($('academyTrainingFullDay').checked),
+      p_participantes:$('academyTrainingParticipants').value?Number($('academyTrainingParticipants').value):null,
+      p_observacoes:$('academyTrainingNotes').value.trim()||null
+    });
+    if(error)throw error;
+    const saved=Array.isArray(data)?data[0]:data;
+    closeModal('academyTrainingModal');
+    state.academyTab='trainings';
+    if(saved?.inicio_em){state.academySelectedDate=dateKey(saved.inicio_em);state.academyCursor=startOfMonth(new Date(saved.inicio_em));}
+    await refreshData();
+    toast('Treinamento salvo. A data já está bloqueada na Academia PMG.');
+  }catch(error){toast(errorMessage(error),'error');}
+  finally{setLoading(false);}
 }
 
 function openAcademyBooking(reservation=null,date=state.academySelectedDate) {
@@ -2246,8 +2377,8 @@ async function updateAcademyStatus(id,status){
 }
 function openAcademyConfig(){const c=state.academyConfig||{};$('academyFormsUrl').value=c.forms_url||'';$('academyOpenTime').value=academyTime(c.horario_abertura,'08:00');$('academyCloseTime').value=academyTime(c.horario_fechamento,'18:00');$('academyConfigNotes').value=c.observacoes||'';$('academyConfigModal').classList.remove('hidden');}
 async function saveAcademyConfig(event){event.preventDefault();setLoading(true);try{const{error}=await db.rpc('salvar_config_academia',{p_forms_url:$('academyFormsUrl').value.trim()||null,p_horario_abertura:$('academyOpenTime').value||'08:00',p_horario_fechamento:$('academyCloseTime').value||'18:00',p_observacoes:$('academyConfigNotes').value.trim()||null});if(error)throw error;closeModal('academyConfigModal');await refreshData();toast('Configuração da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
-function openAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Microsoft Forms.', 'error');window.open(url,'_blank','noopener,noreferrer');}
-async function copyAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Microsoft Forms.', 'error');try{await navigator.clipboard.writeText(url);toast('Link do Forms copiado.');}catch(_){toast('Não foi possível copiar automaticamente.', 'error');}}
+function openAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Google Forms.', 'error');window.open(url,'_blank','noopener,noreferrer');}
+async function copyAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Google Forms.', 'error');try{await navigator.clipboard.writeText(url);toast('Link do Forms copiado.');}catch(_){toast('Não foi possível copiar automaticamente.', 'error');}}
 
 function normalizeHeader(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
 const ACADEMY_IMPORT_FIELDS=[['titulo','Título / evento',['titulo','evento','treinamento','assunto','nome do evento']],['solicitante','Solicitante',['solicitante','nome','responsavel','seu nome']],['setor','Setor',['setor','departamento','area']],['email','E-mail',['email','e mail']],['telefone','Telefone / ramal',['telefone','ramal','celular']],['data','Data',['data','dia','data desejada']],['inicio','Horário inicial',['inicio','horario inicial','hora inicio','horario de inicio']],['fim','Horário final',['fim','horario final','hora fim','horario de termino']],['participantes','Participantes',['participantes','quantidade','pessoas','numero de pessoas']],['finalidade','Finalidade',['finalidade','objetivo','motivo']],['observacoes','Observações',['observacoes','observacao','necessidades','comentarios']],['chave','ID / Data da resposta',['id','respondent id','data de conclusao','hora de conclusao','timestamp']]];
@@ -2476,14 +2607,21 @@ function bindEvents() {
   $$('[data-agenda-scope]').forEach(button => button.addEventListener('click', () => { state.agendaScope = button.dataset.agendaScope === 'team' ? 'team' : 'mine'; if (state.agendaScope === 'mine') state.agendaPersonFilter = ''; renderAgenda(); }));
   $('agendaPersonFilter')?.addEventListener('change', event => { state.agendaPersonFilter = event.target.value; renderAgenda(); });
   $('agendaNewEventBtn')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.selectedDate, visibility: state.agendaScope === 'team' && isManager() ? 'equipe' : 'pessoal' }));
+  $$('[data-academy-tab]').forEach(button => button.addEventListener('click', () => setAcademyTab(button.dataset.academyTab)));
+  $('academyTrainingCreateTabBtn')?.addEventListener('click', () => openAcademyTraining(null, state.academySelectedDate));
   $('academyPrev')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, -1); renderAcademy(); });
   $('academyNext')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, 1); renderAcademy(); });
+  $('academyNewTrainingBtn')?.addEventListener('click', () => openAcademyTraining(null, state.academySelectedDate));
+  $('academyAddTrainingSelectedDay')?.addEventListener('click', () => openAcademyTraining(null, state.academySelectedDate));
   $('academyNewBookingBtn')?.addEventListener('click', () => openAcademyBooking(null, state.academySelectedDate));
   $('academyAddSelectedDay')?.addEventListener('click', () => openAcademyBooking(null, state.academySelectedDate));
   $('academyFormsBtn')?.addEventListener('click', openAcademyForms);
   $('academyCopyFormsBtn')?.addEventListener('click', copyAcademyForms);
   $('academyConfigBtn')?.addEventListener('click', openAcademyConfig);
   $('academyImportBtn')?.addEventListener('click', () => { state.academyImportRows=[]; state.academyImportHeaders=[]; state.academyImportMap={}; $('academyImportFile').value=''; $('academyImportMapping').classList.add('hidden'); $('academyImportPreview').innerHTML=''; $('academyImportConfirmBtn').disabled=true; $('academyImportModal').classList.remove('hidden'); });
+  $('academyTrainingForm')?.addEventListener('submit', saveAcademyTraining);
+  $('academyTrainingFullDay')?.addEventListener('change', updateAcademyTrainingTimeState);
+  ['academyTrainingDate','academyTrainingStart','academyTrainingEnd'].forEach(id => $(id)?.addEventListener('change', updateAcademyTrainingConflictPreview));
   $('academyBookingForm')?.addEventListener('submit', saveAcademyBooking);
   $('academyConfigForm')?.addEventListener('submit', saveAcademyConfig);
   $('academyImportFile')?.addEventListener('change', handleAcademyImportFile);
@@ -2528,8 +2666,11 @@ function bindEvents() {
     if (immediateAudience) { setImmediateAudience(immediateAudience.dataset.immediateAudience === 'todos', false); return; }
     const editImmediateAudience = event.target.closest('[data-edit-immediate-audience]');
     if (editImmediateAudience) { setImmediateAudience(editImmediateAudience.dataset.editImmediateAudience === 'todos', true); return; }
+    const academyFormsOpen = event.target.closest('[data-academy-open-forms]'); if (academyFormsOpen) { openAcademyForms(); return; }
+    const academyFormsCopy = event.target.closest('[data-academy-copy-forms]'); if (academyFormsCopy) { copyAcademyForms(); return; }
     const academyMap = event.target.closest('[data-academy-map]');
     if (academyMap) return;
+    const trainingType = event.target.closest('[data-training-type]'); if (trainingType) { setAcademyTrainingType(trainingType.dataset.trainingType); return; }
     const choice = event.target.closest('[data-choice-target]');
     if (choice) { const select = $(choice.dataset.choiceTarget); if (select) { select.value = choice.dataset.choiceValue; syncChoiceCards(choice.dataset.choiceTarget); if (['itemPriority','editTaskPriority'].includes(choice.dataset.choiceTarget)) syncImmediateAudience(choice.dataset.choiceTarget === 'editTaskPriority' ? 'editTask' : 'item'); } return; }
     const assigneeChoice = event.target.closest('[data-assignee-choice]');
@@ -2542,6 +2683,7 @@ function bindEvents() {
     const task = event.target.closest('[data-open-task]'); if (task) { if (!$('personDrawer').classList.contains('hidden')) closeDrawer('personDrawer'); openTask(task.dataset.openTask); }
     const reminder = event.target.closest('[data-open-reminder]'); if (reminder) openReminder(reminder.dataset.openReminder);
     const academyDate = event.target.closest('[data-academy-date]'); if (academyDate) { state.academySelectedDate = academyDate.dataset.academyDate; renderAcademy(); refreshIcons(); return; }
+    const academyTrainingEdit = event.target.closest('[data-academy-training-edit]'); if (academyTrainingEdit) { const training = state.academyReservations.find(item => item.id === academyTrainingEdit.dataset.academyTrainingEdit); if (training) openAcademyTraining(training); return; }
     const academyEdit = event.target.closest('[data-academy-edit]'); if (academyEdit) { const reservation = state.academyReservations.find(item => item.id === academyEdit.dataset.academyEdit); if (reservation) openAcademyBooking(reservation); return; }
     const academyStatus = event.target.closest('[data-academy-status]'); if (academyStatus) { updateAcademyStatus(academyStatus.dataset.academyId, academyStatus.dataset.academyStatus); return; }
     const date = event.target.closest('[data-calendar-date]'); if (date) { state.selectedDate = date.dataset.calendarDate; renderAgenda(); refreshIcons(); }

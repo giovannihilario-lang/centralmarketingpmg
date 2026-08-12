@@ -253,10 +253,11 @@
 
         <section id="viewAcademia" class="view" data-page="academia">
           <div class="page-toolbar academy-toolbar">
-            <div class="toolbar-title"><span class="eyebrow">Espaço compartilhado</span><h2>Academia PMG</h2><p>Consulte disponibilidade, aprove solicitações e mantenha o uso do espaço organizado sem depender de memória coletiva.</p></div>
+            <div class="toolbar-title"><span class="eyebrow">Espaço compartilhado</span><h2>Academia PMG</h2><p>Consulte disponibilidade, cadastre treinamentos e aprove solicitações em um único lugar.</p></div>
             <div class="toolbar-actions">
               <button id="academyFormsBtn" class="btn secondary"><i data-lucide="external-link"></i><span>Abrir Forms</span></button>
               <button id="academyCopyFormsBtn" class="btn secondary"><i data-lucide="copy"></i><span>Copiar link</span></button>
+              <button id="academyNewTrainingBtn" class="btn training manager-only"><i data-lucide="presentation"></i><span>Novo treinamento</span></button>
               <button id="academyNewBookingBtn" class="btn primary manager-only"><i data-lucide="calendar-plus"></i><span>Nova reserva</span></button>
             </div>
           </div>
@@ -264,33 +265,71 @@
           <div id="academySetupNotice" class="academy-setup-notice hidden"></div>
           <div id="academySummary" class="academy-summary"></div>
 
-          <div class="academy-command-bar manager-only">
-            <div class="academy-command-copy"><i data-lucide="file-spreadsheet"></i><span><strong>Solicitações pelo Forms</strong><small>Importe o relatório Excel/CSV exportado do Microsoft Forms e transforme respostas em solicitações de reserva.</small></span></div>
-            <div class="academy-command-actions"><button id="academyImportBtn" class="btn secondary"><i data-lucide="file-up"></i>Importar relatório</button><button id="academyConfigBtn" class="btn secondary"><i data-lucide="settings-2"></i>Configurar</button></div>
+          <nav id="academySectionTabs" class="academy-section-tabs" aria-label="Seções da Academia PMG" role="tablist">
+            <button type="button" class="academy-section-tab active" data-academy-tab="calendar" role="tab" aria-selected="true"><i data-lucide="calendar-days"></i><span><strong>Calendário</strong><small>Disponibilidade e ocupações</small></span></button>
+            <button type="button" class="academy-section-tab" data-academy-tab="trainings" role="tab" aria-selected="false"><i data-lucide="presentation"></i><span><strong>Treinamentos</strong><small>Cadastrar e gerenciar</small></span><b id="academyTrainingTabCount" class="academy-tab-count">0</b></button>
+            <button type="button" class="academy-section-tab" data-academy-tab="requests" role="tab" aria-selected="false"><i data-lucide="inbox"></i><span><strong>Solicitações</strong><small>Pedidos do Forms</small></span><b id="academyRequestTabCount" class="academy-tab-count">0</b></button>
+          </nav>
+
+          <div id="academyPanelCalendar" class="academy-tab-panel">
+            <div class="academy-command-bar manager-only">
+              <div class="academy-command-copy"><i data-lucide="calendar-sync"></i><span><strong>Agenda central da Academia</strong><small>Treinamentos e reservas aprovadas bloqueiam o período automaticamente.</small></span></div>
+              <div class="academy-command-actions"><button id="academyImportBtn" class="btn secondary"><i data-lucide="file-up"></i>Importar relatório</button><button id="academyConfigBtn" class="btn secondary"><i data-lucide="settings-2"></i>Configurar</button></div>
+            </div>
+
+            <div class="calendar-layout academy-calendar-layout">
+              <section class="calendar-card card">
+                <div class="calendar-head">
+                  <div class="calendar-nav"><button id="academyPrev" class="icon-btn subtle"><i data-lucide="chevron-left"></i></button><button id="academyNext" class="icon-btn subtle"><i data-lucide="chevron-right"></i></button></div>
+                  <h3 id="academyMonthLabel">Agosto de 2026</h3>
+                  <div class="calendar-legend"><span><i class="legend-dot academy-training"></i>Treinamento</span><span><i class="legend-dot academy-approved"></i>Reserva</span><span><i class="legend-dot academy-pending"></i>Solicitada</span><span><i class="legend-dot academy-free"></i>Livre</span></div>
+                </div>
+                <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+                <div id="academyCalendarGrid" class="calendar-grid academy-calendar-grid"></div>
+              </section>
+              <aside class="selected-day card academy-selected-day">
+                <div class="selected-day-head academy-day-head"><span id="academySelectedWeekday">Qua</span><strong id="academySelectedNumber">05</strong><small id="academySelectedMonth">Agosto</small></div>
+                <div id="academyAvailability" class="academy-availability"></div>
+                <div class="academy-selected-actions manager-only">
+                  <button id="academyAddTrainingSelectedDay" class="btn training wide"><i data-lucide="presentation"></i>Treinamento neste dia</button>
+                  <button id="academyAddSelectedDay" class="btn soft wide"><i data-lucide="plus"></i>Reservar neste dia</button>
+                </div>
+                <div id="academySelectedItems" class="academy-selected-items"></div>
+              </aside>
+            </div>
           </div>
 
-          <div class="calendar-layout academy-calendar-layout">
-            <section class="calendar-card card">
-              <div class="calendar-head">
-                <div class="calendar-nav"><button id="academyPrev" class="icon-btn subtle"><i data-lucide="chevron-left"></i></button><button id="academyNext" class="icon-btn subtle"><i data-lucide="chevron-right"></i></button></div>
-                <h3 id="academyMonthLabel">Agosto de 2026</h3>
-                <div class="calendar-legend"><span><i class="legend-dot academy-approved"></i>Aprovada</span><span><i class="legend-dot academy-pending"></i>Solicitada</span><span><i class="legend-dot academy-free"></i>Livre</span></div>
+          <div id="academyPanelTrainings" class="academy-tab-panel hidden">
+            <section class="academy-training-hub card">
+              <div class="academy-training-hub-copy">
+                <span class="eyebrow">Programação interna</span>
+                <h3>Treinamentos da Academia PMG</h3>
+                <p>Cadastre treinamentos futuros diretamente no Connect. Ao salvar, o período já fica bloqueado no calendário e entra na programação compartilhada.</p>
+                <div class="academy-training-rules">
+                  <span><i data-lucide="shield-check"></i> Bloqueio automático</span>
+                  <span><i data-lucide="repeat-2"></i> Editável depois</span>
+                  <span><i data-lucide="users-round"></i> Visível para a equipe</span>
+                </div>
               </div>
-              <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
-              <div id="academyCalendarGrid" class="calendar-grid academy-calendar-grid"></div>
+              <button id="academyTrainingCreateTabBtn" type="button" class="btn training academy-training-create manager-only"><i data-lucide="plus"></i><span><strong>Cadastrar novo treinamento</strong><small>PMG Geral, MKT, Avulso ou Outro</small></span></button>
             </section>
-            <aside class="selected-day card academy-selected-day">
-              <div class="selected-day-head academy-day-head"><span id="academySelectedWeekday">Quarta-feira</span><strong id="academySelectedNumber">05</strong><small id="academySelectedMonth">Agosto</small></div>
-              <div id="academyAvailability" class="academy-availability"></div>
-              <button id="academyAddSelectedDay" class="btn soft wide manager-only"><i data-lucide="plus"></i>Reservar neste dia</button>
-              <div id="academySelectedItems" class="academy-selected-items"></div>
-            </aside>
+
+            <section class="academy-training-manager card">
+              <div class="section-header"><div><span class="eyebrow">Agenda futura</span><h3>Treinamentos cadastrados</h3><p>Use o lápis para editar ou cancelar um treinamento já programado.</p></div><span id="academyTrainingCount" class="soft-count">0 programados</span></div>
+              <div id="academyTrainingList" class="academy-training-list academy-training-list-full"></div>
+            </section>
           </div>
 
-          <section class="academy-requests card manager-only">
-            <div class="section-header"><div><span class="eyebrow">Fila de análise</span><h3>Solicitações pendentes</h3></div><span id="academyPendingCount" class="soft-count">0 solicitações</span></div>
-            <div id="academyPendingList" class="academy-pending-list"></div>
-          </section>
+          <div id="academyPanelRequests" class="academy-tab-panel hidden">
+            <section class="academy-request-hub card manager-only">
+              <div><span class="eyebrow">Google Forms</span><h3>Solicitações de outros setores</h3><p>As respostas novas entram aqui como pendentes. Você decide se aprova ou recusa sem transformar o Forms em uma reserva automática.</p></div>
+              <div class="academy-request-actions"><button type="button" class="btn secondary" data-academy-open-forms><i data-lucide="external-link"></i>Abrir Forms</button><button type="button" class="btn secondary" data-academy-copy-forms><i data-lucide="copy"></i>Copiar link</button></div>
+            </section>
+            <section class="academy-requests card manager-only">
+              <div class="section-header"><div><span class="eyebrow">Fila de análise</span><h3>Solicitações pendentes</h3></div><span id="academyPendingCount" class="soft-count">0 solicitações</span></div>
+              <div id="academyPendingList" class="academy-pending-list"></div>
+            </section>
+          </div>
         </section>
 
         <section id="viewDemandas" class="view" data-page="demandas">
@@ -649,6 +688,30 @@
     </div>
   </div>
 
+  <div id="academyTrainingModal" class="modal-layer hidden">
+    <div class="modal-card academy-training-modal">
+      <div class="modal-head"><div><span class="eyebrow">Academia PMG</span><h2 id="academyTrainingTitle">Novo treinamento</h2><p>Cadastre treinamentos internos e bloqueie o espaço automaticamente. Não precisa criar uma reserva separada.</p></div><button class="icon-btn subtle" data-close-modal="academyTrainingModal"><i data-lucide="x"></i></button></div>
+      <form id="academyTrainingForm">
+        <input id="academyTrainingId" type="hidden">
+        <div class="modal-body">
+          <div class="training-type-grid" id="academyTrainingTypeGrid">
+            <button type="button" class="active" data-training-type="PMG Geral"><i data-lucide="graduation-cap"></i><strong>PMG Geral</strong><small>Treinamento institucional</small></button>
+            <button type="button" data-training-type="MKT"><i data-lucide="megaphone"></i><strong>MKT</strong><small>Marketing</small></button>
+            <button type="button" data-training-type="Avulso"><i data-lucide="calendar-range"></i><strong>Avulso</strong><small>Uso interno pontual</small></button>
+            <button type="button" data-training-type="Outro"><i data-lucide="shapes"></i><strong>Outro</strong><small>Outra categoria</small></button>
+          </div>
+          <input id="academyTrainingType" type="hidden" value="PMG Geral">
+          <div class="form-grid two"><label class="field"><span>Título</span><input id="academyTrainingName" required value="Treinamento PMG Geral" placeholder="Ex.: Integração Comercial"></label><label class="field"><span>Data</span><input id="academyTrainingDate" type="date" required></label></div>
+          <label class="academy-full-day-toggle"><span><strong>Bloquear o período inteiro da Academia</strong><small>Usa automaticamente o horário padrão configurado para o espaço.</small></span><input id="academyTrainingFullDay" type="checkbox" checked></label>
+          <div class="form-grid three"><label class="field"><span>Início</span><input id="academyTrainingStart" type="time" value="08:00"></label><label class="field"><span>Fim</span><input id="academyTrainingEnd" type="time" value="18:00"></label><label class="field"><span>Participantes</span><input id="academyTrainingParticipants" type="number" min="0" step="1"></label></div>
+          <label class="field"><span>Observações</span><textarea id="academyTrainingNotes" rows="4" placeholder="Tema, fornecedor, público, equipamentos, montagem..."></textarea></label>
+          <div id="academyTrainingConflictPreview" class="academy-conflict-preview"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyTrainingModal">Cancelar</button><button class="btn training" type="submit"><i data-lucide="calendar-check"></i>Salvar e bloquear data</button></div>
+      </form>
+    </div>
+  </div>
+
   <div id="academyBookingModal" class="modal-layer hidden">
     <div class="modal-card academy-booking-modal">
       <div class="modal-head"><div><span class="eyebrow">Academia PMG</span><h2 id="academyBookingTitle">Nova reserva</h2><p>Cadastre o uso do espaço e evite choque de horários.</p></div><button class="icon-btn subtle" data-close-modal="academyBookingModal"><i data-lucide="x"></i></button></div>
@@ -671,7 +734,7 @@
     <div class="modal-card small">
       <div class="modal-head"><div><span class="eyebrow">Academia PMG</span><h2>Configuração e Forms</h2><p>Cadastre o link que será enviado aos outros setores e o horário padrão do espaço.</p></div><button class="icon-btn subtle" data-close-modal="academyConfigModal"><i data-lucide="x"></i></button></div>
       <form id="academyConfigForm"><div class="modal-body">
-        <label class="field"><span>Link do Microsoft Forms</span><input id="academyFormsUrl" type="url" placeholder="https://forms.office.com/..."></label>
+        <label class="field"><span>Link do Google Forms</span><input id="academyFormsUrl" type="url" placeholder="https://forms.gle/..."></label>
         <div class="form-grid two"><label class="field"><span>Abertura</span><input id="academyOpenTime" type="time" value="08:00"></label><label class="field"><span>Fechamento</span><input id="academyCloseTime" type="time" value="18:00"></label></div>
         <label class="field"><span>Observações do espaço</span><textarea id="academyConfigNotes" rows="4" placeholder="Capacidade, equipamentos disponíveis, regras de uso..."></textarea></label>
       </div><div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyConfigModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar configuração</button></div></form>
@@ -680,7 +743,7 @@
 
   <div id="academyImportModal" class="modal-layer hidden">
     <div class="modal-card academy-import-modal">
-      <div class="modal-head"><div><span class="eyebrow">Microsoft Forms</span><h2>Importar relatório de solicitações</h2><p>Escolha o Excel ou CSV exportado do Forms. O Connect detecta as colunas e permite ajustar o mapeamento antes de importar.</p></div><button class="icon-btn subtle" data-close-modal="academyImportModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Forms</span><h2>Importar relatório de solicitações</h2><p>Escolha o Excel ou CSV exportado do Forms. O Connect detecta as colunas e permite ajustar o mapeamento antes de importar.</p></div><button class="icon-btn subtle" data-close-modal="academyImportModal"><i data-lucide="x"></i></button></div>
       <div class="modal-body">
         <label class="academy-file-drop"><input id="academyImportFile" type="file" accept=".xlsx,.xls,.csv"><i data-lucide="file-spreadsheet"></i><span><strong>Selecionar relatório do Forms</strong><small>XLSX, XLS ou CSV</small></span></label>
         <div id="academyImportMapping" class="academy-import-mapping hidden"></div>

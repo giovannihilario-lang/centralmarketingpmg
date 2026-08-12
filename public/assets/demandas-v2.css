@@ -941,3 +941,243 @@ body.ui-scale-xlarge .task-template-toolbar{grid-template-columns:1fr;padding:22
 
 @media(max-width:980px){.task-template-toolbar{grid-template-columns:1fr}.task-template-actions{justify-content:flex-start}.task-execution-grid,.productivity-grid{grid-template-columns:1fr}.monthly-report-toolbar-actions{justify-content:flex-start}.monthly-report-table.v34{overflow-x:auto}.monthly-report-table.v34 .monthly-report-row{min-width:1050px}}
 @media(max-width:620px){.task-template-actions{display:grid;grid-template-columns:1fr 1fr}.task-template-actions select{grid-column:1/-1;width:100%;min-width:0}.task-template-actions .icon-btn{width:100%}.time-comparison{grid-template-columns:1fr}.monthly-report-toolbar-actions{display:grid;grid-template-columns:1fr 1fr}.monthly-report-toolbar-actions .btn{width:100%}}
+
+/* =========================================================
+   V3.4.1 — TUTORIAL 100% COMPATÍVEL COM DARK MODE
+   Mantém o tutorial isolado do tema global e corrige heranças
+   de texto/ícones/cards que estavam tornando elementos ilegíveis.
+   ========================================================= */
+body.ui-theme-dark .onboarding-layer{
+  --ink:#f4f8f5;
+  --text:#dce8df;
+  --muted:#a9b9ae;
+  --faint:#829588;
+  --line:#304638;
+  --line-strong:#45604d;
+  --surface:#121c16;
+  --surface-2:#18251d;
+  --green-50:#16281c;
+  --green-100:#1d3827;
+  --green-200:#2d563b;
+  --green-300:#7bd498;
+  --green-600:#55b978;
+  --green-700:#70cd8f;
+  --green-800:#9addaf;
+  --green-900:#dff3e5;
+  color-scheme:dark;
+  background:rgba(2,7,4,.86);
+}
+
+body.ui-theme-dark .onboarding-card{
+  background:#121c16;
+  border-color:#304638;
+  box-shadow:0 46px 130px rgba(0,0,0,.62);
+}
+
+body.ui-theme-dark .onboarding-content{
+  background:linear-gradient(180deg,#141f18 0%,#101913 100%);
+  color:var(--text);
+}
+
+body.ui-theme-dark .onboarding-close{
+  background:#1b2921;
+  border-color:#3a5141;
+  color:#c0cec4;
+  box-shadow:0 7px 18px rgba(0,0,0,.22);
+}
+body.ui-theme-dark .onboarding-close:hover{
+  background:#22362a;
+  border-color:#69c487;
+  color:#a9e4bc;
+}
+
+body.ui-theme-dark .onboarding-progress-row>span{color:#93a69a}
+body.ui-theme-dark .onboarding-step-dots button{background:#3b5142}
+body.ui-theme-dark .onboarding-step-dots button.done{background:#4c9564}
+body.ui-theme-dark .onboarding-step-dots button.active{background:#72d092}
+
+body.ui-theme-dark .onboarding-icon{
+  background:#1d3827;
+  border:1px solid #315940;
+  color:#8cdfa5;
+}
+body.ui-theme-dark .onboarding-content>.eyebrow{color:#7bd498}
+body.ui-theme-dark .onboarding-content h2{color:#f4f8f5}
+body.ui-theme-dark .onboarding-content>p{color:#b3c1b7}
+
+body.ui-theme-dark .onboarding-point{
+  background:#18251d;
+  border-color:#304638;
+  box-shadow:0 5px 16px rgba(0,0,0,.12);
+}
+body.ui-theme-dark .onboarding-point>span{
+  background:#203329;
+  border-color:#3b5745;
+  color:#8cdfa5;
+}
+body.ui-theme-dark .onboarding-point strong{color:#f0f6f2}
+body.ui-theme-dark .onboarding-point small{color:#aebeb3}
+
+body.ui-theme-dark .onboarding-tip{
+  background:linear-gradient(135deg,#183124,#14271d);
+  border-color:#315c40;
+}
+body.ui-theme-dark .onboarding-tip>span{
+  background:#20392a;
+  border-color:#3f694c;
+  color:#8cdfa5;
+}
+body.ui-theme-dark .onboarding-tip strong{color:#dff3e5}
+body.ui-theme-dark .onboarding-tip p{color:#9bd8ae}
+body.ui-theme-dark .onboarding-skip{color:#9caf9f}
+body.ui-theme-dark .onboarding-skip:hover{color:#b9e9c9}
+
+/* Os botões do tutorial não herdam o tratamento de modal operacional. */
+body.ui-theme-dark .onboarding-footer .btn.secondary{
+  background:#1b2921;
+  border-color:#3b5142;
+  color:#dbe7de;
+}
+body.ui-theme-dark .onboarding-footer .btn.secondary:hover{
+  background:#23372b;
+  border-color:#5f896c;
+  color:#b9e9c9;
+}
+body.ui-theme-dark .onboarding-footer .btn.primary{
+  background:linear-gradient(135deg,#3b9c60,#55b978);
+  color:#fff;
+  box-shadow:0 10px 24px rgba(45,122,79,.28);
+}
+
+/* A coluna visual já foi desenhada como escura. Essas regras impedem
+   seletores globais do dark mode de pintar seus textos com a cor errada. */
+body.ui-theme-dark .onboarding-visual,
+body.ui-theme-dark .onboarding-visual :where(h1,h2,h3,h4,strong,b){color:#fff}
+body.ui-theme-dark .onboarding-visual :where(p,small){color:rgba(255,255,255,.62)}
+body.ui-theme-dark .onboarding-brand{color:#fff}
+body.ui-theme-dark .onboarding-visual-note{color:rgba(255,255,255,.74)}
+body.ui-theme-dark .onboarding-visual-note svg{color:#9fe2b5}
+body.ui-theme-dark .onboarding-demo-title{color:#fff!important}
+body.ui-theme-dark .onboarding-demo-head small{color:rgba(255,255,255,.52)!important}
+body.ui-theme-dark .onboarding-demo-row strong,
+body.ui-theme-dark .onboarding-option-demo strong,
+body.ui-theme-dark .onboarding-review-head strong,
+body.ui-theme-dark .onboarding-detail-title strong,
+body.ui-theme-dark .onboarding-complete strong{color:#fff}
+body.ui-theme-dark .onboarding-demo-row small,
+body.ui-theme-dark .onboarding-option-demo small,
+body.ui-theme-dark .onboarding-review-head small,
+body.ui-theme-dark .onboarding-team-summary small,
+body.ui-theme-dark .onboarding-complete span{color:rgba(255,255,255,.62)}
+
+/* Cards claros usados dentro das demonstrações continuam claros de propósito,
+   com contraste explícito. */
+body.ui-theme-dark .onboarding-assignee-row.selected,
+body.ui-theme-dark .onboarding-status-step.active,
+body.ui-theme-dark .onboarding-comment-demo,
+body.ui-theme-dark .onboarding-calendar-day.active,
+body.ui-theme-dark .onboarding-alert-demo,
+body.ui-theme-dark .onboarding-demo-action,
+body.ui-theme-dark .onboarding-review-actions button.primary{
+  background:#f2f8f4;
+  color:#173c27;
+  border-color:#d5e7db;
+}
+body.ui-theme-dark .onboarding-assignee-row.selected :where(strong,b),
+body.ui-theme-dark .onboarding-status-step.active :where(strong,b),
+body.ui-theme-dark .onboarding-comment-demo strong,
+body.ui-theme-dark .onboarding-calendar-day.active,
+body.ui-theme-dark .onboarding-alert-demo strong,
+body.ui-theme-dark .onboarding-demo-action,
+body.ui-theme-dark .onboarding-review-actions button.primary{color:#173c27}
+body.ui-theme-dark .onboarding-assignee-row.selected small,
+body.ui-theme-dark .onboarding-status-step.active small,
+body.ui-theme-dark .onboarding-comment-demo p,
+body.ui-theme-dark .onboarding-alert-demo small{color:#617568}
+body.ui-theme-dark .onboarding-assignee-row.selected>b{color:#2d7a4f}
+body.ui-theme-dark .onboarding-status-step.active>span{
+  background:#dff2e5;
+  color:#2d7a4f;
+}
+body.ui-theme-dark .onboarding-comment-demo .onboarding-person-avatar{border-color:#c9dfd0}
+body.ui-theme-dark .onboarding-alert-demo>svg{color:#2d7a4f}
+
+/* Elementos translúcidos da demonstração ganham separação suficiente no dark. */
+body.ui-theme-dark .onboarding-demo-window{
+  background:rgba(255,255,255,.095);
+  border-color:rgba(255,255,255,.18);
+  box-shadow:0 28px 68px rgba(0,0,0,.34);
+}
+body.ui-theme-dark .onboarding-demo-metric,
+body.ui-theme-dark .onboarding-demo-row,
+body.ui-theme-dark .onboarding-form-demo label,
+body.ui-theme-dark .onboarding-detail-grid>span,
+body.ui-theme-dark .onboarding-option-demo,
+body.ui-theme-dark .onboarding-assignee-row:not(.selected),
+body.ui-theme-dark .onboarding-status-step:not(.active),
+body.ui-theme-dark .onboarding-team-summary span,
+body.ui-theme-dark .onboarding-review-head,
+body.ui-theme-dark .onboarding-detail-demo>p,
+body.ui-theme-dark .onboarding-calendar-day:not(.active){
+  background:rgba(255,255,255,.105);
+  border-color:rgba(255,255,255,.11);
+}
+
+/* Lucide: evita ícones herdarem cores de componentes operacionais. */
+body.ui-theme-dark .onboarding-layer svg{stroke:currentColor}
+body.ui-theme-dark .onboarding-visual svg{color:inherit}
+body.ui-theme-dark .onboarding-icon svg,
+body.ui-theme-dark .onboarding-point>span svg,
+body.ui-theme-dark .onboarding-tip>span svg{color:inherit}
+
+/* Scrollbar interna do tutorial, para não surgir uma barra branca no dark. */
+body.ui-theme-dark .onboarding-content::-webkit-scrollbar-track,
+body.ui-theme-dark .onboarding-card::-webkit-scrollbar-track{background:#101913}
+body.ui-theme-dark .onboarding-content::-webkit-scrollbar-thumb,
+body.ui-theme-dark .onboarding-card::-webkit-scrollbar-thumb{background:#415a49}
+body.ui-theme-dark .onboarding-content::-webkit-scrollbar-thumb:hover,
+body.ui-theme-dark .onboarding-card::-webkit-scrollbar-thumb:hover{background:#587461}
+
+/* =========================================================
+   ACADEMIA PMG V3.4.3 — TREINAMENTOS INTERNOS
+   ========================================================= */
+.btn.training{background:#7056c8;color:#fff;border-color:#7056c8}.btn.training:hover{background:#5f45b8;border-color:#5f45b8}.btn.training svg{color:currentColor}.legend-dot.academy-training{background:#7056c8}.academy-summary{grid-template-columns:repeat(5,minmax(0,1fr))}.academy-selected-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px}.academy-bottom-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.82fr);gap:15px;margin-top:15px;align-items:start}.academy-bottom-grid .academy-requests{margin-top:0}.academy-upcoming-trainings{padding:20px}.academy-training-list{display:flex;flex-direction:column;gap:9px;margin-top:12px}.academy-training-list-card{display:grid;grid-template-columns:58px minmax(0,1fr) 40px;align-items:center;gap:11px;padding:11px;border:1px solid var(--line);border-left:4px solid #7056c8;border-radius:14px;background:#fff}.academy-training-list-card.training-mkt{border-left-color:#d7b500}.academy-training-list-card.training-avulso{border-left-color:#e78300}.academy-training-list-card.training-geral{border-left-color:#7056c8}.academy-training-date{min-height:60px;border-radius:12px;background:#f5f1ff;display:flex;flex-direction:column;align-items:center;justify-content:center}.academy-training-date span,.academy-training-date small{font:800 8px Sora,sans-serif;text-transform:uppercase;letter-spacing:.6px;color:#6f5ab1}.academy-training-date strong{font:800 20px/1 Sora,sans-serif;color:#493985;margin:3px 0}.academy-training-copy{min-width:0}.academy-training-copy>strong{display:block;margin-top:5px;font-size:11px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.academy-training-copy>small{display:block;margin-top:4px;font-size:9px;color:var(--muted)}.academy-training-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:99px;background:#eee8ff;color:#5e48a8;font-size:7px;font-weight:850;text-transform:uppercase;letter-spacing:.35px}.academy-training-pill svg{width:11px}.academy-training-pill.mkt{background:#fff7b8;color:#7e6800}.academy-training-pill.avulso{background:#fff0d9;color:#a55700}.academy-training-pill.geral{background:#eee8ff;color:#5e48a8}.academy-training-pill.outro{background:#e9eef4;color:#516273}.academy-reservation-card.is-training{border-left:4px solid #7056c8;background:#fbf9ff}.academy-reservation-card.is-training.training-mkt{border-left-color:#d7b500;background:#fffdf0}.academy-reservation-card.is-training.training-avulso{border-left-color:#e78300;background:#fff8ef}.academy-day.academy-training-day{background:#f8f4ff;box-shadow:inset 0 0 0 1px rgba(112,86,200,.18)}.academy-day.academy-training-day:hover{background:#f0eaff}.academy-day-state .training-preview{color:#5e48a8}.academy-day-state .training-preview.mkt{color:#8b7400}.academy-day-state .training-preview.avulso{color:#ad5a00}.academy-day-state .training-preview b{font-size:6px;text-transform:uppercase;letter-spacing:.2px}.academy-training-modal{width:min(920px,100%)}.training-type-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:15px}.training-type-grid button{min-height:92px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:var(--text)}.training-type-grid button:hover{border-color:#9b88dd;background:#faf8ff}.training-type-grid button.active{border-color:#7056c8;background:#f2edff;box-shadow:inset 0 0 0 1px #7056c8}.training-type-grid button>svg{width:21px;color:#7056c8}.training-type-grid button strong{font-size:11px;color:var(--ink)}.training-type-grid button small{font-size:8px;color:var(--muted);line-height:1.35}.academy-full-day-toggle{min-height:64px;margin:13px 0;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:space-between;gap:14px}.academy-full-day-toggle strong{display:block;font-size:11px;color:var(--ink)}.academy-full-day-toggle small{display:block;margin-top:4px;font-size:9px;color:var(--muted)}.academy-full-day-toggle input{width:21px;height:21px;accent-color:#7056c8}.academy-training-modal input:disabled{opacity:.65;cursor:not-allowed}.academy-reservation-card.is-training .academy-reservation-time{background:#f1edfb}.academy-reservation-card.is-training.training-mkt .academy-reservation-time{background:#fff8c8}.academy-reservation-card.is-training.training-avulso .academy-reservation-time{background:#fff0df}
+
+body.ui-theme-dark .btn.training{background:#8f76dc;border-color:#8f76dc;color:#fff}body.ui-theme-dark .btn.training:hover{background:#9f89e4;border-color:#9f89e4}body.ui-theme-dark .academy-training-list-card,body.ui-theme-dark .training-type-grid button,body.ui-theme-dark .academy-reservation-card.is-training{background:#18211c;border-color:#39473e;color:var(--text)}body.ui-theme-dark .academy-training-list-card{border-left-color:#a18ae9}body.ui-theme-dark .academy-training-list-card.training-mkt{border-left-color:#e0c927}body.ui-theme-dark .academy-training-list-card.training-avulso{border-left-color:#f09a2e}body.ui-theme-dark .academy-training-date{background:#29243a}body.ui-theme-dark .academy-training-date span,body.ui-theme-dark .academy-training-date small{color:#c5b7ef}body.ui-theme-dark .academy-training-date strong{color:#eee8ff}body.ui-theme-dark .academy-training-pill{background:#30294a;color:#cbbcf5}body.ui-theme-dark .academy-training-pill.mkt{background:#39351b;color:#f4de4c}body.ui-theme-dark .academy-training-pill.avulso{background:#3d2d1b;color:#ffb45a}body.ui-theme-dark .academy-training-pill.outro{background:#293238;color:#c9d4db}body.ui-theme-dark .academy-day.academy-training-day{background:#241f32;box-shadow:inset 0 0 0 1px #584a80}body.ui-theme-dark .academy-day.academy-training-day:hover{background:#2c2540}body.ui-theme-dark .academy-day-state .training-preview{color:#c7b8f2}body.ui-theme-dark .academy-day-state .training-preview.mkt{color:#eadc55}body.ui-theme-dark .academy-day-state .training-preview.avulso{color:#ffb45a}body.ui-theme-dark .academy-full-day-toggle{background:#17231b;border-color:#34463a}body.ui-theme-dark .training-type-grid button.active{background:#2c2540;border-color:#9279dc;box-shadow:inset 0 0 0 1px #9279dc}body.ui-theme-dark .training-type-grid button>svg{color:#a992ea}body.ui-theme-dark .academy-reservation-card.is-training{background:#211d2c;border-left-color:#9279dc}body.ui-theme-dark .academy-reservation-card.is-training.training-mkt{background:#2a2819;border-left-color:#d9c526}body.ui-theme-dark .academy-reservation-card.is-training.training-avulso{background:#2b2219;border-left-color:#e98b21}body.ui-theme-dark .academy-reservation-card.is-training .academy-reservation-time{background:#2d2740}body.ui-theme-dark .academy-reservation-card.is-training.training-mkt .academy-reservation-time{background:#353118}body.ui-theme-dark .academy-reservation-card.is-training.training-avulso .academy-reservation-time{background:#352719}
+
+@media(max-width:1180px){.academy-summary{grid-template-columns:repeat(3,1fr)}.academy-bottom-grid{grid-template-columns:1fr}.academy-upcoming-trainings{order:-1}}@media(max-width:760px){.training-type-grid{grid-template-columns:1fr 1fr}.academy-summary{grid-template-columns:1fr 1fr}.academy-training-list-card{grid-template-columns:54px minmax(0,1fr) 38px}}@media(max-width:460px){.training-type-grid{grid-template-columns:1fr}.academy-training-list-card{grid-template-columns:50px minmax(0,1fr)}.academy-training-list-card>.icon-btn{grid-column:1/-1;width:100%}.academy-summary{grid-template-columns:1fr}}
+
+/* =========================================================
+   Academia PMG V3.4.4 - navegação por abas e hub de treinamentos
+   ========================================================= */
+.academy-section-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0 14px;padding:7px;border:1px solid var(--line);border-radius:18px;background:var(--panel,#fff);box-shadow:var(--shadow-sm,0 8px 24px rgba(20,35,26,.06))}
+.academy-section-tab{position:relative;min-width:0;min-height:72px;border:1px solid transparent;border-radius:14px;background:transparent;color:var(--muted);display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:10px;padding:11px 13px;text-align:left;cursor:pointer;transition:.18s ease}
+.academy-section-tab>svg{width:24px;height:24px;padding:8px;box-sizing:content-box;border-radius:12px;background:var(--soft,#f2f5f3);color:var(--muted)}
+.academy-section-tab span{min-width:0;display:flex;flex-direction:column;gap:3px}.academy-section-tab strong{font:800 12px/1.2 Sora,sans-serif;color:var(--ink)}.academy-section-tab small{font-size:9px;line-height:1.35;color:var(--muted)}
+.academy-section-tab:hover{background:var(--soft,#f5f7f5);border-color:var(--line)}
+.academy-section-tab.active{background:rgba(112,86,200,.08);border-color:rgba(112,86,200,.28);box-shadow:inset 0 0 0 1px rgba(112,86,200,.05)}
+.academy-section-tab.active>svg{background:#7056c8;color:#fff}.academy-section-tab.active strong{color:#55409b}
+.academy-tab-count{min-width:24px;height:24px;padding:0 7px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;background:var(--soft,#eef2ef);color:var(--muted);font:800 9px Sora,sans-serif}.academy-tab-count.has-items{background:#fff0df;color:#a45100}
+.academy-tab-panel{animation:academyPanelIn .2s ease}.academy-tab-panel.hidden{display:none!important}@keyframes academyPanelIn{from{opacity:.35;transform:translateY(4px)}to{opacity:1;transform:none}}
+.academy-training-hub{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,340px);gap:22px;align-items:center;padding:24px;border:1px solid rgba(112,86,200,.22);background:linear-gradient(135deg,rgba(112,86,200,.10),rgba(112,86,200,.025) 58%,var(--panel,#fff));overflow:hidden}
+.academy-training-hub-copy h3{margin:5px 0 7px;font:800 20px/1.2 Sora,sans-serif;color:var(--ink)}.academy-training-hub-copy>p{max-width:760px;margin:0;color:var(--muted);font-size:11px;line-height:1.65}
+.academy-training-rules{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.academy-training-rules span{display:inline-flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid rgba(112,86,200,.16);border-radius:99px;background:rgba(255,255,255,.58);font-size:8px;font-weight:750;color:#6550a8}.academy-training-rules svg{width:13px;height:13px}
+.academy-training-create{min-height:72px;justify-content:flex-start;text-align:left;border-radius:16px;padding:15px 17px;box-shadow:0 12px 28px rgba(112,86,200,.18)}.academy-training-create>svg{width:26px;height:26px}.academy-training-create>span{display:flex;flex-direction:column;gap:3px}.academy-training-create strong{font:800 11px Sora,sans-serif}.academy-training-create small{font-size:8px;opacity:.8}
+.academy-training-manager{margin-top:14px;padding:21px}.academy-training-manager .section-header p{margin:4px 0 0;font-size:9px;color:var(--muted)}.academy-training-list-full{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.academy-training-list-full .academy-training-list-card{margin:0;min-width:0}
+.academy-request-hub{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:21px;margin-bottom:14px}.academy-request-hub h3{margin:4px 0 6px;font:800 17px Sora,sans-serif;color:var(--ink)}.academy-request-hub p{margin:0;max-width:720px;color:var(--muted);font-size:10px;line-height:1.55}.academy-request-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+html[data-theme="dark"] .academy-section-tabs{background:#151f19;border-color:#2b3b31}
+html[data-theme="dark"] .academy-section-tab:hover{background:#1b2820;border-color:#34473a}
+html[data-theme="dark"] .academy-section-tab>svg{background:#1e2c23;color:#a9b8ae}
+html[data-theme="dark"] .academy-section-tab.active{background:rgba(138,112,222,.15);border-color:rgba(159,137,231,.34)}
+html[data-theme="dark"] .academy-section-tab.active>svg{background:#8168d4;color:#fff}
+html[data-theme="dark"] .academy-section-tab.active strong{color:#cfc3ff}
+html[data-theme="dark"] .academy-training-hub{background:linear-gradient(135deg,rgba(129,104,212,.16),rgba(129,104,212,.04) 58%,#151f19);border-color:rgba(159,137,231,.28)}
+html[data-theme="dark"] .academy-training-rules span{background:#1b2820;border-color:#34473a;color:#c3b6f2}
+html[data-theme="dark"] .academy-training-list-card{background:#17231b;border-color:#2b3b31}
+html[data-theme="dark"] .academy-training-date{background:#211d32}
+
+body[data-scale="large"] .academy-section-tab{min-height:82px;padding:14px 15px}.academy-section-tab strong{font-size:13px}body[data-scale="large"] .academy-section-tab small{font-size:10px}body[data-scale="large"] .academy-training-hub-copy h3{font-size:22px}body[data-scale="large"] .academy-training-hub-copy>p{font-size:12px}
+body[data-scale="xlarge"] .academy-section-tab{min-height:94px;padding:16px 17px}.academy-section-tab strong{font-size:14px}body[data-scale="xlarge"] .academy-section-tab small{font-size:11px}body[data-scale="xlarge"] .academy-section-tab>svg{width:28px;height:28px}body[data-scale="xlarge"] .academy-training-hub{padding:28px}body[data-scale="xlarge"] .academy-training-hub-copy h3{font-size:25px}body[data-scale="xlarge"] .academy-training-hub-copy>p{font-size:13px}.academy-training-create{min-height:82px}
+@media(max-width:980px){.academy-training-hub{grid-template-columns:1fr}.academy-training-list-full{grid-template-columns:1fr}.academy-request-hub{align-items:flex-start;flex-direction:column}.academy-request-actions{justify-content:flex-start}}
+@media(max-width:720px){.academy-section-tabs{grid-template-columns:1fr;padding:6px}.academy-section-tab{min-height:62px}.academy-training-hub{padding:18px}.academy-training-create{width:100%}.academy-training-list-full{grid-template-columns:1fr}}
