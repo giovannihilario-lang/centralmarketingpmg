@@ -19,8 +19,8 @@
     })();
   </script>
   <title>PMG Connect — Campanhas</title>
-  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.11.0">
-  <script defer src="/assets/campanhas-studio-v5.js?v=5.11.0"></script>
+  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.12.0">
+  <script defer src="/assets/campanhas-studio-v5.js?v=5.12.0"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
 </head>
 <body>
@@ -125,14 +125,20 @@
     </section>
   </div>
 
-  <div class="drawer-backdrop" id="drawerBackdrop" hidden>
-    <aside class="performance-drawer" id="performanceDrawer">
-      <header class="drawer-header">
-        <div><span class="eyebrow">Apuração e ranking</span><h2 id="performanceTitle">Performance</h2></div>
-        <button class="icon-btn" type="button" data-action="close-performance"><i data-lucide="x"></i></button>
+  <div class="performance-backdrop" id="drawerBackdrop" hidden>
+    <section class="performance-modal" id="performanceDrawer" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="performanceTitle">
+      <header class="performance-modal-header">
+        <div class="performance-modal-heading">
+          <span class="eyebrow">Resultados da campanha</span>
+          <h2 id="performanceTitle">Performance</h2>
+          <small>Classificação, elegibilidade, metas, comparativos e auditoria em uma visão central.</small>
+        </div>
+        <button class="icon-btn performance-close-btn" type="button" data-action="close-performance" aria-label="Fechar resultados">
+          <i data-lucide="x"></i>
+        </button>
       </header>
-      <div class="drawer-body" id="performanceBody"></div>
-    </aside>
+      <div class="performance-modal-body" id="performanceBody"></div>
+    </section>
   </div>
 
   <div class="audit-backdrop" id="sellerAuditBackdrop" hidden>

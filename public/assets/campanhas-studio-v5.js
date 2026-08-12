@@ -1814,6 +1814,7 @@
     $('#drawerBackdrop').hidden = false;
     document.body.style.overflow = 'hidden';
     $('#performanceTitle').textContent = campaign.name;
+    requestAnimationFrame(() => $('#performanceDrawer')?.focus?.());
 
     const periods = calculatePeriods(campaign);
     if (!periods.valid) {
@@ -3422,6 +3423,10 @@
     const id = Number(event.dataTransfer.getData('text/product-id'));
     const product = productsForCampaign().find((item) => Number(item.id) === id);
     if (product) addProductsToCategory([product], drop.dataset.categoryDrop);
+  });
+
+  document.addEventListener('click', (event) => {
+    if (event.target?.id === 'drawerBackdrop') closePerformance();
   });
 
   document.addEventListener('keydown', (event) => {
