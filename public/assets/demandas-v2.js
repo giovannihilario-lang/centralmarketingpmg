@@ -2202,7 +2202,48 @@ function updateAcademyConflictPreview() {
   const conflicts=academyConflicts(a,b,$('academyBookingId')?.value||''); box.className=`academy-conflict-preview ${conflicts.length?'conflict':'free'}`; box.innerHTML=conflicts.length?`<i data-lucide="triangle-alert"></i><span>Conflita com <strong>${escapeHtml(conflicts[0].titulo)}</strong>, ${formatTime(conflicts[0].inicio_em)}–${formatTime(conflicts[0].fim_em)}. Você pode salvar como solicitação, mas não conseguirá aprovar enquanto houver conflito.</span>`:`<i data-lucide="circle-check"></i><span>Horário sem conflito com reservas aprovadas.</span>`;refreshIcons();
 }
 async function saveAcademyBooking(event){event.preventDefault();const date=$('academyDate').value,start=$('academyStartTime').value,end=$('academyEndTime').value;if(!date||!start||!end)return;setLoading(true);try{const{error}=await db.rpc('salvar_reserva_academia',{p_id:$('academyBookingId').value||null,p_titulo:$('academyBookingName').value.trim(),p_solicitante:$('academyRequester').value.trim(),p_setor:$('academyDepartment').value.trim()||null,p_email:$('academyEmail').value.trim()||null,p_telefone:$('academyPhone').value.trim()||null,p_finalidade:$('academyPurpose').value.trim()||null,p_inicio_em:localDateTime(date,start),p_fim_em:localDateTime(date,end),p_participantes:$('academyParticipants').value?Number($('academyParticipants').value):null,p_observacoes:$('academyNotes').value.trim()||null});if(error)throw error;closeModal('academyBookingModal');await refreshData();toast('Reserva da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
-async function updateAcademyStatus(id,status){if(!isManager())return;setLoading(true);try{const{error}=await db.rpc('atualizar_status_reserva_academia',{p_id:id,p_status:status});if(error)throw error;await refreshData();toast(status==='aprovada'?'Reserva aprovada.':status==='recusada'?'Solicitação recusada.':'Reserva cancelada.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
+async function updateAcademyStatus(id,status){
+  if(!isManager())return;
+  setLoading(true);
+  try{
+    const{data,error}=await db.rpc('atualizar_status_reserva_academia',{p_id:id,p_status:status});
+    if(error)throw error;
+
+    // A RPC V3.4.2 devolve a própria reserva atualizada. Isso permite que o
+    // calendário reflita a aprovação imediatamente, antes mesmo do reload.
+    let updated=Array.isArray(data)?data[0]:data;
+    if(!updated?.id){
+      const result=await db.from('academia_reservas').select('*').eq('id',id).single();
+      if(result.error)throw result.error;
+      updated=result.data;
+    }
+
+    if(updated?.id){
+      const index=state.academyReservations.findIndex(item=>item.id===updated.id);
+      if(index>=0)state.academyReservations[index]=updated;
+      else state.academyReservations.push(updated);
+
+      if(status==='aprovada'){
+        state.academySelectedDate=dateKey(updated.inicio_em);
+        state.academyCursor=startOfMonth(new Date(updated.inicio_em));
+      }
+      renderAcademy();
+    }
+
+    // Confirma contra o banco e atualiza todas as demais áreas da Central.
+    await refreshData();
+
+    if(status==='aprovada'){
+      const reservation=state.academyReservations.find(item=>item.id===id)||updated;
+      const when=reservation?.inicio_em?`${formatDate(reservation.inicio_em)} · ${formatTime(reservation.inicio_em)}–${formatTime(reservation.fim_em)}`:'no calendário';
+      toast(`Reserva aprovada e horário bloqueado automaticamente: ${when}.`);
+    }else{
+      toast(status==='recusada'?'Solicitação recusada. O horário continua livre.':'Reserva cancelada. O horário foi liberado automaticamente.');
+    }
+  }catch(error){
+    toast(errorMessage(error),'error');
+  }finally{setLoading(false);}
+}
 function openAcademyConfig(){const c=state.academyConfig||{};$('academyFormsUrl').value=c.forms_url||'';$('academyOpenTime').value=academyTime(c.horario_abertura,'08:00');$('academyCloseTime').value=academyTime(c.horario_fechamento,'18:00');$('academyConfigNotes').value=c.observacoes||'';$('academyConfigModal').classList.remove('hidden');}
 async function saveAcademyConfig(event){event.preventDefault();setLoading(true);try{const{error}=await db.rpc('salvar_config_academia',{p_forms_url:$('academyFormsUrl').value.trim()||null,p_horario_abertura:$('academyOpenTime').value||'08:00',p_horario_fechamento:$('academyCloseTime').value||'18:00',p_observacoes:$('academyConfigNotes').value.trim()||null});if(error)throw error;closeModal('academyConfigModal');await refreshData();toast('Configuração da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
 function openAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Microsoft Forms.', 'error');window.open(url,'_blank','noopener,noreferrer');}
