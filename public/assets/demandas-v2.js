@@ -2683,8 +2683,14 @@ function bindEvents() {
     catch (error) { $('authError').textContent = errorMessage(error); $('authError').classList.remove('hidden'); }
     finally { setLoading(false); }
   });
-  $$('.nav-item[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
-  $$('[data-goto]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.goto)));
+  $$('.nav-item[data-view]').forEach(button => button.addEventListener('click', () => {
+    if (button.dataset.view === 'demandas') state.smartFilter = '';
+    switchView(button.dataset.view);
+  }));
+  $$('[data-goto]').forEach(button => button.addEventListener('click', () => {
+    if (button.dataset.goto === 'demandas') state.smartFilter = '';
+    switchView(button.dataset.goto);
+  }));
   $$('[data-quick-type]').forEach(button => button.addEventListener('click', () => openQuickAdd(button.dataset.quickType)));
   $('quickAddBtn').addEventListener('click', () => openQuickAdd(isManager() ? 'demanda' : 'lembrete'));
   $('newTaskPageBtn').addEventListener('click', () => openQuickAdd('demanda'));
@@ -2764,7 +2770,16 @@ function bindEvents() {
   $('quickCaptureForm').addEventListener('submit', event => { event.preventDefault(); const text = $('quickCaptureText').value.trim(); if (!text) return; const preset = parseQuickCapture(text); openQuickAdd(state.quickCaptureType, preset); $('quickCaptureText').value = ''; });
   $$('[data-smart-filter]').forEach(button => button.addEventListener('click', () => applySmartFilter(button.dataset.smartFilter)));
   $('clearSmartFilter').addEventListener('click', () => { state.smartFilter = ''; renderDemandas(); });
-  ['taskSearch', 'taskAssigneeFilter', 'taskProjectFilter', 'taskPriorityFilter', 'taskArchiveFilter'].forEach(id => $(id).addEventListener(id === 'taskSearch' ? 'input' : 'change', debounce(renderDemandas, 120)));
+  ['taskSearch', 'taskAssigneeFilter', 'taskProjectFilter', 'taskPriorityFilter', 'taskArchiveFilter'].forEach(id => {
+    $(id).addEventListener(id === 'taskSearch' ? 'input' : 'change', debounce(() => {
+      // Ao escolher um responsável manualmente, o usuário espera ver TODAS as
+      // demandas daquela pessoa. Não manter silenciosamente "Hoje/Atrasadas"
+      // herdado da Home, pois isso fazia os cards mostrarem contagem > 0
+      // enquanto o quadro aparecia vazio.
+      if (id === 'taskAssigneeFilter') state.smartFilter = '';
+      renderDemandas();
+    }, 120));
+  });
   $('taskViewToggle').addEventListener('click', event => { const button = event.target.closest('[data-task-view]'); if (!button) return; state.taskView = button.dataset.taskView; renderDemandas(); refreshIcons(); });
   $('calendarPrev').addEventListener('click', () => { state.calendarCursor = addMonths(state.calendarCursor, -1); renderAgenda(); refreshIcons(); });
   $('calendarNext').addEventListener('click', () => { state.calendarCursor = addMonths(state.calendarCursor, 1); renderAgenda(); refreshIcons(); });
@@ -2787,7 +2802,12 @@ function bindEvents() {
     const assigneeChoice = event.target.closest('[data-assignee-choice]');
     if (assigneeChoice) { chooseAssignee(assigneeChoice.dataset.assigneeChoice); return; }
     const avatarFilter = event.target.closest('[data-avatar-filter]');
-    if (avatarFilter) { $('taskAssigneeFilter').value = avatarFilter.dataset.avatarFilter; renderDemandas(); return; }
+    if (avatarFilter) {
+      state.smartFilter = '';
+      $('taskAssigneeFilter').value = avatarFilter.dataset.avatarFilter;
+      renderDemandas();
+      return;
+    }
     const person = event.target.closest('[data-open-person]'); if (person) openPerson(person.dataset.openPerson);
     const showTasks = event.target.closest('[data-person-show-tasks]'); if (showTasks) showPersonTasks(showTasks.dataset.personShowTasks);
     const createFor = event.target.closest('[data-person-create-task]'); if (createFor) { const personId = createFor.dataset.personCreateTask; closeDrawer('personDrawer'); openQuickAdd('demanda', { assigneeId: personId }); }
