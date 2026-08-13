@@ -1,30 +1,37 @@
-# API local e Vercel
+# API local do PMG Connect
 
-O PMG Connect usa duas camadas de API:
+O serviço local existe para rotas que dependem do SQL Server acessível na rede PMG e para a persistência local compartilhada de Campanhas.
 
-- `api/`: funções publicadas na Vercel, limitadas a 12 no plano Hobby.
-- `local-api/`: consultas do Dashboard Regional que acessam o SQL Server disponível apenas na rede local.
+## Rotas
 
-O `server.js` carrega as duas pastas e publica todas localmente em `/api/<nome>`.
-A Vercel ignora `local-api/`, portanto essas consultas não consomem o limite de Serverless Functions.
+Os arquivos de `local-api/` são registrados pelo `server.js` em `/api/<nome>`. Eles têm prioridade sobre rotas homônimas de `api/` no servidor local.
 
-## Iniciar o servidor local
+Todas as rotas de `local-api/` exigem, por padrão, um **Bearer token válido do Supabase Auth**. A exceção é a camada `api/`, que decide autenticação individualmente conforme o endpoint.
 
-```powershell
-npm install
-npm start
+A proteção pode ser desligada somente para diagnóstico com:
+
+```env
+PMG_LOCAL_API_REQUIRE_AUTH=false
 ```
 
-Depois acesse:
+Não use essa opção em operação normal.
+
+## Origem e rede privada
+
+O servidor aceita a própria origem, localhost, a origem Vercel prevista no projeto e os valores extras de:
+
+```env
+PMG_ALLOWED_ORIGINS=https://exemplo.interno
+```
+
+A resposta também inclui os cabeçalhos necessários para acesso a rede privada pelo navegador.
+
+## Campanhas
+
+As definições do Campaign Studio são sincronizadas entre o IndexedDB e:
 
 ```text
-http://localhost:3001/dashboard-regional.html
+data/campanhas-studio-v5.json
 ```
 
-O arquivo `public/dashboard-regional.html` permanece configurado com:
-
-```js
-const API_BASE = 'http://localhost:3001/api';
-```
-
-Se o frontend for aberto pela Vercel na mesma máquina, ele ainda tentará consultar o servidor local desse computador. O servidor Node precisa estar rodando.
+Isso evita perda por limpeza do cache do navegador. O arquivo pertence à instalação do serviço local; para compartilhamento entre vários computadores, o Node deve estar centralizado em uma máquina/servidor acessível a todos.

@@ -1,13 +1,19 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-pmg-auth>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Evolução do Fechamento Mensal PMG (Faturamento)</title>
+  <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/connect-auth.js?v=1.0.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   .kpi-card { cursor: default; }
@@ -53,14 +59,14 @@
   .sb-collapse { overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s ease; max-height: 600px; opacity: 1; }
   .sb-collapse.collapsed { max-height: 0; opacity: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     background: var(--gray-0); color: var(--text-dark); height: 100vh;
     display: flex; flex-direction: column; overflow: hidden; margin-left: 220px;
   }
   .hdr { background: var(--green-dark); padding: 0 28px; display: flex; align-items: center; justify-content: space-between; height: 54px; flex-shrink: 0; z-index: 10; position: relative; overflow: hidden; }
   .hdr-left { display: flex; align-items: center; gap: 12px; }
   .hdr-badge { width: 36px; height: 36px; background: white; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; color: var(--green-dark); letter-spacing: -0.5px; line-height: 1; }
-  .hdr h1 { color: white; font-size: 15px; font-weight: 500; letter-spacing: 0.2px; }
+  .hdr h1 { font-family:'Sora',sans-serif; color: white; font-size: 15px; font-weight: 500; letter-spacing: 0.2px; }
   .hdr-right { display: flex; align-items: center; gap: 8px; }
   .hdr-pill { background: rgba(255,255,255,0.13); color: rgba(255,255,255,0.82); font-size: 11px; padding: 3px 11px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.18); }
   .hdr-pill.active { background: rgba(76,175,112,0.3); border-color: rgba(76,175,112,0.5); color: #b3f0cc; }
@@ -140,33 +146,35 @@
     .loading-overlay, .toast { display: none !important; }
     #pdf-banner { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+
+  @media (max-width: 980px) {
+    body { margin-left:0; overflow:auto; height:auto; min-height:100vh; }
+    body > aside[style*="position: fixed"] { display:none !important; }
+    .hdr { padding:0 16px; position:sticky; top:0; }
+    .timeline-wrap { padding-left:16px; padding-right:16px; }
+    .body-layout { grid-template-columns:1fr; overflow:visible; }
+    .sidebar { border-right:0; border-bottom:1px solid var(--gray-1); max-height:42vh; }
+    .main { overflow:visible; padding:14px; }
+    .kpi-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .row-2 { grid-template-columns:1fr; }
+  }
+  @media (max-width: 620px) {
+    .hdr { height:auto; min-height:54px; gap:10px; padding-top:8px; padding-bottom:8px; }
+    .hdr-right { flex-wrap:wrap; justify-content:flex-end; }
+    .hdr h1 { font-size:13px; }
+    .timeline-wrap { display:none; }
+    .sidebar { max-height:none; }
+    .kpi-row { grid-template-columns:1fr; }
+    .main { padding:10px; }
+    .chart-box { padding:12px; }
+  }
 </style>
 </head>
 <body>
-<script>
-function checkLoginStatus() {
-  const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
-  if (!isLoggedIn && !window.location.pathname.endsWith('index.html')) {
-    window.location.href = 'index.html';
-    return false;
-  }
-  if (isLoggedIn && window.location.pathname.endsWith('index.html')) {
-    const user = JSON.parse(sessionStorage.getItem('user') || '{}');
-    const dashboard = user.dashboard || 'index.html';
-    window.location.href = dashboard;
-    return false;
-  }
-  return true;
-}
-document.addEventListener('DOMContentLoaded', function() {
-  if (!checkLoginStatus()) return;
-});
-</script>
-
 <!-- SIDEBAR DO PORTAL -->
-<aside style="position: fixed; top: 0; left: 0; bottom: 0; width: 220px; background: #1B5E20; display: flex; flex-direction: column; z-index: 100; font-family: 'Inter', system-ui, sans-serif;">
+<aside style="position: fixed; top: 0; left: 0; bottom: 0; width: 220px; background: #0D2B1A; display: flex; flex-direction: column; z-index: 100; font-family: 'Inter', system-ui, sans-serif;">
   <div style="padding: 24px 20px 20px; border-bottom: 1px solid rgba(255,255,255,.1);">
-    <div style="width:42px;height:42px;background:white;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#1B5E20;margin-bottom:12px;">PMG</div>
+    <div style="width:42px;height:42px;background:white;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;overflow:hidden;"><img src="/imagenssite/pmglogo.png" alt="PMG" style="width:100%;height:100%;object-fit:contain"></div>
     <div style="font-size:13px;font-weight:700;color:white;line-height:1.2;">PMG Connect</div>
     <div style="font-size:10px;color:#81C784;font-weight:500;margin-top:2px;text-transform:uppercase;letter-spacing:.8px;">Marketing</div>
   </div>
@@ -177,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
       Central
     </a>
     <div style="font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:12px 8px 6px;">Ferramentas</div>
-    <a href="/catalogo.html" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;font-size:13px;font-weight:500;color:rgba(255,255,255,.75);text-decoration:none;">
+    <a href="/ferramentas/catalogo.html" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;font-size:13px;font-weight:500;color:rgba(255,255,255,.75);text-decoration:none;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
       Gerador de Catálogo
     </a>
@@ -191,7 +199,8 @@ document.addEventListener('DOMContentLoaded', function() {
       Regional
     </a>
   </nav>
-  <div style="padding:16px;border-top:1px solid rgba(255,255,255,.1);font-size:10px;color:rgba(255,255,255,.3);text-align:center;">Marketing PMG Atacadista © 2026</div>
+  <div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,.1);"><button data-pmg-logout type="button" style="width:100%;background:transparent;border:0;color:rgba(255,255,255,.72);padding:9px 10px;border-radius:7px;text-align:left;cursor:pointer;font:600 12px Inter,sans-serif;">↪ &nbsp;Sair</button></div>
+  <div style="padding:10px 16px 14px;font-size:10px;color:rgba(255,255,255,.3);text-align:center;">Marketing PMG Atacadista © 2026</div>
 </aside>
 
 <!-- HEADER -->
@@ -396,9 +405,7 @@ document.addEventListener('DOMContentLoaded', function() {
   Mesma URL/chave dos outros dashboards da PMG.
   Troque aqui se essa tabela viver em outro projeto.
 ══════════════════════════════════════════ */
-const SUPABASE_URL      = 'https://scokolfzvtzohrzdgisz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjb2tvbGZ6dnR6b2hyemRnaXN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODk3OTQsImV4cCI6MjA5ODY2NTc5NH0.43X3j64Ds6lcVonDAsONyueveOMaovHb1pqE9ofa3FI';
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let db;
 
 if (window.Chart) {
   Chart.defaults.animation = { duration: 700, easing: 'easeOutQuart' };
@@ -1340,7 +1347,7 @@ async function processUploadedRows(rows) {
 
   if (falhou) {
     const dica = /policy|permission|rls/i.test(mensagemErro)
-      ? ' Verifique se há uma policy de INSERT liberada para o papel "anon" na tabela.'
+      ? ' Verifique se há uma policy de INSERT liberada para usuários autenticados na tabela.'
       : '';
     finishUpload(false, `Erro ao enviar (${enviados}/${rows.length} enviadas): ${mensagemErro}.${dica}`);
     return;
@@ -1359,7 +1366,11 @@ function finishUpload(ok, msg) {
   if (!ok) showToast(msg, 5000);
 }
 
-inicializar();
+(async function bootDashboard() {
+  await window.PMGConnect.ready;
+  db = window.PMGConnect.client;
+  await inicializar();
+})();
 </script>
 </body>
 </html>

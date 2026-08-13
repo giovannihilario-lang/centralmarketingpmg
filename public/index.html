@@ -1,320 +1,73 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-pmg-login>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PMG Connect- Login</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <meta name="color-scheme" content="light">
+  <title>Entrar · PMG Connect</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/connect-auth.js?v=1.0.0"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --verde-escuro: #1B5E20; --verde-med: #2E7D32;
-      --verde-claro: #C8E6C9; --verde-suave: #F1F8F1; --accent: #81C784;
-      --border: #D1D5DB; --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,.1);
-      --text-primary: #212121; --text-secondary: #666;
-      --danger: #D32F2F; --warning: #F57C00;
-    }
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .login-container {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 8px 32px rgba(0,0,0,.15);
-      width: 100%;
-      max-width: 400px;
-      padding: 40px;
-    }
-    .login-header {
-      text-align: center;
-      margin-bottom: 32px;
-    }
-    .login-header h1 {
-      color: var(--verde-escuro);
-      margin-bottom: 8px;
-      font-size: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-    .login-header p {
-      color: var(--text-secondary);
-      font-size: 14px;
-    }
-    .form-group {
-      margin-bottom: 24px;
-    }
-    .form-group label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 600;
-      color: var(--verde-escuro);
-      font-size: 14px;
-    }
-    .form-group input {
-      width: 100%;
-      padding: 12px 16px;
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      font-size: 15px;
-      transition: all 0.3s ease;
-    }
-    .form-group input:focus {
-      outline: none;
-      border-color: var(--verde-med);
-      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
-    }
-    .btn-login {
-      width: 100%;
-      background: var(--verde-escuro);
-      color: white;
-      border: none;
-      padding: 14px;
-      font-weight: 700;
-      font-size: 16px;
-      border-radius: var(--radius);
-      cursor: pointer;
-      transition: all 0.3s ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-    .btn-login:hover {
-      background: var(--verde-med);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
-    }
-    .btn-login:active {
-      transform: translateY(0);
-    }
-    .login-footer {
-      text-align: center;
-      margin-top: 24px;
-      color: var(--text-secondary);
-      font-size: 13px;
-    }
-    .login-footer a {
-      color: var(--verde-med);
-      text-decoration: none;
-    }
-    .login-footer a:hover {
-      text-decoration: underline;
-    }
-    .alert {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      max-width: 90%;
-      text-align: center;
-      animation: slideIn 0.3s ease-out;
-    }
-    @keyframes slideIn {
-      from { transform: translate(-50%, -20px); opacity: 0; }
-      to { transform: translate(-50%, 0); opacity: 1; }
-    }
-    .alert-success {
-      background-color: #dcfce7;
-      color: #166534;
-      border: 1px solid #bbf7d0;
-    }
-    .alert-error {
-      background-color: #fef2f2;
-      color: #991b1b;
-      border: 1px solid #fecaca;
-    }
-    .alert-warning {
-      background-color: #fffbeb;
-      color: #92400e;
-      border: 1px solid #fef3c7;
-    }
+    *,*::before,*::after{box-sizing:border-box}html,body{margin:0;min-height:100%}
+    :root{--g950:#071a10;--g900:#0d2b1a;--g800:#184b2d;--g700:#23623b;--g500:#53b876;--g300:#89d8a3;--g100:#dff3e6;--bg:#eef3ef;--surface:#fff;--text:#102117;--muted:#65766c;--line:#d8e5dc;--red:#c92d3b}
+    body{min-height:100vh;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);display:grid;place-items:center;padding:24px;overflow-x:hidden}
+    .page{width:min(1080px,100%);min-height:650px;background:var(--surface);border:1px solid var(--line);border-radius:28px;box-shadow:0 28px 90px rgba(7,26,16,.14);display:grid;grid-template-columns:1.08fr .92fr;overflow:hidden}
+    .visual{position:relative;padding:52px;background:linear-gradient(145deg,var(--g950),var(--g900) 50%,#123c24);color:white;display:flex;flex-direction:column;justify-content:space-between;isolation:isolate;overflow:hidden}
+    .visual::before,.visual::after{content:"";position:absolute;border-radius:50%;filter:blur(2px);z-index:-1}.visual::before{width:440px;height:440px;right:-210px;top:-150px;background:radial-gradient(circle,rgba(137,216,163,.26),transparent 66%)}.visual::after{width:360px;height:360px;left:-180px;bottom:-170px;background:radial-gradient(circle,rgba(201,45,59,.12),transparent 66%)}
+    .brand{display:flex;align-items:center;gap:13px}.brand-logo{width:48px;height:48px;border-radius:13px;background:#fff;padding:5px;box-shadow:0 12px 26px rgba(0,0,0,.18)}.brand-logo img{width:100%;height:100%;object-fit:contain}.brand strong{font-family:Sora,sans-serif;font-size:17px}.brand span{display:block;color:#a6c9b2;font-size:10px;letter-spacing:1.6px;text-transform:uppercase;margin-top:2px}
+    .hero{max-width:510px}.eyebrow{font-size:11px;letter-spacing:1.7px;text-transform:uppercase;color:var(--g300);font-weight:800;margin-bottom:13px}.hero h1{font:700 clamp(34px,4vw,54px)/1.03 Sora,sans-serif;letter-spacing:-2px;margin:0 0 20px}.hero p{margin:0;color:#bfd1c5;font-size:15px;line-height:1.65;max-width:460px}.features{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}.feature{font-size:11px;color:#d7e7dc;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);border-radius:999px;padding:7px 11px}
+    .mascot{position:absolute;right:-10px;bottom:-24px;width:190px;opacity:.12;filter:saturate(.75)}
+    .form-side{padding:56px;display:flex;align-items:center}.form-wrap{width:100%;max-width:390px;margin:auto}.form-wrap h2{font:700 28px/1.15 Sora,sans-serif;margin:0 0 8px;letter-spacing:-.7px}.form-wrap>p{margin:0 0 30px;color:var(--muted);font-size:13px;line-height:1.5}.field{display:block;margin-bottom:17px}.field span{display:block;font-size:12px;font-weight:700;margin:0 0 7px;color:#2f4437}.input{display:flex;align-items:center;border:1px solid var(--line);border-radius:12px;background:#fbfdfb;transition:.18s}.input:focus-within{border-color:var(--g500);box-shadow:0 0 0 4px rgba(83,184,118,.11);background:#fff}.input input{width:100%;border:0;outline:0;background:transparent;padding:13px 14px;font:500 14px Inter,sans-serif;color:var(--text)}.submit{width:100%;border:0;border-radius:12px;background:var(--g800);color:white;padding:13px 16px;font:700 14px Inter,sans-serif;cursor:pointer;transition:.18s;display:flex;align-items:center;justify-content:center;gap:9px}.submit:hover{background:var(--g700);transform:translateY(-1px);box-shadow:0 10px 22px rgba(24,75,45,.18)}.submit:disabled{opacity:.6;cursor:wait;transform:none}.error{display:none;padding:11px 12px;margin:0 0 16px;border:1px solid #f2c9ce;background:#fff4f5;color:#8f2130;border-radius:10px;font-size:12px;line-height:1.45}.error.show{display:block}.footer{margin-top:24px;color:#96a69c;font-size:10.5px;text-align:center}.security{margin-top:18px;padding-top:18px;border-top:1px solid #edf2ee;display:flex;align-items:flex-start;gap:9px;color:#77887d;font-size:10.5px;line-height:1.45}.shield{width:24px;height:24px;border-radius:8px;background:var(--g100);display:grid;place-items:center;color:var(--g800);flex:0 0 auto;font-weight:800}
+    @media(max-width:820px){body{padding:0;background:white}.page{min-height:100vh;border:0;border-radius:0;grid-template-columns:1fr;box-shadow:none}.visual{min-height:300px;padding:32px}.hero h1{font-size:35px}.mascot{width:150px}.features{display:none}.form-side{padding:34px 28px 42px}}
+    @media(max-width:480px){.visual{min-height:250px;padding:26px}.hero p{display:none}.hero h1{font-size:30px;margin-bottom:0}.form-side{padding:30px 22px}.brand-logo{width:42px;height:42px}}
   </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-header">
-      <h1><i class="fas fa-chart-line"></i> PMG Connect</h1>
-      <p>Portal interno de marketing e setores</p>
-    </div>
-
-    <form id="loginForm" class="login-form">
-      <div class="form-group">
-        <label for="username">Usuário</label>
-        <input type="text" id="username" placeholder="Digite seu usuário" required autocomplete="username">
+  <main class="page">
+    <section class="visual">
+      <div class="brand"><div class="brand-logo"><img src="/imagenssite/pmglogo.png" alt="PMG"></div><div><strong>PMG Connect</strong><span>Portal interno</span></div></div>
+      <div class="hero"><div class="eyebrow">Operação conectada</div><h1>Informação certa, no mesmo lugar.</h1><p>Demandas, campanhas, vendas, fornecedores e ferramentas da PMG em uma única sessão de acesso.</p><div class="features"><span class="feature">Demandas</span><span class="feature">Campanhas</span><span class="feature">Dashboards</span><span class="feature">Catálogo</span></div></div>
+      <img class="mascot" src="/imagenssite/pmguinho.png" alt="" aria-hidden="true">
+    </section>
+    <section class="form-side">
+      <div class="form-wrap">
+        <h2>Entrar no Connect</h2>
+        <p>Use a mesma conta cadastrada no módulo de Demandas.</p>
+        <div id="loginError" class="error" role="alert"></div>
+        <form id="loginForm">
+          <label class="field"><span>E-mail</span><div class="input"><input id="email" type="email" autocomplete="email" placeholder="nome@pmg.com.br" required></div></label>
+          <label class="field"><span>Senha</span><div class="input"><input id="password" type="password" autocomplete="current-password" placeholder="Sua senha" required></div></label>
+          <button id="submitBtn" class="submit" type="submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
+        </form>
+        <div class="security"><div class="shield">✓</div><div>A sessão agora é validada pelo Supabase Auth. Senhas não ficam armazenadas em arquivos públicos do site.</div></div>
+        <div class="footer">PMG Atacadista © 2026</div>
       </div>
-
-      <div class="form-group">
-        <label for="password">Senha</label>
-        <input type="password" id="password" placeholder="Digite sua senha" required autocomplete="current-password">
-      </div>
-
-      <button type="submit" class="btn-login">
-        <i class="fas fa-sign-in-alt"></i> Entrar
-      </button>
-    </form>
-
-    <div class="login-footer">
-      <p>© 2026 PMG Atacadista • Todos os direitos reservados</p>
-    </div>
-  </div>
-
+    </section>
+  </main>
   <script>
-    // Função para carregar usuários do users.json
-    async function loadUsers() {
+    const form = document.getElementById('loginForm');
+    const errorBox = document.getElementById('loginError');
+    const submit = document.getElementById('submitBtn');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      errorBox.classList.remove('show');
+      submit.disabled = true;
+      submit.querySelector('span').textContent = 'Entrando...';
       try {
-        const response = await fetch('users.json');
-        if (!response.ok) {
-          throw new Error('Falha ao carregar usuários');
-        }
-        const data = await response.json();
-        return data.users || [];
+        await window.PMGConnect.login(document.getElementById('email').value, document.getElementById('password').value);
+        const next = new URLSearchParams(location.search).get('next') || '/central.html';
+        await window.PMGConnect.navigate(next);
       } catch (error) {
-        console.error('Erro ao carregar usuários:', error);
-        // Fallback para hardcoded users em caso de falha
-        return [
-          {
-            "username": "marketing",
-            "password": "@PMGMarketing@2026",
-            "role": "marketing",
-            "name": "Equipe de Marketing",
-            "dashboard": "central.html"
-          },
-          {
-            "username": "compras",
-            "password": "@PGMCompras@2026",
-            "role": "compras",
-            "name": "Setor de Compras",
-            "dashboard": "fornecedores.html"
-          },
-          {
-            "username": "contas_pagar",
-            "password": "@PGMContasPagar@2026",
-            "role": "contas_pagar",
-            "name": "Contas a Pagar",
-            "dashboard": "dashboard.html"
-          }
-        ];
+        errorBox.textContent = error?.message || 'Não foi possível entrar. Verifique e-mail e senha.';
+        errorBox.classList.add('show');
+        submit.disabled = false;
+        submit.querySelector('span').textContent = 'Entrar';
       }
-    }
-
-    // Função para autenticar usuário
-    async function authenticateUser(username, password) {
-      const users = await loadUsers();
-      const user = users.find(u =>
-        u.username.toLowerCase() === username.toLowerCase().trim() &&
-        u.password === password
-      );
-      return user || null;
-    }
-
-    // Função para fazer login
-    async function login() {
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-
-      if (!username || !password) {
-        showAlert('Por favor, preencha todos os campos', 'error');
-        return;
-      }
-
-      try {
-        const user = await authenticateUser(username, password);
-
-        if (user) {
-          // Salva dados do usuário na sessionStorage
-          sessionStorage.setItem('isLoggedIn', 'true');
-          sessionStorage.setItem('user', JSON.stringify(user));
-          sessionStorage.setItem('loginTime', Date.now().toString());
-
-          showAlert(`Bem-vindo, ${user.name}!`, 'success');
-
-          // Redireciona para o dashboard apropriado após um pequeno delay
-          setTimeout(() => {
-            window.location.href = user.dashboard;
-          }, 1500);
-        } else {
-          showAlert('Usuário ou senha incorretos. Tente novamente.', 'error');
-        }
-      } catch (error) {
-        console.error('Erro no login:', error);
-        showAlert('Erro interno. Tente novamente mais tarde.', 'error');
-      }
-    }
-
-    // Função para mostrar alertas
-    function showAlert(message, type) {
-      // Remove alertas existentes
-      const existingAlert = document.querySelector('.alert');
-      if (existingAlert) {
-        existingAlert.remove();
-      }
-
-      const alertDiv = document.createElement('div');
-      alertDiv.className = `alert alert-${type}`;
-      alertDiv.textContent = message;
-
-      // Estilos do alerta
-      alertDiv.style.position = 'fixed';
-      alertDiv.style.top = '20px';
-      alertDiv.style.left = '50%';
-      alertDiv.style.transform = 'translateX(-50%)';
-      alertDiv.style.padding = '12px 24px';
-      alertDiv.style.borderRadius = '8px';
-      alertDiv.style.fontSize = '14px';
-      alertDiv.style.fontWeight = '600';
-      alertDiv.style.zIndex = '1000';
-      alertDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-      alertDiv.style.maxWidth = '90%';
-      alertDiv.style.textAlign = 'center';
-      alertDiv.style.animation = 'slideIn 0.3s ease-out';
-
-      if (type === 'success') {
-        alertDiv.style.backgroundColor = '#dcfce7';
-        alertDiv.style.color = '#166534';
-        alertDiv.style.border = '1px solid #bbf7d0';
-      } else if (type === 'error') {
-        alertDiv.style.backgroundColor = '#fef2f2';
-        alertDiv.style.color = '#991b1b';
-        alertDiv.style.border = '1px solid #fecaca';
-      } else if (type === 'warning') {
-        alertDiv.style.backgroundColor = '#fffbeb';
-        alertDiv.style.color = '#92400e';
-        alertDiv.style.border = '1px solid #fef3c7';
-      }
-
-      document.body.appendChild(alertDiv);
-
-      // Remove o alerta após 3 segundos
-      setTimeout(() => {
-        if (alertDiv.parentNode) {
-          alertDiv.remove();
-        }
-      }, 3000);
-    }
-
-    // Event listener do formulário
-    document.getElementById('loginForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      login();
-    });
-
-    // Foca no campo de username ao carregar
-    document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('username').focus();
     });
   </script>
 </body>

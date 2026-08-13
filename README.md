@@ -1,69 +1,55 @@
-# Portal de Marketing — PMG Atacadista
+# PMG Connect
 
-Site interno do departamento de marketing da PMG, hospedado no Vercel.
+Portal interno da PMG para Demandas, Campanhas, dashboards, fornecedores e ferramentas de Marketing.
 
-## Estrutura do projeto
+## Arquitetura atual
 
-```
-pmg-marketing/
-├── api/
-│   ├── produtos.js      ← proxy para a API de produtos da PMG
-│   └── img-proxy.js     ← proxy para imagens dos produtos
-├── public/
-│   ├── index.html       ← portal principal (home)
-│   └── ferramentas/
-│       └── catalogo.html ← gerador de catálogo em PDF
-└── vercel.json          ← configuração de rotas
-```
+- **Vercel / `api/`**: portal público/interno e funções serverless que não dependem do SQL Server da rede.
+- **Node local / `local-api/`**: Campanhas e Dashboard Regional, que consultam o SQL Server acessível na rede PMG.
+- **Supabase Auth**: sessão única do PMG Connect. As páginas internas não usam mais senha em JSON ou `sessionStorage`.
+- **Supabase**: dados de Demandas e módulos que já possuem tabelas próprias, sempre controlados por RLS.
+- **Persistência de Campanhas**: IndexedDB continua como cache rápido, com sincronização automática para `data/campanhas-studio-v5.json` no serviço local.
 
-## Como publicar no Vercel
+## Instalação local
 
-### 1. Instale a CLI do Vercel (uma vez só)
-```bash
-npm install -g vercel
+```powershell
+npm install
+copy .env.example .env
+npm start
 ```
 
-### 2. Faça login
-```bash
-vercel login
+Preencha o `.env` com as credenciais da instalação. O arquivo `.env` é deliberadamente ignorado pelo Git e não deve ser enviado em ZIPs.
+
+O servidor local usa por padrão:
+
+```text
+http://localhost:3001
 ```
 
-### 3. Dentro da pasta do projeto, publique
-```bash
-cd pmg-marketing
-vercel --prod
+Campanhas e Dashboard Regional abertos pelo portal hospedado transferem a sessão autenticada para o serviço local por um fragmento temporário da URL, removido após a validação.
+
+## Segurança
+
+Antes de publicar esta versão pela primeira vez, execute no **SQL Editor do Supabase**:
+
+```text
+sql/SEGURANCA-PMG-CONNECT.sql
 ```
 
-O Vercel detecta automaticamente os arquivos em `/api` como serverless functions e os arquivos em `/public` como estáticos.
+O script remove escrita pelo papel `anon` nas tabelas administrativas e mantém leitura pública somente onde o dashboard compartilhável por fornecedor exige.
 
----
+## Variáveis importantes
 
-## Variáveis de ambiente obrigatórias
+Consulte `.env.example`. Além de SQL Server e Supabase, o catálogo externo precisa de `PMG_API_URL`, `PMG_USUARIO` e `PMG_SENHA`. O proxy de imagens só aceita o host de `PMG_API_URL` ou hosts listados explicitamente em `PMG_IMAGE_PROXY_HOSTS`. Cadastre também o mesmo `CRON_SECRET` nas variáveis da Vercel e em **GitHub > Settings > Secrets and variables > Actions**, pois o workflow de débitos usa esse segredo para chamar o endpoint.
 
-Configure no painel do Vercel em **Settings → Environment Variables**:
+## Diagnóstico
 
-| Variável       | Descrição                                      | Exemplo                                   |
-|----------------|------------------------------------------------|-------------------------------------------|
-| `PMG_API_URL`  | URL completa do endpoint de produtos da API    | `http://192.168.1.10:8080/api/produtos`   |
-| `PMG_API_KEY`  | Token de autenticação (se a API exigir)        | `meu-token-secreto` (opcional)            |
+```powershell
+npm run diagnostico:regional
+```
 
-> ⚠️ A API interna da PMG precisa ser acessível pela internet (ou via VPN/tunnel) para o Vercel conseguir alcançá-la. Se ela só roda na rede local, use o **Vercel Tunnel** ou exponha via **ngrok / Cloudflare Tunnel**.
+Para validar sintaxe do backend/front-end JavaScript:
 
----
-
-## Adicionando novas ferramentas
-
-Para adicionar uma nova ferramenta ao portal:
-
-1. Crie o arquivo HTML em `public/ferramentas/nome-da-ferramenta.html`
-2. Adicione o link no menu lateral em `public/index.html`
-3. Se precisar de dados da API, crie a serverless function correspondente em `api/`
-
----
-
-## Próximos passos planejados
-
-- [ ] Dashboards de desempenho
-- [ ] Envio de materiais por e-mail
-- [ ] Banco de materiais (artes, logos, templates)
-- [ ] Histórico de envios de catálogos
+```powershell
+node --check server.js
+```

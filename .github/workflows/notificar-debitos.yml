@@ -12,4 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Chamar endpoint de notificação
-        run: curl -f -X GET https://pmgmarketing.vercel.app/api/notificar-debitos
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET" || { echo "CRON_SECRET não configurado no repositório"; exit 1; }
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://pmgmarketing.vercel.app/api/notificar-debitos

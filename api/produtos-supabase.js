@@ -1,3 +1,5 @@
+import { requireSupabaseUser, sendAuthError } from '../src/lib/supabase-auth.js';
+
 /**
  * Catálogo visual PMG — somente leitura.
  * O nome da rota foi mantido por compatibilidade, mas nenhuma informação é
@@ -45,6 +47,7 @@ async function carregarCatalogo({ force = false } = {}) {
 }
 
 export default async function handler(req, res) {
+  try { await requireSupabaseUser(req); } catch (error) { return sendAuthError(res, error); }
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   try {
     const produtos = await carregarCatalogo({ force:String(req.query?.refresh || '').toLowerCase() === 'true' });

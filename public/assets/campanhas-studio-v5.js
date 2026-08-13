@@ -466,6 +466,65 @@
     return Math.ceil((target - today) / 86400000);
   }
 
+  const CAMPAIGN_STORAGE_ENDPOINT = '/api/campanhas-storage';
+
+  function campaignTimestamp(campaign) {
+    const raw = campaign?.updatedAt || campaign?.atualizadoEm || campaign?.createdAt || campaign?.criadoEm || '';
+    const value = Date.parse(raw);
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  async function syncCampaignStorage() {
+    try {
+      const local = await DB.all('campanhas');
+      const response = await fetch(CAMPAIGN_STORAGE_ENDPOINT, { headers:{ Accept:'application/json' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      const remote = Array.isArray(payload?.campanhas) ? payload.campanhas : [];
+      const merged = new Map();
+      for (const item of [...remote, ...local]) {
+        if (!item?.id) continue;
+        const previous = merged.get(String(item.id));
+        if (!previous || campaignTimestamp(item) >= campaignTimestamp(previous)) merged.set(String(item.id), item);
+      }
+      const campaigns = [...merged.values()];
+      for (const campaign of campaigns) await DB.put('campanhas', campaign);
+      const remoteById = new Map(remote.filter((item) => item?.id).map((item) => [String(item.id), item]));
+      const needsUpload = campaigns.filter((item) => {
+        const saved = remoteById.get(String(item.id));
+        return !saved || campaignTimestamp(item) > campaignTimestamp(saved);
+      });
+      if (needsUpload.length) {
+        const upload = await fetch(CAMPAIGN_STORAGE_ENDPOINT, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+          body:JSON.stringify({ campanhas:needsUpload }),
+        });
+        if (!upload.ok) throw new Error(`HTTP ${upload.status}`);
+      }
+      return { ok:true, total:campaigns.length };
+    } catch (error) {
+      console.warn('[campanhas] persistência compartilhada indisponível; mantendo cópia local:', error.message);
+      return { ok:false, error };
+    }
+  }
+
+  async function persistCampaign(campaign) {
+    await DB.put('campanhas', campaign);
+    try {
+      const response = await fetch(CAMPAIGN_STORAGE_ENDPOINT, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+        body:JSON.stringify({ campanha }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return true;
+    } catch (error) {
+      console.warn('[campanhas] campanha salva apenas no navegador:', error.message);
+      return false;
+    }
+  }
+
   async function loadCampaigns() {
     app.campaigns = (await DB.all('campanhas')).map(normalizeCampaign).sort((a,b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
     $('#navCampaignCount').textContent = app.campaigns.length;
@@ -1323,11 +1382,11 @@
     syncCurrentStep();
     const campaign = app.wizard.campaign;
     campaign.updatedAt = new Date().toISOString();
-    await DB.put('campanhas', campaign);
+    const sharedSaved = await persistCampaign(campaign);
     await loadCampaigns();
     closeWizard();
     renderView();
-    toast('Campanha salva com sucesso.');
+    toast(sharedSaved ? 'Campanha salva com sucesso.' : 'Campanha salva neste navegador; o backup local do servidor não respondeu.', sharedSaved ? '' : 'error');
   }
 
   function compareOp(value, operator, target) {
@@ -3475,6 +3534,7 @@
   async function init() {
     document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) || 'light';
     await DB.init();
+    await syncCampaignStorage();
     await loadCampaigns();
     renderView();
     icons();

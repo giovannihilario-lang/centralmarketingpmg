@@ -1,8 +1,10 @@
 import { getPool, sql } from '../src/lib/db.js';
 import { TABELAS } from '../src/lib/tabelas.js';
 
+import { requireSupabaseUser, sendAuthError } from '../src/lib/supabase-auth.js';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
+  try { await requireSupabaseUser(req); } catch (error) { return sendAuthError(res, error); }
   const sub = req.body;
   if (!sub?.endpoint) return res.status(400).json({ erro: 'Subscription inválida.' });
 

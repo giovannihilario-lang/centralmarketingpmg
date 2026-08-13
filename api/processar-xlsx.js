@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { getPool, sql } from '../src/lib/db.js';
 import { TABELAS } from '../src/lib/tabelas.js';
 
+import { requireSupabaseUser, sendAuthError } from '../src/lib/supabase-auth.js';
 // Separa "7337 - COSTELA BOVINA CONGELADA..." em { id: 7337, nome: "COSTELA BOVINA CONGELADA..." }
 function separarCodigoNome(texto) {
   if (!texto || typeof texto !== 'string') return { id: null, nome: null };
@@ -30,6 +31,7 @@ export default async function handler(req, res) {
     });
   }
   if (req.method !== 'POST') return res.status(405).end();
+  try { await requireSupabaseUser(req); } catch (error) { return sendAuthError(res, error); }
 
   let rows = null;
 

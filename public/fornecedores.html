@@ -1,10 +1,13 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-pmg-auth>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fornecedores – PMG Atacadista</title>
+  <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/connect-auth.js?v=1.0.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -222,7 +225,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
   </button>
   <div class="nav-brand">
-    <div class="nav-logo">PMG</div>
+    <div class="nav-logo"><img src="/imagenssite/pmglogo.png" alt="PMG" style="width:100%;height:100%;object-fit:contain"></div>
     <div>
       <div class="nav-brand-name">PMG Atacadista</div>
       <div class="nav-brand-sub">Marketing</div>
@@ -230,7 +233,7 @@
   </div>
   <div class="nav-body">
     <div class="nav-group">Geral</div>
-    <a href="/index.html" class="nav-link">
+    <a href="/central.html" class="nav-link">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
       <span>Início</span>
     </a>
@@ -248,7 +251,8 @@
       <span>Fornecedores</span>
     </a>
   </div>
-  <div class="nav-footer">PMG Atacadista © 2025</div>
+  <div style="padding:8px"><button data-pmg-logout class="nav-link" type="button" style="width:100%;border:0;background:transparent;text-align:left"><span style="font-size:16px">↪</span><span>Sair</span></button></div>
+  <div class="nav-footer">PMG Atacadista © 2026</div>
 </nav>
 
 <!-- ── MAIN ── -->
@@ -674,15 +678,26 @@ ALTER TABLE fornecedores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pedidos_fornecedor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notas_fiscais ENABLE ROW LEVEL SECURITY;
 
+-- Leitura pública é mantida porque os dashboards por slug são compartilháveis.
 CREATE POLICY "leitura_publica_fornecedores" ON fornecedores FOR SELECT USING (true);
 CREATE POLICY "leitura_publica_pedidos" ON pedidos_fornecedor FOR SELECT USING (true);
 CREATE POLICY "leitura_publica_nfe" ON notas_fiscais FOR SELECT USING (true);
-CREATE POLICY "insert_service_role_fornecedores" ON fornecedores FOR INSERT WITH CHECK (true);
-CREATE POLICY "update_service_role_fornecedores" ON fornecedores FOR UPDATE USING (true);
-CREATE POLICY "insert_service_role_pedidos" ON pedidos_fornecedor FOR INSERT WITH CHECK (true);
-CREATE POLICY "delete_service_role_pedidos" ON pedidos_fornecedor FOR DELETE USING (true);
-CREATE POLICY "insert_service_role_nfe" ON notas_fiscais FOR INSERT WITH CHECK (true);
-CREATE POLICY "delete_service_role_nfe" ON notas_fiscais FOR DELETE USING (true);</pre>
+
+-- Se este SQL já foi executado em uma versão anterior, remova as policies inseguras antes de recriar.
+DROP POLICY IF EXISTS "insert_service_role_fornecedores" ON fornecedores;
+DROP POLICY IF EXISTS "update_service_role_fornecedores" ON fornecedores;
+DROP POLICY IF EXISTS "insert_service_role_pedidos" ON pedidos_fornecedor;
+DROP POLICY IF EXISTS "delete_service_role_pedidos" ON pedidos_fornecedor;
+DROP POLICY IF EXISTS "insert_service_role_nfe" ON notas_fiscais;
+DROP POLICY IF EXISTS "delete_service_role_nfe" ON notas_fiscais;
+
+-- Escrita: somente usuários autenticados no PMG Connect.
+CREATE POLICY "insert_autenticado_fornecedores" ON fornecedores FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "update_autenticado_fornecedores" ON fornecedores FOR UPDATE TO authenticated USING (auth.uid() IS NOT NULL) WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "insert_autenticado_pedidos" ON pedidos_fornecedor FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "delete_autenticado_pedidos" ON pedidos_fornecedor FOR DELETE TO authenticated USING (auth.uid() IS NOT NULL);
+CREATE POLICY "insert_autenticado_nfe" ON notas_fiscais FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+CREATE POLICY "delete_autenticado_nfe" ON notas_fiscais FOR DELETE TO authenticated USING (auth.uid() IS NOT NULL);</pre>
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('sqlPre').textContent).then(()=>toast('✅ SQL copiado!'))">Copiar SQL</button>
@@ -697,9 +712,7 @@ CREATE POLICY "delete_service_role_nfe" ON notas_fiscais FOR DELETE USING (true)
 /* ══════════════════════════════════════════════
    SUPABASE
 ══════════════════════════════════════════════ */
-const SUPABASE_URL      = 'https://scokolfzvtzohrzdgisz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjb2tvbGZ6dnR6b2hyemRnaXN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODk3OTQsImV4cCI6MjA5ODY2NTc5NH0.43X3j64Ds6lcVonDAsONyueveOMaovHb1pqE9ofa3FI';
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let db;
 
 const BASE_URL = window.location.origin;
 const MONTH_NAMES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -1645,6 +1658,8 @@ async function enviarNFe() {
 ══════════════════════════════════════════════ */
 document.getElementById('sqlModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
 (async function initPage() {
+  await window.PMGConnect.ready;
+  db = window.PMGConnect.client;
   await carregarFornecedores();
   await carregarDebitos();
   atualizarBadgeDebitos();

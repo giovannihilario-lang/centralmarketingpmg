@@ -1,8 +1,10 @@
 import webpush from 'web-push';
 import { getPool, sql } from '../src/lib/db.js';
 import { TABELAS } from '../src/lib/tabelas.js';
+import { requireUserOrCron, sendAuthError } from '../src/lib/supabase-auth.js';
 
 export default async function handler(req, res) {
+  try { await requireUserOrCron(req); } catch (error) { return sendAuthError(res, error); }
   if (!TABELAS.notas_fiscais || !TABELAS.fornecedores) {
     return res.status(501).json({
       erro: 'Débitos de sell-in ainda não migrados: falta definir onde ficam as tabelas de fornecedores e notas fiscais no SQL Server (veja src/lib/tabelas.js).',
