@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/produtos",
+      "destination": "/api/produtos"
+    },
+    {
       "source": "/img-proxy",
       "destination": "/api/img-proxy"
     },
@@ -10,6 +14,10 @@
     }
   ],
   "crons": [
+    {
+      "path": "/api/sync-produtos",
+      "schedule": "0 3 * * *"
+    },
     {
       "path": "/api/notificar-demandas",
       "schedule": "5 11 * * *"

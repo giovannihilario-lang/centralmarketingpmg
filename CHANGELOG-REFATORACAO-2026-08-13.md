@@ -15,13 +15,13 @@
 
 - Campanhas passam a manter cópia persistente no serviço local além do IndexedDB.
 - Cliente Supabase autenticado compartilhado por Dashboard/Fornecedores/Upload Sell-In.
-- `/catalogo.html` agora redireciona para o caminho oficial.
+- Links internos do portal apontam diretamente para `/ferramentas/catalogo.html`; o Catálogo foi mantido sem redirecionamento adicional.
 - Navegação de retorno ao Connect e saída padronizada nos módulos internos.
 
 ## Interface
 
 - Login redesenhado na identidade verde PMG Connect.
-- Catálogo e uploads alinhados à tipografia Sora/Inter e identidade do portal.
+- Uploads alinhados à identidade do portal. O Catálogo foi restaurado integralmente ao visual e comportamento do pacote original.
 - Dashboard Geral recebeu identidade e breakpoints responsivos.
 - Favicon oficial conectado às páginas e otimizado.
 - Imagens grandes de logo, mascote e avatares comprimidas/redimensionadas sem alterar os caminhos usados pelo app.
@@ -33,3 +33,7 @@
 - Cópias antigas de backend dentro de `public/` removidas.
 - Cron obsoleto de sincronização de produtos removido.
 - Documentação antiga conflitante removida/atualizada.
+
+## Exceção intencional — Catálogo
+- `public/ferramentas/catalogo.html`, `api/produtos-supabase.js`, `api/produtos.js`, `api/sync-produtos.js`, `api/img-proxy.js` e `local-api/catalogo-estado.js` foram restaurados exatamente do pacote original a pedido do usuário.
+- A autenticação, regras de proxy e comportamento da API do Catálogo não foram alterados nesta versão.

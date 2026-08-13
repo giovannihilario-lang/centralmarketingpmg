@@ -1,33 +1,25 @@
 <!DOCTYPE html>
-<html lang="pt-BR" data-pmg-auth>
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador de Catálogo — PMG</title>
-  <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
-  <link rel="icon" type="image/png" href="/favicon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --verde-escuro: #0D2B1A; --verde-med: #2D7A4F;
-    --verde-claro: #B8E8C7; --verde-suave: #F2FAF5; --accent: #89D8A3;
+    --verde-escuro: #1B5E20; --verde-med: #2E7D32;
+    --verde-claro: #C8E6C9; --verde-suave: #F1F8F1; --accent: #81C784;
   }
-  body { font-family: 'Inter', system-ui, sans-serif; background: #F0F2F5; color: #212121; min-height: 100vh; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #F0F2F5; color: #212121; min-height: 100vh; }
   .topbar { background: var(--verde-escuro); color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,.25); position: sticky; top: 0; z-index: 100; }
   .topbar-brand { display: flex; align-items: center; gap: 12px; }
   .topbar-logo { width: 36px; height: 36px; background: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; color: var(--verde-escuro); letter-spacing: 0.5px; }
-  .topbar h1 { font-family:'Sora',sans-serif; font-size: 15px; font-weight: 600; letter-spacing: .3px; }
+  .topbar h1 { font-size: 15px; font-weight: 600; letter-spacing: .3px; }
   .topbar p  { font-size: 11px; opacity: .65; margin-top: 1px; }
   .btn-export { background: white; color: var(--verde-escuro); border: none; border-radius: 8px; padding: 9px 20px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 7px; transition: opacity .15s; }
   .btn-export:hover { opacity: .85; }
-  .topbar-actions { display:flex; align-items:center; gap:8px; }
-  .btn-connect { background:rgba(255,255,255,.08); color:white; border:1px solid rgba(255,255,255,.18); border-radius:8px; padding:9px 12px; font-weight:700; font-size:12px; text-decoration:none; cursor:pointer; }
-  .btn-connect:hover { background:rgba(255,255,255,.14); }
   .btn-export svg { width: 15px; height: 15px; }
   .app { display: flex; height: calc(100vh - 61px); }
   .panel { width: 290px; min-width: 290px; background: white; border-right: 1px solid #E5E7EB; overflow-y: auto; display: flex; flex-direction: column; gap: 0; }
@@ -162,26 +154,6 @@
   .btn-sel-delete:hover { background: #C62828; }
   .btn-sel-cancel { background: none; color: #BDBDBD; border: 1px solid #444; border-radius: 7px; padding: 6px 12px; font-size: 12px; cursor: pointer; transition: all .12s; }
   .btn-sel-cancel:hover { color: white; border-color: #888; }
-
-  @media (max-width: 900px) {
-    body { min-height:100vh; overflow:auto; }
-    .topbar { position:sticky; padding:12px 16px; gap:12px; }
-    .topbar p { display:none; }
-    .btn-export { padding:9px 12px; }
-    .app { height:auto; min-height:calc(100vh - 61px); flex-direction:column; }
-    .panel { width:100%; min-width:0; max-height:46vh; border-right:0; border-bottom:1px solid #e5e7eb; }
-    .preview-wrap { width:100%; padding:18px 12px 30px; overflow:auto; align-items:flex-start; }
-    .a4 { transform-origin:top left; }
-  }
-  @media (max-width: 640px) {
-    .topbar-logo { width:32px; height:32px; }
-    .topbar h1 { font-size:13px; }
-    .btn-export { font-size:0; width:38px; height:38px; padding:10px; justify-content:center; }
-    .btn-connect { padding:8px 9px; font-size:10px; }
-    .btn-export svg { width:18px; height:18px; }
-    .panel { max-height:52vh; }
-    .preview-wrap { zoom:.72; }
-  }
   @media print {
     body { background: white !important; }
     .topbar, .panel { display: none !important; }
@@ -191,29 +163,23 @@
     .a4 { width: 210mm !important; height: 297mm !important; min-height: unset !important; box-shadow: none !important; border-radius: 0 !important; page-break-after: always; break-after: page; }
   }
 </style>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/assets/connect-auth.js?v=1.0.0"></script>
 </head>
 <body>
 
 <div class="topbar">
   <div class="topbar-brand">
-    <div class="topbar-logo"><img src="/imagenssite/pmglogo.png" alt="PMG" style="width:100%;height:100%;object-fit:contain"></div>
+    <div class="topbar-logo">PMG</div>
     <div>
       <h1>Gerador de Catálogo</h1>
       <p>Personalize cores, organize produtos por página e exporte o PDF</p>
     </div>
   </div>
-  <div class="topbar-actions">
-    <a class="btn-connect" href="/central.html">Connect</a>
-    <button class="btn-connect" data-pmg-logout type="button">Sair</button>
-    <button class="btn-export" onclick="exportPDF()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-        <path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/>
-      </svg>
-      Exportar PDF
-    </button>
-  </div>
+  <button class="btn-export" onclick="exportPDF()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/>
+    </svg>
+    Exportar PDF
+  </button>
 </div>
 
 <div class="app">

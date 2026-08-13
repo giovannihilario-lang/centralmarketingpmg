@@ -8,7 +8,8 @@ VALIDADO NESTE PACOTE
 - Rotas HTML principais no Node local: HTTP 200.
 - /api/kpis sem sessão: HTTP 401.
 - /api/campanhas-storage sem sessão: HTTP 401.
-- /api/produtos-supabase sem sessão: HTTP 401.
+- Catálogo: HTML e endpoints relacionados comparados byte a byte com o pacote original: OK.
+- /api/produtos-supabase mantém o comportamento original do Catálogo (sem exigência da nova sessão global).
 - /api/notificar-demandas?config=1: HTTP 200 (somente configuração pública).
 - Origem externa não autorizada na API local: HTTP 403.
 - Funções duplicadas antigas de Demandas: removidas.
