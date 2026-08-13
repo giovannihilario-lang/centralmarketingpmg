@@ -2809,3 +2809,96 @@ body.ui-theme-dark .sound-preview.info{background:#282139;color:#c7b3f5;border-c
 @media(max-width:560px){
   .notification-sound-previews{grid-template-columns:1fr 1fr}
 }
+
+
+/* =========================================================
+   V3.5.7 — FIX DEFINITIVO DO ALERTA INVASIVO / SCROLL
+   O body NÃO é mais deslocado com position:fixed + top negativo.
+   O bloqueio acontece por overflow, mantendo o overlay preso ao viewport.
+   ========================================================= */
+
+html.ui-overlay-open{
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+
+body.ui-overlay-open,
+body.intrusive-notification-open{
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+}
+
+/* A camada cobre SEMPRE exatamente a janela visível. */
+#intrusiveNotificationModal.intrusive-notification-layer{
+  position:fixed!important;
+  inset:0!important;
+  top:0!important;
+  left:0!important;
+  right:0!important;
+  bottom:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  min-height:100dvh!important;
+  max-height:100dvh!important;
+  margin:0!important;
+  padding:max(10px,env(safe-area-inset-top))
+          max(10px,env(safe-area-inset-right))
+          max(10px,env(safe-area-inset-bottom))
+          max(10px,env(safe-area-inset-left))!important;
+  overflow:hidden!important;
+  overscroll-behavior:none!important;
+  z-index:10000!important;
+  transform:none!important;
+}
+
+/* O cartão fica ancorado na própria viewport, não na posição do documento. */
+#intrusiveNotificationCard.intrusive-notification-card{
+  position:fixed!important;
+  top:50%!important;
+  left:50%!important;
+  right:auto!important;
+  bottom:auto!important;
+  width:min(900px,calc(100vw - 28px))!important;
+  max-width:900px!important;
+  max-height:calc(100dvh - 28px)!important;
+  margin:0!important;
+  transform:translate(-50%,-50%)!important;
+  overflow:hidden!important;
+}
+
+/* Só o miolo do alerta pode rolar quando faltar altura. */
+#intrusiveNotificationCard .intrusive-notification-body{
+  min-height:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+}
+
+/* Cabeçalho e rodapé permanecem visíveis mesmo com conteúdo grande. */
+#intrusiveNotificationCard .intrusive-notification-header,
+#intrusiveNotificationCard .intrusive-notification-footer{
+  position:relative!important;
+  z-index:3!important;
+  flex:0 0 auto!important;
+}
+
+/* Corrige as animações antigas que também definiam transform no cartão. */
+#intrusiveNotificationCard.intrusive-notification-card{
+  animation:intrusiveViewportIn .28s var(--ease)!important;
+}
+#intrusiveNotificationCard.intrusive-notification-card.tone-immediate{
+  animation:intrusiveViewportIn .28s var(--ease),
+            immediateGlow 1.15s ease-in-out .28s infinite alternate!important;
+}
+
+@keyframes intrusiveViewportIn{
+  from{opacity:0;transform:translate(-50%,calc(-50% + 14px)) scale(.985)}
+  to{opacity:1;transform:translate(-50%,-50%) scale(1)}
+}
+
+@media(max-width:720px){
+  #intrusiveNotificationCard.intrusive-notification-card{
+    width:calc(100vw - 16px)!important;
+    max-height:calc(100dvh - 16px)!important;
+  }
+}

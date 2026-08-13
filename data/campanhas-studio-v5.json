@@ -1,0 +1,638 @@
+{
+  "version": 5,
+  "updatedAt": "2026-08-13T18:01:31.653Z",
+  "campanhas": [
+    {
+      "id": "campaign_mshzca75_n6yjne",
+      "name": "cepera",
+      "description": "",
+      "start": "2026-07-06",
+      "end": "2026-08-10",
+      "periodMode": "six_mondays",
+      "suppliers": [
+        {
+          "id": 1551,
+          "name": "1551 - CONSERVAS CEPÊRA",
+          "totalProducts": 31
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "points",
+        "positivity",
+        "kg"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 5,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_mshzca76_e8gfup",
+          "scope": "collective",
+          "mode": "growth_percent",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 12
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_mshzca76_paot4l",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 10
+        }
+      ],
+      "rules": [],
+      "pointRules": [
+        {
+          "id": "point_mshzfknm_pvra7x",
+          "source": "positivity",
+          "mode": "per_unit",
+          "basis": 1,
+          "points": 100
+        }
+      ],
+      "categories": [],
+      "orderActivationRule": {
+        "enabled": false,
+        "name": "Benefício de primeira compra",
+        "baseCategoryId": "",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [
+        {
+          "position": 1,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 2,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 3,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 4,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 5,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 6,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 7,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 8,
+          "type": "money",
+          "description": ""
+        }
+      ],
+      "createdAt": "2026-08-06T20:40:00.162Z",
+      "updatedAt": "2026-08-12T15:16:35.174Z"
+    },
+    {
+      "id": "campaign_mshzjso7_uawou7",
+      "name": "ceperas",
+      "description": "",
+      "start": "2026-07-06",
+      "end": "2026-08-10",
+      "suppliers": [
+        {
+          "id": 1551,
+          "name": "1551 - CONSERVAS CEPÊRA",
+          "totalProducts": 31
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "points",
+        "positivity",
+        "kg"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 5,
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_mshzjso8_321eu9",
+          "scope": "collective",
+          "mode": "growth_percent",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 12
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_mshzjso8_y2a9pw",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 10
+        }
+      ],
+      "rules": [],
+      "pointRules": [],
+      "categories": [],
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [],
+      "createdAt": "2026-08-06T20:45:50.696Z",
+      "updatedAt": "2026-08-06T20:47:01.849Z"
+    },
+    {
+      "id": "campaign_msp1c9zk_xad12g",
+      "name": "harald",
+      "description": "q4132eqw",
+      "start": "2026-08-17",
+      "end": "2026-09-21",
+      "suppliers": [
+        {
+          "id": 48,
+          "name": "48 - CHOCOLATES HARALD",
+          "totalProducts": 30
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "activationRate"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 5,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_msp1c9zk_cami46",
+          "scope": "collective",
+          "mode": "absolute",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 100
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_msp1c9zk_psbq4j",
+          "scope": "individual",
+          "mode": "absolute",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 4
+        }
+      ],
+      "rules": [],
+      "pointRules": [],
+      "categories": [
+        {
+          "id": "category_msp1kagd_poit3v",
+          "name": "Fortunata",
+          "requiredMix": true,
+          "minDistinct": 1,
+          "pointUnit": "none",
+          "pointValue": 0,
+          "products": [
+            {
+              "id": 9997,
+              "name": "CHEDDAR FORTUNATA CREMOSO RECHEIO 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE LEITE",
+              "subgroup": "CHEDDAR",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077839595",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9996,
+              "name": "REQUEIJÃO FORTUNATA CREMOSO RECHEIO 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE LEITE",
+              "subgroup": "REQUEIJÃO COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838437",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        },
+        {
+          "id": "category_msp1lxet_lij1is",
+          "name": "Forneáveis",
+          "requiredMix": true,
+          "minDistinct": 1,
+          "pointUnit": "none",
+          "pointValue": 0,
+          "products": [
+            {
+              "id": 5985,
+              "name": "CHOCOLATE FORNEÁVEL AO LEITE CONFEIPOP HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077837027",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7065,
+              "name": "CHOCOLATE FORNEÁVEL AVELÃ CONFEIPOP HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 8,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838123",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7903,
+              "name": "CHOCOLATE FORNEÁVEL BRANCO CONFEIPOP HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838482",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 416,
+              "name": "CHOCOLATE FORNEÁVEL AO LEITE CONFEITEIRO HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077836952",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 4397,
+              "name": "CHOCOLATE FORNEÁVEL AVELÃ CONFEITEIRO HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 8,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077836969",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 410,
+              "name": "CHOCOLATE FORNEÁVEL BRANCO CONFEITEIRO HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077836945",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7902,
+              "name": "CHOCOLATE FORNEÁVEL GRANDE AO LEITE CONFEITEIRO HARALD 2,010 KG (CX 6 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 6,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838468",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8604,
+              "name": "CHOCOLATE FORNEÁVEL GRANDE AVELÃ CONFEITEIRO HARALD 2,010 KG (CX 6 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 6,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077839021",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8603,
+              "name": "RECHEIO E COBERTURA FORNEÁVEL SABOR PISTACHE HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 8,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "COBERTURA",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077839014",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        }
+      ],
+      "orderActivationRule": {
+        "enabled": true,
+        "name": "Benefício da primeira compra ",
+        "baseCategoryId": "category_msp1lxet_lij1is",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "category_msp1kagd_poit3v",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [],
+      "createdAt": "2026-08-11T19:10:22.352Z",
+      "updatedAt": "2026-08-11T19:23:42.388Z"
+    },
+    {
+      "id": "campaign_msp27so6_p0kvxg",
+      "name": "Campanha teste Edilson Mccain",
+      "description": "Campanha teste Edilson Mccain\nCampanha teste Edilson Mccain\nCampanha teste Edilson Mccain\nCampanha teste Edilson Mccain\nCampanha teste Edilson Mccain",
+      "start": "2026-08-03",
+      "end": "2026-09-07",
+      "suppliers": [
+        {
+          "id": 14807,
+          "name": "14807 - BATATAS MCCAIN ARAXÁ",
+          "totalProducts": 17
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "points",
+        "kg",
+        "kgGrowth",
+        "mix"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 10,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_msp27so6_kpbj9b",
+          "scope": "collective",
+          "mode": "absolute",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 305000
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_msp27so6_99xoqs",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 10
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule_msp2tvhm_cfdbt5",
+          "name": "Positivação mínima",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 5
+        }
+      ],
+      "pointRules": [
+        {
+          "id": "point_msp2s8bi_o1f7tz",
+          "source": "mixCategories",
+          "mode": "per_unit",
+          "basis": 1,
+          "points": 100
+        }
+      ],
+      "categories": [],
+      "orderActivationRule": {
+        "enabled": false,
+        "name": "Benefício de primeira compra",
+        "baseCategoryId": "",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [
+        {
+          "position": 1,
+          "type": "money",
+          "description": "1000,00"
+        },
+        {
+          "position": 2,
+          "type": "money",
+          "description": "carro"
+        },
+        {
+          "position": 3,
+          "type": "money",
+          "description": "bike"
+        },
+        {
+          "position": 4,
+          "type": "money",
+          "description": "vale "
+        },
+        {
+          "position": 5,
+          "type": "money",
+          "description": "23,00"
+        }
+      ],
+      "createdAt": "2026-08-11T19:34:52.902Z",
+      "updatedAt": "2026-08-11T19:58:22.998Z"
+    },
+    {
+      "id": "campaign_msp41kf4_74114g",
+      "name": "Leão (Oficial)",
+      "description": "",
+      "start": "2026-07-20",
+      "end": "2026-08-24",
+      "suppliers": [
+        {
+          "id": 19036,
+          "name": "19036 - BEBIDAS LEÃO",
+          "totalProducts": 2
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "revenue"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 3,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_msp41kf4_wbdpqd",
+          "scope": "collective",
+          "mode": "absolute",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 20000
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_msp41kf4_hkzjgw",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 20
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule_msp44gxa_nt0u5g",
+          "name": "Positivação mínima",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 3
+        }
+      ],
+      "pointRules": [],
+      "categories": [],
+      "orderActivationRule": {
+        "enabled": false,
+        "name": "Benefício de primeira compra",
+        "baseCategoryId": "",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        },
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [],
+      "createdAt": "2026-08-11T20:26:01.504Z",
+      "updatedAt": "2026-08-11T20:28:46.663Z"
+    }
+  ]
+}

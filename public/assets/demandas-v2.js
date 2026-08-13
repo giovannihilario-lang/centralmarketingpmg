@@ -1432,15 +1432,10 @@ function lockPageBehindOverlay() {
   uiOverlayLocked = true;
   uiOverlayScrollY = window.scrollY || window.pageYOffset || 0;
 
+  // Não desloca o body. O antigo position:fixed + top negativo fazia
+  // overlays descendentes acompanharem a posição do documento no Chrome.
   document.documentElement.classList.add('ui-overlay-open');
   document.body.classList.add('ui-overlay-open');
-
-  // Mantém visualmente a página exatamente no ponto em que estava.
-  document.body.style.position = 'fixed';
-  document.body.style.top = `-${uiOverlayScrollY}px`;
-  document.body.style.left = '0';
-  document.body.style.right = '0';
-  document.body.style.width = '100%';
 }
 
 function unlockPageBehindOverlay() {
@@ -1450,13 +1445,14 @@ function unlockPageBehindOverlay() {
   const restoreY = uiOverlayScrollY;
   document.documentElement.classList.remove('ui-overlay-open');
   document.body.classList.remove('ui-overlay-open');
-  document.body.style.position = '';
-  document.body.style.top = '';
-  document.body.style.left = '';
-  document.body.style.right = '';
-  document.body.style.width = '';
 
-  window.scrollTo({ top: restoreY, left: 0, behavior: 'auto' });
+  // Overflow hidden não deve alterar a posição, mas preservamos o ponto
+  // original caso algum navegador tente reposicionar o documento.
+  requestAnimationFrame(() => {
+    if (Math.abs((window.scrollY || 0) - restoreY) > 1) {
+      window.scrollTo({ top: restoreY, left: 0, behavior: 'auto' });
+    }
+  });
 }
 
 function syncOverlayScrollLock() {
@@ -1485,8 +1481,11 @@ function initOverlayStability() {
   const intrusiveLayer = $('intrusiveNotificationModal');
   intrusiveLayer?.addEventListener('wheel', event => {
     const scrollArea = event.target.closest('.intrusive-notification-body');
+
+    // A roda nunca pode mover o documento ou a camada do alerta.
     if (!scrollArea) {
       event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
@@ -1497,6 +1496,14 @@ function initOverlayStability() {
     if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
       event.preventDefault();
     }
+    event.stopPropagation();
+  }, { passive: false });
+
+  intrusiveLayer?.addEventListener('touchmove', event => {
+    if (!event.target.closest('.intrusive-notification-body')) {
+      event.preventDefault();
+    }
+    event.stopPropagation();
   }, { passive: false });
 
   // Em modais comuns, impede a roda no backdrop de movimentar a página atrás.
@@ -2611,8 +2618,60 @@ function fileSafeKey(value){return String(value||'').normalize('NFD').replace(/[
 
 function monthInputValue(date=new Date()){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;}
 function monthBounds(value){const [y,m]=String(value||monthInputValue()).split('-').map(Number);const start=new Date(y,m-1,1),end=new Date(y,m,1);return{start,end,label:new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(start)};}
+function buildMonthlyReport(value){
+  const {start,end,label}=monthBounds(value),operators=state.collaborators.filter(p=>p.role!=='gestor');
+  const operatorIds=new Set(operators.map(p=>p.id));
+  const rows=operators.map(person=>{
+    const completed=state.tasks.filter(t=>t.responsavel_id===person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
+    const created=state.tasks.filter(t=>t.responsavel_id===person.id&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
+    const overdue=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&isOverdue(t));
+    const active=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&t.status!=='concluida');
+    const approved=completed.filter(t=>t.avaliacao_status==='aprovada').length;
+    const immediates=completed.filter(t=>t.prioridade==='imediata').length;
+    const hours=completed.reduce((sum,t)=>sum+sizeWeight(t),0);
+    const deadlineCompleted=completed.filter(t=>taskDue(t)&&t.concluida_em);
+    const onTime=deadlineCompleted.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
+    const onTimeRate=deadlineCompleted.length?Math.round((onTime/deadlineCompleted.length)*100):null;
+    const cycleValues=completed.filter(t=>t.criado_em&&(t.concluida_em||t.atualizado_em)).map(t=>Math.max(0,(new Date(t.concluida_em||t.atualizado_em)-new Date(t.criado_em))/86400000));
+    const avgCycle=cycleValues.length?cycleValues.reduce((a,b)=>a+b,0)/cycleValues.length:null;
+    const transfersIn=state.transfers.filter(tr=>tr.para_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
+    const transfersOut=state.transfers.filter(tr=>tr.de_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
+    return{person,created:created.length,completed:completed.length,approved,immediates,hours,active:active.length,overdue:overdue.length,onTimeRate,avgCycle,transfersIn:transfersIn.length,transfersOut:transfersOut.length};
+  }).sort((a,b)=>b.completed-a.completed||b.hours-a.hours);
+  const completedInMonth=state.tasks.filter(t=>t.status==='concluida'&&operatorIds.has(t.responsavel_id)&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
+  const createdInMonth=state.tasks.filter(t=>operatorIds.has(t.responsavel_id)&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
+  const projectSet=new Set([...completedInMonth,...createdInMonth].map(t=>String(t.projeto||'').trim()||'Sem projeto'));
+  const projects=[...projectSet].map(name=>{
+    const completed=completedInMonth.filter(t=>(String(t.projeto||'').trim()||'Sem projeto')===name);
+    const created=createdInMonth.filter(t=>(String(t.projeto||'').trim()||'Sem projeto')===name);
+    const active=state.tasks.filter(t=>operatorIds.has(t.responsavel_id)&&!t.arquivada_em&&t.status!=='concluida'&&(String(t.projeto||'').trim()||'Sem projeto')===name);
+    return{name,created:created.length,completed:completed.length,hours:completed.reduce((sum,t)=>sum+sizeWeight(t),0),active:active.length,overdue:active.filter(isOverdue).length,immediates:completed.filter(t=>t.prioridade==='imediata').length};
+  }).sort((a,b)=>b.completed-a.completed||b.hours-a.hours||a.name.localeCompare(b.name,'pt-BR'));
+  const completedWithDeadline=completedInMonth.filter(t=>taskDue(t)&&t.concluida_em);
+  const totalOnTime=completedWithDeadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
+  return{label,rows,projects,totalCompleted:rows.reduce((s,r)=>s+r.completed,0),totalHours:rows.reduce((s,r)=>s+r.hours,0),totalCreated:rows.reduce((s,r)=>s+r.created,0),teamOnTimeRate:completedWithDeadline.length?Math.round(totalOnTime/completedWithDeadline.length*100):null};
+}
+function renderMonthlyReport(){
+  const value=$('monthlyReportMonth').value||monthInputValue();const report=buildMonthlyReport(value);state.monthlyReportData=report;
+  const projectsHTML=report.projects.length?`<section class="monthly-project-section"><div class="monthly-section-title"><div><span class="eyebrow">Projetos</span><h4>Onde o esforço do mês foi aplicado</h4></div><span>${report.projects.length} projeto${report.projects.length===1?'':'s'}</span></div><div class="monthly-project-grid">${report.projects.map(project=>`<article class="monthly-project-card ${project.name==='Sem projeto'?'unclassified':''}"><div class="monthly-project-card-head"><span><i data-lucide="folder-kanban"></i></span><div><strong>${escapeHtml(project.name)}</strong><small>${project.created} recebida(s) · ${project.completed} concluída(s)</small></div></div><div class="monthly-project-stats"><span><strong>${formatHours(project.hours)}</strong><small>entregues</small></span><span><strong>${project.active}</strong><small>ativas</small></span><span class="${project.overdue?'danger':''}"><strong>${project.overdue}</strong><small>atrasadas</small></span><span><strong>${project.immediates}</strong><small>imediatas</small></span></div></article>`).join('')}</div></section>`:'<section class="monthly-project-section"><div class="empty-state"><i data-lucide="folder-kanban"></i>Nenhum projeto com atividade neste mês.</div></section>';
+  $('monthlyReportContent').innerHTML=`<div class="monthly-report-hero"><div><span class="eyebrow light">${escapeHtml(report.label)}</span><h3>Performance operacional da equipe</h3><p>Gestores ficam fora da comparação. O relatório combina volume concluído, horas estimadas, prazo, ciclo, projetos e transferências.</p></div><div class="monthly-report-totals"><span><strong>${report.totalCompleted}</strong>concluídas</span><span><strong>${formatHours(report.totalHours)}</strong>entregues</span><span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>no prazo</span></div></div>${projectsHTML}<section class="monthly-people-section"><div class="monthly-section-title"><div><span class="eyebrow">Equipe</span><h4>Performance por colaborador</h4></div></div><div class="monthly-report-table"><div class="monthly-report-row head"><span>Colaborador</span><span>Recebidas</span><span>Concluídas</span><span>Horas</span><span>No prazo</span><span>Ciclo médio</span><span>Ativas</span><span>Atrasadas</span><span>Transferências</span></div>${report.rows.map((r,i)=>`<div class="monthly-report-row"><span class="monthly-person">${avatarHTML(r.person,'sm')}<span><strong>${escapeHtml(r.person.nome)}</strong><small>${escapeHtml(r.person.cargo||'Marketing')} · #${i+1}${r.immediates?` · ${r.immediates} imediata(s)`:''}</small></span></span><strong>${r.created}</strong><strong>${r.completed}</strong><strong>${formatHours(r.hours)}</strong><strong>${r.onTimeRate===null?'—':r.onTimeRate+'%'}</strong><strong>${r.avgCycle===null?'—':r.avgCycle.toFixed(1).replace('.',',')+'d'}</strong><strong>${r.active}</strong><strong class="${r.overdue?'danger':''}">${r.overdue}</strong><span>${r.transfersIn} receb. · ${r.transfersOut} env.</span></div>`).join('')||'<div class="empty-state">Nenhum colaborador operacional encontrado.</div>'}</div></section>`;refreshIcons();
+}
 function openMonthlyReport(){if(!isManager())return;$('monthlyReportMonth').value=monthInputValue();renderMonthlyReport();$('monthlyReportModal').classList.remove('hidden');refreshIcons();}
 function csvCell(value){const text=String(value??'');return `"${text.replace(/"/g,'""')}"`;}
+function exportMonthlyReportCsv(){
+  const report=state.monthlyReportData||buildMonthlyReport($('monthlyReportMonth').value);
+  const lines=[
+    ['COLABORADORES'],
+    ['Colaborador','Cargo','Recebidas','Concluídas','Horas entregues','No prazo (%)','Ciclo médio (dias)','Imediatas concluídas','Ativas agora','Atrasadas agora','Transferências recebidas','Transferências enviadas'],
+    ...report.rows.map(r=>[r.person.nome,r.person.cargo||'',r.created,r.completed,r.hours,r.onTimeRate??'',r.avgCycle===null?'':r.avgCycle.toFixed(1),r.immediates,r.active,r.overdue,r.transfersIn,r.transfersOut]),
+    [],
+    ['PROJETOS'],
+    ['Projeto','Recebidas','Concluídas','Horas entregues','Ativas agora','Atrasadas agora','Imediatas concluídas'],
+    ...report.projects.map(project=>[project.name,project.created,project.completed,project.hours,project.active,project.overdue,project.immediates])
+  ].map(row=>row.map(csvCell).join(';'));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`relatorio-demandas-${$('monthlyReportMonth').value}.csv`;a.click();URL.revokeObjectURL(url);
+}
+function printMonthlyReport(){const html=$('monthlyReportContent').innerHTML,w=window.open('','_blank','width=1200,height=800');if(!w)return toast('Permita pop-ups para imprimir o relatório.','error');w.document.write(`<!doctype html><html><head><title>Relatório mensal PMG Connect</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#17221b}.monthly-report-row{display:grid;grid-template-columns:2fr repeat(6,1fr);gap:10px;padding:10px;border-bottom:1px solid #ddd}.head{font-weight:bold;background:#f2f5f3}.avatar{display:none}.monthly-report-hero{padding:20px;background:#164b2d;color:white;margin-bottom:20px}.monthly-report-totals{display:flex;gap:30px}.monthly-person small{display:block;color:#777}</style></head><body>${html}</body></html>`);w.document.close();setTimeout(()=>w.print(),250);}
 
 const ACCESSIBILITY_KEY='pmg-demandas-accessibilidade-v2';
 function loadAccessibilityPreferences(){
@@ -3565,7 +3624,20 @@ async function saveAutomation(event){event.preventDefault();setLoading(true);try
 async function toggleAutomation(id){const r=state.automations.find(x=>x.id===id);if(!r)return;setLoading(true);try{const {error}=await db.rpc('alternar_automacao_demanda',{p_id:id,p_ativo:!r.ativo});if(error)throw error;await loadIntelligenceV5();renderAutomations();renderShell();toast(!r.ativo?'Automação ativada.':'Automação pausada.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
 async function deleteAutomation(){const id=$('automationId').value;if(!id||!confirm('Excluir esta automação?'))return;setLoading(true);try{const {error}=await db.rpc('excluir_automacao_demanda',{p_id:id});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação excluída.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
 
-function notificationLevel(notification){if(notification?.nivel)return notification.nivel;const type=notification?.tipo||'';if(type==='demanda_imediata')return'critica';if(['prazo_atrasado','avaliacao_pendente','avaliacao_ajustes','transferencia'].includes(type))return'importante';if(['avaliacao_aprovada'].includes(type))return'informativa';return'normal';}
+function notificationLevel(notification){
+  if(notification?.nivel)return notification.nivel;
+  const type=notification?.tipo||'';
+
+  // Lembretes e compromissos precisam interromper a tela no horário programado.
+  // Antes eles caíam como "normal", portanto iam apenas para o sino e nunca
+  // entravam na fila de pop-ups invasivos.
+  if(notification?.lembrete_id)return'importante';
+
+  if(type==='demanda_imediata')return'critica';
+  if(['prazo_proximo','prazo_atrasado','avaliacao_pendente','avaliacao_ajustes','transferencia'].includes(type))return'importante';
+  if(['avaliacao_aprovada'].includes(type))return'informativa';
+  return'normal';
+}
 const renderNotificationsV34=renderNotifications;
 renderNotifications=function renderNotificationsV35(){const unread=state.notifications.filter(i=>!i.lida).length;$('notificationBadge').textContent=unread;$('notificationBadge').classList.toggle('hidden',unread===0);$('notificationList').innerHTML=state.notifications.length?state.notifications.map(notification=>{const title=notification.tarefa?.titulo||notification.lembrete?.titulo||'Atualização';const heading=notification.mensagem||(notification.lembrete_id?(notification.lembrete?.tipo==='compromisso'?'Compromisso próximo':'Lembrete programado'):NOTIFICATION_TEXT[notification.tipo]||'Atualização');const type=notification.tipo||'',level=notificationLevel(notification);const iconMap={demanda_imediata:'siren',comentario:'message-circle',transferencia:'arrow-right-left',avaliacao_pendente:'scan-eye',avaliacao_aprovada:'badge-check',avaliacao_ajustes:'undo-2',status_mudou:'refresh-cw'};const icon=notification.lembrete_id?(notification.lembrete?.tipo==='compromisso'?'calendar-clock':'alarm-clock'):iconMap[type]||(type.includes('prazo')?'calendar-clock':'clipboard-check');const actor=resolveNotificationActor(notification);const visual=actor?`<span class="notification-item-avatar">${avatarHTML(actor,'sm')}</span>`:`<span class="notification-item-icon"><i data-lucide="${icon}"></i></span>`;const task=notification.tarefa_id?state.tasks.find(i=>i.id===notification.tarefa_id):null;const context=task?`${PRIORITY[task.prioridade]||'Média'} · ${dueLabel(task)}`:relativeTime(notification.criado_em);return `<div class="notification-item ${notification.lida?'':'unread'} type-${type} level-${level}" data-notification-id="${notification.id}" data-task-id="${notification.tarefa_id||''}" data-reminder-id="${notification.lembrete_id||''}">${visual}<div class="notification-item-copy"><div class="notification-heading-row"><strong>${escapeHtml(heading)}</strong><span class="notification-level-pill ${level}">${level==='critica'?'Crítica':level==='importante'?'Importante':level==='informativa'?'Info':'Normal'}</span></div><p>${escapeHtml(title)}</p><span>${escapeHtml(context)} · ${relativeTime(notification.criado_em)}</span></div><i class="notification-item-arrow" data-lucide="chevron-right"></i></div>`}).join(''):`<div class="empty-state" style="margin:16px"><i data-lucide="bell-off"></i>Nenhuma notificação por aqui.</div>`;refreshIcons();}
 
@@ -3611,33 +3683,5 @@ function bindIntelligenceV5Events(){
   });
   $('globalSearchInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=$('globalSearchResults')?.querySelector('[data-search-command], [data-search-task], [data-search-project], [data-search-person], [data-search-reminder]');if(first){event.preventDefault();first.click();}}});
 }
-
-
-function pmgLocalSessionUrl(rawUrl) {
-  if (!state.session?.access_token || !state.session?.refresh_token) return rawUrl;
-  try {
-    const url = new URL(rawUrl, location.href);
-    if (url.protocol !== 'http:' || !['localhost','127.0.0.1'].includes(url.hostname) || url.port !== '3001') return rawUrl;
-    const payload = JSON.stringify({ access_token:state.session.access_token, refresh_token:state.session.refresh_token });
-    const bytes = new TextEncoder().encode(payload);
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    const encoded = btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');
-    const params = new URLSearchParams();
-    params.set('pmg_auth', encoded);
-    if (url.hash) params.set('pmg_hash', url.hash.slice(1));
-    url.hash = params.toString();
-    return url.toString();
-  } catch (_) {
-    return rawUrl;
-  }
-}
-
-document.addEventListener('click', event => {
-  const anchor = event.target.closest('a[href^="http://localhost:3001"],a[href^="http://127.0.0.1:3001"]');
-  if (!anchor || !state.session) return;
-  event.preventDefault();
-  location.href = pmgLocalSessionUrl(anchor.href);
-});
 
 bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); initOverlayStability(); refreshIcons(); bootstrap();
