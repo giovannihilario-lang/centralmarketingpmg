@@ -976,6 +976,22 @@
           <div><span class="notification-level-dot normal"></span><strong>Normal</strong><small>Fica na central e pode gerar aviso do Windows.</small></div>
           <div><span class="notification-level-dot info"></span><strong>Informativa</strong><small>Atualizações de contexto e resumos.</small></div>
         </div>
+        <div class="notification-sound-panel">
+          <label class="notification-sound-toggle">
+            <span class="notification-sound-icon"><i data-lucide="volume-2"></i></span>
+            <span class="notification-sound-copy">
+              <strong>Sons de alerta</strong>
+              <small>Toca sons diferentes conforme a importância da notificação neste computador.</small>
+            </span>
+            <input id="notificationSoundEnabled" type="checkbox" checked>
+          </label>
+          <div class="notification-sound-previews">
+            <button type="button" class="sound-preview critical" data-sound-preview="critica"><i data-lucide="siren"></i><span>Crítica</span></button>
+            <button type="button" class="sound-preview important" data-sound-preview="importante"><i data-lucide="triangle-alert"></i><span>Importante</span></button>
+            <button type="button" class="sound-preview normal" data-sound-preview="normal"><i data-lucide="bell-ring"></i><span>Normal</span></button>
+            <button type="button" class="sound-preview info" data-sound-preview="informativa"><i data-lucide="info"></i><span>Info</span></button>
+          </div>
+        </div>
         <button id="enablePushBtn" class="btn primary wide"><i data-lucide="bell-ring"></i>Ativar notificações</button>
         <button id="testPushBtn" class="btn secondary wide"><i data-lucide="send"></i>Testar neste computador</button>
         <button id="disablePushBtn" class="btn danger-soft wide hidden"><i data-lucide="bell-off"></i>Desativar neste computador</button>

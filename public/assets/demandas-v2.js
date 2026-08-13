@@ -1582,38 +1582,136 @@ function intrusiveNotificationData(notification) {
   return { config, task, reminder, actor, title, message, meta, isImmediate };
 }
 
-function playIntrusiveNotificationSound(tone = 'blue') {
+const NOTIFICATION_SOUND_PREF_KEY = 'pmg-notification-sounds-enabled';
+let notificationAudioContext = null;
+let notificationAudioUnlocked = false;
+
+function notificationSoundsEnabled() {
+  return localStorage.getItem(NOTIFICATION_SOUND_PREF_KEY) !== '0';
+}
+
+function setNotificationSoundsEnabled(enabled) {
+  localStorage.setItem(NOTIFICATION_SOUND_PREF_KEY, enabled ? '1' : '0');
+  const toggle = $('notificationSoundEnabled');
+  if (toggle) toggle.checked = enabled;
+}
+
+function getNotificationAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!notificationAudioContext || notificationAudioContext.state === 'closed') {
+    notificationAudioContext = new AudioContextClass();
+  }
+  return notificationAudioContext;
+}
+
+async function unlockNotificationAudio() {
+  if (notificationAudioUnlocked) return;
   try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    const context = new AudioContextClass();
-    if (tone === 'immediate') {
-      [0, .18, .36, .62, .80, .98].forEach((offset, index) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = index % 2 ? 'square' : 'sawtooth';
-        oscillator.frequency.setValueAtTime(index % 2 ? 920 : 650, context.currentTime + offset);
-        gain.gain.setValueAtTime(.0001, context.currentTime + offset);
-        gain.gain.exponentialRampToValueAtTime(.15, context.currentTime + offset + .02);
-        gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + offset + .14);
-        oscillator.connect(gain); gain.connect(context.destination);
-        oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + .16);
+    const context = getNotificationAudioContext();
+    if (!context) return;
+    if (context.state === 'suspended') await context.resume();
+    notificationAudioUnlocked = context.state === 'running';
+  } catch (_) {}
+}
+
+function scheduleTone_(context, {
+  frequency = 680,
+  when = 0,
+  duration = .16,
+  gain = .09,
+  type = 'sine',
+  endFrequency = null
+} = {}) {
+  const now = context.currentTime + when;
+  const oscillator = context.createOscillator();
+  const volume = context.createGain();
+
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, now);
+  if (endFrequency) oscillator.frequency.exponentialRampToValueAtTime(endFrequency, now + duration);
+
+  volume.gain.setValueAtTime(.0001, now);
+  volume.gain.exponentialRampToValueAtTime(Math.max(.001, gain), now + .018);
+  volume.gain.exponentialRampToValueAtTime(.0001, now + duration);
+
+  oscillator.connect(volume);
+  volume.connect(context.destination);
+  oscillator.start(now);
+  oscillator.stop(now + duration + .025);
+}
+
+function playNotificationSound(level = 'normal', { force = false } = {}) {
+  if (!force && !notificationSoundsEnabled()) return;
+
+  try {
+    const context = getNotificationAudioContext();
+    if (!context) return;
+
+    if (context.state === 'suspended') {
+      context.resume().catch(() => {});
+    }
+
+    // CRÍTICA: sirene curta alternada, perceptível e impossível de confundir.
+    if (level === 'critica') {
+      [0,.13,.26,.39,.58,.71,.84,.97].forEach((offset,index) => {
+        scheduleTone_(context,{
+          frequency:index % 2 ? 980 : 620,
+          endFrequency:index % 2 ? 760 : 860,
+          when:offset,
+          duration:.12,
+          gain:.13,
+          type:index % 2 ? 'square' : 'sawtooth'
+        });
       });
-      setTimeout(() => context.close().catch(() => {}), 1600);
-      try { navigator.vibrate?.([220, 80, 220, 80, 380]); } catch (_) {}
+      try { navigator.vibrate?.([200,70,200,70,350]); } catch (_) {}
       return;
     }
-    const baseFrequency = tone === 'red' ? 760 : tone === 'amber' ? 620 : tone === 'purple' ? 560 : 680;
-    const notes = tone === 'red' ? [0, 0.16, 0.32] : [0, 0.2];
-    notes.forEach((offset, index) => {
-      const oscillator = context.createOscillator(); const gain = context.createGain();
-      oscillator.type = 'sine'; oscillator.frequency.setValueAtTime(baseFrequency + index * 90, context.currentTime + offset);
-      gain.gain.setValueAtTime(0.0001, context.currentTime + offset); gain.gain.exponentialRampToValueAtTime(0.11, context.currentTime + offset + 0.025); gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + offset + 0.14);
-      oscillator.connect(gain); gain.connect(context.destination); oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + 0.16);
-    });
-    setTimeout(() => context.close().catch(() => {}), 900);
+
+    // IMPORTANTE: três batidas ascendentes.
+    if (level === 'importante') {
+      [
+        [0,540],[.16,690],[.32,860]
+      ].forEach(([when,frequency]) => scheduleTone_(context,{
+        frequency,when,duration:.15,gain:.105,type:'triangle'
+      }));
+      try { navigator.vibrate?.([120,60,120]); } catch (_) {}
+      return;
+    }
+
+    // INFORMATIVA: dois tons macios e descendentes.
+    if (level === 'informativa') {
+      scheduleTone_(context,{frequency:720,when:0,duration:.13,gain:.055,type:'sine'});
+      scheduleTone_(context,{frequency:570,when:.15,duration:.17,gain:.045,type:'sine'});
+      return;
+    }
+
+    // NORMAL: "ping" rápido de duas notas.
+    scheduleTone_(context,{frequency:660,when:0,duration:.11,gain:.07,type:'sine'});
+    scheduleTone_(context,{frequency:880,when:.11,duration:.13,gain:.065,type:'sine'});
   } catch (_) {}
-  try { navigator.vibrate?.([120, 70, 120]); } catch (_) {}
+}
+
+function playIntrusiveNotificationSound(tone = 'blue') {
+  const level = tone === 'immediate' || tone === 'red'
+    ? 'critica'
+    : tone === 'amber' || tone === 'purple'
+      ? 'importante'
+      : 'normal';
+  playNotificationSound(level);
+}
+
+function playNotificationArrivalSound(notification) {
+  if (!notification || document.hidden) return;
+  const level = notificationLevel(notification);
+  if (['critica','importante'].includes(level)) return; // o popup invasivo toca o som
+  playNotificationSound(level);
+}
+
+function syncNotificationSoundUI() {
+  const enabled = notificationSoundsEnabled();
+  const toggle = $('notificationSoundEnabled');
+  if (toggle) toggle.checked = enabled;
 }
 
 function renderIntrusiveNotification(notification) {
@@ -1725,7 +1823,17 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_tempo' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'modelos_demanda' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'fechamentos_mensais' }, refreshDebounced)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => { await loadNotifications(); renderNotifications(); const inserted = state.notifications.find(item => item.id === payload.new?.id); if (inserted) enqueueIntrusiveNotification(inserted); await dispatchPendingPush(); refreshIcons(); })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => {
+      await loadNotifications();
+      renderNotifications();
+      const inserted = state.notifications.find(item => item.id === payload.new?.id);
+      if (inserted) {
+        enqueueIntrusiveNotification(inserted);
+        playNotificationArrivalSound(inserted);
+      }
+      await dispatchPendingPush();
+      refreshIcons();
+    })
     .subscribe(status => {
       const online = status === 'SUBSCRIBED'; const failed = ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status);
       $('realtimeDot').className = `live-dot ${online ? 'online' : failed ? 'offline' : ''}`; $('realtimeLabel').textContent = online ? 'Conectado' : failed ? 'Reconectando' : 'Conectando';
@@ -2677,6 +2785,11 @@ async function logout() {
 }
 
 function bindEvents() {
+  // Navegadores bloqueiam áudio automático até a primeira interação humana.
+  // Destravamos uma única vez sem tocar som.
+  document.addEventListener('pointerdown', unlockNotificationAudio, { once: true, passive: true });
+  document.addEventListener('keydown', unlockNotificationAudio, { once: true });
+  syncNotificationSoundUI();
   $('authForm').addEventListener('submit', async event => {
     event.preventDefault(); $('authError').classList.add('hidden'); setLoading(true);
     try { await initializeSupabaseClient(); const { data, error } = await db.auth.signInWithPassword({ email: $('authEmail').value.trim(), password: $('authPassword').value }); if (error) throw error; state.session = data.session; await initializeUser(); }
@@ -2703,9 +2816,19 @@ function bindEvents() {
   $('intrusiveNotificationLaterBtn')?.addEventListener('click', postponeIntrusiveNotification);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) maybeShowNextIntrusiveNotification(); });
   $('notificationBtn').addEventListener('click', () => openDrawer('notificationDrawer')); $('markAllReadBtn').addEventListener('click', markAllRead);
-  $('notificationSettingsBtn').addEventListener('click', () => { closeDrawer('notificationDrawer'); $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
-  $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); });
+  $('notificationSettingsBtn').addEventListener('click', () => { closeDrawer('notificationDrawer'); $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); syncNotificationSoundUI(); });
+  $('openNotificationSettings').addEventListener('click', () => { $('notificationSettingsModal').classList.remove('hidden'); updatePushStatus(); syncNotificationSoundUI(); });
   $('enablePushBtn').addEventListener('click', enablePush); $('disablePushBtn').addEventListener('click', disablePush); $('testPushBtn').addEventListener('click', testPush);
+  $('notificationSoundEnabled')?.addEventListener('change', async event => {
+    await unlockNotificationAudio();
+    setNotificationSoundsEnabled(event.target.checked);
+    if (event.target.checked) playNotificationSound('normal', { force: true });
+    toast(event.target.checked ? 'Sons de notificação ativados.' : 'Sons de notificação desativados.');
+  });
+  $$('[data-sound-preview]').forEach(button => button.addEventListener('click', async () => {
+    await unlockNotificationAudio();
+    playNotificationSound(button.dataset.soundPreview, { force: true });
+  }));
   $('profileBtn').addEventListener('click', () => openProfile(false));
   $('accessibilityBtn')?.addEventListener('click', openAccessibility);
   $$('[data-ui-scale]').forEach(button => button.addEventListener('click', () => setAccessibilityScale(button.dataset.uiScale)));

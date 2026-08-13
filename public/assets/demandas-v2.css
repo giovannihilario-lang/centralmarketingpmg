@@ -2723,3 +2723,89 @@ body.ui-theme-dark #assigneePickerModal:not(.hidden){
     width:100%;
   }
 }
+
+
+/* =========================================================
+   V3.5.4 — SONS DE NOTIFICAÇÃO
+   ========================================================= */
+.notification-sound-panel{
+  margin-top:14px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:var(--surface-2);
+}
+.notification-sound-toggle{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  gap:11px;
+  align-items:center;
+  cursor:pointer;
+}
+.notification-sound-icon{
+  width:42px;height:42px;border-radius:12px;
+  display:grid;place-items:center;
+  background:var(--green-100);
+  color:var(--green-700);
+}
+.notification-sound-icon svg{width:19px}
+.notification-sound-copy strong{
+  display:block;
+  font:800 11px Sora,sans-serif;
+  color:var(--ink);
+}
+.notification-sound-copy small{
+  display:block;
+  margin-top:4px;
+  font-size:9px;
+  line-height:1.45;
+  color:var(--muted);
+}
+.notification-sound-toggle input{
+  width:22px;height:22px;
+  accent-color:var(--green-600);
+}
+.notification-sound-previews{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:7px;
+  margin-top:12px;
+}
+.sound-preview{
+  min-height:45px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--surface);
+  color:var(--text);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  font-size:9px;
+  font-weight:800;
+  transition:.16s var(--ease);
+}
+.sound-preview svg{width:15px}
+.sound-preview:hover{transform:translateY(-1px);box-shadow:var(--shadow-xs)}
+.sound-preview.critical{color:#a8242d;border-color:#efc6c9;background:#fff5f5}
+.sound-preview.important{color:#9a5f00;border-color:#eed8ad;background:#fff9ee}
+.sound-preview.normal{color:#245c9c;border-color:#cbdcf7;background:#f5f9ff}
+.sound-preview.info{color:#5d4a98;border-color:#dbd2f2;background:#faf8ff}
+
+body.ui-theme-dark .notification-sound-panel{
+  background:var(--surface-2);
+  border-color:var(--line);
+}
+body.ui-theme-dark .notification-sound-icon{
+  background:#1d3425;
+  color:#79d99a;
+}
+body.ui-theme-dark .sound-preview{background:var(--surface);border-color:var(--line)}
+body.ui-theme-dark .sound-preview.critical{background:#32191c;color:#ff939a;border-color:#6c353b}
+body.ui-theme-dark .sound-preview.important{background:#312716;color:#f5c36b;border-color:#66502b}
+body.ui-theme-dark .sound-preview.normal{background:#17243a;color:#9abfff;border-color:#344d72}
+body.ui-theme-dark .sound-preview.info{background:#282139;color:#c7b3f5;border-color:#514471}
+
+@media(max-width:560px){
+  .notification-sound-previews{grid-template-columns:1fr 1fr}
+}
