@@ -7,7 +7,7 @@
   const PAGE_IS_LOOPBACK = location.protocol === 'http:' && (location.port === '3001' || ['localhost', '127.0.0.1'].includes(location.hostname));
   const configuredSqlBase = localStorage.getItem(SQL_BASE_KEY) || window.PMG_SQL_API_BASE || 'http://localhost:3001/api';
   const SQL_BASE = String(
-    PAGE_IS_LOOPBACK ? `${location.origin}/api` : configuredSqlBase
+    PAGE_IS_LOOPBACK ? '/api' : configuredSqlBase
   ).replace(/\/$/, '');
   const SQL_ENDPOINT = `${SQL_BASE}/campanhas-data`;
   const VISUAL_ENDPOINT = '/api/produtos-supabase';
@@ -215,26 +215,68 @@
         if (!hasContentType) headers['Content-Type'] = 'application/json';
       }
 
-      const isLoopbackRequest = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(url);
-      const isPrivateLanRequest = /^http:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(url);
-      const isSameOriginRequest = (() => {
-        try { return new URL(url, location.href).origin === location.origin; }
-        catch { return false; }
+      const resolvedUrl = (() => {
+        try { return new URL(url, location.href); }
+        catch { return null; }
       })();
 
-      let response;
-      try {
-        response = await fetch(url, {
+      const isLoopbackRequest = resolvedUrl
+        ? ['localhost', '127.0.0.1'].includes(resolvedUrl.hostname)
+        : false;
+
+      const isPrivateLanRequest = resolvedUrl
+        ? /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(resolvedUrl.hostname)
+        : false;
+
+      const isSameOriginRequest = Boolean(resolvedUrl && resolvedUrl.origin === location.origin);
+
+      // No localhost, usar caminho relativo elimina PNA/CORS desnecessário.
+      const requestUrl = PAGE_IS_LOOPBACK && isSameOriginRequest
+        ? `${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash || ''}`
+        : url;
+
+      const doFetch = (target, minimalSameOrigin = false) => {
+        if (minimalSameOrigin) {
+          return fetch(target, {
+            ...fetchOptions,
+            method,
+            headers,
+            signal: controller.signal,
+            cache:'no-store',
+            credentials:'same-origin',
+          });
+        }
+
+        return fetch(target, {
           ...fetchOptions,
           method,
           headers,
           signal: controller.signal,
-          cache: 'no-store',
-          credentials: 'omit',
-          mode: isSameOriginRequest ? 'same-origin' : 'cors',
-          ...(!isSameOriginRequest && isLoopbackRequest ? { targetAddressSpace: 'loopback' } : {}),
-          ...(!isSameOriginRequest && isPrivateLanRequest ? { targetAddressSpace: 'local' } : {}),
+          cache:'no-store',
+          credentials:isSameOriginRequest ? 'same-origin' : 'omit',
+          ...(!isSameOriginRequest ? { mode:'cors' } : {}),
+          ...(!isSameOriginRequest && isLoopbackRequest ? { targetAddressSpace:'loopback' } : {}),
+          ...(!isSameOriginRequest && isPrivateLanRequest ? { targetAddressSpace:'local' } : {}),
         });
+      };
+
+      let response;
+      try {
+        try {
+          response = await doFetch(requestUrl, isSameOriginRequest);
+        } catch (firstError) {
+          if (PAGE_IS_LOOPBACK && isSameOriginRequest && resolvedUrl) {
+            try {
+              const relative = `${resolvedUrl.pathname}${resolvedUrl.search}`;
+              response = await doFetch(relative, true);
+            } catch (retryError) {
+              retryError.firstSameOriginError = firstError?.message || String(firstError);
+              throw retryError;
+            }
+          } else {
+            throw firstError;
+          }
+        }
       } catch (error) {
         const aborted = error?.name === 'AbortError';
         let permissionState = '';
@@ -246,11 +288,16 @@
           } catch (_) {}
         }
 
+        const browserDetail = [error?.message, error?.firstSameOriginError]
+          .filter(Boolean)
+          .filter((value, index, list) => list.indexOf(value) === index)
+          .join(' | ');
+
         const networkError = new Error(
           aborted
             ? 'A API local demorou para responder.'
             : PAGE_IS_LOOPBACK
-              ? 'A página local não conseguiu acessar a API do próprio servidor. Confirme se o npm start continua aberto.'
+              ? `A página local não conseguiu acessar /api no próprio servidor.${browserDetail ? ` Navegador: ${browserDetail}` : ''}`
               : `O navegador não conseguiu acessar o localhost da PMG.${permissionState} Autorize o acesso ao computador local para este site.`
         );
 
@@ -2360,6 +2407,7 @@
         }</strong>
         <br>${esc(error.message)}
         ${authRequired ? `<br><span class="context-error-hint">Abra Campanhas pelo PMG Connect autenticado. O fragmento <code>#pmg_auth</code> deve desaparecer da URL depois que a sessão for capturada.</span>` : ''}
+        ${error.code === 'LOCAL_API_SAME_ORIGIN' ? `<br><span class="context-error-hint">A página já está no localhost:3001 e agora tenta <code>/api/campanhas-data</code> diretamente, sem CORS/PNA. Se ainda falhar, a mensagem “Navegador:” abaixo identifica o erro real do fetch.</span>` : ''}
         ${error.hint ? `<br><span class="context-error-hint">${esc(error.hint)}</span>` : ''}
         ${error.code ? `<small class="context-error-code">Código: ${esc(error.code)}</small>` : ''}
         <br><button class="secondary-btn" data-action="retry-performance" data-id="${esc(id)}" style="margin-top:10px">
