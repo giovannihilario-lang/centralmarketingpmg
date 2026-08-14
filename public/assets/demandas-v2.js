@@ -118,6 +118,9 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
+  if (/alterar_urgencia_tarefa_v1/i.test(message)) {
+    return 'A função de alteração rápida de urgência ainda não foi instalada. Execute sql/09-GESTOR-ALTERAR-URGENCIA-V3-6-3.sql no Supabase.';
+  }
   if (/demandas_recorrentes|recorrencia_id|processar_recorrencias_demanda|converter_tarefa_em_recorrente|transferir_demanda_recorrente/i.test(message)) {
     return 'A estrutura de Demandas Recorrentes ainda não está completa. Execute sql/DEMANDAS-RECORRENTES-V3-6-2-COMPLETO.sql no Supabase.';
   }
@@ -1223,6 +1226,22 @@ function renderTaskDrawer() {
       </button>
     </section>
 
+    ${isManager() && !task.arquivada_em && task.status !== 'concluida' ? `
+    <section class="task-manager-priority-section ${task.prioridade}">
+      <div class="task-section-heading">
+        <div><span class="eyebrow">Gestão</span><h3>Urgência da demanda</h3></div>
+        <span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span>
+      </div>
+      <div class="task-manager-priority-body">
+        <span class="task-manager-priority-icon"><i data-lucide="${task.prioridade === 'imediata' ? 'alarm-smoke' : task.prioridade === 'urgente' ? 'siren' : task.prioridade === 'alta' ? 'arrow-up' : task.prioridade === 'baixa' ? 'feather' : 'circle-dot'}"></i></span>
+        <div>
+          <strong>${task.prioridade === 'imediata' ? 'Precisa ser tratada agora' : task.prioridade === 'urgente' ? 'Resposta rápida necessária' : task.prioridade === 'alta' ? 'Demanda com atenção elevada' : task.prioridade === 'baixa' ? 'Pode aguardar no fluxo' : 'Fluxo normal de trabalho'}</strong>
+          <small>Somente gestores podem mudar este nível.</small>
+        </div>
+        <button id="drawerPriorityManagerBtn" type="button" class="btn secondary"><i data-lucide="gauge"></i>Alterar urgência</button>
+      </div>
+    </section>` : ''}
+
     <section class="task-detail-summary">
       <div><span><i data-lucide="calendar-days"></i>Prazo</span><strong class="${dueClass(task)}">${escapeHtml(dueLabel(task))}</strong></div>
       <div><span><i data-lucide="gauge"></i>Esforço</span><strong>${SIZE[task.tamanho] || 'Média'}${task.estimativa_horas ? ` · ${Number(task.estimativa_horas)}h` : ''}</strong></div>
@@ -1270,12 +1289,100 @@ function bindTaskDrawerEvents() {
   $('drawerApproveEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'approve'));
   $('drawerRejectEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'reject'));
   $('drawerAssigneePickerBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
+  $('drawerPriorityManagerBtn')?.addEventListener('click', () => openPriorityManager(state.selectedTask.id));
   $('transferTaskBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
   $('drawerCommentForm')?.addEventListener('submit', addComment);
   $('editTaskBtn')?.addEventListener('click', openEditTask);
   $('archiveTaskBtn')?.addEventListener('click', archiveTask);
   $('restoreTaskBtn')?.addEventListener('click', restoreTask);
 }
+
+function syncPriorityManagerUI() {
+  const priority = $('priorityManagerValue')?.value || 'media';
+
+  $$('[data-manager-priority]').forEach(button => {
+    const selected = button.dataset.managerPriority === priority;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-checked', String(selected));
+  });
+
+  $('priorityManagerImmediateOptions')?.classList.toggle('hidden', priority !== 'imediata');
+
+  const save = $('priorityManagerSaveBtn');
+  if (save) {
+    save.classList.toggle('danger-priority', priority === 'imediata');
+    save.innerHTML = priority === 'imediata'
+      ? '<i data-lucide="siren"></i>Aplicar urgência imediata'
+      : '<i data-lucide="save"></i>Salvar urgência';
+  }
+
+  refreshIcons();
+}
+
+function openPriorityManager(taskId = state.selectedTask?.id) {
+  if (!isManager()) return toast('Somente gestores podem alterar a urgência da demanda.', 'error');
+
+  const task = state.tasks.find(item => item.id === taskId) || (state.selectedTask?.id === taskId ? state.selectedTask : null);
+  if (!task) return toast('Demanda não encontrada.', 'error');
+  if (task.arquivada_em) return toast('Restaure a demanda antes de alterar a urgência.', 'error');
+  if (task.status === 'concluida') return toast('Demandas concluídas não precisam ter a urgência alterada.', 'error');
+
+  $('priorityManagerTaskId').value = task.id;
+  $('priorityManagerValue').value = task.prioridade || 'media';
+  $('priorityManagerTaskTitle').textContent = task.titulo;
+  $('priorityManagerCurrentLabel').textContent = `Urgência atual: ${PRIORITY[task.prioridade] || 'Média'}`;
+  $('priorityManagerAlertAll').checked = Boolean(task.prioridade === 'imediata' && task.alerta_para_todos);
+  $('priorityManagerApplySeries').checked = false;
+
+  const recurring = Boolean(task.recorrencia_id);
+  $('priorityManagerRecurrenceScope').classList.toggle('hidden', !recurring);
+
+  syncPriorityManagerUI();
+  $('priorityManagerModal').classList.remove('hidden');
+  refreshIcons();
+}
+
+async function saveManagedPriority(event) {
+  event.preventDefault();
+
+  if (!isManager()) return toast('Somente gestores podem alterar a urgência.', 'error');
+
+  const taskId = $('priorityManagerTaskId').value;
+  const priority = $('priorityManagerValue').value;
+  const task = state.tasks.find(item => item.id === taskId) || (state.selectedTask?.id === taskId ? state.selectedTask : null);
+  if (!task) return toast('Demanda não encontrada.', 'error');
+
+  const alertAll = priority === 'imediata' && Boolean($('priorityManagerAlertAll').checked);
+  const applySeries = Boolean(task.recorrencia_id && $('priorityManagerApplySeries').checked);
+
+  if (priority === 'imediata' && !task.responsavel_id && !alertAll) {
+    return toast('Esta demanda não tem responsável. Para torná-la IMEDIATA, ative o alerta para toda a equipe ou atribua alguém primeiro.', 'error');
+  }
+
+  setLoading(true);
+  try {
+    const { data, error } = await db.rpc('alterar_urgencia_tarefa_v1', {
+      p_tarefa_id: taskId,
+      p_prioridade: priority,
+      p_alerta_para_todos: alertAll,
+      p_aplicar_recorrencia: applySeries
+    });
+    if (error) throw error;
+
+    closeModal('priorityManagerModal');
+    await refreshData();
+    await openTask(taskId);
+    await dispatchPendingPush();
+
+    const suffix = applySeries ? ' e nas próximas ocorrências.' : '.';
+    toast(`Urgência alterada para ${PRIORITY[priority] || priority}${suffix}`);
+  } catch (error) {
+    toast(errorMessage(error), 'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
 function openEditTask() {
   const task = state.selectedTask; if (!task) return; const due = splitDateTime(taskDue(task));
   $('editTaskId').value = task.id; $('editTaskTitle').value = task.titulo; $('editTaskDescription').value = task.descricao || '';
@@ -2830,6 +2937,11 @@ function bindEvents() {
   $('newTaskPageBtn').addEventListener('click', () => openQuickAdd('demanda'));
   $$('[data-item-type]').forEach(button => button.addEventListener('click', () => { if (!button.disabled) setQuickType(button.dataset.itemType); }));
   $('quickAddForm').addEventListener('submit', saveQuickItem); $('editTaskForm').addEventListener('submit', saveEditedTask); $('profileForm').addEventListener('submit', saveProfile);
+  $('priorityManagerForm')?.addEventListener('submit', saveManagedPriority);
+  $$('[data-manager-priority]').forEach(button => button.addEventListener('click', () => {
+    $('priorityManagerValue').value = button.dataset.managerPriority;
+    syncPriorityManagerUI();
+  }));
   $$('[data-close-modal]').forEach(button => button.addEventListener('click', () => { const modal = $(button.dataset.closeModal); if (modal.id === 'profileModal' && modal.dataset.required === '1') return; closeModal(modal.id); }));
   $$('[data-close-drawer]').forEach(button => button.addEventListener('click', () => closeDrawer(button.dataset.closeDrawer)));
   $('drawerBackdrop').addEventListener('click', () => { closeDrawer('taskDrawer'); closeDrawer('personDrawer'); closeDrawer('notificationDrawer'); });

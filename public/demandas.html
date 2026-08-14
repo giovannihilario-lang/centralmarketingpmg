@@ -656,7 +656,7 @@
           <label class="field"><span>Descrição</span><textarea id="recurrenceEditDescription" rows="3"></textarea></label>
           <div class="form-grid three">
             <label class="field"><span>Responsável</span><select id="recurrenceEditAssignee"></select></label>
-            <label class="field"><span>Prioridade</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
+            <label class="field"><span>Prioridade / urgência</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
             <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
           </div>
           <div class="form-grid three">
@@ -700,6 +700,111 @@
     </div>
   </div>
 
+
+  <div id="priorityManagerModal" class="modal-layer hidden">
+    <div class="modal-card priority-manager-modal">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">Ação de gestor</span>
+          <h2>Alterar urgência</h2>
+          <p>Reordene a prioridade da demanda sem precisar abrir a edição completa.</p>
+        </div>
+        <button class="icon-btn subtle" type="button" data-close-modal="priorityManagerModal"><i data-lucide="x"></i></button>
+      </div>
+
+      <form id="priorityManagerForm">
+        <input id="priorityManagerTaskId" type="hidden">
+        <input id="priorityManagerValue" type="hidden" value="media">
+
+        <div class="modal-body">
+          <section class="priority-manager-current">
+            <span class="priority-manager-current-icon"><i data-lucide="gauge"></i></span>
+            <div>
+              <small>Demanda</small>
+              <strong id="priorityManagerTaskTitle">Demanda</strong>
+              <span id="priorityManagerCurrentLabel">Urgência atual: Média</span>
+            </div>
+          </section>
+
+          <div class="priority-manager-heading">
+            <div>
+              <span class="eyebrow">Nova urgência</span>
+              <h3>Qual é a prioridade agora?</h3>
+            </div>
+            <small>A alteração é registrada no histórico.</small>
+          </div>
+
+          <div class="priority-manager-grid" role="radiogroup" aria-label="Urgência da demanda">
+            <button type="button" class="priority-manager-choice baixa" data-manager-priority="baixa">
+              <i data-lucide="feather"></i>
+              <span><strong>Baixa</strong><small>Pode aguardar</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice media" data-manager-priority="media">
+              <i data-lucide="circle-dot"></i>
+              <span><strong>Média</strong><small>Fluxo normal</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice alta" data-manager-priority="alta">
+              <i data-lucide="arrow-up"></i>
+              <span><strong>Alta</strong><small>Precisa de atenção</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice urgente" data-manager-priority="urgente">
+              <i data-lucide="siren"></i>
+              <span><strong>Urgente</strong><small>Resposta rápida</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice imediata" data-manager-priority="imediata">
+              <i data-lucide="alarm-smoke"></i>
+              <span><strong>IMEDIATA</strong><small>Interromper e começar agora</small></span>
+            </button>
+          </div>
+
+          <section id="priorityManagerImmediateOptions" class="priority-manager-immediate hidden">
+            <div class="priority-manager-immediate-copy">
+              <span><i data-lucide="siren"></i></span>
+              <div>
+                <strong>Demanda imediata</strong>
+                <small>Essa alteração pode gerar popup crítico e som para quem precisa agir.</small>
+              </div>
+            </div>
+            <label class="priority-manager-check">
+              <input id="priorityManagerAlertAll" type="checkbox">
+              <span>
+                <strong>Alertar toda a equipe</strong>
+                <small>Se desligado, o alerta crítico vai somente para o responsável atual.</small>
+              </span>
+            </label>
+          </section>
+
+          <section id="priorityManagerRecurrenceScope" class="priority-manager-recurrence hidden">
+            <div>
+              <i data-lucide="repeat-2"></i>
+              <span>
+                <strong>Esta demanda faz parte de uma recorrência</strong>
+                <small>Por padrão, a mudança vale somente para esta ocorrência.</small>
+              </span>
+            </div>
+            <label class="priority-manager-check">
+              <input id="priorityManagerApplySeries" type="checkbox">
+              <span>
+                <strong>Aplicar também às próximas ocorrências</strong>
+                <small>Atualiza a série recorrente sem mexer nas ocorrências já concluídas.</small>
+              </span>
+            </label>
+          </section>
+
+          <div class="priority-manager-note">
+            <i data-lucide="history"></i>
+            <span>O colaborador continua responsável pela demanda. Esta ação altera apenas a urgência e, se escolhido, o alcance do alerta imediato.</span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn secondary" data-close-modal="priorityManagerModal">Cancelar</button>
+          <button id="priorityManagerSaveBtn" type="submit" class="btn primary"><i data-lucide="save"></i>Salvar urgência</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="editTaskModal" class="modal-layer hidden">
     <div class="modal-card task-edit-modal">
       <div class="modal-head"><div><span class="eyebrow">Editar</span><h2>Detalhes da demanda</h2><p>Ajuste briefing, prazo, responsável e esforço.</p></div><button class="icon-btn subtle" data-close-modal="editTaskModal"><i data-lucide="x"></i></button></div>
@@ -719,7 +824,7 @@
                 </button>
               </div>
               <div class="visual-field">
-                <span class="visual-field-label">Prioridade</span>
+                <span class="visual-field-label">Prioridade / urgência</span>
                 <select id="editTaskPriority" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select>
                 <div class="choice-card-grid priority-choice-grid compact-choice-grid">
                   <button type="button" class="choice-card priority-low" data-choice-target="editTaskPriority" data-choice-value="baixa"><i data-lucide="feather"></i><span><strong>Baixa</strong><small>Pode aguardar</small></span></button>
