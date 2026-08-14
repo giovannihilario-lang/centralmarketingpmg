@@ -372,6 +372,7 @@
             <select id="taskProjectFilter"><option value="">Todos os projetos</option></select>
             <select id="taskPriorityFilter"><option value="">Todas as prioridades</option><option value="imediata">Imediata</option><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
             <select id="taskArchiveFilter"><option value="ativas">Ativas</option><option value="arquivadas">Arquivadas</option><option value="todas">Todas</option></select>
+            <select id="taskRecurrenceFilter" aria-label="Filtrar recorrência"><option value="">Todas</option><option value="recorrentes">Recorrentes</option><option value="nao_recorrentes">Não recorrentes</option></select>
             <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
           </section>
 
@@ -596,6 +597,30 @@
                 <label class="field task-dependencies-field"><span>Dependências <em>opcional</em></span><select id="itemDependencies" multiple size="5" aria-label="Demandas que precisam ser concluídas antes"></select><small class="field-help">Use Ctrl para selecionar mais de uma. A demanda fica bloqueada até todas serem concluídas.</small></label>
               </div>
             </section>
+
+            <section class="task-config-section task-recurrence-builder">
+              <label class="recurrence-master-toggle">
+                <span class="recurrence-master-icon"><i data-lucide="repeat-2"></i></span>
+                <span class="recurrence-master-copy"><strong>Demanda recorrente</strong><small>Crie uma rotina que volta sozinha nos dias escolhidos, com histórico por ocorrência.</small></span>
+                <input id="itemRecurringEnabled" type="checkbox">
+              </label>
+              <div id="itemRecurrenceFields" class="recurrence-fields hidden">
+                <div class="recurrence-explainer"><i data-lucide="sparkles"></i><div><strong>Uma ocorrência por dia</strong><p>Concluir a demanda de hoje não encerra a série. No próximo dia válido ela aparece novamente.</p></div></div>
+                <div class="form-grid three">
+                  <label class="field"><span>Repetir</span><select id="itemRecurrenceFrequency"><option value="dias_uteis" selected>Dias úteis</option><option value="diaria">Todos os dias</option><option value="semanal">Semanal</option><option value="personalizada">Dias específicos</option><option value="mensal">Mensal</option></select></label>
+                  <label class="field"><span>Começa em</span><input id="itemRecurrenceStart" type="date"></label>
+                  <label class="field"><span>Termina em <em>opcional</em></span><input id="itemRecurrenceEnd" type="date"></label>
+                </div>
+                <div id="itemRecurrenceWeekdays" class="recurrence-weekdays hidden" aria-label="Dias da semana">
+                  <label><input type="checkbox" value="1"><span>Seg</span></label><label><input type="checkbox" value="2"><span>Ter</span></label><label><input type="checkbox" value="3"><span>Qua</span></label><label><input type="checkbox" value="4"><span>Qui</span></label><label><input type="checkbox" value="5"><span>Sex</span></label><label><input type="checkbox" value="6"><span>Sáb</span></label><label><input type="checkbox" value="7"><span>Dom</span></label>
+                </div>
+                <div class="form-grid two">
+                  <label class="field"><span>Horário do popup diário</span><input id="itemRecurrenceAlertTime" type="time" value="09:00"></label>
+                  <label class="recurrence-alert-toggle"><input id="itemRecurrenceDailyAlert" type="checkbox" checked><span><strong>Popup + som diariamente</strong><small>O responsável recebe um alerta importante no horário programado.</small></span></label>
+                </div>
+                <div class="recurrence-note"><i data-lucide="info"></i><span>O horário de conclusão/prazo de cada ocorrência continua sendo o campo <strong>Horário</strong> acima. Em demandas recorrentes, o campo de data de prazo é substituído pela agenda da série.</span></div>
+              </div>
+            </section>
           </div>
 
           <div id="reminderFields" class="hidden">
@@ -615,6 +640,46 @@
           </div>
         </div>
         <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="quickAddModal">Cancelar</button><button id="saveItemBtn" class="btn primary" type="submit"><i data-lucide="check"></i>Criar demanda</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="recurrenceModal" class="modal-layer hidden">
+    <div class="modal-card recurrence-edit-modal">
+      <div class="modal-head"><div><span class="eyebrow">Série recorrente</span><h2>Editar toda a recorrência</h2><p>As alterações valem para as próximas ocorrências. O histórico anterior permanece intacto.</p></div><button class="icon-btn subtle" data-close-modal="recurrenceModal"><i data-lucide="x"></i></button></div>
+      <form id="recurrenceForm">
+        <input id="recurrenceEditId" type="hidden">
+        <div class="modal-body">
+          <div class="recurrence-series-banner"><span><i data-lucide="repeat-2"></i></span><div><strong id="recurrenceSeriesStatus">Série ativa</strong><small>Editar a série não altera ocorrências já concluídas.</small></div></div>
+          <label class="field"><span>Título</span><input id="recurrenceEditTitle" required maxlength="160"></label>
+          <label class="field"><span>Descrição</span><textarea id="recurrenceEditDescription" rows="3"></textarea></label>
+          <div class="form-grid three">
+            <label class="field"><span>Responsável</span><select id="recurrenceEditAssignee"></select></label>
+            <label class="field"><span>Prioridade</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
+            <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
+          </div>
+          <div class="form-grid three">
+            <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="recurrenceEditEstimate" type="number" min="0" step="0.5"><span>horas</span></div></label>
+            <label class="field"><span>Projeto</span><input id="recurrenceEditProject" maxlength="100"></label>
+            <label class="field"><span>Tags</span><input id="recurrenceEditTags"></label>
+          </div>
+          <label class="field"><span>Checklist <em>um item por linha</em></span><textarea id="recurrenceEditChecklist" rows="5"></textarea></label>
+          <div class="recurrence-edit-divider"><span>Agenda da série</span></div>
+          <div class="form-grid three">
+            <label class="field"><span>Repetir</span><select id="recurrenceEditFrequency"><option value="dias_uteis">Dias úteis</option><option value="diaria">Todos os dias</option><option value="semanal">Semanal</option><option value="personalizada">Dias específicos</option><option value="mensal">Mensal</option></select></label>
+            <label class="field"><span>Começa em</span><input id="recurrenceEditStart" type="date" required></label>
+            <label class="field"><span>Termina em <em>opcional</em></span><input id="recurrenceEditEnd" type="date"></label>
+          </div>
+          <div id="recurrenceEditWeekdays" class="recurrence-weekdays hidden">
+            <label><input type="checkbox" value="1"><span>Seg</span></label><label><input type="checkbox" value="2"><span>Ter</span></label><label><input type="checkbox" value="3"><span>Qua</span></label><label><input type="checkbox" value="4"><span>Qui</span></label><label><input type="checkbox" value="5"><span>Sex</span></label><label><input type="checkbox" value="6"><span>Sáb</span></label><label><input type="checkbox" value="7"><span>Dom</span></label>
+          </div>
+          <div class="form-grid three">
+            <label class="field"><span>Prazo diário</span><input id="recurrenceEditDueTime" type="time" required></label>
+            <label class="field"><span>Popup diário</span><input id="recurrenceEditAlertTime" type="time" required></label>
+            <label class="recurrence-alert-toggle compact"><input id="recurrenceEditDailyAlert" type="checkbox"><span><strong>Popup + som</strong><small>Alertar a cada ocorrência.</small></span></label>
+          </div>
+        </div>
+        <div class="modal-footer recurrence-modal-footer"><button id="recurrencePauseBtn" type="button" class="btn secondary"><i data-lucide="pause"></i>Pausar</button><button id="recurrenceEndBtn" type="button" class="btn danger-soft"><i data-lucide="square"></i>Encerrar série</button><span class="modal-footer-spacer"></span><button type="button" class="btn secondary" data-close-modal="recurrenceModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar série</button></div>
       </form>
     </div>
   </div>
