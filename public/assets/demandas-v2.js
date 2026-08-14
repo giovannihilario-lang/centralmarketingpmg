@@ -127,6 +127,7 @@ function errorMessage(error) {
   return message;
 }
 function isManager() { return state.me?.role === 'gestor'; }
+function canManageAcademy() { return isManager() || state.me?.pode_gerenciar_academia === true; }
 function initials(name) { return String(name || '?').trim().split(/\s+/).slice(0, 2).map(part => part[0] || '').join('').toUpperCase(); }
 function firstName(name) { return String(name || 'equipe').trim().split(/\s+/)[0]; }
 function collaborator(id) { return state.collaborators.find(item => item.id === id); }
@@ -429,9 +430,16 @@ async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4(), loadIntelligenceV5()]);
 }
 async function loadCollaborators() {
-  const { data, error } = await db.from('colaboradores').select('id,nome,foto_url,cargo,role,ativo,perfil_configurado,criado_em,atualizado_em').eq('ativo', true).order('nome');
-  if (error) throw error; state.collaborators = data || [];
-  const current = state.collaborators.find(person => person.id === state.me?.id); if (current) state.me = current;
+  const baseFields = 'id,nome,foto_url,cargo,role,ativo,perfil_configurado,criado_em,atualizado_em';
+  let result = await db.from('colaboradores').select(`${baseFields},pode_gerenciar_academia`).eq('ativo', true).order('nome');
+  if (result.error && /pode_gerenciar_academia|column/i.test(String(result.error.message || result.error))) {
+    // Compatibilidade caso o SQL V3.5.8 ainda não tenha sido executado.
+    result = await db.from('colaboradores').select(baseFields).eq('ativo', true).order('nome');
+  }
+  if (result.error) throw result.error;
+  state.collaborators = result.data || [];
+  const current = state.collaborators.find(person => person.id === state.me?.id);
+  if (current) state.me = current;
 }
 async function loadTasks() {
   const { data, error } = await db.from('tarefas').select('*').order('atualizado_em', { ascending: false }).limit(800);
@@ -463,6 +471,7 @@ function renderShell() {
   $('sideUserName').textContent = state.me?.nome || 'Colaborador'; $('sideUserRole').textContent = state.me?.role || 'colaborador';
   renderUserMenu();
   $$('.manager-only').forEach(el => el.classList.toggle('hidden', !isManager()));
+  $$('.academy-manager-only').forEach(el => el.classList.toggle('hidden', !canManageAcademy()));
   const activeTasks = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
   const mine = activeTasks.filter(task => task.responsavel_id === state.me?.id);
   $('navTaskCount').textContent = activeTasks.length;
@@ -2464,12 +2473,12 @@ function academyReservationCard(r, compact=false) {
   const training=isAcademyTraining(r),conflict=academyConflicts(r.inicio_em,r.fim_em,r.id).length>0;
   const category=training?academyTrainingCategory(r):'';
   const editAttr=training?`data-academy-training-edit="${r.id}"`:`data-academy-edit="${r.id}"`;
-  return `<article class="academy-reservation-card status-${r.status} ${training?'is-training training-'+academyTrainingClass(r):''} ${conflict?'has-conflict':''}"><div class="academy-reservation-time"><strong>${formatTime(r.inicio_em)}</strong><span>${formatTime(r.fim_em)}</span></div><div class="academy-reservation-copy"><div>${training?`<span class="academy-training-pill ${academyTrainingClass(r)}"><i data-lucide="presentation"></i>${escapeHtml(category)}</span>`:`<span class="academy-status-pill ${r.status}">${academyStatusLabel(r.status)}</span>`}${conflict&&r.status==='solicitada'?'<span class="academy-conflict-pill"><i data-lucide="triangle-alert"></i>Conflito</span>':''}</div><h4>${escapeHtml(r.titulo)}</h4><p>${training?'Treinamento interno':escapeHtml(r.solicitante)}${r.setor?` · ${escapeHtml(r.setor)}`:''}${r.participantes?` · ${r.participantes} pessoas`:''}</p>${!compact&&r.finalidade?`<small>${escapeHtml(r.finalidade)}</small>`:''}</div>${isManager()?`<div class="academy-reservation-actions"><button type="button" class="icon-btn subtle" ${editAttr} title="Editar"><i data-lucide="pencil"></i></button>${r.status==='solicitada'?`<button type="button" class="academy-status-action approve" data-academy-status="aprovada" data-academy-id="${r.id}"><i data-lucide="check"></i>Aprovar</button><button type="button" class="academy-status-action reject" data-academy-status="recusada" data-academy-id="${r.id}"><i data-lucide="x"></i>Recusar</button>`:r.status==='aprovada'?`<button type="button" class="academy-status-action reject" data-academy-status="cancelada" data-academy-id="${r.id}"><i data-lucide="ban"></i>Cancelar</button>`:''}</div>`:''}</article>`;
+  return `<article class="academy-reservation-card status-${r.status} ${training?'is-training training-'+academyTrainingClass(r):''} ${conflict?'has-conflict':''}"><div class="academy-reservation-time"><strong>${formatTime(r.inicio_em)}</strong><span>${formatTime(r.fim_em)}</span></div><div class="academy-reservation-copy"><div>${training?`<span class="academy-training-pill ${academyTrainingClass(r)}"><i data-lucide="presentation"></i>${escapeHtml(category)}</span>`:`<span class="academy-status-pill ${r.status}">${academyStatusLabel(r.status)}</span>`}${conflict&&r.status==='solicitada'?'<span class="academy-conflict-pill"><i data-lucide="triangle-alert"></i>Conflito</span>':''}</div><h4>${escapeHtml(r.titulo)}</h4><p>${training?'Treinamento interno':escapeHtml(r.solicitante)}${r.setor?` · ${escapeHtml(r.setor)}`:''}${r.participantes?` · ${r.participantes} pessoas`:''}</p>${!compact&&r.finalidade?`<small>${escapeHtml(r.finalidade)}</small>`:''}</div>${canManageAcademy()?`<div class="academy-reservation-actions"><button type="button" class="icon-btn subtle" ${editAttr} title="Editar"><i data-lucide="pencil"></i></button>${r.status==='solicitada'?`<button type="button" class="academy-status-action approve" data-academy-status="aprovada" data-academy-id="${r.id}"><i data-lucide="check"></i>Aprovar</button><button type="button" class="academy-status-action reject" data-academy-status="recusada" data-academy-id="${r.id}"><i data-lucide="x"></i>Recusar</button>`:r.status==='aprovada'?`<button type="button" class="academy-status-action reject" data-academy-status="cancelada" data-academy-id="${r.id}"><i data-lucide="ban"></i>Cancelar</button>`:''}</div>`:''}</article>`;
 }
 
 function academyTrainingListCard(r){
   const d=new Date(r.inicio_em);
-  return `<article class="academy-training-list-card training-${academyTrainingClass(r)}"><div class="academy-training-date"><span>${weekdayShortPt(d)}</span><strong>${String(d.getDate()).padStart(2,'0')}</strong><small>${new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(d).replace('.','')}</small></div><div class="academy-training-copy"><span class="academy-training-pill ${academyTrainingClass(r)}">${escapeHtml(academyTrainingCategory(r))}</span><strong>${escapeHtml(r.titulo)}</strong><small>${formatTime(r.inicio_em)}–${formatTime(r.fim_em)}${r.participantes?` · ${r.participantes} pessoas`:''}</small></div>${isManager()?`<button type="button" class="icon-btn subtle" data-academy-training-edit="${r.id}" title="Editar treinamento"><i data-lucide="pencil"></i></button>`:''}</article>`;
+  return `<article class="academy-training-list-card training-${academyTrainingClass(r)}"><div class="academy-training-date"><span>${weekdayShortPt(d)}</span><strong>${String(d.getDate()).padStart(2,'0')}</strong><small>${new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(d).replace('.','')}</small></div><div class="academy-training-copy"><span class="academy-training-pill ${academyTrainingClass(r)}">${escapeHtml(academyTrainingCategory(r))}</span><strong>${escapeHtml(r.titulo)}</strong><small>${formatTime(r.inicio_em)}–${formatTime(r.fim_em)}${r.participantes?` · ${r.participantes} pessoas`:''}</small></div>${canManageAcademy()?`<button type="button" class="icon-btn subtle" data-academy-training-edit="${r.id}" title="Editar treinamento"><i data-lucide="pencil"></i></button>`:''}</article>`;
 }
 
 function setAcademyTrainingType(type){
@@ -2490,7 +2499,7 @@ function updateAcademyTrainingTimeState(){
   updateAcademyTrainingConflictPreview();
 }
 function openAcademyTraining(training=null,date=state.academySelectedDate){
-  if(!isManager())return toast('Somente gestores podem cadastrar treinamentos.','error');
+  if(!canManageAcademy())return toast('Você não tem permissão para gerenciar a Academia PMG.','error');
   const item=training||null,start=item?splitDateTime(item.inicio_em):{date,time:academyTime(state.academyConfig?.horario_abertura,'08:00')},end=item?splitDateTime(item.fim_em):{date,time:academyTime(state.academyConfig?.horario_fechamento,'18:00')};
   $('academyTrainingTitle').textContent=item?'Editar treinamento':'Novo treinamento';
   $('academyTrainingId').value=item?.id||'';
@@ -2517,7 +2526,7 @@ function updateAcademyTrainingConflictPreview(){
 }
 async function saveAcademyTraining(event){
   event.preventDefault();
-  if(!isManager())return;
+  if(!canManageAcademy())return;
   const date=$('academyTrainingDate').value,start=$('academyTrainingStart').value,end=$('academyTrainingEnd').value;
   if(!date||!start||!end)return toast('Informe data e horário do treinamento.','error');
   setLoading(true);
@@ -2545,7 +2554,7 @@ async function saveAcademyTraining(event){
 }
 
 function openAcademyBooking(reservation=null,date=state.academySelectedDate) {
-  if (!isManager()) return toast('Somente gestores podem gerenciar reservas.', 'error');
+  if (!canManageAcademy()) return toast('Você não tem permissão para gerenciar a Academia PMG.', 'error');
   const item=reservation || null, start=item?splitDateTime(item.inicio_em):{date,time:'09:00'}, end=item?splitDateTime(item.fim_em):{date,time:'10:00'};
   $('academyBookingTitle').textContent=item?'Editar reserva':'Nova reserva'; $('academyBookingId').value=item?.id||''; $('academyBookingName').value=item?.titulo||''; $('academyRequester').value=item?.solicitante||''; $('academyDepartment').value=item?.setor||''; $('academyEmail').value=item?.email||''; $('academyPhone').value=item?.telefone||''; $('academyDate').value=start.date||date||todayKey(); $('academyStartTime').value=start.time||'09:00'; $('academyEndTime').value=end.time||'10:00'; $('academyParticipants').value=item?.participantes??''; $('academyPurpose').value=item?.finalidade||''; $('academyNotes').value=item?.observacoes||'';
   updateAcademyConflictPreview(); $('academyBookingModal').classList.remove('hidden'); refreshIcons();
@@ -2557,7 +2566,7 @@ function updateAcademyConflictPreview() {
 }
 async function saveAcademyBooking(event){event.preventDefault();const date=$('academyDate').value,start=$('academyStartTime').value,end=$('academyEndTime').value;if(!date||!start||!end)return;setLoading(true);try{const{error}=await db.rpc('salvar_reserva_academia',{p_id:$('academyBookingId').value||null,p_titulo:$('academyBookingName').value.trim(),p_solicitante:$('academyRequester').value.trim(),p_setor:$('academyDepartment').value.trim()||null,p_email:$('academyEmail').value.trim()||null,p_telefone:$('academyPhone').value.trim()||null,p_finalidade:$('academyPurpose').value.trim()||null,p_inicio_em:localDateTime(date,start),p_fim_em:localDateTime(date,end),p_participantes:$('academyParticipants').value?Number($('academyParticipants').value):null,p_observacoes:$('academyNotes').value.trim()||null});if(error)throw error;closeModal('academyBookingModal');await refreshData();toast('Reserva da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
 async function updateAcademyStatus(id,status){
-  if(!isManager())return;
+  if(!canManageAcademy())return;
   setLoading(true);
   try{
     const{data,error}=await db.rpc('atualizar_status_reserva_academia',{p_id:id,p_status:status});
@@ -2598,7 +2607,7 @@ async function updateAcademyStatus(id,status){
     toast(errorMessage(error),'error');
   }finally{setLoading(false);}
 }
-function openAcademyConfig(){const c=state.academyConfig||{};$('academyFormsUrl').value=c.forms_url||'';$('academyOpenTime').value=academyTime(c.horario_abertura,'08:00');$('academyCloseTime').value=academyTime(c.horario_fechamento,'18:00');$('academyConfigNotes').value=c.observacoes||'';$('academyConfigModal').classList.remove('hidden');}
+function openAcademyConfig(){if(!canManageAcademy())return toast('Você não tem permissão para configurar a Academia PMG.','error');const c=state.academyConfig||{};$('academyFormsUrl').value=c.forms_url||'';$('academyOpenTime').value=academyTime(c.horario_abertura,'08:00');$('academyCloseTime').value=academyTime(c.horario_fechamento,'18:00');$('academyConfigNotes').value=c.observacoes||'';$('academyConfigModal').classList.remove('hidden');}
 async function saveAcademyConfig(event){event.preventDefault();setLoading(true);try{const{error}=await db.rpc('salvar_config_academia',{p_forms_url:$('academyFormsUrl').value.trim()||null,p_horario_abertura:$('academyOpenTime').value||'08:00',p_horario_fechamento:$('academyCloseTime').value||'18:00',p_observacoes:$('academyConfigNotes').value.trim()||null});if(error)throw error;closeModal('academyConfigModal');await refreshData();toast('Configuração da Academia PMG salva.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}}
 function openAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Google Forms.', 'error');window.open(url,'_blank','noopener,noreferrer');}
 async function copyAcademyForms(){const url=state.academyConfig?.forms_url;if(!url)return toast('Cadastre primeiro o link do Google Forms.', 'error');try{await navigator.clipboard.writeText(url);toast('Link do Forms copiado.');}catch(_){toast('Não foi possível copiar automaticamente.', 'error');}}
@@ -2854,7 +2863,19 @@ function bindEvents() {
   $$('[data-agenda-scope]').forEach(button => button.addEventListener('click', () => { state.agendaScope = button.dataset.agendaScope === 'team' ? 'team' : 'mine'; if (state.agendaScope === 'mine') state.agendaPersonFilter = ''; renderAgenda(); }));
   $('agendaPersonFilter')?.addEventListener('change', event => { state.agendaPersonFilter = event.target.value; renderAgenda(); });
   $('agendaNewEventBtn')?.addEventListener('click', () => openQuickAdd('compromisso', { date: state.selectedDate, visibility: state.agendaScope === 'team' && isManager() ? 'equipe' : 'pessoal' }));
-  $$('[data-academy-tab]').forEach(button => button.addEventListener('click', () => setAcademyTab(button.dataset.academyTab)));
+  $$('[data-academy-tab]').forEach(button => button.addEventListener('click', async () => {
+    const tab = button.dataset.academyTab;
+    try {
+      // Busca novamente no Supabase ao abrir a aba. Assim uma resposta recém-enviada
+      // pelo Google Forms aparece mesmo se o Realtime tiver perdido o INSERT.
+      await loadOperationalV3();
+      setAcademyTab(tab, false);
+      renderAcademy();
+    } catch (error) {
+      console.warn('[Academia refresh]', error);
+      setAcademyTab(tab);
+    }
+  }));
   $('academyTrainingCreateTabBtn')?.addEventListener('click', () => openAcademyTraining(null, state.academySelectedDate));
   $('academyPrev')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, -1); renderAcademy(); });
   $('academyNext')?.addEventListener('click', () => { state.academyCursor = addMonths(state.academyCursor, 1); renderAcademy(); });

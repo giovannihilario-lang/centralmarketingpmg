@@ -285,8 +285,8 @@
             <div class="toolbar-actions">
               <button id="academyFormsBtn" class="btn secondary"><i data-lucide="external-link"></i><span>Abrir Forms</span></button>
               <button id="academyCopyFormsBtn" class="btn secondary"><i data-lucide="copy"></i><span>Copiar link</span></button>
-              <button id="academyNewTrainingBtn" class="btn training manager-only"><i data-lucide="presentation"></i><span>Novo treinamento</span></button>
-              <button id="academyNewBookingBtn" class="btn primary manager-only"><i data-lucide="calendar-plus"></i><span>Nova reserva</span></button>
+              <button id="academyNewTrainingBtn" class="btn training academy-manager-only"><i data-lucide="presentation"></i><span>Novo treinamento</span></button>
+              <button id="academyNewBookingBtn" class="btn primary academy-manager-only"><i data-lucide="calendar-plus"></i><span>Nova reserva</span></button>
             </div>
           </div>
 
@@ -300,7 +300,7 @@
           </nav>
 
           <div id="academyPanelCalendar" class="academy-tab-panel">
-            <div class="academy-command-bar manager-only">
+            <div class="academy-command-bar academy-manager-only">
               <div class="academy-command-copy"><i data-lucide="calendar-sync"></i><span><strong>Agenda central da Academia</strong><small>Treinamentos e reservas aprovadas bloqueiam o período automaticamente.</small></span></div>
               <div class="academy-command-actions"><button id="academyImportBtn" class="btn secondary"><i data-lucide="file-up"></i>Importar relatório</button><button id="academyConfigBtn" class="btn secondary"><i data-lucide="settings-2"></i>Configurar</button></div>
             </div>
@@ -318,7 +318,7 @@
               <aside class="selected-day card academy-selected-day">
                 <div class="selected-day-head academy-day-head"><span id="academySelectedWeekday">Qua</span><strong id="academySelectedNumber">05</strong><small id="academySelectedMonth">Agosto</small></div>
                 <div id="academyAvailability" class="academy-availability"></div>
-                <div class="academy-selected-actions manager-only">
+                <div class="academy-selected-actions academy-manager-only">
                   <button id="academyAddTrainingSelectedDay" class="btn training wide"><i data-lucide="presentation"></i>Treinamento neste dia</button>
                   <button id="academyAddSelectedDay" class="btn soft wide"><i data-lucide="plus"></i>Reservar neste dia</button>
                 </div>
@@ -339,7 +339,7 @@
                   <span><i data-lucide="users-round"></i> Visível para a equipe</span>
                 </div>
               </div>
-              <button id="academyTrainingCreateTabBtn" type="button" class="btn training academy-training-create manager-only"><i data-lucide="plus"></i><span><strong>Cadastrar novo treinamento</strong><small>PMG Geral, MKT, Avulso ou Outro</small></span></button>
+              <button id="academyTrainingCreateTabBtn" type="button" class="btn training academy-training-create academy-manager-only"><i data-lucide="plus"></i><span><strong>Cadastrar novo treinamento</strong><small>PMG Geral, MKT, Avulso ou Outro</small></span></button>
             </section>
 
             <section class="academy-training-manager card">
@@ -349,11 +349,11 @@
           </div>
 
           <div id="academyPanelRequests" class="academy-tab-panel hidden">
-            <section class="academy-request-hub card manager-only">
+            <section class="academy-request-hub card">
               <div><span class="eyebrow">Google Forms</span><h3>Solicitações de outros setores</h3><p>As respostas novas entram aqui como pendentes. Você decide se aprova ou recusa sem transformar o Forms em uma reserva automática.</p></div>
               <div class="academy-request-actions"><button type="button" class="btn secondary" data-academy-open-forms><i data-lucide="external-link"></i>Abrir Forms</button><button type="button" class="btn secondary" data-academy-copy-forms><i data-lucide="copy"></i>Copiar link</button></div>
             </section>
-            <section class="academy-requests card manager-only">
+            <section class="academy-requests card">
               <div class="section-header"><div><span class="eyebrow">Fila de análise</span><h3>Solicitações pendentes</h3></div><span id="academyPendingCount" class="soft-count">0 solicitações</span></div>
               <div id="academyPendingList" class="academy-pending-list"></div>
             </section>
@@ -403,7 +403,7 @@
             <div class="toolbar-title"><span class="eyebrow">Planejamento conectado</span><h2>Projetos</h2><p>Agrupe demandas por objetivo, acompanhe progresso, horas, gargalos e dependências em uma visão só.</p></div>
             <div class="toolbar-actions">
               <button id="projectNewDemandBtn" class="btn secondary manager-only"><i data-lucide="clipboard-plus"></i><span>Nova demanda</span></button>
-              <button id="projectNewBtn" class="btn primary manager-only"><i data-lucide="folder-plus"></i><span>Novo projeto</span></button>
+              <button id="projectNewBtn" class="btn primary academy-manager-only"><i data-lucide="folder-plus"></i><span>Novo projeto</span></button>
             </div>
           </div>
           <div id="projectSetupNotice" class="feature-setup-notice hidden"></div>
@@ -419,7 +419,7 @@
         <section id="viewAutomacoes" class="view" data-page="automacoes">
           <div class="page-toolbar automations-toolbar">
             <div class="toolbar-title"><span class="eyebrow">Rotinas automáticas</span><h2>Automações</h2><p>Crie regras do tipo SE → ENTÃO para reduzir cobrança manual e avisar a pessoa certa no momento certo.</p></div>
-            <div class="toolbar-actions"><button id="automationNewBtn" class="btn primary manager-only"><i data-lucide="workflow"></i><span>Nova automação</span></button></div>
+            <div class="toolbar-actions"><button id="automationNewBtn" class="btn primary academy-manager-only"><i data-lucide="workflow"></i><span>Nova automação</span></button></div>
           </div>
           <div id="automationSetupNotice" class="feature-setup-notice hidden"></div>
           <div id="automationSummary" class="automation-summary"></div>
