@@ -88,7 +88,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.16.1',
+    version: '5.16.2',
   };
 }
 
@@ -2059,7 +2059,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.16.1',
+    versao: '5.16.2',
     dica: hints[code] || 'Confira o terminal do servidor local.',
     recuperacaoSqlTentada:Boolean(error?.sqlRecoveryAttempted),
   };
@@ -2096,7 +2096,7 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({
         ok: true,
-        version: '5.16.1',
+        version: '5.16.2',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),

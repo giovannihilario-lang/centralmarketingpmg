@@ -184,6 +184,7 @@
       ttl = 60000,
       timeout = 20000,
       headers: suppliedHeaders = {},
+      authRetry = false,
       ...fetchOptions
     } = options;
 
@@ -205,7 +206,7 @@
       // enviado como Bearer somente para /api do localhost.
       const authBridge = window.PMGConnectAuth;
       if (authBridge?.isLocalApiUrl?.(url)) {
-        headers = authBridge.authorizationHeaders(headers);
+        headers = await authBridge.authorizationHeaders(headers);
       }
 
       // Com Authorization, chamadas cross-origin podem usar preflight CORS.
@@ -316,13 +317,41 @@
       catch { throw new Error(`A API respondeu HTTP ${response.status} sem JSON: ${raw.slice(0,180) || 'resposta vazia'}`); }
 
       if (!response.ok && response.status !== 202) {
+        const authCode = String(data.codigo || '');
+
+        if (
+          response.status === 401
+          && !authRetry
+          && ['PMG_AUTH_REQUIRED', 'PMG_AUTH_INVALID', 'PMG_AUTH_EXPIRED'].includes(authCode)
+          && window.PMGConnectAuth?.hasRefreshToken?.()
+        ) {
+          try {
+            const refreshed = await window.PMGConnectAuth.refreshSession({ force:true });
+            if (refreshed?.access_token) {
+              return api(url, {
+                ...options,
+                force:true,
+                authRetry:true,
+              });
+            }
+          } catch (refreshError) {
+            console.warn('[Campanhas] refresh após 401 falhou:', refreshError?.message || refreshError);
+          }
+        }
+
         const error = new Error(data.erro || data.message || `Falha HTTP ${response.status}`);
         error.code = data.codigo;
         error.hint = data.dica;
         error.sqlRecoveryAttempted = Boolean(data.recuperacaoSqlTentada);
         error.httpStatus = response.status;
 
-        if (response.status === 401 && ['PMG_AUTH_INVALID', 'PMG_AUTH_EXPIRED'].includes(String(data.codigo || ''))) {
+        // Só limpa uma sessão sem possibilidade de refresh. Quando há refresh
+        // token, a tentativa acima já decidiu se a sessão ainda é recuperável.
+        if (
+          response.status === 401
+          && ['PMG_AUTH_INVALID', 'PMG_AUTH_EXPIRED'].includes(authCode)
+          && !window.PMGConnectAuth?.hasRefreshToken?.()
+        ) {
           window.PMGConnectAuth?.clear?.();
         }
 
@@ -2406,7 +2435,11 @@
               : 'Não foi possível consultar o SQL Server.'
         }</strong>
         <br>${esc(error.message)}
-        ${authRequired ? `<br><span class="context-error-hint">Abra Campanhas pelo PMG Connect autenticado. O fragmento <code>#pmg_auth</code> deve desaparecer da URL depois que a sessão for capturada.</span>` : ''}
+        ${authRequired ? `<br><span class="context-error-hint">${
+          window.PMGConnectAuth?.hasRefreshToken?.()
+            ? 'A página possui refresh token, mas a renovação automática da sessão falhou. Reabra Campanhas pelo PMG Connect para receber uma sessão nova.'
+            : 'Esta aba não possui refresh token. Depois de instalar esta versão, abra Campanhas uma vez pelo PMG Connect autenticado para registrar a sessão completa.'
+        }</span>` : ''}
         ${error.code === 'LOCAL_API_SAME_ORIGIN' ? `<br><span class="context-error-hint">A página já está no localhost:3001 e agora tenta <code>/api/campanhas-data</code> diretamente, sem CORS/PNA. Se ainda falhar, a mensagem “Navegador:” abaixo identifica o erro real do fetch.</span>` : ''}
         ${error.hint ? `<br><span class="context-error-hint">${esc(error.hint)}</span>` : ''}
         ${error.code ? `<small class="context-error-code">Código: ${esc(error.code)}</small>` : ''}
