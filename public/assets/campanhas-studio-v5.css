@@ -1253,3 +1253,111 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
   .powerbi-parity-head{flex-direction:column}
   .powerbi-parity-head small{text-align:left}
 }
+
+
+/* V5.14 — Fórmulas de pontos */
+.point-rule-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.formula-rule-row{
+  display:block!important;
+  padding:13px!important;
+  border-color:color-mix(in srgb,var(--brand) 28%,var(--line))!important;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--brand) 3%,var(--surface)),var(--surface))!important
+}
+.formula-rule-header{
+  display:grid;
+  grid-template-columns:40px minmax(0,1fr) 44px;
+  gap:9px;
+  align-items:end
+}
+.formula-rule-header label,
+.formula-rule-grid label,
+.formula-expression-label{font-size:10px;font-weight:850;color:var(--muted)}
+.formula-rule-header input,
+.formula-rule-grid input,
+.formula-rule-grid select,
+.formula-expression input{
+  width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;
+  background:var(--surface-2);padding:8px 9px;color:var(--ink);font-size:12px
+}
+.formula-badge{
+  width:38px;height:38px;display:grid;place-items:center;border-radius:10px;
+  background:var(--brand);color:#fff;font-weight:900;font-size:12px
+}
+.formula-badge svg{display:none}
+.formula-rule-grid{
+  display:grid;grid-template-columns:1.2fr 1.15fr .8fr;gap:8px;margin-top:10px;align-items:end
+}
+.formula-pack-note{
+  min-height:42px;display:flex;align-items:center;gap:7px;padding:8px 9px;
+  border:1px dashed var(--line);border-radius:9px;background:var(--surface-2);
+  color:var(--muted);font-size:9px;line-height:1.35
+}
+.formula-pack-note svg{width:14px;height:14px;color:var(--brand);flex:0 0 auto}
+.formula-expression-label{display:block;margin-top:10px}
+.formula-expression-label>span{display:block;margin-bottom:4px}
+.formula-expression{display:grid;grid-template-columns:42px minmax(0,1fr)}
+.formula-fx{
+  display:grid;place-items:center;border:1px solid var(--line);border-right:0;
+  border-radius:9px 0 0 9px;background:var(--surface-2);color:var(--brand);font-weight:950
+}
+.formula-expression input{
+  min-height:48px;border-radius:0 9px 9px 0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:13px;font-weight:750
+}
+.formula-token-box{margin-top:9px}
+.formula-token-box>span{
+  display:block;margin-bottom:5px;color:var(--muted);font-size:8.5px;
+  font-weight:900;text-transform:uppercase;letter-spacing:.04em
+}
+.formula-token-list{display:flex;flex-wrap:wrap;gap:5px}
+.formula-token-list button{
+  border:1px solid var(--line);border-radius:7px;background:var(--surface-2);
+  color:var(--ink);padding:5px 7px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:8.5px;font-weight:800;cursor:pointer
+}
+.formula-token-list button:hover{border-color:var(--brand);color:var(--brand)}
+.formula-token-box.functions .formula-token-list button{color:var(--brand)}
+.formula-examples{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px
+}
+.formula-examples span{
+  padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);
+  color:var(--muted);font-size:8.5px;line-height:1.4
+}
+.formula-examples strong{color:var(--ink)}
+.formula-examples code{display:block;margin-top:3px;color:var(--brand);white-space:normal;word-break:break-word}
+
+@media(max-width:980px){
+  .formula-rule-grid{grid-template-columns:1fr 1fr}
+  .formula-examples{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  .point-rule-actions{justify-content:flex-start}
+  .formula-rule-grid{grid-template-columns:1fr}
+  .formula-rule-header{grid-template-columns:36px minmax(0,1fr) 40px}
+}
+
+
+/* V5.15 — diagnóstico de recuperação da sessão SQL */
+.sql-recovery-error .context-error-hint{
+  display:inline-block;
+  margin-top:5px;
+  color:inherit;
+  opacity:.82;
+  font-size:10px;
+  line-height:1.45
+}
+.context-error-code{
+  display:block;
+  margin-top:6px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:9px;
+  opacity:.68
+}
+.sql-recovery-error .secondary-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:6px
+}
+.sql-recovery-error .secondary-btn svg{width:14px;height:14px}

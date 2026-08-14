@@ -85,6 +85,29 @@
     ['activationClients', 'Benefícios utilizados'], ['activationOrders', 'Pedidos com benefício'],
   ];
 
+  const FORMULA_VARIABLES = [
+    ['FARDOS', 'Fardos completos'],
+    ['FARDOS_EQUIVALENTES', 'Fardos equivalentes, aceita fração'],
+    ['UNIDADES', 'Quantidade de unidades'],
+    ['KG', 'Volume em KG'],
+    ['FATURAMENTO', 'Faturamento em R$'],
+    ['CLIENTES', 'Clientes únicos no escopo da fórmula'],
+    ['PEDIDOS', 'Pedidos do vendedor no período'],
+    ['PRODUTOS_DISTINTOS', 'Produtos diferentes vendidos'],
+    ['POSITIVACAO', 'Positivação líquida'],
+    ['MIX', 'Percentual de mix'],
+    ['CATEGORIAS_MIX', 'Categorias de mix cumpridas'],
+  ];
+
+  const FORMULA_FUNCTIONS = [
+    ['INT', 'Inteiro para baixo'],
+    ['ARRED', 'Arredondar'],
+    ['MIN', 'Menor valor'],
+    ['MAX', 'Maior valor'],
+    ['ABS', 'Valor absoluto'],
+    ['SE', 'Condição: SE(condição; valor_se_sim; valor_se_não)'],
+  ];
+
   const TIE_OPTIONS = [
     ['positivity', 'Maior positivação'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais unidades'],
     ['mix', 'Maior mix'], ['points', 'Maior pontuação'], ['orders', 'Mais pedidos'],
@@ -241,6 +264,7 @@
         const error = new Error(data.erro || data.message || `Falha HTTP ${response.status}`);
         error.code = data.codigo;
         error.hint = data.dica;
+        error.sqlRecoveryAttempted = Boolean(data.recuperacaoSqlTentada);
         throw error;
       }
 
@@ -464,65 +488,6 @@
     const target = new Date(`${value}T12:00:00`);
     const today = new Date(); today.setHours(12,0,0,0);
     return Math.ceil((target - today) / 86400000);
-  }
-
-  const CAMPAIGN_STORAGE_ENDPOINT = '/api/campanhas-storage';
-
-  function campaignTimestamp(campaign) {
-    const raw = campaign?.updatedAt || campaign?.atualizadoEm || campaign?.createdAt || campaign?.criadoEm || '';
-    const value = Date.parse(raw);
-    return Number.isFinite(value) ? value : 0;
-  }
-
-  async function syncCampaignStorage() {
-    try {
-      const local = await DB.all('campanhas');
-      const response = await fetch(CAMPAIGN_STORAGE_ENDPOINT, { headers:{ Accept:'application/json' } });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      const remote = Array.isArray(payload?.campanhas) ? payload.campanhas : [];
-      const merged = new Map();
-      for (const item of [...remote, ...local]) {
-        if (!item?.id) continue;
-        const previous = merged.get(String(item.id));
-        if (!previous || campaignTimestamp(item) >= campaignTimestamp(previous)) merged.set(String(item.id), item);
-      }
-      const campaigns = [...merged.values()];
-      for (const campaign of campaigns) await DB.put('campanhas', campaign);
-      const remoteById = new Map(remote.filter((item) => item?.id).map((item) => [String(item.id), item]));
-      const needsUpload = campaigns.filter((item) => {
-        const saved = remoteById.get(String(item.id));
-        return !saved || campaignTimestamp(item) > campaignTimestamp(saved);
-      });
-      if (needsUpload.length) {
-        const upload = await fetch(CAMPAIGN_STORAGE_ENDPOINT, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json', Accept:'application/json' },
-          body:JSON.stringify({ campanhas:needsUpload }),
-        });
-        if (!upload.ok) throw new Error(`HTTP ${upload.status}`);
-      }
-      return { ok:true, total:campaigns.length };
-    } catch (error) {
-      console.warn('[campanhas] persistência compartilhada indisponível; mantendo cópia local:', error.message);
-      return { ok:false, error };
-    }
-  }
-
-  async function persistCampaign(campaign) {
-    await DB.put('campanhas', campaign);
-    try {
-      const response = await fetch(CAMPAIGN_STORAGE_ENDPOINT, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json', Accept:'application/json' },
-        body:JSON.stringify({ campanha }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return true;
-    } catch (error) {
-      console.warn('[campanhas] campanha salva apenas no navegador:', error.message);
-      return false;
-    }
   }
 
   async function loadCampaigns() {
@@ -895,8 +860,18 @@
       ${['collective','both'].includes(campaign.goalMode) ? goalBlock('collective', 'Metas coletivas', 'O total do grupo precisa atingir todas as condições configuradas.', campaign.collectiveGoals) : ''}
       ${['individual','both'].includes(campaign.goalMode) ? goalBlock('individual', 'Metas individuais', 'Cada vendedor precisa atingir todas as condições para ficar elegível.', campaign.individualGoals) : ''}
 
-      <div class="subsection"><div class="subsection-head"><div><h4>Pontos por desempenho</h4><p>Crie pontos por positivação, faturamento, volume, quantidade de unidades, pedidos, mix ou produtos distintos.</p></div><button class="secondary-btn" type="button" data-action="add-point-rule"><i data-lucide="plus"></i>Adicionar regra</button></div>
-        ${campaign.pointRules.length ? `<div class="point-rule-list">${campaign.pointRules.map(pointRuleRow).join('')}</div>` : '<div class="hint">Nenhuma regra adicional de pontos. As categorias de produtos ainda podem gerar pontos separadamente.</div>'}
+      <div class="subsection">
+        <div class="subsection-head">
+          <div>
+            <h4>Pontos por desempenho</h4>
+            <p>Use regras simples ou monte uma fórmula personalizada no estilo Excel, inclusive pontos por fardo, faixas e bônus condicionais.</p>
+          </div>
+          <div class="point-rule-actions">
+            <button class="secondary-btn" type="button" data-action="add-point-rule"><i data-lucide="plus"></i>Regra simples</button>
+            <button class="primary-btn" type="button" data-action="add-formula-point-rule"><i data-lucide="function-square"></i>Fórmula personalizada</button>
+          </div>
+        </div>
+        ${campaign.pointRules.length ? `<div class="point-rule-list">${campaign.pointRules.map((rule) => pointRuleRow(rule, campaign)).join('')}</div>` : '<div class="hint">Nenhuma regra adicional de pontos. Exemplo de fórmula: <code>=FARDOS * 5</code>.</div>'}
       </div>
 
       <div class="subsection"><div class="subsection-head"><div><h4>Critérios de elegibilidade adicionais</h4><p>Essas regras eliminam ou habilitam representantes independentemente da ordem do ranking.</p></div><div class="template-bar">${[['positivity','Positivação mínima',4],['revenue','Faturamento mínimo',10000],['kg','Volume mínimo',100],['mix','Mix mínimo',100],['points','Pontos mínimos',400],['orders','Pedidos mínimos',5]].map(([metric,label,value]) => `<button type="button" data-action="add-rule-template" data-metric="${metric}" data-label="${label}" data-value="${value}">+ ${label}</button>`).join('')}</div></div>
@@ -920,10 +895,81 @@
     </div>`;
   }
 
-  function pointRuleRow(rule) {
+  function pointRuleRow(rule, campaign = app.wizard.campaign) {
+    if (rule.mode === 'formula') {
+      const categoryOptions = (campaign.categories || []).map((category) =>
+        `<option value="${esc(category.id)}" ${rule.formulaCategoryId === category.id ? 'selected' : ''}>${esc(category.name)}</option>`
+      ).join('');
+
+      const formula = rule.formula || '=FARDOS * 5';
+      const packMode = rule.packMode || 'manual';
+
+      return `<div class="point-rule-row formula-rule-row" data-point-rule-id="${esc(rule.id)}">
+        <div class="formula-rule-header">
+          <span class="formula-badge"><i data-lucide="function-square"></i>ƒx</span>
+          <label>Nome da regra
+            <input data-point-field="name" value="${esc(rule.name || 'Pontos por fardo')}" placeholder="Ex.: 5 pontos por fardo">
+          </label>
+          <button class="row-remove" type="button" data-action="remove-point-rule" data-id="${esc(rule.id)}"><i data-lucide="trash-2"></i></button>
+        </div>
+
+        <div class="formula-rule-grid">
+          <label>Escopo dos produtos
+            <select data-point-field="formulaCategoryId">
+              <option value="" ${!rule.formulaCategoryId ? 'selected' : ''}>Todos os produtos da campanha</option>
+              ${categoryOptions}
+            </select>
+          </label>
+
+          <label>Conversão para fardo
+            <select data-point-field="packMode">
+              <option value="manual" ${packMode === 'manual' ? 'selected' : ''}>Quantidade manual de unidades</option>
+              <option value="master" ${packMode === 'master' ? 'selected' : ''}>Campo Master de cada produto</option>
+              <option value="factor" ${packMode === 'factor' ? 'selected' : ''}>Fator Unidade de cada produto</option>
+            </select>
+          </label>
+
+          ${packMode === 'manual' ? `<label>Unidades por fardo
+            <input data-point-field="unitsPerPack" type="number" min="0.0001" step="0.01" value="${Number(rule.unitsPerPack) || 1}">
+          </label>` : `<div class="formula-pack-note">
+            <i data-lucide="database"></i>
+            <span>O divisor será lido de <strong>dbo.Produtos.${packMode === 'master' ? '[Master]' : '[Fator Unidade]'}</strong> para cada SKU.</span>
+          </div>`}
+        </div>
+
+        <label class="formula-expression-label">
+          <span>Fórmula de pontos</span>
+          <div class="formula-expression">
+            <span class="formula-fx">ƒx</span>
+            <input data-point-field="formula" value="${esc(formula)}" spellcheck="false" placeholder="=FARDOS * 5">
+          </div>
+        </label>
+
+        <div class="formula-token-box">
+          <span>Variáveis disponíveis</span>
+          <div class="formula-token-list">
+            ${FORMULA_VARIABLES.map(([token,label]) => `<button type="button" data-action="insert-formula-token" data-rule-id="${esc(rule.id)}" data-token="${token}" title="${esc(label)}">${token}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="formula-token-box functions">
+          <span>Funções</span>
+          <div class="formula-token-list">
+            ${FORMULA_FUNCTIONS.map(([token,label]) => `<button type="button" data-action="insert-formula-token" data-rule-id="${esc(rule.id)}" data-token="${token}(" title="${esc(label)}">${token}</button>`).join('')}
+          </div>
+        </div>
+
+        <div class="formula-examples">
+          <span><strong>5 pontos por fardo:</strong> <code>=FARDOS * 5</code></span>
+          <span><strong>1 fardo = 6 unidades:</strong> <code>=INT(UNIDADES / 6) * 5</code></span>
+          <span><strong>Bônus após 10 fardos:</strong> <code>=SE(FARDOS &gt;= 10; 100 + (FARDOS - 10) * 5; FARDOS * 3)</code></span>
+        </div>
+      </div>`;
+    }
+
     return `<div class="point-rule-row" data-point-rule-id="${esc(rule.id)}">
       <label>Origem<select data-point-field="source">${POINT_SOURCES.map(([id,label]) => `<option value="${id}" ${rule.source === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
-      <label>Forma<select data-point-field="mode"><option value="per_unit" ${rule.mode === 'per_unit' ? 'selected' : ''}>Pontos a cada quantidade</option><option value="fixed_if_target" ${rule.mode === 'fixed_if_target' ? 'selected' : ''}>Pontos fixos ao atingir</option></select></label>
+      <label>Forma<select data-point-field="mode"><option value="per_unit" ${rule.mode === 'per_unit' ? 'selected' : ''}>Pontos a cada quantidade</option><option value="fixed_if_target" ${rule.mode === 'fixed_if_target' ? 'selected' : ''}>Pontos fixos ao atingir</option><option value="formula">Fórmula personalizada</option></select></label>
       <label>${rule.mode === 'fixed_if_target' ? 'Meta' : 'A cada'}<input data-point-field="basis" type="number" step="0.01" min="0.01" value="${Number(rule.basis) || 1}"></label>
       <label>Pontos<input data-point-field="points" type="number" step="0.01" value="${Number(rule.points) || 100}"></label>
       <button class="row-remove" type="button" data-action="remove-point-rule" data-id="${esc(rule.id)}"><i data-lucide="trash-2"></i></button>
@@ -1297,7 +1343,10 @@
     for (const row of $$('.point-rule-row')) {
       const rule = app.wizard.campaign.pointRules.find((item) => item.id === row.dataset.pointRuleId);
       if (!rule) continue;
-      for (const field of $$('[data-point-field]', row)) rule[field.dataset.pointField] = ['basis','points'].includes(field.dataset.pointField) ? Number(field.value) || 0 : field.value;
+      for (const field of $$('[data-point-field]', row)) {
+        const name = field.dataset.pointField;
+        rule[name] = ['basis','points','unitsPerPack'].includes(name) ? Number(field.value) || 0 : field.value;
+      }
     }
   }
   function syncEligibilityRules() {
@@ -1352,6 +1401,23 @@
       if (campaign.participantMode === 'specific' && !campaign.representatives.length) return 'Selecione os representantes participantes.';
     }
     if (step === 1 && !campaign.rankingMetrics.length) return 'Selecione pelo menos uma métrica de ranking.';
+    if (step === 1) {
+      for (const rule of campaign.pointRules || []) {
+        if (rule.mode !== 'formula') continue;
+        if (!String(rule.formula || '').trim()) return `Informe a fórmula da regra "${rule.name || 'Fórmula personalizada'}".`;
+        if (rule.formulaCategoryId && !(campaign.categories || []).some((category) => category.id === rule.formulaCategoryId)) {
+          return `A categoria usada pela fórmula "${rule.name || 'Fórmula personalizada'}" não existe mais.`;
+        }
+        if ((rule.packMode || 'manual') === 'manual' && /FARDOS(?:_EQUIVALENTES)?/i.test(rule.formula) && !(Number(rule.unitsPerPack) > 0)) {
+          return `Informe quantas unidades formam um fardo na regra "${rule.name || 'Fórmula personalizada'}".`;
+        }
+        try {
+          evaluatePointFormula(rule.formula, Object.fromEntries(FORMULA_VARIABLES.map(([key]) => [key, 10])));
+        } catch (error) {
+          return `Erro na fórmula "${rule.name || 'Fórmula personalizada'}": ${error.message}`;
+        }
+      }
+    }
     if (step === 2 && campaign.salesScopeMode === 'selected_products') {
       const scopedProducts = [...new Set((campaign.categories || []).flatMap((category) => (category.products || []).map((product) => Number(product.id))).filter(Number.isFinite))];
       if (!scopedProducts.length) return 'No escopo “Somente produtos das categorias”, adicione pelo menos um produto.';
@@ -1382,11 +1448,11 @@
     syncCurrentStep();
     const campaign = app.wizard.campaign;
     campaign.updatedAt = new Date().toISOString();
-    const sharedSaved = await persistCampaign(campaign);
+    await DB.put('campanhas', campaign);
     await loadCampaigns();
     closeWizard();
     renderView();
-    toast(sharedSaved ? 'Campanha salva com sucesso.' : 'Campanha salva neste navegador; o backup local do servidor não respondeu.', sharedSaved ? '' : 'error');
+    toast('Campanha salva com sucesso.');
   }
 
   function compareOp(value, operator, target) {
@@ -1455,19 +1521,297 @@
     return Number(values[metric] || 0);
   }
 
-  function performanceRulePoints(pointRules, metrics) {
+  function formulaTokens(expression) {
+    const raw = String(expression || '').trim().replace(/^=/, '');
+    const tokens = [];
+    let index = 0;
+
+    while (index < raw.length) {
+      const char = raw[index];
+      if (/\s/.test(char)) { index += 1; continue; }
+
+      const numberMatch = raw.slice(index).match(/^\d+(?:\.\d+)?/);
+      if (numberMatch) {
+        tokens.push({ type:'number', value:Number(numberMatch[0]) });
+        index += numberMatch[0].length;
+        continue;
+      }
+
+      const nameMatch = raw.slice(index).match(/^[A-Za-z_À-ÿ][A-Za-z0-9_À-ÿ]*/);
+      if (nameMatch) {
+        const normalized = nameMatch[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+        tokens.push({ type:'name', value:normalized });
+        index += nameMatch[0].length;
+        continue;
+      }
+
+      const two = raw.slice(index, index + 2);
+      if (['>=','<=','==','!=','<>'].includes(two)) {
+        tokens.push({ type:'op', value:two === '<>' ? '!=' : two });
+        index += 2;
+        continue;
+      }
+
+      if ('+-*/%()><=;,'.includes(char)) {
+        const type = '()+-*/%><='.includes(char) ? 'op' : 'separator';
+        tokens.push({ type, value:char });
+        index += 1;
+        continue;
+      }
+
+      throw new Error(`Caractere não permitido na fórmula: "${char}"`);
+    }
+
+    return tokens;
+  }
+
+  function evaluatePointFormula(expression, variables = {}) {
+    const tokens = formulaTokens(expression);
+    let position = 0;
+
+    const peek = () => tokens[position];
+    const take = () => tokens[position++];
+
+    const expect = (value) => {
+      const token = take();
+      if (!token || token.value !== value) throw new Error(`Esperado "${value}".`);
+    };
+
+    const callFunction = (name, args) => {
+      if (name === 'INT') return Math.floor(Number(args[0] || 0));
+      if (name === 'ARRED' || name === 'ROUND') {
+        const value = Number(args[0] || 0);
+        const decimals = Math.max(0, Math.min(8, Math.trunc(Number(args[1] || 0))));
+        const factor = 10 ** decimals;
+        return Math.round(value * factor) / factor;
+      }
+      if (name === 'MIN') return Math.min(...args.map(Number));
+      if (name === 'MAX') return Math.max(...args.map(Number));
+      if (name === 'ABS') return Math.abs(Number(args[0] || 0));
+      if (name === 'SE' || name === 'IF') return Number(args[0]) ? Number(args[1] || 0) : Number(args[2] || 0);
+      throw new Error(`Função não reconhecida: ${name}`);
+    };
+
+    const primary = () => {
+      const token = take();
+      if (!token) throw new Error('Fórmula incompleta.');
+
+      if (token.type === 'number') return token.value;
+
+      if (token.type === 'name') {
+        if (peek()?.value === '(') {
+          take();
+          const args = [];
+          if (peek()?.value !== ')') {
+            while (true) {
+              args.push(comparison());
+              if (peek()?.value === ')' ) break;
+              if (![';', ','].includes(peek()?.value)) throw new Error(`Esperado ";" ou ")" em ${token.value}.`);
+              take();
+            }
+          }
+          expect(')');
+          return callFunction(token.value, args);
+        }
+
+        if (!Object.prototype.hasOwnProperty.call(variables, token.value)) {
+          throw new Error(`Variável não reconhecida: ${token.value}`);
+        }
+        return Number(variables[token.value]) || 0;
+      }
+
+      if (token.value === '(') {
+        const value = comparison();
+        expect(')');
+        return value;
+      }
+
+      throw new Error(`Valor inesperado: ${token.value}`);
+    };
+
+    const unary = () => {
+      if (peek()?.value === '+') { take(); return unary(); }
+      if (peek()?.value === '-') { take(); return -unary(); }
+      return primary();
+    };
+
+    const multiply = () => {
+      let value = unary();
+      while (['*','/','%'].includes(peek()?.value)) {
+        const op = take().value;
+        const right = unary();
+        if ((op === '/' || op === '%') && Math.abs(right) < 1e-12) throw new Error('Divisão por zero.');
+        if (op === '*') value *= right;
+        if (op === '/') value /= right;
+        if (op === '%') value %= right;
+      }
+      return value;
+    };
+
+    const addition = () => {
+      let value = multiply();
+      while (['+','-'].includes(peek()?.value)) {
+        const op = take().value;
+        const right = multiply();
+        value = op === '+' ? value + right : value - right;
+      }
+      return value;
+    };
+
+    const comparison = () => {
+      let value = addition();
+      while (['>','<','>=','<=','=','==','!='].includes(peek()?.value)) {
+        const op = take().value;
+        const right = addition();
+        if (op === '>') value = value > right ? 1 : 0;
+        if (op === '<') value = value < right ? 1 : 0;
+        if (op === '>=') value = value >= right ? 1 : 0;
+        if (op === '<=') value = value <= right ? 1 : 0;
+        if (op === '=' || op === '==') value = Math.abs(value - right) < 1e-9 ? 1 : 0;
+        if (op === '!=') value = Math.abs(value - right) >= 1e-9 ? 1 : 0;
+      }
+      return value;
+    };
+
+    if (!tokens.length) throw new Error('Informe uma fórmula.');
+    const result = comparison();
+    if (position < tokens.length) throw new Error(`Trecho inesperado próximo de "${tokens[position].value}".`);
+    if (!Number.isFinite(result)) throw new Error('A fórmula não gerou um número válido.');
+    return result;
+  }
+
+  function formulaScopeRows(campaign, rule, rows) {
+    if (!rule.formulaCategoryId) return rows || [];
+    const category = (campaign.categories || []).find((item) => item.id === rule.formulaCategoryId);
+    if (!category) return [];
+    const ids = new Set((category.products || []).map((product) => Number(product.id)));
+    return (rows || []).filter((row) => ids.has(Number(row.productId)));
+  }
+
+  function formulaProductMap(campaign) {
+    const map = new Map();
+    for (const product of app.context?.products || []) map.set(Number(product.id), product);
+    for (const category of campaign.categories || []) {
+      for (const product of category.products || []) map.set(Number(product.id), { ...(map.get(Number(product.id)) || {}), ...product });
+    }
+    return map;
+  }
+
+  function formulaPackingStats(campaign, rule, rows) {
+    const productMap = formulaProductMap(campaign);
+    const piecesByProduct = new Map();
+
+    for (const row of rows || []) {
+      const id = Number(row.productId);
+      piecesByProduct.set(id, (piecesByProduct.get(id) || 0) + Number(row.pieces || 0));
+    }
+
+    let complete = 0;
+    let equivalent = 0;
+    const missing = [];
+
+    for (const [productId, pieces] of piecesByProduct.entries()) {
+      const product = productMap.get(productId) || {};
+      let divisor = 0;
+
+      if (rule.packMode === 'master') divisor = Number(product.master) || 0;
+      else if (rule.packMode === 'factor') divisor = Number(product.factor) || 0;
+      else divisor = Number(rule.unitsPerPack) || 0;
+
+      if (!(divisor > 0)) {
+        missing.push({ id:productId, name:product.name || `Produto ${productId}` });
+        continue;
+      }
+
+      const packs = Math.max(0, pieces) / divisor;
+      equivalent += packs;
+      complete += Math.floor(packs + 1e-9);
+    }
+
+    return { complete, equivalent, missing };
+  }
+
+  function formulaVariables(campaign, rule, metrics, rows) {
+    const scopedRows = formulaScopeRows(campaign, rule, rows);
+    const packing = formulaPackingStats(campaign, rule, scopedRows);
+
+    const units = scopedRows.reduce((sum,row) => sum + Number(row.pieces || 0), 0);
+    const kg = scopedRows.reduce((sum,row) => sum + Number(row.kg || 0), 0);
+    const revenue = scopedRows.reduce((sum,row) => sum + Number(row.revenue || 0), 0);
+    const clients = new Set(scopedRows.map((row) => String(row.clientId)).filter(Boolean)).size;
+    const products = new Set(scopedRows.map((row) => Number(row.productId)).filter(Number.isFinite)).size;
+
+    return {
+      values:{
+        FARDOS:packing.complete,
+        FARDOS_EQUIVALENTES:packing.equivalent,
+        UNIDADES:units,
+        KG:kg,
+        FATURAMENTO:revenue,
+        CLIENTES:clients,
+        PEDIDOS:Number(metrics.orders) || 0,
+        PRODUTOS_DISTINTOS:products,
+        POSITIVACAO:Number(metrics.positivity) || 0,
+        MIX:Number(metrics.mix) || 0,
+        CATEGORIAS_MIX:Number(metrics.mixCategories) || 0,
+      },
+      scopedRows,
+      packing,
+    };
+  }
+
+  function performanceRulePointsDetailed(campaign, pointRules, metrics, rows) {
     let total = 0;
+    const details = [];
+
     for (const rule of pointRules || []) {
+      if (rule.mode === 'formula') {
+        const context = formulaVariables(campaign, rule, metrics, rows);
+        let result = 0;
+        let error = '';
+
+        try {
+          result = evaluatePointFormula(rule.formula || '', context.values);
+        } catch (formulaError) {
+          error = formulaError.message;
+          result = 0;
+        }
+
+        total += result;
+        details.push({
+          id:rule.id,
+          mode:'formula',
+          name:rule.name || 'Fórmula personalizada',
+          formula:rule.formula || '',
+          result,
+          error,
+          categoryId:rule.formulaCategoryId || '',
+          variables:context.values,
+          missingPackProducts:context.packing.missing,
+        });
+        continue;
+      }
+
       const value = Number(metrics[rule.source] || 0);
       const basis = Math.max(0.000001, Number(rule.basis) || 1);
       const points = Number(rule.points) || 0;
+      let result = 0;
+
       if (rule.mode === 'fixed_if_target') {
-        if (value >= basis) total += points;
+        if (value >= basis) result = points;
       } else {
-        total += Math.floor(Math.max(0, value) / basis) * points;
+        result = Math.floor(Math.max(0, value) / basis) * points;
       }
+
+      total += result;
+      details.push({ id:rule.id, mode:rule.mode, source:rule.source, result, value, basis, points });
     }
-    return total;
+
+    return { total, details };
+  }
+
+  function performanceRulePoints(campaign, pointRules, metrics, rows) {
+    return performanceRulePointsDetailed(campaign, pointRules, metrics, rows).total;
   }
 
   function goalValue(goal, currentMetrics, previousMetrics) {
@@ -1661,8 +2005,10 @@
       orders:seller.previous.orders, distinctProducts:seller.previous.products.size, positivity:previousPositivity, mix:previousMix.percent, mixCategories:previousMix.fulfilled,
       activationClients:previousActivation.clients, activationOrders:previousActivation.orders, activationRate:previousActivation.rate,
     };
-    const currentPoints = currentBasePoints + performanceRulePoints(campaign.pointRules, currentRaw);
-    const previousPoints = previousBasePoints + performanceRulePoints(campaign.pointRules, previousRaw);
+    const currentRulePoints = performanceRulePointsDetailed(campaign, campaign.pointRules, currentRaw, seller.current.rows);
+    const previousRulePoints = performanceRulePointsDetailed(campaign, campaign.pointRules, previousRaw, seller.previous.rows);
+    const currentPoints = currentBasePoints + currentRulePoints.total;
+    const previousPoints = previousBasePoints + previousRulePoints.total;
 
     const current = { ...currentRaw, points:currentPoints };
     const previous = { ...previousRaw, points:previousPoints };
@@ -1676,6 +2022,8 @@
       orders:current.orders, previousOrders:previous.orders, ordersGrowth:growth(current.orders, previous.orders),
       positivity, mix:current.mix, mixDone:currentMix.fulfilled, mixTotal:currentMix.total, mixMissing:currentMix.missing,
       points:current.points, previousPoints:previous.points, pointsGrowth:growth(current.points, previous.points),
+      pointRuleAudit:currentRulePoints.details,
+      previousPointRuleAudit:previousRulePoints.details,
       distinctProducts:current.distinctProducts,
       activationClients:currentActivation.clients, activationOrders:currentActivation.orders, activationRate:currentActivation.rate,
       activationAudit:currentActivation, previousActivationAudit:previousActivation,
@@ -1985,7 +2333,17 @@
         return;
       }
 
-      $('#performanceBody').innerHTML = `<div class="context-error"><strong>Não foi possível consultar o SQL Server.</strong><br>${esc(error.message)}${error.hint ? `<br>${esc(error.hint)}` : ''}<br><button class="secondary-btn" data-action="retry-performance" data-id="${esc(id)}" style="margin-top:10px">Tentar novamente</button></div>`;
+      const sessionExpired = error.code === 'SQL_SESSION_EXPIRED' || /sess[aã]o.*(?:inv[aá]lida|expirad)/i.test(error.message || '');
+      $('#performanceBody').innerHTML = `<div class="context-error sql-recovery-error">
+        <strong>${sessionExpired ? 'A conexão com o SQL expirou e não conseguiu se recuperar.' : 'Não foi possível consultar o SQL Server.'}</strong>
+        <br>${esc(error.message)}
+        ${error.hint ? `<br><span class="context-error-hint">${esc(error.hint)}</span>` : ''}
+        ${error.code ? `<small class="context-error-code">Código: ${esc(error.code)}</small>` : ''}
+        <br><button class="secondary-btn" data-action="retry-performance" data-id="${esc(id)}" style="margin-top:10px">
+          <i data-lucide="refresh-cw"></i>${sessionExpired ? 'Reconectar e tentar novamente' : 'Tentar novamente'}
+        </button>
+      </div>`;
+      icons($('#performanceBody'));
     }
   }
 
@@ -3168,6 +3526,13 @@
     const pointsAudit = [
       `Pontos totais calculados pelas regras configuradas nesta campanha.`,
       `Resultado atual: ${number(item.points,1)} pontos`,
+      ...(item.pointRuleAudit || []).map((rule) => {
+        if (rule.mode !== 'formula') return `Regra simples: +${number(rule.result,1)} ponto(s)`;
+        if (rule.error) return `${rule.name}: erro na fórmula (${rule.error}) → 0 ponto`;
+        const vars = rule.variables || {};
+        const packWarning = rule.missingPackProducts?.length ? ` · ${rule.missingPackProducts.length} produto(s) sem divisor de fardo` : '';
+        return `${rule.name}: ${rule.formula} = ${number(rule.result,2)} ponto(s) · FARDOS ${number(vars.FARDOS,2)} · UNIDADES ${number(vars.UNIDADES,2)}${packWarning}`;
+      }),
     ];
 
     const customerAudit = positivityAuditLines(item, audit);
@@ -3324,7 +3689,20 @@
       event.target.closest('.product-card')?.classList.toggle('is-selected', event.target.checked);
     }
     if (event.target.matches('[data-goal-field="mode"]')) { syncCurrentStep(); renderWizard(); }
-    if (event.target.matches('[data-point-field="mode"]')) { syncCurrentStep(); renderWizard(); }
+    if (event.target.matches('[data-point-field="mode"]')) {
+      syncCurrentStep();
+      const row = event.target.closest('.point-rule-row');
+      const rule = app.wizard.campaign.pointRules.find((item) => item.id === row?.dataset.pointRuleId);
+      if (rule?.mode === 'formula') {
+        rule.name = rule.name || 'Fórmula personalizada';
+        rule.formula = rule.formula || '=FARDOS * 5';
+        rule.packMode = rule.packMode || 'manual';
+        rule.unitsPerPack = Number(rule.unitsPerPack) || 1;
+        rule.formulaCategoryId = rule.formulaCategoryId || '';
+      }
+      renderWizard();
+    }
+    if (event.target.matches('[data-point-field="packMode"]')) { syncCurrentStep(); renderWizard(); }
     if (event.target.matches('[data-activation-field="discountType"]')) { syncCurrentStep(); renderWizard(); }
     if (event.target.id === 'benefitStatusFilter' && app.benefitReport) { app.benefitReport.status = event.target.value; renderBenefitReport(); }
   });
@@ -3424,7 +3802,38 @@
       if (index >= 0) list.splice(index, 1);
       renderWizard(); return;
     }
-    if (action === 'add-point-rule') { app.wizard.campaign.pointRules.push({ id:uid('point'), source:'positivity', mode:'per_unit', basis:1, points:100 }); renderWizard(); return; }
+    if (action === 'add-point-rule') {
+      syncCurrentStep();
+      app.wizard.campaign.pointRules.push({ id:uid('point'), source:'positivity', mode:'per_unit', basis:1, points:100 });
+      renderWizard(); return;
+    }
+    if (action === 'add-formula-point-rule') {
+      syncCurrentStep();
+      app.wizard.campaign.pointRules.push({
+        id:uid('point'),
+        mode:'formula',
+        name:'Pontos por fardo',
+        formula:'=FARDOS * 5',
+        formulaCategoryId:'',
+        packMode:'manual',
+        unitsPerPack:1,
+      });
+      renderWizard(); return;
+    }
+    if (action === 'insert-formula-token') {
+      const row = node.closest('.point-rule-row');
+      const input = row?.querySelector('[data-point-field="formula"]');
+      if (!input) return;
+      const token = node.dataset.token || '';
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      input.value = `${input.value.slice(0,start)}${token}${input.value.slice(end)}`;
+      input.focus();
+      const next = start + token.length;
+      input.setSelectionRange(next, next);
+      syncPointRules();
+      return;
+    }
     if (action === 'remove-point-rule') { app.wizard.campaign.pointRules = app.wizard.campaign.pointRules.filter((item) => item.id !== node.dataset.id); renderWizard(); return; }
     if (action === 'add-rule-template') { app.wizard.campaign.rules.push({ id:uid('rule'), name:node.dataset.label, metric:node.dataset.metric, operator:'>=', value:Number(node.dataset.value) || 0 }); renderWizard(); return; }
     if (action === 'remove-rule') { app.wizard.campaign.rules = app.wizard.campaign.rules.filter((item) => item.id !== node.dataset.id); renderWizard(); return; }
@@ -3534,7 +3943,6 @@
   async function init() {
     document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) || 'light';
     await DB.init();
-    await syncCampaignStorage();
     await loadCampaigns();
     renderView();
     icons();

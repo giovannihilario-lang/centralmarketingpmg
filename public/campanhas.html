@@ -1,17 +1,27 @@
 <!doctype html>
-<html lang="pt-BR" data-pmg-auth data-pmg-local-target="/campanhas.html">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script>
+    // Campanhas depende do SQL acessível pelo Node local. A cópia hospedada
+    // apenas encaminha a navegação para a aplicação servida na porta 3001.
+    (() => {
+      const estaNoNodeLocal = window.location.protocol === 'http:' &&
+        (window.location.port === '3001' || ['localhost', '127.0.0.1'].includes(window.location.hostname));
+      if (estaNoNodeLocal) return;
+
+      const destino = new URL('http://localhost:3001/campanhas.html');
+      destino.search = window.location.search;
+      destino.hash = window.location.hash;
+      window.location.replace(destino.toString());
+    })();
+  </script>
   <title>PMG Connect — Campanhas</title>
-  <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
-  <link rel="icon" type="image/png" href="/favicon.png">
-  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.13.0">
-  <script defer src="/assets/campanhas-studio-v5.js?v=5.13.0"></script>
+  <link rel="stylesheet" href="/assets/campanhas-studio-v5.css?v=5.15.0">
+  <script defer src="/assets/campanhas-studio-v5.js?v=5.15.0"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/assets/connect-auth.js?v=1.0.0"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -48,7 +58,6 @@
       <div class="side-footer">
         <button class="nav-item" type="button" data-action="settings"><i data-lucide="settings"></i><span>Configurações</span></button>
         <a class="nav-item" href="/central.html"><i data-lucide="house"></i><span>Voltar ao Connect</span></a>
-        <button class="nav-item" type="button" data-pmg-logout><i data-lucide="log-out"></i><span>Sair</span></button>
       </div>
     </aside>
 

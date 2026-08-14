@@ -88,7 +88,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.13.0',
+    version: '5.15.0',
   };
 }
 
@@ -1989,8 +1989,61 @@ async function querySellerAudit(payload = {}) {
   };
 }
 
+function sqlErrorMessage(error) {
+  const parts = [
+    error?.message,
+    error?.originalError?.message,
+    error?.cause?.message,
+    ...(Array.isArray(error?.precedingErrors) ? error.precedingErrors.map((item) => item?.message) : []),
+  ];
+  return parts.filter(Boolean).join(' | ');
+}
+
+function isRecoverableSqlSessionError(error) {
+  const code = String(error?.code || error?.originalError?.code || '').toUpperCase();
+  const message = sqlErrorMessage(error);
+
+  if ([
+    'ECONNCLOSED',
+    'ECONNRESET',
+    'ESOCKET',
+    'EINVALIDSTATE',
+    'EINSTLOOKUP',
+  ].includes(code)) return true;
+
+  return /sess[aã]o\s+(?:inv[aá]lida|expirad)|sess[aã]o.*expirad|invalid\s+session|session.*expired|connection\s+(?:is\s+)?(?:closed|lost|terminated)|socket.*(?:closed|hang\s*up)|transport-level error|connection.*forcibly closed/i.test(message);
+}
+
+async function withSqlSessionRecovery(label, operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isRecoverableSqlSessionError(error)) throw error;
+
+    console.warn(`[campanhas-v5:${label}] sessão/conexão SQL inválida; recriando pool e repetindo a consulta uma vez.`);
+    await resetPool();
+
+    // Resultados ligados à conexão antiga não devem sobreviver à recuperação.
+    performanceCache.clear();
+    benefitCache.clear();
+
+    try {
+      const result = await operation();
+      console.log(`[campanhas-v5:${label}] conexão SQL recuperada automaticamente.`);
+      return result;
+    } catch (retryError) {
+      retryError.sqlRecoveryAttempted = true;
+      retryError.sqlFirstError = sqlErrorMessage(error);
+      throw retryError;
+    }
+  }
+}
+
 function publicError(error) {
-  const code = error?.code || error?.originalError?.code || 'CAMPANHAS_LOCAL_ERROR';
+  const rawCode = error?.code || error?.originalError?.code || 'CAMPANHAS_LOCAL_ERROR';
+  const code = isRecoverableSqlSessionError(error) || error?.sqlRecoveryAttempted
+    ? 'SQL_SESSION_EXPIRED'
+    : rawCode;
   const hints = {
     SQL_ENV_MISSING: 'Confira o arquivo .env da API local.',
     ELOGIN: 'Confira usuário, senha e permissão de acesso ao banco powerbi.',
@@ -2000,13 +2053,15 @@ function publicError(error) {
     VENDEDOR_AUSENTE: 'Escolha um representante para abrir a auditoria.',
     FORNECEDOR_AUSENTE: 'Selecione ao menos um fornecedor para executar o diagnóstico de consistência.',
     BENEFICIO_PRODUTOS_AUSENTES: 'Configure a categoria Fortunata/ativadora e os produtos que recebem desconto.',
+    SQL_SESSION_EXPIRED: 'A API tentou recriar a conexão com o SQL automaticamente. Se persistir, confira o terminal do npm start e teste /api/campanhas-data?recurso=diagnostico.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.13.0',
+    versao: '5.15.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
+    recuperacaoSqlTentada:Boolean(error?.sqlRecoveryAttempted),
   };
 }
 
@@ -2022,8 +2077,10 @@ export default async function handler(req, res) {
     if (resource === 'contexto-status') return res.status(200).json(publicStatus());
 
     if (resource === 'contexto-preparar') {
-      void prepareContext({ force: String(req.query?.force || '').toLowerCase() === 'true' })
-        .catch((error) => console.warn('[campanhas-v5] preparação:', error.message));
+      void withSqlSessionRecovery(
+        'contexto-preparar',
+        () => prepareContext({ force: String(req.query?.force || '').toLowerCase() === 'true' })
+      ).catch((error) => console.warn('[campanhas-v5] preparação:', error.message));
       return res.status(202).json(publicStatus());
     }
 
@@ -2033,11 +2090,13 @@ export default async function handler(req, res) {
     }
 
     if (resource === 'diagnostico') {
-      const pool = await getPool();
-      const result = await pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
+      const result = await withSqlSessionRecovery('diagnostico', async () => {
+        const pool = await getPool();
+        return pool.request().query('SELECT 1 AS ok, DB_NAME() AS banco, GETDATE() AS dataServidor;');
+      });
       return res.status(200).json({
         ok: true,
-        version: '5.13.0',
+        version: '5.15.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
@@ -2046,38 +2105,38 @@ export default async function handler(req, res) {
 
     if (resource === 'apuracao') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para apuração.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await queryPerformance(req.body || {}));
+      return res.status(200).json(await withSqlSessionRecovery('apuracao', () => queryPerformance(req.body || {})));
     }
 
     if (resource === 'auditoria-vendedor') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para auditoria do vendedor.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await querySellerAudit(req.body || {}));
+      return res.status(200).json(await withSqlSessionRecovery('auditoria-vendedor', () => querySellerAudit(req.body || {})));
     }
 
     if (resource === 'beneficio-primeira-compra') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para o relatório de benefícios.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await queryFirstPurchaseBenefit(req.body || {}));
+      return res.status(200).json(await withSqlSessionRecovery('beneficio-primeira-compra', () => queryFirstPurchaseBenefit(req.body || {})));
     }
 
     if (resource === 'diagnostico-consistencia') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para diagnóstico.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await queryConsistencyDiagnostic(req.body || {}));
+      return res.status(200).json(await withSqlSessionRecovery('diagnostico-consistencia', () => queryConsistencyDiagnostic(req.body || {})));
     }
 
     return res.status(404).json({ erro: `Recurso desconhecido: ${resource}`, codigo: 'RECURSO_DESCONHECIDO' });
   } catch (error) {
     console.error(`[campanhas-v5:${resource}]`, error);
     const data = publicError(error);
-    return res.status(['SQL_ENV_MISSING', 'ETIMEOUT'].includes(data.codigo) ? 503 : 500).json(data);
+    return res.status(['SQL_ENV_MISSING', 'ETIMEOUT', 'SQL_SESSION_EXPIRED'].includes(data.codigo) ? 503 : 500).json(data);
   }
 }
 
 setTimeout(() => {
   void loadDiskCache().then(() => {
     if (state.context) {
-      void prepareContext({ force: state.stale }).catch(() => {});
+      void withSqlSessionRecovery('warmup-contexto', () => prepareContext({ force: state.stale })).catch(() => {});
     } else {
-      void prepareContext().catch(() => {});
+      void withSqlSessionRecovery('warmup-contexto', () => prepareContext()).catch(() => {});
     }
   });
 }, 100);

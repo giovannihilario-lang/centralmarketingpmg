@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-08-13T18:01:31.653Z",
+  "updatedAt": "2026-08-14T11:42:31.963Z",
   "campanhas": [
     {
       "id": "campaign_mshzca75_n6yjne",
@@ -20,11 +20,11 @@
       "representatives": [],
       "rankingMetrics": [
         "points",
-        "positivity",
-        "kg"
+        "revenue",
+        "positivity"
       ],
       "rankingMode": "TOP_N_ELIGIBLE",
-      "topN": 5,
+      "topN": 8,
       "salesScopeMode": "supplier_all",
       "goalMode": "both",
       "collectiveGoals": [
@@ -34,7 +34,7 @@
           "mode": "growth_percent",
           "metric": "revenue",
           "operator": ">=",
-          "value": 12
+          "value": 10.05
         }
       ],
       "individualGoals": [
@@ -47,17 +47,472 @@
           "value": 10
         }
       ],
-      "rules": [],
-      "pointRules": [
+      "rules": [
         {
-          "id": "point_mshzfknm_pvra7x",
-          "source": "positivity",
-          "mode": "per_unit",
-          "basis": 1,
-          "points": 100
+          "id": "rule_msrzfzx5_2gl1nh",
+          "name": "Positivação mínima",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 3
         }
       ],
-      "categories": [],
+      "pointRules": [],
+      "categories": [
+        {
+          "id": "category_msryw9i7_xaoa80",
+          "name": "Produtos focos",
+          "requiredMix": false,
+          "minDistinct": 1,
+          "pointUnit": "pieces",
+          "pointValue": 30,
+          "products": [
+            {
+              "id": 9746,
+              "name": "MAIONESE SABOR CHURRASCO CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806030",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9743,
+              "name": "MOLHO AMERICANO CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806047",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9742,
+              "name": "MOLHO DE PIMENTA EXTRA FORTE CHILLI BEANS CEPÊRA 60 ML (CX 12 VD)",
+              "unit": "CX",
+              "factor": 0,
+              "master": 0,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801967",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9741,
+              "name": "MOLHO DE PIMENTA MEXICANO CHILLI BEANS CEPÊRA 60 ML (CX 12 VD)",
+              "unit": "CX",
+              "factor": 0,
+              "master": 0,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801967",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9744,
+              "name": "MAIONESE TEMPERADA CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806023",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9740,
+              "name": "MOSTARDA COM MEL CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806016",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9747,
+              "name": "MOSTARDA DIJON CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806122",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        },
+        {
+          "id": "category_msryywia_bcafsa",
+          "name": "Demais produtos",
+          "requiredMix": false,
+          "minDistinct": 1,
+          "pointUnit": "pieces",
+          "pointValue": 10,
+          "products": [
+            {
+              "id": 4876,
+              "name": "MOLHO DE TOMATE PIZZA CEPÊRA MAMMA D ORO 1,7 KG (CX 6 BAG)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHO DE TOMATE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803091",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3210,
+              "name": "MOLHO DE TOMATE TRADICIONAL MAMMA D ORO CEPÊRA 1,7 KG (CX 6 BAG)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHO DE TOMATE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803145",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3610,
+              "name": "MOLHO ALHO CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802858",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7259,
+              "name": "MOLHO BARBECUE CEPÊRA 1,01 KG (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803206",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3729,
+              "name": "MOLHO BARBECUE CEPÊRA 3,5 KG (CX 4 GL)",
+              "unit": "GL",
+              "factor": 1,
+              "master": 4,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803121",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8896,
+              "name": "MOLHO BARBECUE SACHÊ CEPÊRA 7 G (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805750",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3611,
+              "name": "MOLHO DE PIMENTA VERMELHA CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802865",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8897,
+              "name": "MOLHO DE PIMENTA VERMELHA SACHÊ CEPÊRA 5 ML (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805729",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3398,
+              "name": "MOLHO INGLÊS CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802889",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 1118,
+              "name": "MOLHO SHOYU CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802872",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8599,
+              "name": "PASSATA GOURMET KNORR 1,5 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 1,
+              "master": 6,
+              "group": "CONSERVAS",
+              "subgroup": "PASSATA / POLPA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805774",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3270,
+              "name": "AZEITE DENDÊ CEPÊRA 900 ML (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "AZEITE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801080",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 413,
+              "name": "CATCHUP CEPÊRA 3,5 KG (CX 4 GL)",
+              "unit": "GL",
+              "factor": 1,
+              "master": 4,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802674",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9745,
+              "name": "CATCHUP ORIGINAL CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806009",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 4874,
+              "name": "CATCHUP PEQUENO CEPÊRA 1,01 KG (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801172",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8894,
+              "name": "CATCHUP SACHÊ CEPÊRA 7 G (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805170",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8600,
+              "name": "MAIONESE CEPÊRA 1,7 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 1,
+              "master": 6,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805804",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8895,
+              "name": "MAIONESE SACHÊ CEPÊRA 7 G (CX 140 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805194",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3100,
+              "name": "MOSTARDA COM MEL CEPÊRA 400 G (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803718",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 5146,
+              "name": "MOSTARDA DIJON CEPÊRA 190 G (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803831",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 280,
+              "name": "MOSTARDA GRANDE AMARELA CEPÊRA 3,3 KG (CX 4 GL)",
+              "unit": "GL",
+              "factor": 1,
+              "master": 4,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802681",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8898,
+              "name": "MOSTARDA SACHÊ CEPÊRA 7 G (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805187",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 1396,
+              "name": "CEREJA MARRASQUINO SEM TALO CEPÊRA 125 G (CX 12 VD)",
+              "unit": "VD",
+              "factor": 1,
+              "master": 12,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CEREJA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802384",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8368,
+              "name": "AROMA ARTIFICIAL DE BAUNILHA CEPÊRA 480 ML (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "COBERTURA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805798",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        }
+      ],
       "orderActivationRule": {
         "enabled": false,
         "name": "Benefício de primeira compra",
@@ -74,11 +529,11 @@
       },
       "tieBreaks": [
         {
-          "metric": "positivity",
+          "metric": "points",
           "direction": "desc"
         },
         {
-          "metric": "revenue",
+          "metric": "positivity",
           "direction": "desc"
         }
       ],
@@ -86,7 +541,7 @@
         {
           "position": 1,
           "type": "money",
-          "description": ""
+          "description": "2500"
         },
         {
           "position": 2,
@@ -125,7 +580,7 @@
         }
       ],
       "createdAt": "2026-08-06T20:40:00.162Z",
-      "updatedAt": "2026-08-12T15:16:35.174Z"
+      "updatedAt": "2026-08-13T20:41:28.213Z"
     },
     {
       "id": "campaign_mshzjso7_uawou7",
