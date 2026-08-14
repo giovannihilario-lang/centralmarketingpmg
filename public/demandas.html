@@ -363,7 +363,7 @@
         <section id="viewDemandas" class="view" data-page="demandas">
           <div class="page-toolbar">
             <div class="toolbar-title"><span class="eyebrow">Fluxo de trabalho</span><h2>Demandas</h2><p>Acompanhe entregas, responsáveis e gargalos do setor.</p></div>
-            <div class="toolbar-actions"><button id="newTaskPageBtn" class="btn primary manager-only hidden" data-quick-type="demanda"><i data-lucide="plus"></i>Nova demanda</button></div>
+            <div class="toolbar-actions"><button id="recurrenceManagerBtn" class="btn secondary manager-only hidden" type="button"><i data-lucide="repeat-2"></i>Recorrências</button><button id="newTaskPageBtn" class="btn primary manager-only hidden" data-quick-type="demanda"><i data-lucide="plus"></i>Nova demanda</button></div>
           </div>
 
           <section class="task-toolbar card">
@@ -646,9 +646,10 @@
 
   <div id="recurrenceModal" class="modal-layer hidden">
     <div class="modal-card recurrence-edit-modal">
-      <div class="modal-head"><div><span class="eyebrow">Série recorrente</span><h2>Editar toda a recorrência</h2><p>As alterações valem para as próximas ocorrências. O histórico anterior permanece intacto.</p></div><button class="icon-btn subtle" data-close-modal="recurrenceModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Série recorrente</span><h2 id="recurrenceModalTitle">Editar toda a recorrência</h2><p id="recurrenceModalDescription">As alterações valem para as próximas ocorrências. O histórico anterior permanece intacto.</p></div><button class="icon-btn subtle" data-close-modal="recurrenceModal"><i data-lucide="x"></i></button></div>
       <form id="recurrenceForm">
         <input id="recurrenceEditId" type="hidden">
+        <input id="recurrenceConvertTaskId" type="hidden">
         <div class="modal-body">
           <div class="recurrence-series-banner"><span><i data-lucide="repeat-2"></i></span><div><strong id="recurrenceSeriesStatus">Série ativa</strong><small>Editar a série não altera ocorrências já concluídas.</small></div></div>
           <label class="field"><span>Título</span><input id="recurrenceEditTitle" required maxlength="160"></label>
@@ -681,6 +682,21 @@
         </div>
         <div class="modal-footer recurrence-modal-footer"><button id="recurrencePauseBtn" type="button" class="btn secondary"><i data-lucide="pause"></i>Pausar</button><button id="recurrenceEndBtn" type="button" class="btn danger-soft"><i data-lucide="square"></i>Encerrar série</button><span class="modal-footer-spacer"></span><button type="button" class="btn secondary" data-close-modal="recurrenceModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar série</button></div>
       </form>
+    </div>
+  </div>
+
+  <div id="recurrenceManagerModal" class="modal-layer hidden">
+    <div class="modal-card recurrence-manager-modal">
+      <div class="modal-head"><div><span class="eyebrow">Rotinas do setor</span><h2>Demandas recorrentes</h2><p>Gerencie todas as séries em um único lugar. As ocorrências continuam aparecendo normalmente em Hoje, Agenda, Demandas, Projetos e Equipe.</p></div><button class="icon-btn subtle" data-close-modal="recurrenceManagerModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="recurrence-manager-toolbar">
+          <div class="search-input"><i data-lucide="search"></i><input id="recurrenceManagerSearch" type="search" placeholder="Buscar rotina, projeto ou responsável"></div>
+          <select id="recurrenceManagerStatus"><option value="">Todas</option><option value="ativas">Ativas</option><option value="pausadas">Pausadas</option><option value="encerradas">Encerradas</option></select>
+          <button id="recurrenceManagerNewBtn" type="button" class="btn primary"><i data-lucide="plus"></i>Nova recorrência</button>
+        </div>
+        <div id="recurrenceManagerSummary" class="recurrence-manager-summary"></div>
+        <div id="recurrenceManagerList" class="recurrence-manager-list"></div>
+      </div>
     </div>
   </div>
 
@@ -732,6 +748,16 @@
               <button type="button" class="immediate-audience-option team" data-edit-immediate-audience="todos"><i data-lucide="users-round"></i><span><strong>Toda a equipe</strong><small>Alerta coletivo</small></span></button>
             </div>
           </div>
+          <section id="editTaskRecurrenceContext" class="edit-recurrence-context hidden">
+            <div class="edit-recurrence-context-icon"><i data-lucide="repeat-2"></i></div>
+            <div class="edit-recurrence-context-copy"><span class="eyebrow">Ocorrência recorrente</span><strong>Você está editando somente este dia</strong><small id="editTaskRecurrenceSummary">As próximas ocorrências continuam seguindo a configuração da série.</small></div>
+            <button id="editTaskOpenSeriesBtn" type="button" class="btn secondary"><i data-lucide="calendar-sync"></i>Editar toda a série</button>
+          </section>
+          <section id="editTaskConvertRecurrence" class="edit-recurrence-convert hidden">
+            <div><i data-lucide="repeat-2"></i><span><strong>Esta demanda ainda não é recorrente</strong><small>Transforme o item atual em uma série e mantenha esta demanda como a primeira ocorrência.</small></span></div>
+            <button id="editTaskConvertRecurrenceBtn" type="button" class="btn soft"><i data-lucide="repeat-2"></i>Transformar em recorrente</button>
+          </section>
+
           <div class="form-grid three">
             <label class="field"><span>Prazo</span><input id="editTaskDueDate" type="date"></label>
             <label class="field"><span>Horário</span><input id="editTaskDueTime" type="time"></label>
@@ -782,6 +808,10 @@
             </div>
           </div>
           <div class="transfer-preserved"><i data-lucide="package-check"></i><div><strong>O que vai junto?</strong><span>Descrição, links citados no briefing/comentários, comentários, histórico, prioridade, prazo, status atual, lembretes e a estimativa de horas. A carga sai do colaborador anterior e passa ao novo responsável.</span></div></div>
+          <section id="transferRecurrenceScope" class="transfer-recurrence-scope hidden">
+            <div><i data-lucide="repeat-2"></i><span><strong>Esta demanda faz parte de uma recorrência</strong><small>Escolha se a troca vale só para esta ocorrência ou também para os próximos dias.</small></span></div>
+            <label><input id="transferApplySeries" type="checkbox"><span><strong>Aplicar às próximas ocorrências</strong><small>Atualiza o responsável da série sem alterar ocorrências já concluídas.</small></span></label>
+          </section>
           <label class="field"><span>Observação da transferência</span><textarea id="transferNote" rows="4" placeholder="Ex.: redistribuição por disponibilidade, troca de frente, continuidade do material..."></textarea></label>
         </div>
         <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="transferTaskModal">Cancelar</button><button id="transferConfirmBtn" class="btn primary" type="submit"><i data-lucide="arrow-right-left"></i>Confirmar transferência</button></div>

@@ -118,6 +118,9 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
+  if (/demandas_recorrentes|recorrencia_id|processar_recorrencias_demanda|converter_tarefa_em_recorrente|transferir_demanda_recorrente/i.test(message)) {
+    return 'A estrutura de Demandas Recorrentes ainda não está completa. Execute sql/DEMANDAS-RECORRENTES-V3-6-2-COMPLETO.sql no Supabase.';
+  }
   if (/academia_reservas|transferencias_tarefa|criar_tarefa_v3|editar_tarefa_v3|avaliar_conclusao|transferir_tarefa/i.test(message)) {
     return 'A migração Demandas V3 ainda não foi executada no Supabase. Rode sql/demandas_v3_operacao.sql.';
   }
@@ -1839,6 +1842,8 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_tempo' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'modelos_demanda' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'fechamentos_mensais' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes_ocorrencias' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => {
       await loadNotifications();
       renderNotifications();
@@ -3705,4 +3710,687 @@ function bindIntelligenceV5Events(){
   $('globalSearchInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'){const first=$('globalSearchResults')?.querySelector('[data-search-command], [data-search-task], [data-search-project], [data-search-person], [data-search-reminder]');if(first){event.preventDefault();first.click();}}});
 }
 
-bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); initOverlayStability(); refreshIcons(); bootstrap();
+
+
+/* =========================================================
+   PMG CONNECT V3.6.2 — RECORRÊNCIA REALMENTE INTEGRADA
+   Criação, edição, transferência, Hoje, Agenda, Demandas,
+   Projetos, Equipe, busca, notificações e relatório mensal.
+   ========================================================= */
+Object.assign(state, {
+  recurringSeries: [],
+  recurringOccurrences: [],
+  recurrenceReady: false,
+  recurrenceTimer: null,
+  recurrenceManagerSearch: '',
+  recurrenceManagerStatus: ''
+});
+
+const TASK_RECURRENCE_LABEL = {
+  diaria: 'Todos os dias',
+  dias_uteis: 'Dias úteis',
+  semanal: 'Semanal',
+  personalizada: 'Dias específicos',
+  mensal: 'Mensal'
+};
+const WEEKDAY_SHORT = {1:'Seg',2:'Ter',3:'Qua',4:'Qui',5:'Sex',6:'Sáb',7:'Dom'};
+
+function isMissingRecurrenceSchema(error) {
+  return /demandas_recorrentes|recorrencia_id|processar_recorrencias_demanda|criar_demanda_recorrente|converter_tarefa_em_recorrente|schema cache|does not exist/i.test(error?.message || error?.details || String(error || ''));
+}
+function isRecurringTask(task) { return Boolean(task?.recorrencia_id); }
+function recurrenceSeriesById(id) { return state.recurringSeries.find(item => item.id === id) || null; }
+function recurrenceSeriesForTask(task) { return task?.recorrencia_id ? recurrenceSeriesById(task.recorrencia_id) : null; }
+function recurrenceOccurrenceForTask(task) { return task?.recorrencia_id ? state.recurringOccurrences.find(item => item.recorrencia_id === task.recorrencia_id && (item.tarefa_id === task.id || item.data_referencia === task.recorrencia_data)) || null : null; }
+function recurrenceSeriesStatus(series) {
+  if (!series) return 'unknown';
+  if (series.encerrada_em) return 'ended';
+  if (!series.ativa) return 'paused';
+  return 'active';
+}
+function recurrenceStatusLabel(series) {
+  const status = recurrenceSeriesStatus(series);
+  return status === 'active' ? 'Ativa' : status === 'paused' ? 'Pausada' : status === 'ended' ? 'Encerrada' : 'Indisponível';
+}
+function recurrenceFrequencyLabel(series) {
+  if (!series) return 'Recorrente';
+  let label = TASK_RECURRENCE_LABEL[series.frequencia] || 'Recorrente';
+  if (['semanal','personalizada'].includes(series.frequencia) && (series.dias_semana || []).length) {
+    label += ` · ${(series.dias_semana || []).map(day => WEEKDAY_SHORT[day]).filter(Boolean).join(', ')}`;
+  }
+  return label;
+}
+function recurrencePeriodLabel(series) {
+  if (!series) return '';
+  const start = series.data_inicio ? formatDate(`${series.data_inicio}T12:00:00`) : '—';
+  const end = series.data_fim ? formatDate(`${series.data_fim}T12:00:00`) : 'sem data final';
+  return `${start} → ${end}`;
+}
+function recurrenceBadgeHTML(task, compact = false) {
+  const series = recurrenceSeriesForTask(task);
+  if (!series) return '';
+  const status = recurrenceSeriesStatus(series);
+  const text = compact ? 'Recorrente' : recurrenceFrequencyLabel(series);
+  return `<span class="recurrence-context-badge ${status === 'paused' ? 'paused' : status === 'ended' ? 'ended' : ''}" title="${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(recurrenceStatusLabel(series))}"><i data-lucide="repeat-2"></i>${escapeHtml(text)}</span>`;
+}
+function selectedWeekdays(containerId) { return $$(`#${containerId} input[type="checkbox"]:checked`).map(input => Number(input.value)); }
+function setWeekdays(containerId, days = []) { $$(`#${containerId} input[type="checkbox"]`).forEach(input => { input.checked = days.map(Number).includes(Number(input.value)); }); }
+function recurrenceFormWeekdayVisibility(prefix = 'item') {
+  const frequency = prefix === 'item' ? $('itemRecurrenceFrequency')?.value : $('recurrenceEditFrequency')?.value;
+  const box = $(prefix === 'item' ? 'itemRecurrenceWeekdays' : 'recurrenceEditWeekdays');
+  box?.classList.toggle('hidden', !['semanal','personalizada'].includes(frequency));
+}
+function recurrenceSeriesAppliesToDate(series, key) {
+  if (!series || !key || series.encerrada_em || !series.ativa) return false;
+  if (key < String(series.data_inicio || '').slice(0,10)) return false;
+  if (series.data_fim && key > String(series.data_fim).slice(0,10)) return false;
+  const d = new Date(`${key}T12:00:00`);
+  const iso = d.getDay() === 0 ? 7 : d.getDay();
+  if (series.frequencia === 'diaria') return true;
+  if (series.frequencia === 'dias_uteis') return iso >= 1 && iso <= 5;
+  if (series.frequencia === 'personalizada') return (series.dias_semana || []).map(Number).includes(iso);
+  if (series.frequencia === 'semanal') {
+    const days = (series.dias_semana || []).map(Number);
+    if (days.length) return days.includes(iso);
+    const start = new Date(`${String(series.data_inicio).slice(0,10)}T12:00:00`);
+    return Math.round((d - start) / 86400000) % 7 === 0;
+  }
+  if (series.frequencia === 'mensal') {
+    const startDay = Number(String(series.data_inicio).slice(8,10));
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return d.getDate() === Math.min(startDay, lastDay);
+  }
+  return false;
+}
+function recurrenceRelevantForAgenda(series) {
+  if (state.agendaScope === 'team') return !state.agendaPersonFilter || series.responsavel_id === state.agendaPersonFilter;
+  return series.responsavel_id === state.me?.id;
+}
+
+async function loadRecurringV36() {
+  try {
+    const [seriesResult, occurrenceResult] = await Promise.all([
+      db.from('demandas_recorrentes').select('*').order('atualizado_em', { ascending: false }).limit(1000),
+      db.from('demandas_recorrentes_ocorrencias').select('*').order('data_referencia', { ascending: false }).limit(4000)
+    ]);
+    const firstError = seriesResult.error || occurrenceResult.error;
+    if (firstError) throw firstError;
+    state.recurringSeries = seriesResult.data || [];
+    state.recurringOccurrences = occurrenceResult.data || [];
+    state.recurrenceReady = true;
+  } catch (error) {
+    if (!isMissingRecurrenceSchema(error)) console.warn('[recorrencias]', error);
+    state.recurringSeries = [];
+    state.recurringOccurrences = [];
+    state.recurrenceReady = false;
+  }
+}
+async function processRecurringV36({ refresh = false } = {}) {
+  if (!db || !state.me) return 0;
+  try {
+    const { data, error } = await db.rpc('processar_recorrencias_demanda');
+    if (error) throw error;
+    const changed = Number(data || 0);
+    if (refresh && changed) {
+      await Promise.all([loadTasks(), loadNotifications(), loadRecurringV36()]);
+      renderAll();
+      queueUnreadIntrusiveNotifications();
+    }
+    return changed;
+  } catch (error) {
+    if (!isMissingRecurrenceSchema(error)) console.warn('[processar recorrencias]', error);
+    return 0;
+  }
+}
+const loadAllBeforeRecurringV36 = loadAll;
+loadAll = async function loadAllRecurringIntegrated() {
+  await processRecurringV36();
+  await loadAllBeforeRecurringV36();
+  await loadRecurringV36();
+};
+
+function startRecurrenceProcessorV36() {
+  if (state.recurrenceTimer) clearInterval(state.recurrenceTimer);
+  state.recurrenceTimer = setInterval(() => {
+    if (!document.hidden && state.me) processRecurringV36({ refresh: true });
+  }, 60000);
+}
+
+function syncCreateRecurrenceUI() {
+  const enabled = Boolean($('itemRecurringEnabled')?.checked);
+  $('itemRecurrenceFields')?.classList.toggle('hidden', !enabled);
+  const dueDateField = $('itemDueDate')?.closest('.field');
+  if ($('itemDueDate')) $('itemDueDate').disabled = enabled;
+  dueDateField?.classList.toggle('field-disabled', enabled);
+  if (enabled) {
+    if (!$('itemRecurrenceStart').value) $('itemRecurrenceStart').value = todayKey();
+    $('itemDueDate').value = '';
+  }
+  recurrenceFormWeekdayVisibility('item');
+  refreshIcons();
+}
+const openQuickAddBeforeRecurringV36 = openQuickAdd;
+openQuickAdd = function openQuickAddRecurring(type = 'demanda', preset = {}) {
+  openQuickAddBeforeRecurringV36(type, preset);
+  if (type === 'demanda') {
+    if ($('itemRecurringEnabled')) $('itemRecurringEnabled').checked = Boolean(preset.recurring);
+    if ($('itemRecurrenceFrequency')) $('itemRecurrenceFrequency').value = preset.recurrenceFrequency || 'dias_uteis';
+    if ($('itemRecurrenceStart')) $('itemRecurrenceStart').value = preset.recurrenceStart || preset.date || todayKey();
+    if ($('itemRecurrenceEnd')) $('itemRecurrenceEnd').value = preset.recurrenceEnd || '';
+    if ($('itemRecurrenceAlertTime')) $('itemRecurrenceAlertTime').value = preset.recurrenceAlertTime || '09:00';
+    if ($('itemRecurrenceDailyAlert')) $('itemRecurrenceDailyAlert').checked = preset.recurrenceDailyAlert !== false;
+    setWeekdays('itemRecurrenceWeekdays', preset.recurrenceWeekdays || [1,2,3,4,5]);
+    syncCreateRecurrenceUI();
+  }
+};
+const createTaskBeforeRecurringV36 = createTaskV2;
+createTaskV2 = async function createTaskWithRecurrenceV36() {
+  if (!$('itemRecurringEnabled')?.checked) return createTaskBeforeRecurringV36();
+  if (!state.recurrenceReady) throw new Error('Execute o SQL de Demandas Recorrentes V3.6.2 no Supabase antes de criar uma recorrência.');
+  const frequency = $('itemRecurrenceFrequency').value;
+  const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
+  if (['semanal','personalizada'].includes(frequency) && !weekdays.length) throw new Error('Selecione pelo menos um dia da semana.');
+  const start = $('itemRecurrenceStart').value || todayKey();
+  const end = $('itemRecurrenceEnd').value || null;
+  if (end && end < start) throw new Error('A data final não pode ser anterior ao início.');
+  const priority = $('itemPriority').value;
+  const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
+  if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável ou envie o alerta imediato para toda a equipe.');
+  const { error } = await db.rpc('criar_demanda_recorrente_v1', {
+    p_titulo: $('itemTitle').value.trim(),
+    p_descricao: $('itemDescription').value.trim() || null,
+    p_prioridade: priority,
+    p_responsavel_id: $('itemAssignee').value || null,
+    p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+    p_tamanho: $('itemSize').value,
+    p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
+    p_alerta_para_todos: alertAll,
+    p_projeto: $('itemProject')?.value.trim() || null,
+    p_checklist: checklistFromText($('itemChecklist')?.value || ''),
+    p_dependencias: selectedValues($('itemDependencies')),
+    p_frequencia: frequency,
+    p_dias_semana: weekdays,
+    p_data_inicio: start,
+    p_data_fim: end,
+    p_horario_prazo: $('itemDueTime').value || '17:00',
+    p_horario_alerta: $('itemRecurrenceAlertTime').value || '09:00',
+    p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
+  });
+  if (error) throw error;
+  await loadRecurringV36();
+};
+
+function decorateRecurringTaskNodes(root = document) {
+  if (!state.recurrenceReady) return;
+  root.querySelectorAll('[data-open-task], [data-task-id]').forEach(node => {
+    const id = node.dataset.openTask || node.dataset.taskId;
+    const task = state.tasks.find(item => item.id === id);
+    if (!isRecurringTask(task)) return;
+    node.classList.add('is-recurring-task');
+    if (node.querySelector('.recurrence-context-badge')) return;
+    const badge = document.createElement('span');
+    badge.innerHTML = recurrenceBadgeHTML(task, true);
+    const actual = badge.firstElementChild;
+    if (!actual) return;
+    const target = node.querySelector('.task-card-top') || node.querySelector('.task-row-title>div') || node.querySelector('.timeline-content') || node.querySelector('.day-item-main') || node.querySelector('.person-preview-task') || node.querySelector('.notification-item-copy');
+    if (target) target.appendChild(actual);
+  });
+  refreshIcons();
+}
+function renderRecurringTodayStrip() {
+  const metrics = document.querySelector('#viewHoje .metric-grid');
+  if (!metrics) return;
+  document.querySelector('#viewHoje .recurring-today-strip')?.remove();
+  if (!state.recurrenceReady) return;
+  const relevant = state.recurringSeries.filter(series => recurrenceSeriesAppliesToDate(series, todayKey()) && series.responsavel_id === state.me?.id);
+  if (!relevant.length) return;
+  const done = relevant.filter(series => {
+    const occ = state.recurringOccurrences.find(o => o.recorrencia_id === series.id && o.data_referencia === todayKey());
+    const task = occ?.tarefa_id ? state.tasks.find(t => t.id === occ.tarefa_id) : null;
+    return task?.status === 'concluida';
+  }).length;
+  const strip = document.createElement('section');
+  strip.className = 'recurring-today-strip';
+  strip.innerHTML = `<span><i data-lucide="repeat-2"></i></span><div><strong>${relevant.length} rotina${relevant.length === 1 ? '' : 's'} recorrente${relevant.length === 1 ? '' : 's'} prevista${relevant.length === 1 ? '' : 's'} hoje</strong><small>${done} concluída${done === 1 ? '' : 's'} · ${Math.max(0,relevant.length-done)} ainda pede${relevant.length-done === 1 ? '' : 'm'} atenção. Elas continuam aparecendo como demandas normais nas outras telas.</small></div>${isManager() ? `<button type="button" class="btn soft" data-open-recurrence-manager><i data-lucide="repeat-2"></i>Gerenciar rotinas</button>` : `<button type="button" class="btn soft" data-show-recurring-tasks><i data-lucide="list-filter"></i>Ver recorrentes</button>`}`;
+  metrics.insertAdjacentElement('afterend', strip);
+}
+function decorateAgendaRecurringPreviews() {
+  if (!state.recurrenceReady) return;
+  const existingKeys = new Set(state.tasks.filter(isRecurringTask).map(task => `${task.recorrencia_id}:${task.recorrencia_data || taskDueKey(task)}`));
+  const today = todayKey();
+  $$('#calendarGrid [data-calendar-date]').forEach(cell => {
+    const key = cell.dataset.calendarDate;
+    if (key < today) return;
+    const previews = state.recurringSeries.filter(series => recurrenceRelevantForAgenda(series) && recurrenceSeriesAppliesToDate(series,key) && !existingKeys.has(`${series.id}:${key}`));
+    if (!previews.length) return;
+    const events = cell.querySelector('.calendar-events');
+    previews.slice(0, Math.max(0,3-events.children.length)).forEach(series => {
+      const span = document.createElement('span');
+      span.className = 'calendar-event recurring-preview';
+      span.title = `${series.titulo} · ${recurrenceFrequencyLabel(series)}`;
+      span.textContent = `↻ ${series.titulo}`;
+      events.appendChild(span);
+    });
+  });
+  const selected = state.selectedDate;
+  const container = $('selectedDayItems');
+  if (!container || selected < today) return;
+  const previews = state.recurringSeries.filter(series => recurrenceRelevantForAgenda(series) && recurrenceSeriesAppliesToDate(series,selected) && !existingKeys.has(`${series.id}:${selected}`));
+  previews.forEach(series => {
+    if (container.querySelector(`[data-open-recurring-series="${series.id}"]`)) return;
+    if (container.querySelector('.empty-state')) container.innerHTML = '';
+    const person = collaborator(series.responsavel_id);
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'day-item enriched is-recurring-task';
+    item.dataset.openRecurringSeries = series.id;
+    item.innerHTML = `<span class="day-item-symbol task"><i data-lucide="repeat-2"></i></span><div class="day-item-main"><div class="day-item-head"><i class="day-item-type task"></i><small>${escapeHtml(String(series.horario_prazo || '17:00').slice(0,5))} · Rotina prevista</small></div><strong>${escapeHtml(series.titulo)}</strong><span>${escapeHtml(person?.nome || 'Sem responsável')}</span>${recurrenceBadgeHTML({recorrencia_id:series.id},true)}</div>`;
+    container.appendChild(item);
+  });
+  refreshIcons();
+}
+
+const filteredTasksBeforeRecurringV36 = filteredTasks;
+filteredTasks = function filteredTasksRecurringIntegrated() {
+  let tasks = filteredTasksBeforeRecurringV36();
+  const filter = $('taskRecurrenceFilter')?.value || '';
+  if (filter === 'recorrentes') tasks = tasks.filter(isRecurringTask);
+  if (filter === 'nao_recorrentes') tasks = tasks.filter(task => !isRecurringTask(task));
+  return tasks;
+};
+const taskCardHTMLBeforeRecurringV36 = taskCardHTML;
+taskCardHTML = function taskCardHTMLRecurring(task) {
+  let html = taskCardHTMLBeforeRecurringV36(task);
+  if (!isRecurringTask(task)) return html;
+  html = html.replace('<span class="task-card-id">', `${recurrenceBadgeHTML(task,true)}<span class="task-card-id">`);
+  return html.replace('class="task-card"', 'class="task-card is-recurring-task"');
+};
+
+function recurrenceOccurrenceStatus(occ) {
+  if (!occ) return { label:'Prevista', tone:'', icon:'calendar-clock' };
+  if (occ.estado === 'pulada') return { label:'Pulada', tone:'skipped', icon:'skip-forward' };
+  if (occ.estado === 'nao_realizada') return { label:'Não realizada', tone:'missed', icon:'circle-x' };
+  const task = occ.tarefa_id ? state.tasks.find(item => item.id === occ.tarefa_id) : null;
+  if (task?.status === 'concluida') return { label:'Concluída', tone:'done', icon:'circle-check-big' };
+  if (task?.status === 'revisao') return { label:'Em revisão', tone:'review', icon:'scan-eye' };
+  if (task?.status === 'andamento') return { label:'Em andamento', tone:'', icon:'loader-circle' };
+  if (task) return { label:'Criada', tone:'', icon:'circle-dot-dashed' };
+  return { label:'Prevista', tone:'', icon:'calendar-clock' };
+}
+function recurrenceTaskPanelHTML(task) {
+  const series = recurrenceSeriesForTask(task);
+  if (!series) return '';
+  const occs = state.recurringOccurrences.filter(item => item.recorrencia_id === series.id).sort((a,b) => String(b.data_referencia).localeCompare(String(a.data_referencia)));
+  const past = occs.filter(item => item.data_referencia <= todayKey());
+  const done = past.filter(item => recurrenceOccurrenceStatus(item).tone === 'done').length;
+  const valid = past.filter(item => item.estado !== 'pulada').length;
+  const compliance = valid ? Math.round(done / valid * 100) : 0;
+  const history = occs.slice(0,10).map(item => {
+    const status = recurrenceOccurrenceStatus(item);
+    return `<div class="recurrence-history-row ${status.tone} ${item.data_referencia === task.recorrencia_data ? 'current' : ''}"><span class="recurrence-history-icon"><i data-lucide="${status.icon}"></i></span><strong>${formatDate(`${item.data_referencia}T12:00:00`)}</strong><span class="recurrence-history-status"><i data-lucide="${status.icon}"></i>${escapeHtml(status.label)}</span></div>`;
+  }).join('') || `<div class="recurrence-history-empty">O histórico começa conforme a rotina é executada.</div>`;
+  const status = recurrenceSeriesStatus(series);
+  const managerActions = isManager() ? `<div class="recurrence-actions"><button type="button" class="btn secondary" data-edit-recurrence="${series.id}"><i data-lucide="calendar-sync"></i>Editar toda a série</button>${task.recorrencia_data === todayKey() && task.status !== 'concluida' ? `<button type="button" class="btn secondary" data-skip-recurrence="${series.id}" data-skip-date="${task.recorrencia_data}"><i data-lucide="skip-forward"></i>Pular hoje</button>` : ''}${status !== 'ended' ? `<button type="button" class="btn soft" data-toggle-recurrence="${series.id}" data-next-active="${status === 'active' ? 'false' : 'true'}"><i data-lucide="${status === 'active' ? 'pause' : 'play'}"></i>${status === 'active' ? 'Pausar série' : 'Retomar série'}</button><button type="button" class="btn danger-soft" data-end-recurrence="${series.id}"><i data-lucide="square"></i>Encerrar série</button>` : ''}</div>` : '';
+  return `<section class="task-recurrence-panel integrated"><div class="productivity-card-head"><div><span class="eyebrow">Recorrência</span><h3>Esta demanda volta automaticamente</h3></div><span class="recurrence-state ${status === 'paused' ? 'paused' : ''}"><i data-lucide="repeat-2"></i>${escapeHtml(recurrenceStatusLabel(series))}</span></div><div class="recurrence-summary-grid"><div><span>Frequência</span><strong>${escapeHtml(recurrenceFrequencyLabel(series))}</strong></div><div><span>Período</span><strong>${escapeHtml(recurrencePeriodLabel(series))}</strong></div><div><span>Popup diário</span><strong>${series.alerta_diario ? `${String(series.horario_alerta || '09:00').slice(0,5)} · ligado` : 'Desligado'}</strong></div></div><div class="recurrence-history"><div class="recurrence-history-head"><strong>Histórico da série</strong><span>${compliance}% de cumprimento</span></div>${history}</div>${managerActions}</section>`;
+}
+function injectRecurrenceTaskPanelV36() {
+  const task = state.selectedTask;
+  if (!isRecurringTask(task)) return;
+  const root = $('taskDrawerContent');
+  if (!root || root.querySelector('.task-recurrence-panel.integrated')) return;
+  const panel = document.createElement('div');
+  panel.innerHTML = recurrenceTaskPanelHTML(task);
+  const node = panel.firstElementChild;
+  const statusSection = root.querySelector('.task-status-section');
+  if (node) root.insertBefore(node, statusSection || root.firstChild);
+  refreshIcons();
+}
+const renderTaskDrawerBeforeRecurringV36 = renderTaskDrawer;
+renderTaskDrawer = function renderTaskDrawerRecurringIntegrated() {
+  renderTaskDrawerBeforeRecurringV36();
+  injectRecurrenceTaskPanelV36();
+};
+
+function populateRecurrenceAssigneeSelect(selected = '') {
+  const select = $('recurrenceEditAssignee');
+  if (!select) return;
+  select.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
+  select.value = selected || '';
+}
+function fillRecurrenceEditor(series, { convertTask = null } = {}) {
+  const converting = Boolean(convertTask);
+  $('recurrenceEditId').value = series?.id || '';
+  $('recurrenceConvertTaskId').value = convertTask?.id || '';
+  $('recurrenceModalTitle').textContent = converting ? 'Transformar em demanda recorrente' : 'Editar toda a recorrência';
+  $('recurrenceModalDescription').textContent = converting ? 'A demanda atual será mantida como primeira ocorrência e as próximas serão criadas automaticamente.' : 'As alterações valem para as próximas ocorrências. O histórico anterior permanece intacto.';
+  const source = series || convertTask || {};
+  $('recurrenceEditTitle').value = source.titulo || '';
+  $('recurrenceEditDescription').value = source.descricao || '';
+  populateRecurrenceAssigneeSelect(source.responsavel_id || '');
+  $('recurrenceEditPriority').value = source.prioridade || 'media';
+  $('recurrenceEditSize').value = source.tamanho || 'media';
+  $('recurrenceEditEstimate').value = source.estimativa_horas || '';
+  $('recurrenceEditProject').value = source.projeto || '';
+  $('recurrenceEditTags').value = (source.tags || []).join(', ');
+  $('recurrenceEditChecklist').value = checklistToText(source.checklist || []);
+  $('recurrenceEditFrequency').value = series?.frequencia || 'dias_uteis';
+  $('recurrenceEditStart').value = series?.data_inicio || convertTask?.recorrencia_data || taskDueKey(convertTask) || todayKey();
+  $('recurrenceEditEnd').value = series?.data_fim || '';
+  setWeekdays('recurrenceEditWeekdays', series?.dias_semana?.length ? series.dias_semana : [1,2,3,4,5]);
+  const due = convertTask ? splitDateTime(taskDue(convertTask)).time : null;
+  $('recurrenceEditDueTime').value = String(series?.horario_prazo || due || '17:00').slice(0,5);
+  $('recurrenceEditAlertTime').value = String(series?.horario_alerta || '09:00').slice(0,5);
+  $('recurrenceEditDailyAlert').checked = series ? Boolean(series.alerta_diario) : true;
+  $('recurrenceSeriesStatus').textContent = converting ? 'Nova série' : `Série ${recurrenceStatusLabel(series).toLowerCase()}`;
+  $('recurrencePauseBtn').classList.toggle('hidden', converting || recurrenceSeriesStatus(series) === 'ended');
+  $('recurrenceEndBtn').classList.toggle('hidden', converting || recurrenceSeriesStatus(series) === 'ended');
+  if (!converting) {
+    const active = recurrenceSeriesStatus(series) === 'active';
+    $('recurrencePauseBtn').innerHTML = `<i data-lucide="${active ? 'pause' : 'play'}"></i>${active ? 'Pausar' : 'Retomar'}`;
+    $('recurrencePauseBtn').dataset.nextActive = active ? 'false' : 'true';
+  }
+  recurrenceFormWeekdayVisibility('edit');
+  $('recurrenceModal').classList.remove('hidden');
+  refreshIcons();
+}
+function openRecurrenceEditorById(id) {
+  const series = recurrenceSeriesById(id);
+  if (!series) return toast('Série recorrente não encontrada.', 'error');
+  fillRecurrenceEditor(series);
+}
+async function saveRecurrenceSeriesV36(event) {
+  event.preventDefault();
+  const convertTaskId = $('recurrenceConvertTaskId').value;
+  const id = $('recurrenceEditId').value;
+  const frequency = $('recurrenceEditFrequency').value;
+  const weekdays = selectedWeekdays('recurrenceEditWeekdays');
+  if (['semanal','personalizada'].includes(frequency) && !weekdays.length) return toast('Selecione pelo menos um dia da semana.', 'error');
+  const start = $('recurrenceEditStart').value;
+  const end = $('recurrenceEditEnd').value || null;
+  if (!start) return toast('Informe quando a recorrência começa.', 'error');
+  if (end && end < start) return toast('A data final não pode ser anterior ao início.', 'error');
+  setLoading(true);
+  try {
+    let seriesId = id;
+    if (convertTaskId) {
+      const { data, error } = await db.rpc('converter_tarefa_em_recorrente_v1', {
+        p_tarefa_id: convertTaskId,
+        p_frequencia: frequency,
+        p_dias_semana: weekdays,
+        p_data_inicio: start,
+        p_data_fim: end,
+        p_horario_prazo: $('recurrenceEditDueTime').value || '17:00',
+        p_horario_alerta: $('recurrenceEditAlertTime').value || '09:00',
+        p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
+      });
+      if (error) throw error;
+      seriesId = data;
+    }
+    const { error } = await db.rpc('editar_demanda_recorrente_v1', {
+      p_id: seriesId,
+      p_titulo: $('recurrenceEditTitle').value.trim(),
+      p_descricao: $('recurrenceEditDescription').value.trim() || null,
+      p_prioridade: $('recurrenceEditPriority').value,
+      p_responsavel_id: $('recurrenceEditAssignee').value || null,
+      p_tags: $('recurrenceEditTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+      p_tamanho: $('recurrenceEditSize').value,
+      p_estimativa_horas: $('recurrenceEditEstimate').value ? Number($('recurrenceEditEstimate').value) : null,
+      p_projeto: $('recurrenceEditProject').value.trim() || null,
+      p_checklist: checklistFromText($('recurrenceEditChecklist').value || ''),
+      p_frequencia: frequency,
+      p_dias_semana: weekdays,
+      p_data_inicio: start,
+      p_data_fim: end,
+      p_horario_prazo: $('recurrenceEditDueTime').value || '17:00',
+      p_horario_alerta: $('recurrenceEditAlertTime').value || '09:00',
+      p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
+    });
+    if (error) throw error;
+    closeModal('recurrenceModal');
+    await refreshData();
+    if (convertTaskId && state.tasks.some(task => task.id === convertTaskId)) await openTask(convertTaskId);
+    renderRecurrenceManagerV36();
+    toast(convertTaskId ? 'Demanda transformada em recorrente.' : 'Recorrência atualizada.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+async function toggleRecurrenceSeriesV36(id, active) {
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('alternar_demanda_recorrente', { p_id: id, p_ativa: active });
+    if (error) throw error;
+    await refreshData();
+    if (state.selectedTask?.recorrencia_id === id) await openTask(state.selectedTask.id);
+    renderRecurrenceManagerV36();
+    toast(active ? 'Recorrência retomada.' : 'Recorrência pausada.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+async function endRecurrenceSeriesV36(id) {
+  if (!confirm('Encerrar esta recorrência? O histórico será preservado e nenhuma nova ocorrência será criada.')) return;
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('encerrar_demanda_recorrente', { p_id: id });
+    if (error) throw error;
+    await refreshData(); renderRecurrenceManagerV36();
+    if (state.selectedTask?.recorrencia_id === id) await openTask(state.selectedTask.id);
+    toast('Recorrência encerrada.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+async function skipRecurrenceV36(id, key = todayKey()) {
+  if (!confirm(`Pular a ocorrência de ${formatDate(`${key}T12:00:00`)}? A série continua nos próximos dias.`)) return;
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('pular_ocorrencia_recorrente', { p_id: id, p_data: key });
+    if (error) throw error;
+    closeDrawer('taskDrawer');
+    await refreshData(); renderRecurrenceManagerV36();
+    toast('Ocorrência pulada. A série continua normalmente.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
+
+const openEditTaskBeforeRecurringV36 = openEditTask;
+openEditTask = function openEditTaskRecurringIntegrated() {
+  openEditTaskBeforeRecurringV36();
+  const task = state.selectedTask;
+  const series = recurrenceSeriesForTask(task);
+  $('editTaskRecurrenceContext')?.classList.toggle('hidden', !series);
+  $('editTaskConvertRecurrence')?.classList.toggle('hidden', Boolean(series) || !isManager() || task?.status === 'concluida' || task?.arquivada_em || !state.recurrenceReady);
+  if (series) $('editTaskRecurrenceSummary').textContent = `${recurrenceFrequencyLabel(series)} · ${recurrencePeriodLabel(series)}. Salvar aqui altera somente ${task.recorrencia_data ? formatDate(`${task.recorrencia_data}T12:00:00`) : 'esta ocorrência'}.`;
+  refreshIcons();
+};
+
+const openTransferTaskBeforeRecurringV36 = openTransferTask;
+openTransferTask = function openTransferTaskRecurringIntegrated(taskId = state.selectedTask?.id) {
+  openTransferTaskBeforeRecurringV36(taskId);
+  const task = state.tasks.find(item => item.id === taskId);
+  const recurring = isRecurringTask(task);
+  $('transferRecurrenceScope')?.classList.toggle('hidden', !recurring);
+  if ($('transferApplySeries')) $('transferApplySeries').checked = false;
+};
+const submitTransferTaskBeforeRecurringV36 = submitTransferTask;
+submitTransferTask = async function submitTransferTaskRecurringIntegrated(event) {
+  const taskId = $('transferTaskId')?.value;
+  const task = state.tasks.find(item => item.id === taskId);
+  if (!isRecurringTask(task) || !$('transferApplySeries')?.checked) return submitTransferTaskBeforeRecurringV36(event);
+  event.preventDefault();
+  const personId = $('transferAssignee').value;
+  const note = $('transferNote').value.trim();
+  if (!personId) return toast('Selecione quem receberá a demanda.', 'error');
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('transferir_demanda_recorrente_v1', { p_id: task.recorrencia_id, p_tarefa_id: taskId, p_novo_responsavel_id: personId, p_aplicar_ocorrencia_atual: true, p_observacao: note || null });
+    if (error) throw error;
+    closeModal('transferTaskModal'); await refreshData(); await dispatchPendingPush(); await openTask(taskId);
+    toast('Responsável alterado nesta ocorrência e nas próximas da série.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+};
+
+function renderRecurrenceManagerV36() {
+  const list = $('recurrenceManagerList');
+  if (!list) return;
+  const query = ($('recurrenceManagerSearch')?.value || state.recurrenceManagerSearch || '').trim().toLowerCase();
+  const filter = $('recurrenceManagerStatus')?.value || state.recurrenceManagerStatus || '';
+  let items = [...state.recurringSeries];
+  if (query) items = items.filter(series => [series.titulo,series.descricao,series.projeto,collaborator(series.responsavel_id)?.nome].join(' ').toLowerCase().includes(query));
+  if (filter === 'ativas') items = items.filter(series => recurrenceSeriesStatus(series) === 'active');
+  if (filter === 'pausadas') items = items.filter(series => recurrenceSeriesStatus(series) === 'paused');
+  if (filter === 'encerradas') items = items.filter(series => recurrenceSeriesStatus(series) === 'ended');
+  const active = state.recurringSeries.filter(series => recurrenceSeriesStatus(series) === 'active');
+  const today = active.filter(series => recurrenceSeriesAppliesToDate(series,todayKey()));
+  const paused = state.recurringSeries.filter(series => recurrenceSeriesStatus(series) === 'paused');
+  const missed = state.recurringOccurrences.filter(item => item.estado === 'nao_realizada').length;
+  $('recurrenceManagerSummary').innerHTML = `<div><span>Séries ativas</span><strong>${active.length}</strong></div><div><span>Previstas hoje</span><strong>${today.length}</strong></div><div><span>Pausadas</span><strong>${paused.length}</strong></div><div><span>Não realizadas</span><strong>${missed}</strong></div>`;
+  list.innerHTML = items.length ? items.map(series => {
+    const person = collaborator(series.responsavel_id);
+    const status = recurrenceSeriesStatus(series);
+    const occurrences = state.recurringOccurrences.filter(item => item.recorrencia_id === series.id);
+    const completed = occurrences.filter(item => recurrenceOccurrenceStatus(item).tone === 'done').length;
+    return `<article class="recurrence-manager-item"><div class="recurrence-manager-item-main"><div class="recurrence-manager-item-top"><span class="recurrence-state ${status === 'paused' ? 'paused' : ''}"><i data-lucide="repeat-2"></i>${escapeHtml(recurrenceStatusLabel(series))}</span>${series.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(series.projeto)}</span>` : ''}</div><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(series.descricao || 'Sem descrição.')}</p><div class="recurrence-manager-item-meta"><span><i data-lucide="calendar-sync"></i>${escapeHtml(recurrenceFrequencyLabel(series))}</span><span><i data-lucide="user-round"></i>${escapeHtml(person?.nome || 'Sem responsável')}</span><span><i data-lucide="clock-3"></i>${String(series.horario_prazo || '17:00').slice(0,5)}</span><span><i data-lucide="circle-check-big"></i>${completed} concluída(s)</span></div></div><div class="recurrence-manager-item-actions"><button type="button" class="btn secondary" data-edit-recurrence="${series.id}"><i data-lucide="pencil"></i>Editar</button>${status !== 'ended' ? `<button type="button" class="btn soft" data-toggle-recurrence="${series.id}" data-next-active="${status === 'active' ? 'false' : 'true'}"><i data-lucide="${status === 'active' ? 'pause' : 'play'}"></i>${status === 'active' ? 'Pausar' : 'Retomar'}</button><button type="button" class="btn danger-soft" data-end-recurrence="${series.id}"><i data-lucide="square"></i>Encerrar</button>` : ''}</div></article>`;
+  }).join('') : `<div class="recurrence-manager-empty"><i data-lucide="repeat-2"></i><br>Nenhuma rotina recorrente encontrada com estes filtros.</div>`;
+  refreshIcons();
+}
+function openRecurrenceManagerV36() {
+  if (!isManager()) return toast('Somente gestores podem gerenciar séries recorrentes.', 'error');
+  renderRecurrenceManagerV36();
+  $('recurrenceManagerModal').classList.remove('hidden');
+  refreshIcons();
+}
+
+function appendRecurringProjectIntegrationV36() {
+  const detail = $('projectDetail');
+  if (!detail || detail.classList.contains('hidden') || !state.selectedProjectId) return;
+  detail.querySelector('.project-recurring-series')?.remove();
+  const project = projectCatalog().find(item => item.id === state.selectedProjectId || item.nome === state.selectedProjectId);
+  if (!project) return;
+  const items = state.recurringSeries.filter(series => String(series.projeto || '') === String(project.nome || '') && recurrenceSeriesStatus(series) !== 'ended');
+  if (!items.length) return;
+  const section = document.createElement('section');
+  section.className = 'productivity-card project-recurring-series';
+  section.innerHTML = `<div class="productivity-card-head"><div><span class="eyebrow">Rotinas recorrentes</span><h3>${items.length} série${items.length === 1 ? '' : 's'} vinculada${items.length === 1 ? '' : 's'} ao projeto</h3></div><span class="recurrence-state"><i data-lucide="repeat-2"></i>Automáticas</span></div><div class="recurrence-manager-list">${items.map(series => `<button type="button" class="recurrence-manager-item" data-open-recurring-series="${series.id}"><div class="recurrence-manager-item-main"><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(collaborator(series.responsavel_id)?.nome || 'Sem responsável')}</p></div><i data-lucide="chevron-right"></i></button>`).join('')}</div>`;
+  detail.appendChild(section);
+  refreshIcons();
+}
+function appendTeamRecurringIntegrationV36() {
+  $$('#teamGrid [data-open-person]').forEach(card => {
+    const personId = card.dataset.openPerson;
+    const count = state.recurringSeries.filter(series => series.responsavel_id === personId && recurrenceSeriesStatus(series) === 'active').length;
+    if (!count || card.querySelector('.team-recurring-chip')) return;
+    const line = card.querySelector('.person-state-line') || card.querySelector('.person-copy');
+    line?.insertAdjacentHTML('beforeend', `<span class="team-recurring-chip"><i data-lucide="repeat-2"></i>${count} rotina${count === 1 ? '' : 's'}</span>`);
+  });
+  refreshIcons();
+}
+function appendPersonRecurringIntegrationV36(person) {
+  const root = $('personDrawerContent');
+  if (!root || !person) return;
+  root.querySelector('.person-recurring-series')?.remove();
+  const items = state.recurringSeries.filter(series => series.responsavel_id === person.id && recurrenceSeriesStatus(series) !== 'ended');
+  if (!items.length) return;
+  const section = document.createElement('section');
+  section.className = 'person-drawer-section person-recurring-series';
+  section.innerHTML = `<div class="person-section-head"><div><span class="eyebrow">Recorrências</span><h3>Rotinas sob responsabilidade</h3></div><span>${items.length}</span></div><div class="recurrence-manager-list">${items.map(series => `<button type="button" class="recurrence-manager-item" data-open-recurring-series="${series.id}"><div class="recurrence-manager-item-main"><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(recurrencePeriodLabel(series))}</p></div><i data-lucide="chevron-right"></i></button>`).join('')}</div>`;
+  root.appendChild(section); refreshIcons();
+}
+function appendRecurringNotificationsV36() {
+  $$('#notificationList .notification-item[data-task-id]').forEach(item => {
+    const task = state.tasks.find(task => task.id === item.dataset.taskId);
+    if (!isRecurringTask(task) || item.querySelector('.recurrence-context-badge')) return;
+    item.querySelector('.notification-item-copy')?.insertAdjacentHTML('beforeend', recurrenceBadgeHTML(task,true));
+  });
+  refreshIcons();
+}
+function appendRecurringReportV36() {
+  const root = $('monthlyReportContent');
+  if (!root || root.querySelector('.recurrence-report')) return;
+  const value = $('monthlyReportMonth')?.value || monthInputValue();
+  const [year, month] = value.split('-').map(Number);
+  if (!year || !month) return;
+  const prefix = `${year}-${String(month).padStart(2,'0')}`;
+  const occurrences = state.recurringOccurrences.filter(item => String(item.data_referencia).startsWith(prefix));
+  if (!occurrences.length) return;
+  const done = occurrences.filter(item => recurrenceOccurrenceStatus(item).tone === 'done').length;
+  const missed = occurrences.filter(item => item.estado === 'nao_realizada').length;
+  const skipped = occurrences.filter(item => item.estado === 'pulada').length;
+  const valid = Math.max(1, occurrences.length - skipped);
+  const compliance = Math.round(done / valid * 100);
+  const grouped = [...new Set(occurrences.map(item => item.recorrencia_id))].map(id => {
+    const series = recurrenceSeriesById(id);
+    const rows = occurrences.filter(item => item.recorrencia_id === id);
+    const completed = rows.filter(item => recurrenceOccurrenceStatus(item).tone === 'done').length;
+    return { series, total: rows.length, completed };
+  }).filter(item => item.series).sort((a,b) => b.total - a.total).slice(0,8);
+  root.insertAdjacentHTML('beforeend', `<section class="recurrence-report"><div class="recurrence-report-head"><div><span class="eyebrow">Rotinas recorrentes</span><h4>Cumprimento das ocorrências no mês</h4></div><span class="recurrence-state"><i data-lucide="repeat-2"></i>${compliance}%</span></div><div class="recurrence-report-grid"><div><span>Ocorrências</span><strong>${occurrences.length}</strong></div><div><span>Concluídas</span><strong>${done}</strong></div><div><span>Não realizadas</span><strong>${missed}</strong></div><div><span>Puladas</span><strong>${skipped}</strong></div></div><div class="recurrence-report-list">${grouped.map(item => `<div class="recurrence-report-row"><strong>${escapeHtml(item.series.titulo)}</strong><span>${item.completed}/${item.total} concluídas</span><span>${Math.round(item.completed/Math.max(1,item.total)*100)}%</span></div>`).join('')}</div></section>`);
+  refreshIcons();
+}
+
+const renderTodayBeforeRecurringV36 = renderToday;
+renderToday = function renderTodayRecurringIntegrated() { renderTodayBeforeRecurringV36(); renderRecurringTodayStrip(); decorateRecurringTaskNodes($('viewHoje')); };
+const renderAgendaBeforeRecurringV36 = renderAgenda;
+renderAgenda = function renderAgendaRecurringIntegrated() { renderAgendaBeforeRecurringV36(); decorateAgendaRecurringPreviews(); decorateRecurringTaskNodes($('viewAgenda')); };
+const renderDemandasBeforeRecurringV36 = renderDemandas;
+renderDemandas = function renderDemandasRecurringIntegrated() { renderDemandasBeforeRecurringV36(); decorateRecurringTaskNodes($('viewDemandas')); };
+const renderProjectsBeforeRecurringV36 = renderProjects;
+renderProjects = function renderProjectsRecurringIntegrated() { renderProjectsBeforeRecurringV36(); decorateRecurringTaskNodes($('viewProjetos')); appendRecurringProjectIntegrationV36(); };
+const renderEquipeBeforeRecurringV36 = renderEquipe;
+renderEquipe = function renderEquipeRecurringIntegrated() { renderEquipeBeforeRecurringV36(); decorateRecurringTaskNodes($('viewEquipe')); appendTeamRecurringIntegrationV36(); };
+const renderNotificationsBeforeRecurringV36 = renderNotifications;
+renderNotifications = function renderNotificationsRecurringIntegrated() { renderNotificationsBeforeRecurringV36(); appendRecurringNotificationsV36(); };
+const renderMonthlyReportBeforeRecurringV36 = renderMonthlyReport;
+renderMonthlyReport = function renderMonthlyReportRecurringIntegrated() { renderMonthlyReportBeforeRecurringV36(); appendRecurringReportV36(); };
+const renderPersonDrawerBeforeRecurringV36 = renderPersonDrawer;
+renderPersonDrawer = function renderPersonDrawerRecurringIntegrated(person) { renderPersonDrawerBeforeRecurringV36(person); appendPersonRecurringIntegrationV36(person); };
+const renderIntrusiveBeforeRecurringV36 = renderIntrusiveNotification;
+renderIntrusiveNotification = function renderIntrusiveRecurringIntegrated(notification) {
+  renderIntrusiveBeforeRecurringV36(notification);
+  const task = notification?.tarefa_id ? state.tasks.find(item => item.id === notification.tarefa_id) : null;
+  if (isRecurringTask(task)) {
+    const type = $('intrusiveNotificationCard')?.querySelector('.intrusive-notification-type');
+    if (type) type.textContent = task.prioridade === 'imediata' ? 'DEMANDA RECORRENTE IMEDIATA' : 'DEMANDA RECORRENTE';
+    $('intrusiveNotificationCard')?.classList.add('recurring-alert');
+  }
+};
+const renderGlobalSearchBeforeRecurringV36 = renderGlobalSearch;
+renderGlobalSearch = function renderGlobalSearchRecurringIntegrated() {
+  renderGlobalSearchBeforeRecurringV36();
+  const query = $('globalSearchInput')?.value.trim().toLowerCase();
+  if (!query || !state.recurrenceReady) return;
+  const matches = state.recurringSeries.filter(series => [series.titulo,series.descricao,series.projeto,collaborator(series.responsavel_id)?.nome].join(' ').toLowerCase().includes(query)).slice(0,6);
+  if (!matches.length) return;
+  $('globalSearchResults').insertAdjacentHTML('beforeend', `<div class="search-group-label">Rotinas recorrentes</div>${matches.map(series => `<button type="button" class="search-result" data-search-recurring="${series.id}"><span class="search-result-icon"><i data-lucide="repeat-2"></i></span><span><strong>${escapeHtml(series.titulo)}</strong><small>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(collaborator(series.responsavel_id)?.nome || 'Sem responsável')}</small></span><i data-lucide="chevron-right"></i></button>`).join('')}`);
+  refreshIcons();
+};
+
+function bindRecurringV36Events() {
+  $('itemRecurringEnabled')?.addEventListener('change', syncCreateRecurrenceUI);
+  $('itemRecurrenceFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('item'));
+  $('recurrenceEditFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('edit'));
+  $('recurrenceForm')?.addEventListener('submit', saveRecurrenceSeriesV36);
+  $('taskRecurrenceFilter')?.addEventListener('change', renderDemandas);
+  $('recurrenceManagerBtn')?.addEventListener('click', openRecurrenceManagerV36);
+  $('recurrenceManagerNewBtn')?.addEventListener('click', () => { closeModal('recurrenceManagerModal'); openQuickAdd('demanda', { recurring:true, recurrenceStart:todayKey() }); });
+  $('recurrenceManagerSearch')?.addEventListener('input', debounce(event => { state.recurrenceManagerSearch = event.target.value; renderRecurrenceManagerV36(); },120));
+  $('recurrenceManagerStatus')?.addEventListener('change', event => { state.recurrenceManagerStatus = event.target.value; renderRecurrenceManagerV36(); });
+  $('editTaskOpenSeriesBtn')?.addEventListener('click', () => { const series = recurrenceSeriesForTask(state.selectedTask); if (series) { closeModal('editTaskModal'); fillRecurrenceEditor(series); } });
+  $('editTaskConvertRecurrenceBtn')?.addEventListener('click', () => { const task = state.selectedTask; if (task) { closeModal('editTaskModal'); fillRecurrenceEditor(null,{convertTask:task}); } });
+  $('recurrencePauseBtn')?.addEventListener('click', () => { const id=$('recurrenceEditId').value; if(id) toggleRecurrenceSeriesV36(id,$('recurrencePauseBtn').dataset.nextActive==='true'); });
+  $('recurrenceEndBtn')?.addEventListener('click', () => { const id=$('recurrenceEditId').value; if(id) endRecurrenceSeriesV36(id); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) processRecurringV36({ refresh:true }); });
+  document.addEventListener('click', event => {
+    const manager = event.target.closest('[data-open-recurrence-manager]'); if (manager) { openRecurrenceManagerV36(); return; }
+    const showRecurring = event.target.closest('[data-show-recurring-tasks]'); if (showRecurring) { state.smartFilter=''; switchView('demandas'); if($('taskRecurrenceFilter')) $('taskRecurrenceFilter').value='recorrentes'; if($('taskAssigneeFilter')) $('taskAssigneeFilter').value=state.me?.id||''; renderDemandas(); return; }
+    const edit = event.target.closest('[data-edit-recurrence]'); if (edit) { openRecurrenceEditorById(edit.dataset.editRecurrence); return; }
+    const open = event.target.closest('[data-open-recurring-series]'); if (open) { if (isManager()) openRecurrenceEditorById(open.dataset.openRecurringSeries); else { const task=state.tasks.find(t=>t.recorrencia_id===open.dataset.openRecurringSeries&&!t.arquivada_em); if(task) openTask(task.id); else toast('Esta rotina ainda não tem uma ocorrência aberta.'); } return; }
+    const toggle = event.target.closest('[data-toggle-recurrence]'); if (toggle) { toggleRecurrenceSeriesV36(toggle.dataset.toggleRecurrence,toggle.dataset.nextActive==='true'); return; }
+    const end = event.target.closest('[data-end-recurrence]'); if (end) { endRecurrenceSeriesV36(end.dataset.endRecurrence); return; }
+    const skip = event.target.closest('[data-skip-recurrence]'); if (skip) { skipRecurrenceV36(skip.dataset.skipRecurrence,skip.dataset.skipDate||todayKey()); return; }
+    const search = event.target.closest('[data-search-recurring]'); if (search) { closeSearch(); if(isManager()) openRecurrenceEditorById(search.dataset.searchRecurring); else { const task=state.tasks.find(t=>t.recorrencia_id===search.dataset.searchRecurring&&!t.arquivada_em); if(task) openTask(task.id); } return; }
+  });
+  startRecurrenceProcessorV36();
+}
+
+
+bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); bindRecurringV36Events(); initOverlayStability(); refreshIcons(); bootstrap();
