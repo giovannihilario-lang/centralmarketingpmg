@@ -1361,3 +1361,13 @@ th:nth-last-child(-n+4) .metric-header-audit::before{
   gap:6px
 }
 .sql-recovery-error .secondary-btn svg{width:14px;height:14px}
+
+
+/* V5.16 — ponte de autenticação portal → localhost */
+.context-error-hint code{
+  padding:1px 4px;
+  border-radius:5px;
+  background:rgba(255,255,255,.55);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.92em
+}

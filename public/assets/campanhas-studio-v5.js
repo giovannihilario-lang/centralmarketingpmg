@@ -198,9 +198,17 @@
     const promise = (async () => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(new Error('Tempo limite da API local excedido.')), timeout);
-      const headers = { ...suppliedHeaders };
+      let headers = { ...suppliedHeaders };
 
-      // GETs e POSTs sem corpo permanecem "simple requests", como no Dashboard Regional.
+      // A API SQL local é protegida pelo PMG Connect.
+      // O token chega em #pmg_auth, é capturado pelo connect-auth.js e
+      // enviado como Bearer somente para /api do localhost.
+      const authBridge = window.PMGConnectAuth;
+      if (authBridge?.isLocalApiUrl?.(url)) {
+        headers = authBridge.authorizationHeaders(headers);
+      }
+
+      // Com Authorization, chamadas cross-origin podem usar preflight CORS.
       // Isso evita um preflight desnecessário entre a página HTTPS da Vercel e o localhost.
       if (fetchOptions.body != null && !(fetchOptions.body instanceof FormData)) {
         const hasContentType = Object.keys(headers).some((name) => name.toLowerCase() === 'content-type');
@@ -265,6 +273,12 @@
         error.code = data.codigo;
         error.hint = data.dica;
         error.sqlRecoveryAttempted = Boolean(data.recuperacaoSqlTentada);
+        error.httpStatus = response.status;
+
+        if (response.status === 401 && ['PMG_AUTH_INVALID', 'PMG_AUTH_EXPIRED'].includes(String(data.codigo || ''))) {
+          window.PMGConnectAuth?.clear?.();
+        }
+
         throw error;
       }
 
@@ -2334,13 +2348,22 @@
       }
 
       const sessionExpired = error.code === 'SQL_SESSION_EXPIRED' || /sess[aã]o.*(?:inv[aá]lida|expirad)/i.test(error.message || '');
+      const authRequired = ['PMG_AUTH_REQUIRED', 'PMG_AUTH_INVALID', 'PMG_AUTH_EXPIRED'].includes(String(error.code || ''));
+
       $('#performanceBody').innerHTML = `<div class="context-error sql-recovery-error">
-        <strong>${sessionExpired ? 'A conexão com o SQL expirou e não conseguiu se recuperar.' : 'Não foi possível consultar o SQL Server.'}</strong>
+        <strong>${
+          authRequired
+            ? 'A sessão do PMG Connect não chegou até a API local.'
+            : sessionExpired
+              ? 'A conexão com o SQL expirou e não conseguiu se recuperar.'
+              : 'Não foi possível consultar o SQL Server.'
+        }</strong>
         <br>${esc(error.message)}
+        ${authRequired ? `<br><span class="context-error-hint">Abra Campanhas pelo PMG Connect autenticado. O fragmento <code>#pmg_auth</code> deve desaparecer da URL depois que a sessão for capturada.</span>` : ''}
         ${error.hint ? `<br><span class="context-error-hint">${esc(error.hint)}</span>` : ''}
         ${error.code ? `<small class="context-error-code">Código: ${esc(error.code)}</small>` : ''}
         <br><button class="secondary-btn" data-action="retry-performance" data-id="${esc(id)}" style="margin-top:10px">
-          <i data-lucide="refresh-cw"></i>${sessionExpired ? 'Reconectar e tentar novamente' : 'Tentar novamente'}
+          <i data-lucide="refresh-cw"></i>${authRequired ? 'Tentar com a sessão atual' : sessionExpired ? 'Reconectar e tentar novamente' : 'Tentar novamente'}
         </button>
       </div>`;
       icons($('#performanceBody'));
