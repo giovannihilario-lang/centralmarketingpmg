@@ -940,10 +940,19 @@ async function sincronizarAPI() {
 
   let dados = null;
   try {
-    const resp = await fetch('/api/produtos-supabase');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // O endpoint mantém limite de 100 para telas leves. O Gerador precisa do
+    // catálogo inteiro, então solicita explicitamente todos os produtos.
+    const resp = await fetch('/api/produtos-supabase?todos=true&refresh=true', {
+      cache: 'no-store'
+    });
+    if (!resp.ok) {
+      let detalhe = '';
+      try { detalhe = (await resp.json())?.erro || ''; } catch (_) {}
+      throw new Error(`HTTP ${resp.status}${detalhe ? ` · ${detalhe}` : ''}`);
+    }
     dados = await resp.json();
-    console.log('Total recebido:', dados.length, '| Exemplo:', dados[0]);
+    if (!Array.isArray(dados)) throw new Error('A API não retornou uma lista de produtos.');
+    console.log('Total recebido:', dados.length, '| Total informado pela API:', resp.headers.get('X-PMG-Catalog-Total'), '| Exemplo:', dados[0]);
   } catch (err) {
     if (status) status.innerHTML = `❌ Falha: ${err.message}`;
     if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
