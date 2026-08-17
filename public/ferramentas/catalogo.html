@@ -162,24 +162,304 @@
     .preview-label { display: none !important; }
     .a4 { width: 210mm !important; height: 297mm !important; min-height: unset !important; box-shadow: none !important; border-radius: 0 !important; page-break-after: always; break-after: page; }
   }
+
+
+/* =========================================================
+   PMG CONNECT — GERADOR DE CATÁLOGO / DESIGN CONSISTENTE
+   Alinha a ferramenta ao sistema visual usado em Demandas/Central.
+   ========================================================= */
+:root{
+  --pmg-g950:#071a10;
+  --pmg-g900:#0d2b1a;
+  --pmg-g800:#184b2d;
+  --pmg-g700:#22653b;
+  --pmg-g600:#2d7a4f;
+  --pmg-g500:#3c9561;
+  --pmg-g300:#89d8a3;
+  --pmg-g100:#e2f5e9;
+  --pmg-g50:#f2faf5;
+  --pmg-bg:#edf2ee;
+  --pmg-surface:#fff;
+  --pmg-surface-2:#f7faf8;
+  --pmg-ink:#102117;
+  --pmg-text:#294033;
+  --pmg-muted:#6b7f72;
+  --pmg-faint:#94a59a;
+  --pmg-line:#dce6df;
+  --pmg-line-strong:#c9d8cf;
+  --pmg-shadow:0 8px 28px rgba(13,43,26,.07);
+  --pmg-shadow-lg:0 20px 55px rgba(13,43,26,.13);
+}
+
+body{
+  background:var(--pmg-bg)!important;
+  color:var(--pmg-text)!important;
+}
+
+.topbar{
+  height:76px!important;
+  padding:0 22px!important;
+  background:rgba(255,255,255,.94)!important;
+  color:var(--pmg-text)!important;
+  border-bottom:1px solid var(--pmg-line)!important;
+  box-shadow:0 4px 18px rgba(13,43,26,.04)!important;
+  backdrop-filter:blur(16px);
+}
+.topbar-brand{gap:12px!important;min-width:0}
+.topbar-logo{
+  width:44px!important;height:44px!important;border-radius:13px!important;
+  background:#fff!important;border:1px solid var(--pmg-line)!important;
+  box-shadow:0 7px 18px rgba(13,43,26,.09)!important;overflow:hidden;
+}
+.topbar-logo img{width:100%;height:100%;object-fit:contain;display:block}
+.tool-eyebrow{
+  display:block;margin-bottom:2px;color:var(--pmg-g600);
+  font-size:8px;font-weight:800;letter-spacing:1.25px;text-transform:uppercase;
+}
+.topbar h1{
+  color:var(--pmg-ink)!important;font-family:'Sora',sans-serif!important;
+  font-size:17px!important;font-weight:800!important;letter-spacing:-.3px!important;
+}
+.topbar p{color:var(--pmg-muted)!important;opacity:1!important;font-size:10px!important}
+.topbar-actions{gap:8px!important}
+.btn-connect,.theme-btn,.btn-export{
+  min-height:40px!important;border-radius:11px!important;padding:0 14px!important;
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;
+  font-size:11px!important;font-weight:800!important;text-decoration:none!important;
+  transition:.18s cubic-bezier(.22,1,.36,1)!important;
+}
+.btn-connect,.theme-btn{
+  background:#fff!important;color:var(--pmg-g800)!important;border:1px solid var(--pmg-line)!important;
+}
+.btn-connect:hover,.theme-btn:hover{background:var(--pmg-g50)!important;border-color:#b9d6c4!important;transform:translateY(-1px)}
+.btn-export{
+  background:linear-gradient(135deg,var(--pmg-g600),var(--pmg-g500))!important;
+  color:#fff!important;border:0!important;box-shadow:0 8px 18px rgba(45,122,79,.19)!important;
+}
+.btn-export:hover{opacity:1!important;transform:translateY(-1px);box-shadow:0 11px 24px rgba(45,122,79,.24)!important}
+.btn-connect svg,.theme-btn svg,.btn-export svg{width:15px!important;height:15px!important}
+.theme-btn{width:40px!important;padding:0!important}
+
+.app{height:calc(100vh - 76px)!important;background:var(--pmg-bg)!important}
+.panel{
+  width:350px!important;min-width:350px!important;
+  background:var(--pmg-surface)!important;
+  border-right:1px solid var(--pmg-line)!important;
+  box-shadow:8px 0 30px rgba(13,43,26,.035)!important;
+}
+.preview-wrap{
+  padding:28px 34px 46px!important;gap:28px!important;
+  background:
+    radial-gradient(circle at 25% 0,rgba(255,255,255,.65),transparent 34%),
+    var(--pmg-bg)!important;
+}
+.preview-label{
+  color:var(--pmg-muted)!important;font-size:9px!important;letter-spacing:1.05px!important;
+  padding:6px 9px;border:1px solid var(--pmg-line);border-radius:99px;background:rgba(255,255,255,.82);
+  margin-bottom:-17px!important;box-shadow:0 3px 10px rgba(13,43,26,.035);
+}
+.a4{box-shadow:0 22px 55px rgba(13,43,26,.16)!important;border-radius:5px!important}
+
+#api-sync-wrapper{
+  padding:16px!important;background:#fff!important;border-bottom:1px solid var(--pmg-line)!important;
+  gap:9px!important;
+}
+#api-sync-wrapper::before{
+  content:'CATÁLOGO PMG';display:block;color:var(--pmg-faint);font-size:8px;font-weight:800;
+  letter-spacing:1.1px;text-transform:uppercase;margin-bottom:1px;
+}
+#btnSincAPI{
+  min-height:44px!important;border-radius:11px!important;padding:0 14px!important;
+  background:linear-gradient(135deg,var(--pmg-g800),var(--pmg-g600))!important;
+  box-shadow:0 8px 20px rgba(24,75,45,.16)!important;font-family:inherit!important;
+  font-size:11px!important;letter-spacing:0!important;
+}
+#btnSincAPI:hover{filter:brightness(1.04);transform:translateY(-1px)}
+#api-status{
+  min-height:30px!important;display:flex;align-items:center;justify-content:center;
+  padding:7px 9px!important;border-radius:9px;background:var(--pmg-surface-2)!important;
+  border:1px solid var(--pmg-line)!important;color:var(--pmg-muted)!important;font-size:9px!important;
+}
+
+.tab-bar{
+  position:sticky!important;top:0!important;z-index:10!important;
+  display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:5px!important;
+  padding:7px!important;background:#fff!important;border-bottom:1px solid var(--pmg-line)!important;
+}
+.tab-btn{
+  min-height:38px!important;margin:0!important;padding:0 6px!important;border:1px solid transparent!important;
+  border-radius:9px!important;color:var(--pmg-muted)!important;font-size:8px!important;letter-spacing:.55px!important;
+  background:transparent!important;
+}
+.tab-btn:hover{background:var(--pmg-surface-2)!important;color:var(--pmg-ink)!important}
+.tab-btn.active{
+  color:#fff!important;background:var(--pmg-g800)!important;border-color:var(--pmg-g800)!important;
+  box-shadow:0 5px 13px rgba(24,75,45,.15)!important;
+}
+.tab-panel{background:#fff}
+.tab-panel.active{display:block}
+.tab-panel[data-tab]{padding:18px!important}
+
+.panel-section{padding:18px!important;border-color:var(--pmg-line)!important}
+.panel-section h2,
+.tab-panel>div[style*="text-transform:uppercase"]{
+  color:var(--pmg-faint)!important;font-size:8px!important;letter-spacing:1.05px!important;
+}
+
+.page-item{
+  border:1px solid var(--pmg-line)!important;border-radius:12px!important;background:#fff!important;
+  box-shadow:0 2px 8px rgba(13,43,26,.025);overflow:hidden!important;
+}
+.page-item:hover{border-color:#bfd6c7!important}
+.page-item.active{border-color:#8dbb9c!important;box-shadow:0 0 0 2px rgba(45,122,79,.08)!important}
+.page-header{min-height:43px!important;padding:8px 10px!important;background:#fff!important}
+.page-header:hover{background:var(--pmg-surface-2)!important}
+.page-title{color:var(--pmg-ink)!important;font-size:10px!important;font-weight:750!important}
+.page-count{color:var(--pmg-muted)!important;background:var(--pmg-surface-2);border:1px solid var(--pmg-line);border-radius:99px;padding:3px 6px}
+.page-drag-handle{color:#a8b8ae!important}
+.page-color-strip{border-color:rgba(16,33,23,.14)!important}
+.page-edit-fields{background:#f8fbf9!important;border-color:var(--pmg-line)!important;padding:10px!important}
+.page-edit-fields label{color:var(--pmg-faint)!important;font-size:8px!important}
+.page-products{padding:10px!important;background:#fbfcfb}
+.product-tag,.pool-item,.cad-item,.prod-img-row{
+  background:var(--pmg-surface-2)!important;border-color:var(--pmg-line)!important;
+  border-radius:9px!important;color:var(--pmg-text)!important;
+}
+.product-tag:hover,.pool-item:hover{background:#edf6f0!important;border-color:#bdd9c7!important}
+.page-add-zone{border-color:#cddbd2!important;border-radius:9px!important;color:var(--pmg-faint)!important;background:#fff!important}
+.page-add-zone:hover,.page-add-zone.drag-over{background:var(--pmg-g50)!important;border-color:#8dbc9d!important;color:var(--pmg-g700)!important}
+
+.pool-search,.cad-search,.pool-cat-filter,.cad-form input,.cad-form select,.page-edit-fields input,.page-edit-fields textarea,
+.color-input-wrap input[type=text]{
+  min-height:38px!important;border:1px solid var(--pmg-line)!important;border-radius:9px!important;
+  background:#fff!important;color:var(--pmg-text)!important;padding:0 10px!important;box-shadow:none!important;
+}
+.page-edit-fields textarea{padding-top:8px!important;min-height:62px!important}
+.pool-search:focus,.cad-search:focus,.pool-cat-filter:focus,.cad-form input:focus,.cad-form select:focus,
+.page-edit-fields input:focus,.page-edit-fields textarea:focus,.color-input-wrap input[type=text]:focus{
+  border-color:#73ad87!important;box-shadow:0 0 0 3px rgba(45,122,79,.08)!important;outline:0!important;
+}
+
+.btn-add-page,.btn-cad-add,.catalog-action-primary{
+  min-height:39px!important;border-radius:9px!important;font-size:10px!important;font-weight:800!important;
+}
+.btn-add-page{
+  background:var(--pmg-g50)!important;color:var(--pmg-g700)!important;border:1px solid #c6dfce!important;
+}
+.btn-add-page:hover{background:var(--pmg-g100)!important;border-color:#a5ccb2!important}
+.btn-cad-add,.catalog-action-primary{
+  background:var(--pmg-g700)!important;color:#fff!important;border:0!important;
+}
+.catalog-action-primary{width:100%;padding:9px 10px;cursor:pointer;margin-top:7px}
+.catalog-action-primary:hover,.btn-cad-add:hover{background:var(--pmg-g600)!important;opacity:1!important}
+
+.catalog-page-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+.catalog-page-actions .btn-add-page{margin:0!important}
+.catalog-product-tools{margin-top:18px;padding-top:16px;border-top:1px solid var(--pmg-line)}
+.catalog-section-label{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--pmg-faint);margin-bottom:9px}
+
+.upload-logo-area{border-color:#cfdcd4!important;background:var(--pmg-surface-2)!important;border-radius:12px!important;padding:16px!important}
+.upload-logo-area:hover{background:var(--pmg-g50)!important;border-color:#8cbb9c!important}
+.upload-logo-placeholder strong{color:var(--pmg-ink)!important}
+.upload-logo-placeholder span{color:var(--pmg-muted)!important}
+
+.color-row{padding:6px 0;border-bottom:1px solid #edf2ef}
+.color-row:last-child{border-bottom:0}
+.color-label{color:var(--pmg-text)!important;font-size:10px!important}
+.color-input-wrap input[type=color]{border-color:var(--pmg-line)!important;border-radius:8px!important}
+
+.btn-sm{border-color:var(--pmg-line)!important;border-radius:7px!important;color:var(--pmg-muted)!important;background:#fff!important}
+.btn-sm:hover{background:var(--pmg-surface-2)!important;border-color:#bfcfc5!important;color:var(--pmg-ink)!important}
+.page-color-reset,.btn-remove-prod,.btn-cad-del{color:#9bad9f!important}
+.page-color-reset:hover,.btn-remove-prod:hover,.btn-cad-del:hover{color:#cf3f48!important}
+
+.selection-bar{
+  background:var(--pmg-g950)!important;border:1px solid rgba(255,255,255,.09)!important;
+  border-radius:14px!important;box-shadow:0 18px 50px rgba(7,26,16,.3)!important;
+}
+.selection-bar .sel-count{color:#8ee1aa!important}
+#toast{background:var(--pmg-g950)!important;border:1px solid rgba(255,255,255,.08)!important;border-radius:11px!important;box-shadow:0 14px 35px rgba(7,26,16,.24)!important}
+
+/* Dark mode sincronizado com a preferência da Central de Demandas. */
+body.catalog-dark{
+  --pmg-bg:#0a100d;
+  --pmg-surface:#111914;
+  --pmg-surface-2:#16211a;
+  --pmg-ink:#f2f7f4;
+  --pmg-text:#d7e3db;
+  --pmg-muted:#9eafa4;
+  --pmg-faint:#7e9185;
+  --pmg-line:#293a30;
+  --pmg-line-strong:#3a5142;
+  color-scheme:dark;
+}
+body.catalog-dark .topbar{background:rgba(15,24,19,.96)!important;border-color:var(--pmg-line)!important}
+body.catalog-dark .btn-connect,body.catalog-dark .theme-btn{background:#151f19!important;color:#d9e6de!important;border-color:#304238!important}
+body.catalog-dark .panel,body.catalog-dark .tab-bar,body.catalog-dark .tab-panel,body.catalog-dark #api-sync-wrapper{background:#111914!important;border-color:var(--pmg-line)!important}
+body.catalog-dark .preview-wrap{background:radial-gradient(circle at 25% 0,rgba(35,53,42,.45),transparent 34%),var(--pmg-bg)!important}
+body.catalog-dark .preview-label{background:#151f19;color:#9eafa4!important;border-color:#304238}
+body.catalog-dark #api-status{background:#16211a!important;border-color:#304238!important;color:#9eafa4!important}
+body.catalog-dark .page-item,body.catalog-dark .page-header,body.catalog-dark .page-products{background:#151f19!important;border-color:#304238!important}
+body.catalog-dark .page-header:hover{background:#1b2920!important}
+body.catalog-dark .page-edit-fields{background:#121c16!important;border-color:#304238!important}
+body.catalog-dark .product-tag,body.catalog-dark .pool-item,body.catalog-dark .cad-item,body.catalog-dark .prod-img-row{background:#18241c!important;border-color:#304238!important;color:#d7e3db!important}
+body.catalog-dark .product-tag:hover,body.catalog-dark .pool-item:hover{background:#1d2d23!important;border-color:#405a49!important}
+body.catalog-dark .pool-search,body.catalog-dark .cad-search,body.catalog-dark .pool-cat-filter,body.catalog-dark .cad-form input,body.catalog-dark .cad-form select,body.catalog-dark .page-edit-fields input,body.catalog-dark .page-edit-fields textarea,body.catalog-dark .color-input-wrap input[type=text]{background:#18251d!important;border-color:#354c3c!important;color:#f2f7f4!important}
+body.catalog-dark .btn-add-page{background:#18291e!important;color:#9be2b2!important;border-color:#31513d!important}
+body.catalog-dark .upload-logo-area{background:#151f19!important;border-color:#35483b!important}
+body.catalog-dark .tab-btn:hover{background:#1b2920!important;color:#fff!important}
+body.catalog-dark .a4{box-shadow:0 24px 65px rgba(0,0,0,.42)!important}
+body.catalog-dark .theme-btn .moon-icon{display:none}
+body:not(.catalog-dark) .theme-btn .sun-icon{display:none}
+
+@media(max-width:1050px){
+  .panel{width:320px!important;min-width:320px!important}
+  .preview-wrap{padding-left:20px!important;padding-right:20px!important}
+}
+@media(max-width:900px){
+  .topbar{height:68px!important;padding:0 14px!important}
+  .app{height:auto!important;min-height:calc(100vh - 68px)!important;flex-direction:column!important}
+  .panel{width:100%!important;min-width:0!important;max-height:48vh!important;border-right:0!important;border-bottom:1px solid var(--pmg-line)!important}
+  .preview-wrap{width:100%!important;padding:18px 14px 32px!important;align-items:flex-start!important}
+  .topbar p{display:none!important}
+}
+@media(max-width:640px){
+  .topbar-logo{width:38px!important;height:38px!important}
+  .tool-eyebrow{display:none}
+  .topbar h1{font-size:14px!important}
+  .btn-connect span,.btn-export span{display:none}
+  .btn-connect,.btn-export,.theme-btn{width:40px!important;padding:0!important}
+  .catalog-page-actions{grid-template-columns:1fr}
+  .preview-wrap{zoom:.72}
+}
+
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <div class="topbar-brand">
-    <div class="topbar-logo">PMG</div>
+    <a class="topbar-logo" href="/central.html" aria-label="Voltar ao PMG Connect"><img src="/imagenssite/pmglogo.png" alt="PMG"></a>
     <div>
+      <span class="tool-eyebrow">Ferramentas · PMG Connect</span>
       <h1>Gerador de Catálogo</h1>
-      <p>Personalize cores, organize produtos por página e exporte o PDF</p>
+      <p>Organize produtos, ajuste a identidade visual e exporte o catálogo em PDF.</p>
     </div>
   </div>
-  <button class="btn-export" onclick="exportPDF()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-      <path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/>
-    </svg>
-    Exportar PDF
-  </button>
+  <div class="topbar-actions">
+    <a class="btn-connect" href="/central.html" title="Voltar ao PMG Connect">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
+      <span>Connect</span>
+    </a>
+    <button id="catalogThemeBtn" class="theme-btn" type="button" onclick="toggleCatalogTheme()" title="Alternar tema" aria-label="Alternar tema">
+      <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <button class="btn-export" onclick="exportPDF()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/></svg>
+      <span>Exportar PDF</span>
+    </button>
+  </div>
 </div>
 
 <div class="app">
@@ -188,6 +468,31 @@
 </div>
 
 <div id="toast"></div>
+
+
+<script>
+(function(){
+  const KEY='pmg-demandas-accessibilidade-v2';
+  function storedTheme(){
+    try{return JSON.parse(localStorage.getItem(KEY)||'{}').theme==='dark'?'dark':'light'}catch(_){return'light'}
+  }
+  window.applyCatalogTheme=function(theme){
+    document.body.classList.toggle('catalog-dark',theme==='dark');
+    document.documentElement.style.colorScheme=theme==='dark'?'dark':'light';
+    const btn=document.getElementById('catalogThemeBtn');
+    if(btn) btn.setAttribute('aria-pressed',String(theme==='dark'));
+  };
+  window.toggleCatalogTheme=function(){
+    const dark=!document.body.classList.contains('catalog-dark');
+    let saved={};
+    try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(_){}
+    saved.theme=dark?'dark':'light';
+    localStorage.setItem(KEY,JSON.stringify(saved));
+    applyCatalogTheme(saved.theme);
+  };
+  document.addEventListener('DOMContentLoaded',()=>applyCatalogTheme(storedTheme()));
+})();
+</script>
 
 <script>
 // ── CATEGORIAS ──
@@ -774,14 +1079,14 @@ wrap.appendChild(a4);
 function buildPanel() {
   const panel = document.getElementById('mainPanel');
   panel.innerHTML = `
-    <div id="api-sync-wrapper" style="padding:12px 14px;background:#E8F5E9;border-bottom:1px solid #C8E6C9;display:flex;flex-direction:column;gap:8px">
-      <button id="btnSincAPI" onclick="sincronizarAPI()" style="background:#1B5E20;color:white;border:none;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;width:100%;justify-content:center">
+    <div id="api-sync-wrapper">
+      <button id="btnSincAPI" onclick="sincronizarAPI()" style="color:white;border:none;cursor:pointer;display:flex;align-items:center;gap:7px;width:100%;justify-content:center">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M4 4v5h5M20 20v-5h-5"/><path d="M4.07 15A9 9 0 1 0 5.5 5.5L4 4"/>
         </svg>
         Sincronizar API PMG
       </button>
-      <div id="api-status" style="font-size:11px;color:#555;text-align:center;min-height:16px"></div>
+      <div id="api-status" aria-live="polite"></div>
     </div>
 
     <div class="tab-bar">
@@ -794,20 +1099,21 @@ function buildPanel() {
     <div class="tab-panel active" data-tab="paginas" style="padding:16px;overflow-y:auto">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:12px">Páginas do Catálogo</div>
       <div class="pages-list" id="pagesList"></div>
-      <button class="btn-add-page" onclick="addPage()" style="margin-top:10px">+ Nova Página</button>
-      <button class="btn-add-page" onclick="addPage()" style="margin-top:10px">+ Nova Página</button>
-<button class="btn-add-page" onclick="distribuirTodosPorCategoria()" style="margin-top:6px">↺ Distribuir tudo por categoria</button>
-      <div style="margin-top:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:8px">Produtos Disponíveis</div>
+      <div class="catalog-page-actions">
+        <button class="btn-add-page" onclick="addPage()">+ Nova página</button>
+        <button class="btn-add-page" onclick="distribuirTodosPorCategoria()">↺ Distribuir por categoria</button>
+      </div>
+      <div class="catalog-product-tools">
+        <div class="catalog-section-label">Produtos disponíveis</div>
       <select id="poolCatFilter" class="pool-cat-filter" onchange="renderPool()">
         <option value="">Todas as categorias</option>
         ${CATEGORIAS.map(c=>`<option value="${c}">${c}</option>`).join('')}
       </select>
       <input id="poolSearch" class="pool-search" placeholder="Buscar produto..." oninput="renderPool()" style="margin-bottom:6px">
       <div class="pool-list" id="poolList"></div>
+        <button class="catalog-action-primary" onclick="adicionarTodosFiltrados()">+ Adicionar todos encontrados</button>
+      </div>
     </div>
-<button onclick="adicionarTodosFiltrados()" style="width:100%;padding:7px;background:var(--verde-med);color:white;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:8px">
-  + Adicionar todos encontrados
-</button>
     <div class="tab-panel" data-tab="produtos" style="padding:16px;overflow-y:auto">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9E9E9E;margin-bottom:12px">Cadastrar Produto</div>
       <div class="cad-form">
