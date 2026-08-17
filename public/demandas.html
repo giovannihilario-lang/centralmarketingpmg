@@ -428,9 +428,9 @@
             <div class="section-header"><div><span class="eyebrow">Exemplos úteis</span><h3>Regras que combinam com o fluxo da PMG</h3></div></div>
             <div class="automation-example-grid">
               <button type="button" data-automation-template="imediata"><i data-lucide="siren"></i><span><strong>Demanda imediata</strong><small>Ao criar prioridade IMEDIATA → alerta crítico para o responsável.</small></span></button>
-              <button type="button" data-automation-template="revisao"><i data-lucide="scan-eye"></i><span><strong>Chegou em revisão</strong><small>Ao entrar em revisão → alerta importante para gestores.</small></span></button>
+              <button type="button" data-automation-template="revisao"><i data-lucide="scan-eye"></i><span><strong>Chegou em revisão</strong><small>Ao entrar em revisão → alerta importante para quem criou a demanda.</small></span></button>
               <button type="button" data-automation-template="prazo"><i data-lucide="clock-alert"></i><span><strong>Prazo em 24h</strong><small>Quando faltar um dia → avisar o responsável.</small></span></button>
-              <button type="button" data-automation-template="parada"><i data-lucide="hourglass"></i><span><strong>Sem movimentação</strong><small>3 dias sem atualizar → avisar gestores.</small></span></button>
+              <button type="button" data-automation-template="parada"><i data-lucide="hourglass"></i><span><strong>Sem movimentação</strong><small>3 dias sem atualizar → avisar quem criou a demanda.</small></span></button>
             </div>
           </section>
           <div id="automationList" class="automation-list"></div>
@@ -993,7 +993,7 @@
               <div>
                 <span class="eyebrow">Autoria da entrega</span>
                 <h3>Quem realmente fez esta demanda?</h3>
-                <p>Selecione uma ou mais pessoas. Cada pessoa escolhida receberá uma confirmação antes de a demanda ser encerrada.</p>
+                <p>Selecione uma ou mais pessoas. A autoria será registrada para todos, mas o popup de confirmação será enviado apenas aos gestores escolhidos.</p>
               </div>
               <span id="evaluationExecutorSummary" class="evaluation-executor-summary">0 selecionados</span>
             </div>
@@ -1004,7 +1004,7 @@
             <div id="evaluationExecutorList" class="evaluation-executor-list"></div>
             <div class="evaluation-authorship-info">
               <i data-lucide="shield-check"></i>
-              <span>O gestor propõe a autoria. A conclusão só é finalizada depois que os executores selecionados confirmarem. Se alguém discordar, a demanda permanece em revisão.</span>
+              <span>O gestor propõe a autoria. Apenas executores com papel de gestor recebem o popup de confirmação. Colaboradores escolhidos entram na autoria sem precisar responder.</span>
             </div>
           </section>
 
@@ -1276,7 +1276,7 @@
           <div class="automation-flow-builder">
             <section><span class="automation-flow-step">SE</span><label class="field"><span>Gatilho</span><select id="automationTrigger" required><option value="tarefa_criada">Uma demanda for criada</option><option value="status_alterado">O status mudar</option><option value="prioridade_alterada">A prioridade mudar</option><option value="revisao">Entrar em revisão</option><option value="conclusao">For concluída</option><option value="prazo_24h">Faltar até 24h para o prazo</option><option value="atrasada">Ficar atrasada</option><option value="sem_movimentacao_3d">Ficar 3 dias sem movimentação</option></select></label></section>
             <section><span class="automation-flow-step muted">E</span><div class="automation-condition-grid"><label class="field"><span>Condição</span><select id="automationConditionField"><option value="qualquer">Qualquer demanda</option><option value="prioridade">Prioridade</option><option value="status">Status</option><option value="projeto">Projeto</option><option value="responsavel">Responsável</option></select></label><label class="field"><span>Valor</span><input id="automationConditionValue" placeholder="Ex.: urgente, revisao ou nome do projeto"></label></div></section>
-            <section><span class="automation-flow-step then">ENTÃO</span><div class="automation-condition-grid"><label class="field"><span>Notificar</span><select id="automationDestination"><option value="responsavel">Responsável da demanda</option><option value="criador">Quem criou a demanda</option><option value="gestores">Todos os gestores</option><option value="equipe">Toda a equipe</option></select></label><label class="field"><span>Nível</span><select id="automationLevel"><option value="critica">Crítica</option><option value="importante">Importante</option><option value="normal" selected>Normal</option><option value="informativa">Informativa</option></select></label></div></section>
+            <section><span class="automation-flow-step then">ENTÃO</span><div class="automation-condition-grid"><label class="field"><span>Notificar</span><select id="automationDestination"><option value="responsavel">Responsável da demanda</option><option value="criador">Gestor/criador da demanda</option><option value="equipe">Toda a equipe operacional</option></select></label><label class="field"><span>Nível</span><select id="automationLevel"><option value="critica">Crítica</option><option value="importante">Importante</option><option value="normal" selected>Normal</option><option value="informativa">Informativa</option></select></label></div></section>
           </div>
           <label class="field"><span>Mensagem</span><textarea id="automationMessage" rows="3" maxlength="240" placeholder="Ex.: Esta demanda está há 3 dias sem movimentação."></textarea></label>
           <label class="academy-full-day-toggle automation-enabled-toggle"><span><strong>Automação ativa</strong><small>Desative sem excluir a regra.</small></span><input id="automationEnabled" type="checkbox" checked></label>

@@ -1923,6 +1923,7 @@ function playIntrusiveNotificationSound(tone = 'blue') {
 
 function playNotificationArrivalSound(notification) {
   if (!notification || document.hidden) return;
+  if (isManager() && !managerPopupRelationshipV374(notification)) return;
   const level = notificationLevel(notification);
   if (['critica','importante'].includes(level)) return; // o popup invasivo toca o som
   playNotificationSound(level);
@@ -1973,8 +1974,59 @@ function maybeShowNextIntrusiveNotification() {
   setTimeout(() => $('intrusiveNotificationOpenBtn')?.focus(), 80);
 }
 
+
+function managerPopupRelationshipV374(notification) {
+  // A regra abaixo vale APENAS para gestores.
+  // Colaboradores continuam recebendo alertas destinados a eles normalmente.
+  if (!isManager()) return true;
+  if (!notification || !state.me) return false;
+
+  const meId = state.me.id;
+
+  // Confirmação de autoria possui fluxo próprio e só existe quando este
+  // gestor foi explicitamente escolhido como executor.
+  if (String(notification.chave_deduplicacao || '').startsWith('autoria-confirmar')) {
+    return (state.authorshipConfirmations || []).some(row =>
+      row.colaborador_id === meId &&
+      row.resposta === 'pendente' &&
+      String(notification.chave_deduplicacao || '').includes(row.revisao_id)
+    );
+  }
+
+  if (notification.tarefa_id) {
+    const task = state.tasks.find(item => item.id === notification.tarefa_id);
+    if (!task) return false; // para gestor, falha fechada: sem contexto, sem popup.
+
+    const createdByMe = task.criado_por === meId;
+    const assignedToMe = taskHasAssignee(task, meId);
+    const finalExecutor = taskFinalExecutorIdsV372(task).includes(meId);
+    const reviewedByMe = task.avaliado_por === meId;
+
+    // Gestor só recebe overlay se realmente tiver vínculo com a demanda.
+    return createdByMe || assignedToMe || finalExecutor || reviewedByMe;
+  }
+
+  if (notification.lembrete_id) {
+    const reminder = state.reminders.find(item => item.id === notification.lembrete_id);
+    if (!reminder) return false;
+    return reminder.colaborador_id === meId || reminder.criado_por === meId;
+  }
+
+  // Notificações genéricas/broadcast sem uma demanda ou lembrete associado
+  // continuam disponíveis na Central de Notificações, mas não sequestram
+  // a tela do gestor com popup.
+  return false;
+}
+
+function shouldShowIntrusivePopupV374(notification) {
+  if (!notification || notification.lida) return false;
+  if (!['critica','importante'].includes(notificationLevel(notification))) return false;
+  return managerPopupRelationshipV374(notification);
+}
+
 function enqueueIntrusiveNotification(notification) {
   if (!notification?.id || notification.lida || intrusiveWasDismissed(notification.id)) return;
+  if (!shouldShowIntrusivePopupV374(notification)) return;
   // A confirmação de autoria possui um popup próprio com Confirmar/Contestar.
   // Mantemos a notificação na central/push, mas evitamos dois overlays concorrentes.
   if (String(notification.chave_deduplicacao || '').startsWith('autoria-confirmar:')) {
@@ -1990,7 +2042,7 @@ function enqueueIntrusiveNotification(notification) {
 function queueUnreadIntrusiveNotifications() {
   if (state.intrusiveBootstrapped) return;
   state.intrusiveBootstrapped = true;
-  state.notifications.filter(item => !item.lida && ['critica','importante'].includes(notificationLevel(item))).slice(0, 20).forEach(enqueueIntrusiveNotification);
+  state.notifications.filter(item => shouldShowIntrusivePopupV374(item)).slice(0, 20).forEach(enqueueIntrusiveNotification);
   maybeShowNextIntrusiveNotification();
 }
 
@@ -2841,7 +2893,10 @@ async function submitTaskEvaluation(approved) {
       await refreshData();
       await dispatchPendingPush();
       if (state.tasks.some(task => task.id === taskId)) await openTask(taskId);
-      toast(`Entrega validada. Aguardando confirmação de ${executors.length} executor${executors.length === 1 ? '' : 'es'}.`);
+      const selectedManagers = executors.filter(id => collaborator(id)?.role === 'gestor');
+      toast(selectedManagers.length
+        ? `Entrega validada. Aguardando confirmação de ${selectedManagers.length} gestor${selectedManagers.length === 1 ? '' : 'es'} participante${selectedManagers.length === 1 ? '' : 's'}.`
+        : 'Entrega validada e autoria registrada. Nenhum gestor executor precisava confirmar.');
       return;
     }
 
@@ -4183,11 +4238,11 @@ function openProjectModal(project=null){if(!isManager())return;if(!state.intelli
 async function saveProject(event){event.preventDefault();if(!state.intelligenceReady)return;setLoading(true);try{const {error}=await db.rpc('salvar_projeto_marketing',{p_id:$('projectId').value||null,p_nome:$('projectName').value.trim(),p_objetivo:$('projectObjective').value.trim()||null,p_responsavel_id:$('projectOwner').value||null,p_inicio_em:$('projectStart').value||null,p_prazo_em:$('projectDue').value||null,p_status:$('projectStatus').value});if(error)throw error;closeModal('projectModal');await loadIntelligenceV5();await loadTasks();renderProjects();renderShell();toast('Projeto salvo.');}catch(error){toast(errorMessage(error),'error')}finally{setLoading(false)}}
 
 const AUTOMATION_TRIGGER_LABELS={tarefa_criada:'Demanda criada',status_alterado:'Status alterado',prioridade_alterada:'Prioridade alterada',revisao:'Entrou em revisão',conclusao:'Concluída',prazo_24h:'Prazo em até 24h',atrasada:'Demanda atrasada',sem_movimentacao_3d:'3 dias sem movimentação'};
-const AUTOMATION_DEST_LABELS={responsavel:'Responsável',criador:'Criador',gestores:'Gestores',equipe:'Toda a equipe'};
+const AUTOMATION_DEST_LABELS={responsavel:'Responsável',criador:'Gestor/criador',gestores:'Gestor/criador (migrado)',equipe:'Toda a equipe operacional'};
 function renderAutomations(){const list=$('automationList');if(!list)return;renderV5SetupNotice('automationSetupNotice','Central de Automações');if(!isManager()){list.innerHTML='<div class="empty-state"><i data-lucide="lock-keyhole"></i>Somente gestores configuram automações.</div>';return}const active=state.automations.filter(a=>a.ativo).length;$('automationSummary').innerHTML=[teamSummaryCard('workflow',state.automations.length,'Regras criadas'),teamSummaryCard('toggle-right',active,'Ativas'),teamSummaryCard('bell-ring',state.automations.filter(a=>['critica','importante'].includes(a.nivel)).length,'Alertas prioritários')].join('');list.innerHTML=state.intelligenceReady?(state.automations.length?state.automations.map(automationCardHTML).join(''):`<div class="automation-empty card"><i data-lucide="workflow"></i><strong>Nenhuma automação criada</strong><span>Use um dos exemplos acima ou crie uma regra personalizada.</span></div>`):'';refreshIcons();}
 function automationCardHTML(rule){const condition=rule.condicao_campo&&rule.condicao_campo!=='qualquer'?`${rule.condicao_campo} = ${rule.condicao_valor}`:'qualquer demanda';return `<article class="automation-card ${rule.ativo?'active':'disabled'} level-${rule.nivel||'normal'}"><div class="automation-card-main"><span class="automation-card-level ${rule.nivel||'normal'}"><i data-lucide="${rule.nivel==='critica'?'siren':rule.nivel==='importante'?'triangle-alert':rule.nivel==='informativa'?'info':'bell'}"></i></span><div><div class="automation-card-title"><strong>${escapeHtml(rule.nome)}</strong><span>${rule.ativo?'Ativa':'Pausada'}</span></div><p><b>SE</b> ${escapeHtml(AUTOMATION_TRIGGER_LABELS[rule.gatilho]||rule.gatilho)} <b>E</b> ${escapeHtml(condition)} <b>ENTÃO</b> notificar ${escapeHtml(AUTOMATION_DEST_LABELS[rule.acao_destino]||rule.acao_destino)}.</p><small>${escapeHtml(rule.mensagem||'Mensagem padrão do PMG Connect')}</small></div></div><div class="automation-card-actions"><button type="button" class="btn soft" data-toggle-automation="${rule.id}"><i data-lucide="${rule.ativo?'pause':'play'}"></i>${rule.ativo?'Pausar':'Ativar'}</button><button type="button" class="icon-btn subtle" data-edit-automation="${rule.id}"><i data-lucide="pencil"></i></button></div></article>`;}
-function openAutomationModal(rule=null,template=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de criar automações.','error');$('automationForm').reset();$('automationId').value=rule?.id||'';$('automationModalTitle').textContent=rule?'Editar automação':'Nova automação';$('automationName').value=rule?.nome||'';$('automationTrigger').value=rule?.gatilho||'tarefa_criada';$('automationConditionField').value=rule?.condicao_campo||'qualquer';$('automationConditionValue').value=rule?.condicao_valor||'';$('automationDestination').value=rule?.acao_destino||'responsavel';$('automationLevel').value=rule?.nivel||'normal';$('automationMessage').value=rule?.mensagem||'';$('automationEnabled').checked=rule?.ativo!==false;$('automationDeleteBtn').classList.toggle('hidden',!rule);if(template)applyAutomationTemplate(template);$('automationModal').classList.remove('hidden');refreshIcons();}
-function applyAutomationTemplate(template){const presets={imediata:{name:'Alerta de demanda imediata',trigger:'tarefa_criada',field:'prioridade',value:'imediata',dest:'responsavel',level:'critica',message:'Você recebeu uma demanda IMEDIATA. Abra agora e verifique o briefing.'},revisao:{name:'Revisão aguardando gestor',trigger:'revisao',field:'qualquer',value:'',dest:'gestores',level:'importante',message:'Uma demanda entrou em revisão e aguarda avaliação do gestor.'},prazo:{name:'Prazo em 24 horas',trigger:'prazo_24h',field:'qualquer',value:'',dest:'responsavel',level:'importante',message:'Esta demanda vence em até 24 horas. Revise o andamento e o prazo.'},parada:{name:'Demanda sem movimentação',trigger:'sem_movimentacao_3d',field:'qualquer',value:'',dest:'gestores',level:'importante',message:'Esta demanda está há pelo menos 3 dias sem movimentação.'}};const p=presets[template];if(!p)return;$('automationName').value=p.name;$('automationTrigger').value=p.trigger;$('automationConditionField').value=p.field;$('automationConditionValue').value=p.value;$('automationDestination').value=p.dest;$('automationLevel').value=p.level;$('automationMessage').value=p.message;}
+function openAutomationModal(rule=null,template=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de criar automações.','error');$('automationForm').reset();$('automationId').value=rule?.id||'';$('automationModalTitle').textContent=rule?'Editar automação':'Nova automação';$('automationName').value=rule?.nome||'';$('automationTrigger').value=rule?.gatilho||'tarefa_criada';$('automationConditionField').value=rule?.condicao_campo||'qualquer';$('automationConditionValue').value=rule?.condicao_valor||'';$('automationDestination').value=(rule?.acao_destino==='gestores'?'criador':rule?.acao_destino)||'responsavel';$('automationLevel').value=rule?.nivel||'normal';$('automationMessage').value=rule?.mensagem||'';$('automationEnabled').checked=rule?.ativo!==false;$('automationDeleteBtn').classList.toggle('hidden',!rule);if(template)applyAutomationTemplate(template);$('automationModal').classList.remove('hidden');refreshIcons();}
+function applyAutomationTemplate(template){const presets={imediata:{name:'Alerta de demanda imediata',trigger:'tarefa_criada',field:'prioridade',value:'imediata',dest:'responsavel',level:'critica',message:'Você recebeu uma demanda IMEDIATA. Abra agora e verifique o briefing.'},revisao:{name:'Revisão aguardando gestor',trigger:'revisao',field:'qualquer',value:'',dest:'criador',level:'importante',message:'Uma demanda que você criou entrou em revisão e aguarda avaliação.'},prazo:{name:'Prazo em 24 horas',trigger:'prazo_24h',field:'qualquer',value:'',dest:'responsavel',level:'importante',message:'Esta demanda vence em até 24 horas. Revise o andamento e o prazo.'},parada:{name:'Demanda sem movimentação',trigger:'sem_movimentacao_3d',field:'qualquer',value:'',dest:'criador',level:'importante',message:'Uma demanda que você criou está há pelo menos 3 dias sem movimentação.'}};const p=presets[template];if(!p)return;$('automationName').value=p.name;$('automationTrigger').value=p.trigger;$('automationConditionField').value=p.field;$('automationConditionValue').value=p.value;$('automationDestination').value=p.dest;$('automationLevel').value=p.level;$('automationMessage').value=p.message;}
 async function saveAutomation(event){event.preventDefault();setLoading(true);try{const {error}=await db.rpc('salvar_automacao_demanda',{p_id:$('automationId').value||null,p_nome:$('automationName').value.trim(),p_gatilho:$('automationTrigger').value,p_condicao_campo:$('automationConditionField').value,p_condicao_valor:$('automationConditionValue').value.trim()||null,p_acao_destino:$('automationDestination').value,p_nivel:$('automationLevel').value,p_mensagem:$('automationMessage').value.trim()||null,p_ativo:$('automationEnabled').checked});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação salva.');}catch(error){toast(errorMessage(error),'error')}finally{setLoading(false)}}
 async function toggleAutomation(id){const r=state.automations.find(x=>x.id===id);if(!r)return;setLoading(true);try{const {error}=await db.rpc('alternar_automacao_demanda',{p_id:id,p_ativo:!r.ativo});if(error)throw error;await loadIntelligenceV5();renderAutomations();renderShell();toast(!r.ativo?'Automação ativada.':'Automação pausada.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
 async function deleteAutomation(){const id=$('automationId').value;if(!id||!confirm('Excluir esta automação?'))return;setLoading(true);try{const {error}=await db.rpc('excluir_automacao_demanda',{p_id:id});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação excluída.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
