@@ -118,6 +118,7 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
+  if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'Execute o SQL 11-MODO-RESPONSABILIDADE-V3-7-1.sql no Supabase para ativar Compartilhada / Primeiro a cumprir.';
   if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
     return 'A função de alteração rápida de urgência ainda não foi instalada. Execute sql/09-GESTOR-ALTERAR-URGENCIA-V3-6-3.sql no Supabase.';
@@ -236,6 +237,7 @@ function syncTaskFormVisuals(prefix) {
   renderAssigneePreview(assigneeId, previewId);
   syncChoiceCards(priorityId);
   syncChoiceCards(sizeId);
+  syncChoiceCards(isEdit ? 'editTaskResponsibilityMode' : 'itemResponsibilityMode');
   syncImmediateAudience(prefix);
 }
 
@@ -770,7 +772,7 @@ function taskCardHTML(task) {
   const person = collaborator(task.responsavel_id);
   const canMove = !task.arquivada_em && (isManager() || taskHasAssignee(task, state.me?.id) || task.criado_por === state.me?.id);
   return `<article class="task-card" data-open-task="${task.id}" data-task-id="${task.id}" data-priority="${task.prioridade}" draggable="${canMove}">
-    <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(task.projeto)}</span>` : ''}${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
+    <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${responsibilityModeBadgeHTMLV371(task)}${task.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(task.projeto)}</span>` : ''}${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
     <h3>${escapeHtml(task.titulo)}</h3>${task.descricao ? `<p>${escapeHtml(task.descricao)}</p>` : ''}
     ${(task.tags || []).length ? `<div class="task-tags">${task.tags.slice(0, 4).map(tag => `<span class="task-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     <div class="task-progress-meta"><span>${task.estimativa_horas ? `${Number(task.estimativa_horas)}h estimadas` : 'Sem estimativa'}</span><span>${STATUS[task.status]?.label}</span></div>
@@ -1100,6 +1102,7 @@ function openQuickAdd(type = 'demanda', preset = {}) {
     if ($('itemChecklist')) $('itemChecklist').value = '';
     $('itemPriority').value = preset.priority || 'media';
     $('itemSize').value = preset.size || 'media';
+    if ($('itemResponsibilityMode')) $('itemResponsibilityMode').value = preset.responsibilityMode || 'compartilhada';
     syncTaskFormVisuals('item');
   }
   if (preset.reminder) fillReminderForm(preset.reminder);
@@ -1152,10 +1155,12 @@ async function createTaskV2() {
   const checklist = checklistFromText($('itemChecklist')?.value || '');
   const dependencies = selectedValues($('itemDependencies'));
   const assigneeIds = selectedFormAssigneeIdsV37('item');
+  const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
+  if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
   if (priority === 'imediata' && !assigneeIds.length && !alertAll) throw new Error('Escolha pelo menos um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
   const { data: taskId, error } = await db.rpc('criar_tarefa_v4', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: priority, p_responsavel_id: assigneeIds[0] || null,
+    p_prioridade: priority, p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
     p_prazo_em: dueAt, p_lembrar_em: remindAt, p_tags: tags,
     p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
     p_alerta_para_todos: alertAll, p_projeto: $('itemProject')?.value.trim() || null,
@@ -1163,7 +1168,11 @@ async function createTaskV2() {
   });
   if (error) throw error;
   if (taskId && state.multiAssigneeReady) {
-    const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: assigneeIds });
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_modo_v1', {
+      p_tarefa_id: taskId,
+      p_responsaveis: assigneeIds,
+      p_modo: responsibilityMode
+    });
     if (assigneeError) throw assigneeError;
   }
 }
@@ -1212,6 +1221,8 @@ function renderTaskDrawer() {
   const personStats = person ? assigneeStats(person) : null;
   $('taskDrawerKicker').textContent = `Demanda #${task.id.slice(0, 5).toUpperCase()}`; $('taskDrawerTitle').textContent = task.titulo;
   const canClaimImmediate = taskAssigneeIds(task).length === 0 && task.prioridade === 'imediata' && task.alerta_para_todos && task.status === 'nova';
+  const canClaimRace = taskRaceIsOpenV371(task) && taskHasAssignee(task, state.me.id);
+  const canClaimTask = canClaimImmediate || canClaimRace;
   const canChangeStatus = isManager() || taskHasAssignee(task, state.me.id) || canClaimImmediate;
   const nextAction = statusActionForTask(task);
   const canAssign = isManager() && !task.arquivada_em && task.status !== 'concluida';
@@ -1231,12 +1242,17 @@ function renderTaskDrawer() {
         : '';
 
   const nextActionMarkup = canChangeStatus && !task.arquivada_em && nextAction
-    ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimImmediate ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
+    ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimTask ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimRace ? 'Você está entre os candidatos. Quem iniciar primeiro assume esta demanda sozinho.' : canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
     : evaluationPending && !isManager()
       ? `<div class="status-waiting-note"><i data-lucide="clock-3"></i><span><strong>Aguardando avaliação</strong><small>Você não precisa alterar o status enquanto o gestor revisa.</small></span></div>`
       : '';
 
+  const raceOpen = taskRaceIsOpenV371(task);
+  const raceClaimed = taskIsFirstToCompleteV371(task) && Boolean(task.responsavel_id);
+  const raceWinner = raceClaimed ? collaborator(task.responsavel_id) : null;
+
   $('taskDrawerContent').innerHTML = `
+    ${taskIsFirstToCompleteV371(task) ? `<div class="task-race-banner ${raceClaimed ? 'claimed' : ''}"><span><i data-lucide="${raceClaimed ? 'flag-triangle-right' : 'flag'}"></i></span><div><strong>${raceClaimed ? `Demanda assumida por ${escapeHtml(raceWinner?.nome || 'um responsável')}` : 'PRIMEIRO A CUMPRIR'}</strong><small>${raceClaimed ? 'A corrida terminou. A carga completa e a execução desta ocorrência ficaram com quem iniciou primeiro.' : `${taskAssigneeIds(task).length} candidato${taskAssigneeIds(task).length === 1 ? '' : 's'} pode${taskAssigneeIds(task).length === 1 ? '' : 'm'} assumir. O primeiro a clicar em Iniciar fica com a tarefa e os demais deixam de ser responsáveis por esta ocorrência.`}</small></div><b>${raceClaimed ? 'ASSUMIDA' : 'EM DISPUTA'}</b></div>` : ''}
     ${immediate ? `<div class="task-immediate-strip"><span class="task-immediate-siren"><i data-lucide="siren"></i></span><div><strong>DEMANDA IMEDIATA</strong><span>Este item deve interromper as prioridades normais e ser tratado agora.${task.alerta_para_todos ? ' O alerta foi enviado para toda a equipe.' : ''}</span></div><span class="task-immediate-pulse">AGORA</span></div>` : ''}
     <section class="task-overview-hero ${immediate ? 'immediate' : ''}">
       <div class="task-people-flow">
@@ -1258,13 +1274,13 @@ function renderTaskDrawer() {
     </section>
 
     <section class="task-assignee-section">
-      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade compartilhada</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Uma demanda pode ter várias pessoas</span>' : ''}</div>
-      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card multi ${canAssign ? 'editable' : ''}" ${canAssign ? '' : 'disabled'}>
+      <div class="task-section-heading"><div><span class="eyebrow">${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Primeiro a cumprir · assumida' : 'Primeiro a cumprir') : 'Responsabilidade compartilhada'}</span><h3>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Quem assumiu esta demanda' : 'Quem pode assumir esta demanda') : 'Quem está com esta demanda'}</h3></div>${canAssign ? `<span class="section-hint">${taskIsFirstToCompleteV371(task) ? 'Candidatos podem ser alterados antes do início' : 'Uma demanda pode ter várias pessoas'}</span>` : ''}</div>
+      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card multi ${canAssign && (!taskIsFirstToCompleteV371(task) || task.status === 'nova') ? 'editable' : ''}" ${canAssign && (!taskIsFirstToCompleteV371(task) || task.status === 'nova') ? '' : 'disabled'}>
         <span class="drawer-assignee-avatar">${taskAssigneeAvatarGroupHTML(task, 'lg', 4)}</span>
-        <span class="drawer-assignee-copy"><strong>${escapeHtml(taskAssigneeNames(task))}</strong><small>${responsiblePeople.length ? `${responsiblePeople.length} responsável${responsiblePeople.length === 1 ? '' : 'is'} · ${escapeHtml(person?.nome || responsiblePeople[0]?.nome || '')} é a referência principal` : 'Aguardando atribuição'}</small><em>${responsiblePeople.length ? 'Todos os responsáveis podem movimentar a demanda e recebem os alertas relacionados ao trabalho.' : 'A demanda ainda não possui responsáveis.'}</em></span>
-        ${canAssign ? '<span class="drawer-assignee-change"><span>Gerenciar responsáveis</span><i data-lucide="users-round"></i></span>' : ''}
+        <span class="drawer-assignee-copy"><strong>${escapeHtml(taskAssigneeNames(task))}</strong><small>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Responsável vencedor da ocorrência' : `${responsiblePeople.length} candidato${responsiblePeople.length === 1 ? '' : 's'} disponível${responsiblePeople.length === 1 ? '' : 'is'}`) : responsiblePeople.length ? `${responsiblePeople.length} responsável${responsiblePeople.length === 1 ? '' : 'is'} · ${escapeHtml(person?.nome || responsiblePeople[0]?.nome || '')} é a referência principal` : 'Aguardando atribuição'}</small><em>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Somente quem assumiu fica responsável pela execução e recebe a carga completa desta ocorrência.' : 'Todos os candidatos enxergam a demanda; quem iniciar primeiro assume e remove a tarefa da fila dos demais.') : responsiblePeople.length ? 'Todos os responsáveis podem movimentar a demanda e recebem os alertas relacionados ao trabalho.' : 'A demanda ainda não possui responsáveis.'}</em></span>
+        ${canAssign && (!taskIsFirstToCompleteV371(task) || task.status === 'nova') ? '<span class="drawer-assignee-change"><span>Gerenciar pessoas</span><i data-lucide="users-round"></i></span>' : ''}
       </button>
-      ${responsiblePeople.length ? `<div class="drawer-assignee-team-list">${responsiblePeople.map((member,index) => `<div class="drawer-assignee-team-row">${avatarHTML(member,'sm')}<span><strong>${escapeHtml(member.nome)}</strong><small>${index === 0 ? 'Responsável principal' : 'Corresponsável'} · ${escapeHtml(member.cargo || 'Marketing')}</small></span>${index === 0 ? '<b>Principal</b>' : '<b>Equipe</b>'}</div>`).join('')}</div>` : ''}
+      ${responsiblePeople.length ? `<div class="drawer-assignee-team-list">${responsiblePeople.map((member,index) => `<div class="drawer-assignee-team-row">${avatarHTML(member,'sm')}<span><strong>${escapeHtml(member.nome)}</strong><small>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Responsável da ocorrência' : 'Candidato · quem iniciar primeiro assume') : `${index === 0 ? 'Responsável principal' : 'Corresponsável'} · ${escapeHtml(member.cargo || 'Marketing')}`}</small></span>${taskIsFirstToCompleteV371(task) ? `<b>${raceClaimed ? 'Assumiu' : 'Candidato'}</b>` : index === 0 ? '<b>Principal</b>' : '<b>Equipe</b>'}</div>`).join('')}</div>` : ''}
     </section>
 
     ${isManager() && !task.arquivada_em && task.status !== 'concluida' ? `
@@ -1428,6 +1444,12 @@ function openEditTask() {
   const task = state.selectedTask; if (!task) return; const due = splitDateTime(taskDue(task));
   $('editTaskId').value = task.id; $('editTaskTitle').value = task.titulo; $('editTaskDescription').value = task.descricao || '';
   populateAssigneeSelects(); const editAssigneeIds = taskAssigneeIds(task); $('editTaskAssignee').value = editAssigneeIds[0] || ''; setAssigneeJson('editTaskAssigneesJson', editAssigneeIds); $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
+  if ($('editTaskResponsibilityMode')) {
+    $('editTaskResponsibilityMode').value = taskResponsibilityModeV371(task);
+    const locked = task.status !== 'nova';
+    $$('[data-choice-target="editTaskResponsibilityMode"]').forEach(button => button.disabled = locked);
+    $('editTaskResponsibilityLock')?.classList.toggle('hidden', !locked);
+  }
   if ($('editTaskAlertAll')) $('editTaskAlertAll').value = String(Boolean(task.alerta_para_todos));
   $('editTaskSize').value = task.tamanho || 'media'; $('editTaskDueDate').value = due.date; $('editTaskDueTime').value = due.time || '17:00';
   $('editTaskEstimate').value = task.estimativa_horas || ''; if ($('editTaskProject')) $('editTaskProject').value = task.projeto || ''; $('editTaskTags').value = (task.tags || []).join(', ');
@@ -1446,6 +1468,11 @@ async function saveEditedTask(event) {
     const originalAssignee = $('editTaskAssignee').dataset.originalValue || '';
     const desiredAssignees = selectedFormAssigneeIdsV37('editTask');
     const desiredAssignee = desiredAssignees[0] || '';
+    const originalTask = state.tasks.find(item => item.id === taskId);
+    const currentResponsibilityMode = taskResponsibilityModeV371(originalTask);
+    const desiredResponsibilityMode = $('editTaskResponsibilityMode')?.value || currentResponsibilityMode;
+    if (originalTask?.status !== 'nova' && desiredResponsibilityMode !== currentResponsibilityMode) throw new Error('O modo de responsabilidade só pode ser trocado antes da execução começar.');
+    if (originalTask?.status === 'nova' && desiredResponsibilityMode === 'primeiro_cumprir' && desiredAssignees.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
     const date = $('editTaskDueDate').value; const dueAt = date ? localDateTime(date, $('editTaskDueTime').value || '17:00') : null;
     const offset = $('editTaskReminderOffset').value; const remindAt = dueAt && offset !== '' ? new Date(new Date(dueAt).getTime() - Number(offset) * 60000).toISOString() : null;
     const priority = $('editTaskPriority').value;
@@ -1460,8 +1487,17 @@ async function saveEditedTask(event) {
     });
     if (error) throw error;
     if (state.multiAssigneeReady) {
-      const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: desiredAssignees });
-      if (assigneeError) throw assigneeError;
+      if (originalTask?.status === 'nova') {
+        const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_modo_v1', {
+          p_tarefa_id: taskId,
+          p_responsaveis: desiredAssignees,
+          p_modo: desiredResponsibilityMode
+        });
+        if (assigneeError) throw assigneeError;
+      } else if (currentResponsibilityMode === 'compartilhada') {
+        const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: desiredAssignees });
+        if (assigneeError) throw assigneeError;
+      }
     } else if (desiredAssignee !== originalAssignee) {
       if (!desiredAssignee) throw new Error('Execute o SQL de múltiplos responsáveis para remover todos os responsáveis.');
       const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável principal alterado durante a edição da demanda.' });
@@ -3462,6 +3498,8 @@ async function toggleChecklistItem(index) {
 }
 
 async function startTaskTimer(taskId) {
+  const task = state.tasks.find(item => item.id === taskId);
+  if (taskRaceIsOpenV371(task)) return toast('Primeiro clique em Iniciar demanda para assumir a tarefa. Depois disso o cronômetro fica disponível.', 'error');
   setLoading(true);
   try {
     const { error } = await db.rpc('iniciar_tempo_tarefa', { p_tarefa_id: taskId });
@@ -4060,11 +4098,13 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
   const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
   if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável ou envie o alerta imediato para toda a equipe.');
   const assigneeIds = selectedFormAssigneeIdsV37('item');
+  const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
+  if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
   const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
     p_titulo: $('itemTitle').value.trim(),
     p_descricao: $('itemDescription').value.trim() || null,
     p_prioridade: priority,
-    p_responsavel_id: assigneeIds[0] || null,
+    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
     p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
     p_tamanho: $('itemSize').value,
     p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
@@ -4081,7 +4121,15 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
     p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
   });
   if (error) throw error;
-  if (recurringId && state.multiAssigneeReady) { const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: recurringId, p_responsaveis: assigneeIds, p_aplicar_ocorrencias: true }); if (assigneeError) throw assigneeError; }
+  if (recurringId && state.multiAssigneeReady) {
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+      p_recorrencia_id: recurringId,
+      p_responsaveis: assigneeIds,
+      p_modo: responsibilityMode,
+      p_aplicar_ocorrencias: true
+    });
+    if (assigneeError) throw assigneeError;
+  }
   await loadRecurringV36();
 };
 
@@ -4232,6 +4280,8 @@ function fillRecurrenceEditor(series, { convertTask = null } = {}) {
   const recurrenceAssigneeIds = series ? seriesAssigneeIds(series) : (convertTask ? taskAssigneeIds(convertTask) : (source.responsavel_id ? [source.responsavel_id] : [])); populateRecurrenceAssigneeSelect(recurrenceAssigneeIds[0] || ''); setAssigneeJson('recurrenceEditAssigneesJson', recurrenceAssigneeIds); renderAssigneePreview('recurrenceEditAssignee','recurrenceEditAssigneePreview');
   $('recurrenceEditPriority').value = source.prioridade || 'media';
   $('recurrenceEditSize').value = source.tamanho || 'media';
+  if ($('recurrenceEditResponsibilityMode')) $('recurrenceEditResponsibilityMode').value = series?.modo_responsabilidade || taskResponsibilityModeV371(convertTask) || 'compartilhada';
+  syncChoiceCards('recurrenceEditResponsibilityMode');
   $('recurrenceEditEstimate').value = source.estimativa_horas || '';
   $('recurrenceEditProject').value = source.projeto || '';
   $('recurrenceEditTags').value = (source.tags || []).join(', ');
@@ -4270,6 +4320,9 @@ async function saveRecurrenceSeriesV36(event) {
   if (['semanal','personalizada'].includes(frequency) && !weekdays.length) return toast('Selecione pelo menos um dia da semana.', 'error');
   const start = $('recurrenceEditStart').value;
   const end = $('recurrenceEditEnd').value || null;
+  const responsibilityMode = $('recurrenceEditResponsibilityMode')?.value || 'compartilhada';
+  const recurrenceAssignees = selectedFormAssigneeIdsV37('recurrenceEdit');
+  if (responsibilityMode === 'primeiro_cumprir' && recurrenceAssignees.length < 2) return toast('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.', 'error');
   if (!start) return toast('Informe quando a recorrência começa.', 'error');
   if (end && end < start) return toast('A data final não pode ser anterior ao início.', 'error');
   setLoading(true);
@@ -4294,7 +4347,7 @@ async function saveRecurrenceSeriesV36(event) {
       p_titulo: $('recurrenceEditTitle').value.trim(),
       p_descricao: $('recurrenceEditDescription').value.trim() || null,
       p_prioridade: $('recurrenceEditPriority').value,
-      p_responsavel_id: selectedFormAssigneeIdsV37('recurrenceEdit')[0] || null,
+      p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (recurrenceAssignees[0] || null),
       p_tags: $('recurrenceEditTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
       p_tamanho: $('recurrenceEditSize').value,
       p_estimativa_horas: $('recurrenceEditEstimate').value ? Number($('recurrenceEditEstimate').value) : null,
@@ -4309,7 +4362,15 @@ async function saveRecurrenceSeriesV36(event) {
       p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
     });
     if (error) throw error;
-    if (seriesId && state.multiAssigneeReady) { const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: seriesId, p_responsaveis: selectedFormAssigneeIdsV37('recurrenceEdit'), p_aplicar_ocorrencias: true }); if (assigneeError) throw assigneeError; }
+    if (seriesId && state.multiAssigneeReady) {
+      const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+        p_recorrencia_id: seriesId,
+        p_responsaveis: recurrenceAssignees,
+        p_modo: responsibilityMode,
+        p_aplicar_ocorrencias: true
+      });
+      if (assigneeError) throw assigneeError;
+    }
     closeModal('recurrenceModal');
     await refreshData();
     if (convertTaskId && state.tasks.some(task => task.id === convertTaskId)) await openTask(convertTaskId);
@@ -4568,6 +4629,24 @@ function isMissingMultiAssigneeSchemaV37(error) {
   return /tarefa_responsaveis|demanda_recorrente_responsaveis|42P01|PGRST205|does not exist/i.test(text);
 }
 function uniqueIdsV37(values) { return [...new Set((values || []).filter(Boolean))]; }
+function taskResponsibilityModeV371(task) {
+  return task?.modo_responsabilidade === 'primeiro_cumprir' ? 'primeiro_cumprir' : 'compartilhada';
+}
+function taskIsFirstToCompleteV371(task) {
+  return taskResponsibilityModeV371(task) === 'primeiro_cumprir';
+}
+function taskRaceIsOpenV371(task) {
+  return Boolean(task && taskIsFirstToCompleteV371(task) && !task.responsavel_id && task.status === 'nova');
+}
+function responsibilityModeBadgeHTMLV371(task) {
+  if (taskIsFirstToCompleteV371(task)) {
+    return `<span class="responsibility-mode-badge race"><i data-lucide="flag"></i>${taskRaceIsOpenV371(task) ? 'Primeiro a cumprir' : 'Assumida'}</span>`;
+  }
+  if (taskAssigneeIds(task).length > 1) {
+    return `<span class="responsibility-mode-badge"><i data-lucide="users-round"></i>Compartilhada</span>`;
+  }
+  return '';
+}
 function taskAssigneeIds(taskOrId) {
   const task = typeof taskOrId === 'string' ? state.tasks.find(item => item.id === taskOrId) : taskOrId;
   if (!task) return [];
@@ -4586,6 +4665,11 @@ function taskAssigneeShortNames(task) {
   return `${firstName(people[0].nome)} +${people.length - 1}`;
 }
 function taskEffortShare(task, forcedCount = null) {
+  // Em "Primeiro a cumprir" ninguém recebe carga antes de assumir.
+  // Depois do claim, a pessoa vencedora recebe a carga completa.
+  if (taskIsFirstToCompleteV371(task)) {
+    return task?.responsavel_id ? sizeWeight(task) : 0;
+  }
   const count = Math.max(1, Number(forcedCount) || taskAssigneeIds(task).length || 1);
   return sizeWeight(task) / count;
 }

@@ -543,6 +543,24 @@
                   </button>
                 </div>
 
+                <div class="visual-field responsibility-mode-field">
+                  <span class="visual-field-label">Modo de responsabilidade</span>
+                  <select id="itemResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="compartilhada" selected>Compartilhada</option>
+                    <option value="primeiro_cumprir">Primeiro a cumprir</option>
+                  </select>
+                  <div class="responsibility-mode-grid">
+                    <button type="button" class="responsibility-mode-choice shared" data-choice-target="itemResponsibilityMode" data-choice-value="compartilhada">
+                      <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
+                      <span><strong>Compartilhada</strong><small>Todos trabalham juntos. A carga estimada é dividida entre os responsáveis e cada um registra suas próprias horas.</small></span>
+                    </button>
+                    <button type="button" class="responsibility-mode-choice race" data-choice-target="itemResponsibilityMode" data-choice-value="primeiro_cumprir">
+                      <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
+                      <span><strong>Primeiro a cumprir</strong><small>Todos recebem a demanda, mas a primeira pessoa que clicar em Iniciar assume sozinha a tarefa e a carga completa.</small></span>
+                    </button>
+                  </div>
+                </div>
+
                 <div class="visual-field">
                   <span class="visual-field-label">Prioridade</span>
                   <select id="itemPriority" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
@@ -659,6 +677,23 @@
             <div class="visual-field recurrence-assignee-field"><span class="visual-field-label">Responsáveis</span><select id="recurrenceEditAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select><input id="recurrenceEditAssigneesJson" type="hidden" value="[]"><button id="recurrenceEditAssigneePickerBtn" class="assignee-selector-button compact" type="button"><span id="recurrenceEditAssigneePreview" class="assignee-selector-preview"></span><span class="assignee-selector-action"><span>Gerenciar</span><i data-lucide="users-round"></i></span></button></div>
             <label class="field"><span>Prioridade / urgência</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
             <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
+          </div>
+          <div class="recurrence-responsibility-mode">
+            <span class="visual-field-label">Modo de responsabilidade das ocorrências</span>
+            <select id="recurrenceEditResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+              <option value="compartilhada">Compartilhada</option>
+              <option value="primeiro_cumprir">Primeiro a cumprir</option>
+            </select>
+            <div class="responsibility-mode-grid">
+              <button type="button" class="responsibility-mode-choice shared" data-choice-target="recurrenceEditResponsibilityMode" data-choice-value="compartilhada">
+                <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
+                <span><strong>Compartilhada</strong><small>Cada ocorrência nasce para todos os responsáveis e a carga é dividida entre eles.</small></span>
+              </button>
+              <button type="button" class="responsibility-mode-choice race" data-choice-target="recurrenceEditResponsibilityMode" data-choice-value="primeiro_cumprir">
+                <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
+                <span><strong>Primeiro a cumprir</strong><small>Cada ocorrência nasce aberta para os candidatos. Quem iniciar primeiro assume aquela ocorrência.</small></span>
+              </button>
+            </div>
           </div>
           <div class="form-grid three">
             <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="recurrenceEditEstimate" type="number" min="0" step="0.5"><span>horas</span></div></label>
@@ -824,6 +859,25 @@
                   <span id="editTaskAssigneePreview" class="assignee-selector-preview"></span>
                   <span class="assignee-selector-action"><span>Gerenciar pessoas</span><i data-lucide="users-round"></i></span>
                 </button>
+              </div>
+
+              <div class="visual-field responsibility-mode-field">
+                <span class="visual-field-label">Modo de responsabilidade</span>
+                <select id="editTaskResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                  <option value="compartilhada">Compartilhada</option>
+                  <option value="primeiro_cumprir">Primeiro a cumprir</option>
+                </select>
+                <div class="responsibility-mode-grid compact">
+                  <button type="button" class="responsibility-mode-choice shared" data-choice-target="editTaskResponsibilityMode" data-choice-value="compartilhada">
+                    <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
+                    <span><strong>Compartilhada</strong><small>Todos os responsáveis participam da execução.</small></span>
+                  </button>
+                  <button type="button" class="responsibility-mode-choice race" data-choice-target="editTaskResponsibilityMode" data-choice-value="primeiro_cumprir">
+                    <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
+                    <span><strong>Primeiro a cumprir</strong><small>O primeiro que iniciar assume a ocorrência inteira.</small></span>
+                  </button>
+                </div>
+                <small id="editTaskResponsibilityLock" class="responsibility-mode-lock hidden"><i data-lucide="lock-keyhole"></i>O modo não pode ser trocado depois que a execução começou.</small>
               </div>
               <div class="visual-field">
                 <span class="visual-field-label">Prioridade / urgência</span>
