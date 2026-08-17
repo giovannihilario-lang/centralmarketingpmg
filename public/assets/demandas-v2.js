@@ -80,7 +80,7 @@ const VIEW_META = {
 };
 
 const state = {
-  session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, reminders: [], notifications: [], activities: [],
+  session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, authorshipReviews: [], authorshipConfirmations: [], taskExecutors: [], authorshipReady: false, evaluationExecutorIds: [], authorshipPostponed: new Set(), reminders: [], notifications: [], activities: [],
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
   comments: [], taskActivities: [], realtime: null, loading: 0, quickType: 'demanda',
   quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
@@ -118,6 +118,7 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
+  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'Execute o SQL 12-CONFIRMACAO-AUTORIA-V3-7-2.sql no Supabase para ativar a confirmação de autoria.';
   if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'Execute o SQL 11-MODO-RESPONSABILIDADE-V3-7-1.sql no Supabase para ativar Compartilhada / Primeiro a cumprir.';
   if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
@@ -466,6 +467,7 @@ async function initializeUser() {
   await handleUrlActions();
   if (!needsProfile) setTimeout(() => maybeOpenOnboarding(), 420);
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
+  setTimeout(() => maybeShowAuthorshipConfirmationV372(), 1250);
 }
 async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4(), loadIntelligenceV5()]);
@@ -1231,15 +1233,7 @@ function renderTaskDrawer() {
   const evaluationFeedback = task.avaliacao_status === 'ajustes' && task.avaliacao_observacao;
   const evaluationApproved = task.avaliacao_status === 'aprovada';
 
-  const evaluationPanel = evaluationPending
-    ? isManager()
-      ? `<section class="manager-evaluation-panel"><div class="manager-evaluation-icon"><i data-lucide="scan-eye"></i></div><div><span class="eyebrow">Sua ação é necessária</span><h3>O colaborador solicitou a conclusão</h3><p>Confira o resultado, comentários e briefing antes de encerrar. Você pode aprovar ou devolver para ajustes.</p></div><div class="manager-evaluation-actions"><button id="drawerRejectEvaluationBtn" type="button" class="btn secondary"><i data-lucide="undo-2"></i>Devolver para ajustes</button><button id="drawerApproveEvaluationBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Aprovar conclusão</button></div></section>`
-      : `<section class="manager-evaluation-panel waiting"><div class="manager-evaluation-icon"><i data-lucide="hourglass"></i></div><div><span class="eyebrow">Aguardando gestor</span><h3>Sua entrega foi enviada para avaliação</h3><p>O status final só será liberado depois que um gestor validar a conclusão. Se houver ajustes, eles aparecerão aqui e por notificação.</p></div></section>`
-    : evaluationFeedback
-      ? `<section class="evaluation-feedback adjustments"><span><i data-lucide="message-square-warning"></i></span><div><strong>Ajustes solicitados${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${escapeHtml(task.avaliacao_observacao)}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`
-      : evaluationApproved
-        ? `<section class="evaluation-feedback approved"><span><i data-lucide="badge-check"></i></span><div><strong>Conclusão aprovada${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${escapeHtml(task.avaliacao_observacao || 'Entrega validada e encerrada.')}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`
-        : '';
+  const evaluationPanel = evaluationPanelHTMLV372(task, evaluator);
 
   const nextActionMarkup = canChangeStatus && !task.arquivada_em && nextAction
     ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimTask ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimRace ? 'Você está entre os candidatos. Quem iniciar primeiro assume esta demanda sozinho.' : canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
@@ -1327,9 +1321,20 @@ function renderTaskActivities() {
       text = 'transferiu a responsabilidade';
       detail = `${escapeHtml(from?.nome || 'Sem responsável')} → ${escapeHtml(to?.nome || 'Sem responsável')}${activity.detalhes?.horas != null ? ` · ${Number(activity.detalhes.horas)}h transferidas` : ''}${activity.detalhes?.observacao ? ` · ${escapeHtml(activity.detalhes.observacao)}` : ''}`;
     } else if (activity.tipo === 'avaliacao') {
-      const approved = activity.detalhes?.resultado === 'aprovada';
-      text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
-      detail = activity.detalhes?.observacao ? escapeHtml(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
+      const result = activity.detalhes?.resultado;
+      const approved = ['aprovada','aprovada_com_autoria'].includes(result);
+      if (result === 'aguardando_confirmacao_autoria') {
+        text = 'validou a entrega e solicitou confirmação de autoria';
+        const ids = activity.detalhes?.executores || [];
+        const names = ids.map(id => collaborator(id)?.nome).filter(Boolean).map(firstName);
+        detail = names.length ? `Executores propostos: ${escapeHtml(names.join(', '))}` : 'Aguardando confirmação dos executores.';
+      } else if (result === 'autoria_contestada') {
+        text = 'registrou uma contestação de autoria';
+        detail = escapeHtml(activity.detalhes?.observacao || 'A autoria precisa ser revista.');
+      } else {
+        text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
+        detail = activity.detalhes?.observacao ? escapeHtml(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
+      }
     }
     return `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${ACTIVITY_ICON[activity.tipo] || (activity.tipo === 'status' ? 'refresh-cw' : 'activity')}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${text}</p>${detail ? `<em>${detail}</em>` : ''}<span>${formatDateTime(activity.criado_em)}</span></div></div>`;
   }).join('');
@@ -1345,6 +1350,14 @@ function bindTaskDrawerEvents() {
   });
   $('drawerApproveEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'approve'));
   $('drawerRejectEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'reject'));
+  $('drawerReviewAuthorshipBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id));
+  $('drawerConfirmAuthorshipBtn')?.addEventListener('click', () => {
+    const pending = myPendingAuthorshipConfirmationsV372().find(row => {
+      const review = (state.authorshipReviews || []).find(item => item.id === row.revisao_id);
+      return review?.tarefa_id === state.selectedTask.id;
+    });
+    if (pending) openAuthorshipConfirmationV372(pending);
+  });
   $('drawerAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ taskId: state.selectedTask.id, multi: true, title: 'Gerenciar responsáveis' }));
   $('drawerPriorityManagerBtn')?.addEventListener('click', () => openPriorityManager(state.selectedTask.id));
   $('transferTaskBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
@@ -1947,6 +1960,7 @@ function maybeShowNextIntrusiveNotification() {
   if (!$('intrusiveNotificationModal') || !$('intrusiveNotificationModal').classList.contains('hidden')) return;
   if ($('onboardingModal') && !$('onboardingModal').classList.contains('hidden')) return;
   if ($('profileModal') && !$('profileModal').classList.contains('hidden') && $('profileModal').dataset.required === '1') return;
+  if ($('authorshipConfirmationModal') && !$('authorshipConfirmationModal').classList.contains('hidden')) return;
 
   const notification = state.intrusiveQueue.shift();
   if (!notification || notification.lida) return maybeShowNextIntrusiveNotification();
@@ -1961,6 +1975,12 @@ function maybeShowNextIntrusiveNotification() {
 
 function enqueueIntrusiveNotification(notification) {
   if (!notification?.id || notification.lida || intrusiveWasDismissed(notification.id)) return;
+  // A confirmação de autoria possui um popup próprio com Confirmar/Contestar.
+  // Mantemos a notificação na central/push, mas evitamos dois overlays concorrentes.
+  if (String(notification.chave_deduplicacao || '').startsWith('autoria-confirmar:')) {
+    setTimeout(async () => { await loadAuthorshipV372(); maybeShowAuthorshipConfirmationV372(); }, 120);
+    return;
+  }
   if (!['critica','importante'].includes(notificationLevel(notification))) return;
   if (state.intrusiveActive?.id === notification.id || state.intrusiveShownIds.has(notification.id) || state.intrusiveQueue.some(item => item.id === notification.id)) return;
   state.intrusiveQueue.push(notification);
@@ -2034,6 +2054,13 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes_ocorrencias' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_responsaveis' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'demanda_recorrente_responsaveis' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_autoria_revisoes' }, async () => {
+      await loadAuthorshipV372(); renderAll(); setTimeout(maybeShowAuthorshipConfirmationV372, 180); refreshIcons();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_autoria_confirmacoes' }, async () => {
+      await loadAuthorshipV372(); renderAll(); setTimeout(maybeShowAuthorshipConfirmationV372, 180); refreshIcons();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_executores' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => {
       await loadNotifications();
       renderNotifications();
@@ -2052,7 +2079,7 @@ function setupRealtime() {
     });
 }
 async function refreshData() {
-  await loadAll(); renderAll(); refreshIcons();
+  await loadAll(); renderAll(); refreshIcons(); setTimeout(maybeShowAuthorshipConfirmationV372, 180);
 }
 
 function parseQuickCapture(text) {
@@ -2478,6 +2505,261 @@ function moveOnboarding(direction) {
 }
 
 
+
+/* =========================================================
+   PMG CONNECT V3.7.2 — AUTORIA DA ENTREGA
+   ========================================================= */
+function isMissingAuthorshipSchemaV372(error) {
+  const text = String(error?.message || error?.details || error || '');
+  return /tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores|PGRST205|42P01|does not exist/i.test(text);
+}
+async function loadAuthorshipV372() {
+  try {
+    const [reviewResult, confirmationResult, executorResult] = await Promise.all([
+      db.from('tarefa_autoria_revisoes').select('*').order('criado_em', { ascending:false }).limit(1800),
+      db.from('tarefa_autoria_confirmacoes').select('*').order('criado_em', { ascending:false }).limit(5000),
+      db.from('tarefa_executores').select('*').order('confirmado_em', { ascending:false }).limit(5000)
+    ]);
+    const error = reviewResult.error || confirmationResult.error || executorResult.error;
+    if (error) throw error;
+    state.authorshipReviews = reviewResult.data || [];
+    state.authorshipConfirmations = confirmationResult.data || [];
+    state.taskExecutors = executorResult.data || [];
+    state.authorshipReady = true;
+  } catch (error) {
+    if (!isMissingAuthorshipSchemaV372(error)) console.warn('[autoria da entrega]', error);
+    state.authorshipReviews = [];
+    state.authorshipConfirmations = [];
+    state.taskExecutors = [];
+    state.authorshipReady = false;
+  }
+}
+function taskFinalExecutorIdsV372(taskOrId) {
+  const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId?.id;
+  if (!taskId) return [];
+  return uniqueIdsV37((state.taskExecutors || []).filter(row => row.tarefa_id === taskId).map(row => row.colaborador_id));
+}
+function taskFinalExecutorsV372(taskOrId) {
+  return taskFinalExecutorIdsV372(taskOrId).map(collaborator).filter(Boolean);
+}
+function taskAuthorshipReviewV372(taskId) {
+  return (state.authorshipReviews || [])
+    .filter(row => row.tarefa_id === taskId)
+    .sort((a,b) => new Date(b.criado_em || 0) - new Date(a.criado_em || 0))[0] || null;
+}
+function authorshipReviewConfirmationsV372(reviewId) {
+  return (state.authorshipConfirmations || [])
+    .filter(row => row.revisao_id === reviewId)
+    .sort((a,b) => String(a.criado_em || '').localeCompare(String(b.criado_em || '')));
+}
+function myPendingAuthorshipConfirmationsV372() {
+  if (!state.me) return [];
+  const activeReviewIds = new Set((state.authorshipReviews || []).filter(row => row.status === 'aguardando').map(row => row.id));
+  return (state.authorshipConfirmations || [])
+    .filter(row => row.colaborador_id === state.me.id && row.resposta === 'pendente' && activeReviewIds.has(row.revisao_id))
+    .sort((a,b) => new Date(a.criado_em || 0) - new Date(b.criado_em || 0));
+}
+function taskTimeMinutesByPersonV372(taskId, personId) {
+  return (state.timeEntries || [])
+    .filter(entry => entry.tarefa_id === taskId && entry.colaborador_id === personId)
+    .reduce((sum, entry) => {
+      const start = new Date(entry.inicio_em).getTime();
+      const end = new Date(entry.fim_em || Date.now()).getTime();
+      return sum + Math.max(0, Math.round((end - start) / 60000));
+    }, 0);
+}
+function formatMinutesV372(minutes) {
+  const value = Math.max(0, Number(minutes || 0));
+  if (!value) return 'Sem tempo registrado';
+  const hours = Math.floor(value / 60);
+  const mins = value % 60;
+  return hours ? `${hours}h${mins ? ` ${mins}min` : ''} registrados` : `${mins}min registrados`;
+}
+function suggestedExecutorIdsV372(task) {
+  const timed = uniqueIdsV37((state.timeEntries || []).filter(entry => entry.tarefa_id === task.id && entry.colaborador_id).map(entry => entry.colaborador_id));
+  if (timed.length) return timed;
+  const lastReview = taskAuthorshipReviewV372(task.id);
+  if (lastReview) {
+    const previous = authorshipReviewConfirmationsV372(lastReview.id).map(row => row.colaborador_id);
+    if (previous.length) return uniqueIdsV37(previous);
+  }
+  return taskAssigneeIds(task);
+}
+function renderEvaluationExecutorsV372() {
+  const task = state.tasks.find(item => item.id === $('evaluationTaskId')?.value);
+  const list = $('evaluationExecutorList');
+  if (!task || !list) return;
+  const query = ($('evaluationExecutorSearch')?.value || '').trim().toLowerCase();
+  const selected = uniqueIdsV37(state.evaluationExecutorIds);
+  const relevant = new Set(uniqueIdsV37([...taskAssigneeIds(task), ...(state.timeEntries || []).filter(entry => entry.tarefa_id === task.id).map(entry => entry.colaborador_id)]));
+  const people = [...state.collaborators]
+    .filter(person => !query || [person.nome,person.cargo].join(' ').toLowerCase().includes(query))
+    .sort((a,b) => Number(relevant.has(b.id)) - Number(relevant.has(a.id)) || a.nome.localeCompare(b.nome,'pt-BR'));
+
+  list.innerHTML = people.length ? people.map(person => {
+    const isSelected = selected.includes(person.id);
+    const minutes = taskTimeMinutesByPersonV372(task.id, person.id);
+    const badges = [];
+    if (taskAssigneeIds(task).includes(person.id)) badges.push('Responsável');
+    if (minutes > 0) badges.push(formatMinutesV372(minutes));
+    return `<button type="button" class="evaluation-executor-option ${isSelected ? 'selected' : ''}" data-evaluation-executor="${person.id}" aria-pressed="${isSelected}">
+      ${avatarHTML(person,'sm')}
+      <span class="evaluation-executor-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small>${badges.length ? `<em>${escapeHtml(badges.join(' · '))}</em>` : ''}</span>
+      <span class="evaluation-executor-check"><i data-lucide="check"></i></span>
+    </button>`;
+  }).join('') : `<div class="empty-state" style="grid-column:1/-1"><i data-lucide="user-search"></i>Nenhum colaborador encontrado.</div>`;
+
+  const count = selected.length;
+  if ($('evaluationExecutorSummary')) $('evaluationExecutorSummary').textContent = `${count} selecionado${count === 1 ? '' : 's'}`;
+  refreshIcons();
+}
+function toggleEvaluationExecutorV372(personId) {
+  const ids = uniqueIdsV37(state.evaluationExecutorIds);
+  state.evaluationExecutorIds = ids.includes(personId) ? ids.filter(id => id !== personId) : [...ids, personId];
+  renderEvaluationExecutorsV372();
+}
+function authorshipPeopleStatusHTMLV372(review) {
+  if (!review) return '';
+  const rows = authorshipReviewConfirmationsV372(review.id);
+  return rows.map(row => {
+    const person = collaborator(row.colaborador_id);
+    return `<span class="authorship-status-person ${row.resposta}">${avatarHTML(person,'xs')}<span>${escapeHtml(firstName(person?.nome || 'Colaborador'))}</span><b>${row.resposta === 'confirmado' ? '✓' : row.resposta === 'contestado' ? '!' : '...'}</b></span>`;
+  }).join('');
+}
+function evaluationPanelHTMLV372(task, evaluator) {
+  const review = taskAuthorshipReviewV372(task.id);
+  const rows = review ? authorshipReviewConfirmationsV372(review.id) : [];
+  const confirmed = rows.filter(row => row.resposta === 'confirmado').length;
+  const contested = rows.filter(row => row.resposta === 'contestado').length;
+  const pending = rows.filter(row => row.resposta === 'pendente').length;
+  const total = rows.length;
+  const pct = total ? Math.round((confirmed / total) * 100) : 0;
+  const myRow = rows.find(row => row.colaborador_id === state.me?.id);
+
+  if (task.status === 'revisao' && task.avaliacao_status === 'confirmacao_autoria' && review) {
+    if (isManager()) {
+      return `<section class="authorship-status-panel pending">
+        <div class="authorship-status-panel-head"><span><i data-lucide="users-round"></i></span><div><strong>Aguardando confirmação de autoria</strong><small>Você validou a entrega. A demanda será concluída quando todos os executores selecionados confirmarem.</small></div></div>
+        <div class="authorship-progress"><div class="authorship-progress-track"><i style="width:${pct}%"></i></div><strong>${confirmed}/${total} confirmaram</strong></div>
+        <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
+        <div class="authorship-status-actions"><button id="drawerReviewAuthorshipBtn" type="button" class="btn secondary"><i data-lucide="pencil"></i>Revisar nomes</button></div>
+      </section>`;
+    }
+    if (myRow?.resposta === 'pendente') {
+      return `<section class="authorship-status-panel pending">
+        <div class="authorship-status-panel-head"><span><i data-lucide="badge-check"></i></span><div><strong>Sua confirmação é necessária</strong><small>O gestor registrou quem realizou a entrega. Confira os nomes para a demanda poder ser encerrada.</small></div></div>
+        <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
+        <div class="authorship-status-actions"><button id="drawerConfirmAuthorshipBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Confirmar autoria</button></div>
+      </section>`;
+    }
+    return `<section class="authorship-status-panel">
+      <div class="authorship-status-panel-head"><span><i data-lucide="hourglass"></i></span><div><strong>${myRow?.resposta === 'confirmado' ? 'Você já confirmou a autoria' : 'Autoria em confirmação'}</strong><small>${pending ? `Ainda faltam ${pending} confirmação${pending === 1 ? '' : 'ões'} para encerrar a demanda.` : 'Aguardando processamento da validação.'}</small></div></div>
+      <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
+    </section>`;
+  }
+
+  if (task.status === 'revisao' && task.avaliacao_status === 'autoria_contestada' && review) {
+    const contestedRows = rows.filter(row => row.resposta === 'contestado');
+    const detail = contestedRows.map(row => {
+      const person = collaborator(row.colaborador_id);
+      return `${firstName(person?.nome || 'Colaborador')}: ${row.observacao || 'contestou a autoria'}`;
+    }).join(' · ');
+    if (isManager()) {
+      return `<section class="authorship-status-panel contested">
+        <div class="authorship-status-panel-head"><span><i data-lucide="message-square-warning"></i></span><div><strong>Autoria contestada</strong><small>${escapeHtml(detail || 'Um dos participantes discordou dos nomes registrados.')} Revise os executores e envie uma nova confirmação.</small></div></div>
+        <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
+        <div class="authorship-status-actions"><button id="drawerReviewAuthorshipBtn" type="button" class="btn primary"><i data-lucide="users-round"></i>Revisar autoria</button></div>
+      </section>`;
+    }
+    return `<section class="authorship-status-panel contested">
+      <div class="authorship-status-panel-head"><span><i data-lucide="message-square-warning"></i></span><div><strong>Autoria em revisão</strong><small>Houve uma contestação e o gestor precisa revisar os nomes antes de concluir a demanda.</small></div></div>
+    </section>`;
+  }
+
+  if (task.status === 'revisao') {
+    return isManager()
+      ? `<section class="manager-evaluation-panel"><div class="manager-evaluation-icon"><i data-lucide="scan-eye"></i></div><div><span class="eyebrow">Sua ação é necessária</span><h3>O colaborador solicitou a conclusão</h3><p>Confira o resultado e registre quem realmente realizou a entrega. Os executores confirmarão a autoria antes do encerramento.</p></div><div class="manager-evaluation-actions"><button id="drawerRejectEvaluationBtn" type="button" class="btn secondary"><i data-lucide="undo-2"></i>Devolver para ajustes</button><button id="drawerApproveEvaluationBtn" type="button" class="btn primary"><i data-lucide="users-round"></i>Validar e atribuir autoria</button></div></section>`
+      : `<section class="manager-evaluation-panel waiting"><div class="manager-evaluation-icon"><i data-lucide="hourglass"></i></div><div><span class="eyebrow">Aguardando gestor</span><h3>Sua entrega foi enviada para avaliação</h3><p>O gestor vai validar o resultado e registrar quem participou da execução.</p></div></section>`;
+  }
+
+  if (task.avaliacao_status === 'ajustes' && task.avaliacao_observacao) {
+    return `<section class="evaluation-feedback adjustments"><span><i data-lucide="message-square-warning"></i></span><div><strong>Ajustes solicitados${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${escapeHtml(task.avaliacao_observacao)}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`;
+  }
+
+  if (task.avaliacao_status === 'aprovada') {
+    const executors = taskFinalExecutorsV372(task);
+    const names = executors.length ? executors.map(person => firstName(person.nome)).join(', ') : '';
+    return `<section class="evaluation-feedback approved"><span><i data-lucide="badge-check"></i></span><div><strong>Conclusão aprovada${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${names ? `Autoria confirmada: ${escapeHtml(names)}.` : escapeHtml(task.avaliacao_observacao || 'Entrega validada e encerrada.')}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`;
+  }
+  return '';
+}
+
+function openAuthorshipConfirmationV372(confirmation) {
+  if (!confirmation) return;
+  const review = (state.authorshipReviews || []).find(row => row.id === confirmation.revisao_id);
+  if (!review || review.status !== 'aguardando') return;
+  const task = state.tasks.find(item => item.id === review.tarefa_id);
+  if (!task) return;
+  const manager = collaborator(review.gestor_id);
+  const rows = authorshipReviewConfirmationsV372(review.id);
+  const people = rows.map(row => collaborator(row.colaborador_id)).filter(Boolean);
+
+  $('authorshipConfirmationReviewId').value = review.id;
+  $('authorshipContestReason').value = '';
+  $('authorshipContestBox').classList.add('hidden');
+  $('authorshipConfirmationFooter').classList.remove('hidden');
+
+  $('authorshipConfirmationTask').innerHTML = `<span><i data-lucide="clipboard-check"></i></span><div><small>${manager ? `Revisada por ${escapeHtml(manager.nome)}` : 'Revisão do gestor'}</small><strong>${escapeHtml(task.titulo)}</strong><em>${escapeHtml(task.descricao || 'Sem descrição registrada.')}</em></div>`;
+  $('authorshipConfirmationCount').textContent = `${people.length} pessoa${people.length === 1 ? '' : 's'}`;
+  $('authorshipConfirmationPeople').innerHTML = people.map(person => `<div class="authorship-confirmation-person">${avatarHTML(person,'sm')}<span><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small></span><b>${person.id === state.me.id ? 'VOCÊ' : 'EXECUTOR'}</b></div>`).join('');
+  $('authorshipConfirmationManagerNote').classList.toggle('hidden', !review.observacao_gestor);
+  $('authorshipConfirmationManagerNote').innerHTML = review.observacao_gestor ? `<strong>Observação do gestor:</strong> ${escapeHtml(review.observacao_gestor)}` : '';
+  $('authorshipConfirmationModal').classList.remove('hidden');
+  refreshIcons();
+}
+function maybeShowAuthorshipConfirmationV372() {
+  if (!state.authorshipReady || !state.me || !$('authorshipConfirmationModal')?.classList.contains('hidden')) return;
+  if (!$('intrusiveNotificationModal')?.classList.contains('hidden')) return;
+  const pending = myPendingAuthorshipConfirmationsV372().find(row => !state.authorshipPostponed.has(row.revisao_id));
+  if (pending) openAuthorshipConfirmationV372(pending);
+}
+function postponeAuthorshipConfirmationV372() {
+  const reviewId = $('authorshipConfirmationReviewId')?.value;
+  if (reviewId) state.authorshipPostponed.add(reviewId);
+  closeModal('authorshipConfirmationModal');
+}
+async function respondAuthorshipConfirmationV372(confirm) {
+  const reviewId = $('authorshipConfirmationReviewId')?.value;
+  if (!reviewId) return;
+  const reason = $('authorshipContestReason')?.value.trim() || '';
+  if (!confirm && !reason) {
+    $('authorshipContestReason')?.focus();
+    return toast('Explique rapidamente o que está incorreto na autoria.', 'error');
+  }
+  setLoading(true);
+  try {
+    const { data, error } = await db.rpc('responder_confirmacao_autoria_v1', {
+      p_revisao_id: reviewId,
+      p_confirmar: Boolean(confirm),
+      p_observacao: reason || null
+    });
+    if (error) throw error;
+    closeModal('authorshipConfirmationModal');
+    state.authorshipPostponed.delete(reviewId);
+    await refreshData();
+    await dispatchPendingPush();
+    const result = data || {};
+    if (confirm && result?.concluida) toast('Autoria confirmada. Todos responderam e a demanda foi concluída.');
+    else if (confirm) toast('Sua confirmação foi registrada. Aguardando os demais executores.');
+    else toast('Contestação enviada ao gestor. A demanda continuará em revisão.');
+    setTimeout(maybeShowAuthorshipConfirmationV372, 500);
+  } catch (error) {
+    toast(errorMessage(error),'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
 /* =========================================================
    DEMANDAS V3 — OPERAÇÃO, ACADEMIA, RELATÓRIOS E ACESSIBILIDADE
    ========================================================= */
@@ -2520,23 +2802,65 @@ function openTaskEvaluation(taskId = state.selectedTask?.id) {
   const person = collaborator(task.responsavel_id);
   $('evaluationTaskId').value = task.id;
   $('evaluationNote').value = task.avaliacao_observacao || '';
-  $('evaluationTaskSummary').innerHTML = `<div class="evaluation-summary-person">${avatarHTML(person, 'lg')}<div><span>Entrega enviada por</span><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Marketing')}</small></div></div><div class="evaluation-summary-task"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade] || 'Média'}</span><h3>${escapeHtml(task.titulo)}</h3><p>${escapeHtml(task.descricao || 'Sem descrição registrada.')}</p><div><span><i data-lucide="clock-3"></i>${formatHours(sizeWeight(task))} estimadas</span><span><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div></div>`;
-  $('taskEvaluationModal').classList.remove('hidden'); refreshIcons();
+  $('evaluationExecutorSearch').value = '';
+  state.evaluationExecutorIds = suggestedExecutorIdsV372(task);
+
+  const people = taskAssigneePeople(task);
+  const submittedBy = person || people[0] || null;
+  $('evaluationTaskSummary').innerHTML = `<div class="evaluation-summary-person">${taskAssigneeAvatarGroupHTML(task,'lg',4)}<div><span>Entrega enviada pela equipe</span><strong>${escapeHtml(people.length ? taskAssigneeShortNames(task) : submittedBy?.nome || 'Sem responsável')}</strong><small>${people.length > 1 ? `${people.length} responsáveis vinculados` : escapeHtml(submittedBy?.cargo || 'Marketing')}</small></div></div><div class="evaluation-summary-task"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade] || 'Média'}</span><h3>${escapeHtml(task.titulo)}</h3><p>${escapeHtml(task.descricao || 'Sem descrição registrada.')}</p><div><span><i data-lucide="clock-3"></i>${formatHours(sizeWeight(task))} estimadas</span><span><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div></div>`;
+  renderEvaluationExecutorsV372();
+  $('taskEvaluationModal').classList.remove('hidden');
+  refreshIcons();
 }
 
 async function submitTaskEvaluation(approved) {
   const taskId = $('evaluationTaskId').value;
   const note = $('evaluationNote').value.trim();
-  if (!approved && !note) { $('evaluationNote').focus(); return toast('Informe o que precisa ser ajustado antes de devolver a demanda.', 'error'); }
+  if (!approved && !note) {
+    $('evaluationNote').focus();
+    return toast('Informe o que precisa ser ajustado antes de devolver a demanda.', 'error');
+  }
+
+  if (approved) {
+    if (!state.authorshipReady) return toast('Execute o SQL 12-CONFIRMACAO-AUTORIA-V3-7-2.sql antes de aprovar novas conclusões.', 'error');
+    const executors = uniqueIdsV37(state.evaluationExecutorIds);
+    if (!executors.length) return toast('Selecione pelo menos uma pessoa que realizou a demanda.', 'error');
+  }
+
   setLoading(true);
   try {
-    const { error } = await db.rpc('avaliar_conclusao', { p_tarefa_id: taskId, p_aprovado: approved, p_observacao: note || null });
+    if (approved) {
+      const executors = uniqueIdsV37(state.evaluationExecutorIds);
+      const { data, error } = await db.rpc('solicitar_confirmacao_autoria_v1', {
+        p_tarefa_id: taskId,
+        p_executores: executors,
+        p_observacao: note || null
+      });
+      if (error) throw error;
+      closeModal('taskEvaluationModal');
+      await refreshData();
+      await dispatchPendingPush();
+      if (state.tasks.some(task => task.id === taskId)) await openTask(taskId);
+      toast(`Entrega validada. Aguardando confirmação de ${executors.length} executor${executors.length === 1 ? '' : 'es'}.`);
+      return;
+    }
+
+    const { error } = await db.rpc('avaliar_conclusao', {
+      p_tarefa_id: taskId,
+      p_aprovado: false,
+      p_observacao: note || null
+    });
     if (error) throw error;
-    closeModal('taskEvaluationModal'); await refreshData(); await dispatchPendingPush();
+    closeModal('taskEvaluationModal');
+    await refreshData();
+    await dispatchPendingPush();
     if (state.tasks.some(task => task.id === taskId)) await openTask(taskId);
-    toast(approved ? 'Conclusão aprovada. Demanda encerrada.' : 'Demanda devolvida para ajustes.');
-  } catch (error) { toast(errorMessage(error), 'error'); }
-  finally { setLoading(false); }
+    toast('Demanda devolvida para ajustes.');
+  } catch (error) {
+    toast(errorMessage(error),'error');
+  } finally {
+    setLoading(false);
+  }
 }
 
 function openTransferTask(taskId = state.selectedTask?.id) {
@@ -3056,6 +3380,23 @@ function bindEvents() {
   $('transferAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'transferAssignee', previewId: 'transferAssigneePreview', title: 'Transferir para' }));
   $('evaluationApproveBtn')?.addEventListener('click', () => submitTaskEvaluation(true));
   $('evaluationRejectBtn')?.addEventListener('click', () => submitTaskEvaluation(false));
+  $('evaluationExecutorSearch')?.addEventListener('input', renderEvaluationExecutorsV372);
+  $('evaluationExecutorList')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-evaluation-executor]');
+    if (button) toggleEvaluationExecutorV372(button.dataset.evaluationExecutor);
+  });
+  $('authorshipConfirmBtn')?.addEventListener('click', () => respondAuthorshipConfirmationV372(true));
+  $('authorshipDisputeBtn')?.addEventListener('click', () => {
+    $('authorshipContestBox')?.classList.remove('hidden');
+    $('authorshipConfirmationFooter')?.classList.add('hidden');
+    $('authorshipContestReason')?.focus();
+  });
+  $('authorshipCancelContestBtn')?.addEventListener('click', () => {
+    $('authorshipContestBox')?.classList.add('hidden');
+    $('authorshipConfirmationFooter')?.classList.remove('hidden');
+  });
+  $('authorshipSendContestBtn')?.addEventListener('click', () => respondAuthorshipConfirmationV372(false));
+  $('authorshipLaterBtn')?.addEventListener('click', postponeAuthorshipConfirmationV372);
   $('teamMonthlyReportBtn')?.addEventListener('click', openMonthlyReport);
   $('monthlyReportMonth')?.addEventListener('change', renderMonthlyReport);
   $('monthlyReportCsvBtn')?.addEventListener('click', exportMonthlyReportCsv);
@@ -4655,7 +4996,12 @@ function taskAssigneeIds(taskOrId) {
   if (task.responsavel_id && !ids.includes(task.responsavel_id)) ids.unshift(task.responsavel_id);
   return uniqueIdsV37(ids);
 }
-function taskHasAssignee(task, personId) { return Boolean(personId && taskAssigneeIds(task).includes(personId)); }
+function taskHasAssignee(task, personId) {
+  if (!personId || !task) return false;
+  const finalExecutors = task.status === 'concluida' ? taskFinalExecutorIdsV372(task) : [];
+  if (finalExecutors.length) return finalExecutors.includes(personId);
+  return taskAssigneeIds(task).includes(personId);
+}
 function taskAssigneePeople(task) { return taskAssigneeIds(task).map(collaborator).filter(Boolean); }
 function taskAssigneeNames(task) { const people = taskAssigneePeople(task); return people.length ? people.map(p => p.nome).join(', ') : 'Sem responsáveis'; }
 function taskAssigneeShortNames(task) {
@@ -4665,6 +5011,8 @@ function taskAssigneeShortNames(task) {
   return `${firstName(people[0].nome)} +${people.length - 1}`;
 }
 function taskEffortShare(task, forcedCount = null) {
+  const finalExecutors = task?.status === 'concluida' ? taskFinalExecutorIdsV372(task) : [];
+  if (finalExecutors.length) return sizeWeight(task) / Math.max(1, finalExecutors.length);
   // Em "Primeiro a cumprir" ninguém recebe carga antes de assumir.
   // Depois do claim, a pessoa vencedora recebe a carga completa.
   if (taskIsFirstToCompleteV371(task)) {
@@ -4734,6 +5082,7 @@ const loadAllBeforeMultiAssigneeV37 = loadAll;
 loadAll = async function loadAllMultiAssigneeV37() {
   await loadAllBeforeMultiAssigneeV37();
   await loadMultipleAssigneesV37();
+  await loadAuthorshipV372();
 };
 async function updateTaskAssigneesV37(taskId, ids) {
   if (!isManager()) return toast('Somente gestores podem alterar os responsáveis da demanda.','error');

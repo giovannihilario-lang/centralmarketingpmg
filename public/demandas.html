@@ -981,19 +981,81 @@
   </div>
 
   <div id="taskEvaluationModal" class="modal-layer hidden">
-    <div class="modal-card evaluation-modal">
-      <div class="modal-head"><div><span class="eyebrow">Validação do gestor</span><h2>Avaliar conclusão</h2><p>A demanda só será concluída depois da sua avaliação.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
+    <div class="modal-card evaluation-modal authorship-evaluation-modal">
+      <div class="modal-head"><div><span class="eyebrow">Validação do gestor</span><h2>Avaliar conclusão</h2><p>Valide a entrega e registre quem realmente realizou o trabalho.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
       <form id="taskEvaluationForm">
         <input id="evaluationTaskId" type="hidden">
         <div class="modal-body">
           <div id="evaluationTaskSummary" class="evaluation-task-summary"></div>
-          <label class="field"><span>Observação para o colaborador <em>recomendado ao pedir ajustes</em></span><textarea id="evaluationNote" rows="4" placeholder="O que foi validado ou o que precisa ser corrigido?"></textarea></label>
+
+          <section class="evaluation-authorship-section">
+            <div class="evaluation-authorship-head">
+              <div>
+                <span class="eyebrow">Autoria da entrega</span>
+                <h3>Quem realmente fez esta demanda?</h3>
+                <p>Selecione uma ou mais pessoas. Cada pessoa escolhida receberá uma confirmação antes de a demanda ser encerrada.</p>
+              </div>
+              <span id="evaluationExecutorSummary" class="evaluation-executor-summary">0 selecionados</span>
+            </div>
+            <label class="evaluation-executor-search">
+              <i data-lucide="search"></i>
+              <input id="evaluationExecutorSearch" type="search" autocomplete="off" placeholder="Buscar colaborador...">
+            </label>
+            <div id="evaluationExecutorList" class="evaluation-executor-list"></div>
+            <div class="evaluation-authorship-info">
+              <i data-lucide="shield-check"></i>
+              <span>O gestor propõe a autoria. A conclusão só é finalizada depois que os executores selecionados confirmarem. Se alguém discordar, a demanda permanece em revisão.</span>
+            </div>
+          </section>
+
+          <label class="field"><span>Observação da revisão <em>opcional ao aprovar, obrigatória ao pedir ajustes</em></span><textarea id="evaluationNote" rows="4" placeholder="Ex.: material validado, entrega realizada em conjunto, pontos que precisam ser corrigidos..."></textarea></label>
+
           <div class="evaluation-choice-grid">
-            <button id="evaluationRejectBtn" type="button" class="evaluation-choice reject"><i data-lucide="undo-2"></i><span><strong>Devolver para ajustes</strong><small>Volta para Em andamento e avisa o responsável.</small></span></button>
-            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="badge-check"></i><span><strong>Aprovar e concluir</strong><small>Encerra a demanda como conclusão validada.</small></span></button>
+            <button id="evaluationRejectBtn" type="button" class="evaluation-choice reject"><i data-lucide="undo-2"></i><span><strong>Devolver para ajustes</strong><small>Volta para Em andamento e cancela qualquer confirmação de autoria pendente.</small></span></button>
+            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="users-round"></i><span><strong>Validar e pedir confirmação</strong><small>Envia um popup para cada executor selecionado confirmar a autoria.</small></span></button>
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="authorshipConfirmationModal" class="modal-layer authorship-confirmation-layer hidden" role="alertdialog" aria-modal="true" aria-labelledby="authorshipConfirmationTitle">
+    <div class="modal-card authorship-confirmation-modal">
+      <div class="authorship-confirmation-accent"></div>
+      <div class="modal-head">
+        <div><span class="eyebrow">Confirmação de autoria</span><h2 id="authorshipConfirmationTitle">Você participou desta entrega?</h2><p>O gestor validou a demanda e registrou os executores abaixo.</p></div>
+      </div>
+      <div class="modal-body">
+        <input id="authorshipConfirmationReviewId" type="hidden">
+        <div id="authorshipConfirmationTask" class="authorship-confirmation-task"></div>
+
+        <section class="authorship-confirmation-executors">
+          <div class="authorship-confirmation-section-title"><span><i data-lucide="users-round"></i>Executores registrados pelo gestor</span><strong id="authorshipConfirmationCount">0 pessoas</strong></div>
+          <div id="authorshipConfirmationPeople" class="authorship-confirmation-people"></div>
+        </section>
+
+        <div id="authorshipConfirmationManagerNote" class="authorship-manager-note hidden"></div>
+
+        <div class="authorship-confirmation-question">
+          <span><i data-lucide="badge-check"></i></span>
+          <div><strong>Essa lista representa corretamente quem realizou a demanda?</strong><small>Confirme apenas se os nomes estiverem corretos. Se alguém estiver faltando ou incluído por engano, conteste e explique.</small></div>
+        </div>
+
+        <div id="authorshipContestBox" class="authorship-contest-box hidden">
+          <label class="field"><span>O que está errado na autoria?</span><textarea id="authorshipContestReason" rows="4" maxlength="700" placeholder="Ex.: também participei junto com..., ou esta pessoa não executou esta entrega..."></textarea></label>
+          <div class="authorship-contest-actions">
+            <button id="authorshipCancelContestBtn" type="button" class="btn secondary">Voltar</button>
+            <button id="authorshipSendContestBtn" type="button" class="btn danger-soft"><i data-lucide="message-square-warning"></i>Enviar contestação</button>
+          </div>
+        </div>
+      </div>
+      <div id="authorshipConfirmationFooter" class="modal-footer authorship-confirmation-footer">
+        <button id="authorshipLaterBtn" type="button" class="btn secondary"><i data-lucide="clock-3"></i>Responder depois</button>
+        <div>
+          <button id="authorshipDisputeBtn" type="button" class="btn danger-soft"><i data-lucide="message-square-warning"></i>Não, está incorreto</button>
+          <button id="authorshipConfirmBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Sim, confirmo</button>
+        </div>
+      </div>
     </div>
   </div>
 
