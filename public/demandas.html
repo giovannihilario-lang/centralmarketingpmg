@@ -394,7 +394,7 @@
           </section>
 
           <section id="taskListView" class="task-list-view card hidden">
-            <div class="task-table-head"><span>Demanda</span><span>Responsável</span><span>Prazo</span><span>Status</span><span>Prioridade</span></div>
+            <div class="task-table-head"><span>Demanda</span><span>Responsáveis</span><span>Prazo</span><span>Status</span><span>Prioridade</span></div>
             <div id="taskRows" class="task-rows"></div>
           </section>
         </section>
@@ -534,11 +534,12 @@
 
               <div class="task-setup-grid">
                 <div class="visual-field assignee-visual-field">
-                  <span class="visual-field-label">Responsável</span>
+                  <span class="visual-field-label">Responsáveis</span>
                   <select id="itemAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="">Sem responsável</option></select>
+                  <input id="itemAssigneesJson" type="hidden" value="[]">
                   <button id="itemAssigneePickerBtn" class="assignee-selector-button" type="button">
                     <span id="itemAssigneePreview" class="assignee-selector-preview"></span>
-                    <span class="assignee-selector-action"><span>Selecionar</span><i data-lucide="chevron-right"></i></span>
+                    <span class="assignee-selector-action"><span>Selecionar pessoas</span><i data-lucide="users-round"></i></span>
                   </button>
                 </div>
 
@@ -655,7 +656,7 @@
           <label class="field"><span>Título</span><input id="recurrenceEditTitle" required maxlength="160"></label>
           <label class="field"><span>Descrição</span><textarea id="recurrenceEditDescription" rows="3"></textarea></label>
           <div class="form-grid three">
-            <label class="field"><span>Responsável</span><select id="recurrenceEditAssignee"></select></label>
+            <div class="visual-field recurrence-assignee-field"><span class="visual-field-label">Responsáveis</span><select id="recurrenceEditAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select><input id="recurrenceEditAssigneesJson" type="hidden" value="[]"><button id="recurrenceEditAssigneePickerBtn" class="assignee-selector-button compact" type="button"><span id="recurrenceEditAssigneePreview" class="assignee-selector-preview"></span><span class="assignee-selector-action"><span>Gerenciar</span><i data-lucide="users-round"></i></span></button></div>
             <label class="field"><span>Prioridade / urgência</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
             <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
           </div>
@@ -816,11 +817,12 @@
           <section class="task-config-section edit-task-config">
             <div class="task-setup-grid">
               <div class="visual-field assignee-visual-field">
-                <span class="visual-field-label">Responsável</span>
+                <span class="visual-field-label">Responsáveis</span>
                 <select id="editTaskAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select>
+                <input id="editTaskAssigneesJson" type="hidden" value="[]">
                 <button id="editTaskAssigneePickerBtn" class="assignee-selector-button" type="button">
                   <span id="editTaskAssigneePreview" class="assignee-selector-preview"></span>
-                  <span class="assignee-selector-action"><span>Alterar</span><i data-lucide="chevron-right"></i></span>
+                  <span class="assignee-selector-action"><span>Gerenciar pessoas</span><i data-lucide="users-round"></i></span>
                 </button>
               </div>
               <div class="visual-field">
@@ -886,7 +888,7 @@
   <div id="assigneePickerModal" class="modal-layer hidden">
     <div class="modal-card assignee-picker-modal">
       <div class="modal-head">
-        <div><span class="eyebrow">Equipe</span><h2 id="assigneePickerTitle">Selecionar responsável</h2><p>Consulte a carga atual e escolha a pessoa mais adequada para a demanda.</p></div>
+        <div><span class="eyebrow">Equipe</span><h2 id="assigneePickerTitle">Selecionar responsáveis</h2><p id="assigneePickerDescription">Consulte a carga atual e selecione uma ou mais pessoas para trabalhar na demanda.</p></div>
         <button class="icon-btn subtle" data-close-modal="assigneePickerModal" type="button"><i data-lucide="x"></i></button>
       </div>
       <div class="modal-body assignee-picker-body">
@@ -894,13 +896,13 @@
         <div id="assigneePickerContext" class="assignee-picker-context"></div>
         <div id="assigneePickerList" class="assignee-picker-list"></div>
       </div>
-      <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="assigneePickerModal">Cancelar</button></div>
+      <div class="modal-footer assignee-picker-footer"><span id="assigneePickerSelectionSummary" class="assignee-picker-selection-summary">Nenhuma pessoa selecionada</span><div><button type="button" class="btn secondary" data-close-modal="assigneePickerModal">Cancelar</button><button id="assigneePickerApplyBtn" type="button" class="btn primary hidden"><i data-lucide="users-round"></i>Aplicar responsáveis</button></div></div>
     </div>
   </div>
 
   <div id="transferTaskModal" class="modal-layer hidden">
     <div class="modal-card transfer-task-modal">
-      <div class="modal-head"><div><span class="eyebrow">Transferência</span><h2>Transferir demanda</h2><p>Todo o briefing, prazo, histórico, comentários, status e horas estimadas seguem com a mesma demanda.</p></div><button class="icon-btn subtle" data-close-modal="transferTaskModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Responsável principal</span><h2>Trocar responsável principal</h2><p>A demanda pode ter vários responsáveis. Esta ação troca apenas a pessoa principal usada como referência do fluxo legado.</p></div><button class="icon-btn subtle" data-close-modal="transferTaskModal"><i data-lucide="x"></i></button></div>
       <form id="transferTaskForm">
         <input id="transferTaskId" type="hidden">
         <div class="modal-body">
@@ -912,7 +914,7 @@
               <button id="transferAssigneePickerBtn" class="transfer-person-card choose" type="button"><span id="transferAssigneePreview"></span><i data-lucide="chevron-right"></i></button>
             </div>
           </div>
-          <div class="transfer-preserved"><i data-lucide="package-check"></i><div><strong>O que vai junto?</strong><span>Descrição, links citados no briefing/comentários, comentários, histórico, prioridade, prazo, status atual, lembretes e a estimativa de horas. A carga sai do colaborador anterior e passa ao novo responsável.</span></div></div>
+          <div class="transfer-preserved"><i data-lucide="package-check"></i><div><strong>O que muda?</strong><span>O novo colaborador passa a ser o responsável principal. Os demais corresponsáveis continuam na demanda até serem removidos em “Gerenciar responsáveis”.</span></div></div>
           <section id="transferRecurrenceScope" class="transfer-recurrence-scope hidden">
             <div><i data-lucide="repeat-2"></i><span><strong>Esta demanda faz parte de uma recorrência</strong><small>Escolha se a troca vale só para esta ocorrência ou também para os próximos dias.</small></span></div>
             <label><input id="transferApplySeries" type="checkbox"><span><strong>Aplicar às próximas ocorrências</strong><small>Atualiza o responsável da série sem alterar ocorrências já concluídas.</small></span></label>

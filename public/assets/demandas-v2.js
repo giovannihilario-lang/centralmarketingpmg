@@ -80,7 +80,7 @@ const VIEW_META = {
 };
 
 const state = {
-  session: null, me: null, collaborators: [], tasks: [], reminders: [], notifications: [], activities: [],
+  session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, reminders: [], notifications: [], activities: [],
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
   comments: [], taskActivities: [], realtime: null, loading: 0, quickType: 'demanda',
   quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
@@ -118,6 +118,7 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
+  if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
     return 'A função de alteração rápida de urgência ainda não foi instalada. Execute sql/09-GESTOR-ALTERAR-URGENCIA-V3-6-3.sql no Supabase.';
   }
@@ -197,7 +198,7 @@ function assigneeStats(person) {
   if (!person) return null;
   try { return teamPersonStats(person); }
   catch (error) {
-    const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === person.id);
+    const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && taskHasAssignee(task, person.id));
     return { active, overdue: active.filter(isOverdue), dueToday: active.filter(task => taskDueKey(task) === todayKey()), hours: active.reduce((sum, task) => sum + sizeWeight(task), 0), utilization: 0, risk: 'balanced' };
   }
 }
@@ -262,66 +263,98 @@ function setImmediateAudience(all, isEdit = false) {
   syncImmediateAudience(isEdit ? 'editTask' : 'item');
 }
 
-function openAssigneePicker({ selectId = null, previewId = null, taskId = null, title = 'Selecionar responsável' } = {}) {
-  state.assigneePicker = { selectId, previewId, taskId, search: '' };
+function formAssigneeJsonId(selectId) {
+  return ({ itemAssignee: 'itemAssigneesJson', editTaskAssignee: 'editTaskAssigneesJson', recurrenceEditAssignee: 'recurrenceEditAssigneesJson' })[selectId] || null;
+}
+function parseAssigneeJson(id) {
+  if (!id || !$(id)) return [];
+  try { const raw = JSON.parse($(id).value || '[]'); return [...new Set((Array.isArray(raw) ? raw : []).filter(Boolean))]; }
+  catch (_) { return []; }
+}
+function setAssigneeJson(id, ids) { if ($(id)) $(id).value = JSON.stringify([...new Set((ids || []).filter(Boolean))]); }
+function openAssigneePicker({ selectId = null, previewId = null, jsonInputId = null, taskId = null, recurrenceId = null, multi = false, title = 'Selecionar responsáveis' } = {}) {
+  const resolvedJsonId = jsonInputId || formAssigneeJsonId(selectId);
+  let selectedIds = [];
+  if (taskId) selectedIds = taskAssigneeIds(state.tasks.find(task => task.id === taskId));
+  else if (recurrenceId) selectedIds = seriesAssigneeIds(recurrenceSeriesById(recurrenceId));
+  else if (multi) selectedIds = parseAssigneeJson(resolvedJsonId);
+  else if (selectId && $(selectId)?.value) selectedIds = [$(selectId).value];
+  state.assigneePicker = { selectId, previewId, jsonInputId: resolvedJsonId, taskId, recurrenceId, multi, selectedIds, search: '' };
   $('assigneePickerTitle').textContent = title;
+  if ($('assigneePickerDescription')) $('assigneePickerDescription').textContent = multi
+    ? 'Selecione uma ou mais pessoas. Todos enxergam a demanda, recebem os alertas e podem movimentar o trabalho.'
+    : 'Consulte a carga atual e escolha a pessoa mais adequada para a demanda.';
   $('assigneePickerSearch').value = '';
+  $('assigneePickerApplyBtn')?.classList.toggle('hidden', !multi);
   renderAssigneePicker();
   $('assigneePickerModal').classList.remove('hidden');
   setTimeout(() => $('assigneePickerSearch').focus(), 60);
   refreshIcons();
 }
-
 function renderAssigneePicker() {
-  const query = (state.assigneePicker.search || '').trim().toLowerCase();
-  const currentId = state.assigneePicker.taskId
-    ? state.tasks.find(task => task.id === state.assigneePicker.taskId)?.responsavel_id || ''
-    : $(state.assigneePicker.selectId)?.value || '';
-  const transferTask = state.assigneePicker.taskId ? state.tasks.find(task => task.id === state.assigneePicker.taskId) : null;
+  const picker = state.assigneePicker || {};
+  const query = (picker.search || '').trim().toLowerCase();
+  const selectedIds = [...new Set((picker.selectedIds || []).filter(Boolean))];
+  const currentId = selectedIds[0] || '';
+  const transferTask = picker.taskId ? state.tasks.find(task => task.id === picker.taskId) : null;
   const people = state.collaborators
     .filter(person => !query || [person.nome, person.cargo, person.role].join(' ').toLowerCase().includes(query))
     .map(person => {
       const stats = assigneeStats(person);
-      const extra = transferTask && person.id !== currentId ? sizeWeight(transferTask) : 0;
+      const already = selectedIds.includes(person.id);
+      const extra = transferTask && !already ? taskEffortShare(transferTask, Math.max(1, selectedIds.length + 1)) : 0;
       const projectedHours = Math.max(0, stats.hours + extra);
       const projectedUtilization = Math.round(projectedHours / TEAM_CAPACITY_HOURS * 100);
-      return { person, stats, projectedHours, projectedUtilization, extra };
+      return { person, stats, projectedHours, projectedUtilization, extra, already };
     })
-    .sort((a, b) => {
-      const selectedDiff = Number(b.person.id === currentId) - Number(a.person.id === currentId);
-      const riskDiff = (TEAM_RISK[a.stats.risk]?.score || 0) - (TEAM_RISK[b.stats.risk]?.score || 0);
-      return selectedDiff || riskDiff || a.stats.hours - b.stats.hours || String(a.person.nome || '').localeCompare(String(b.person.nome || ''), 'pt-BR');
-    });
-
-  $('assigneePickerContext').innerHTML = `<i data-lucide="info"></i><span>${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}. ${transferTask ? `A projeção já inclui as ${formatHours(sizeWeight(transferTask))} desta demanda caso ela seja transferida.` : 'Carga calculada pelas demandas abertas e estimativas registradas.'}</span>`;
-  const noneOption = !query || 'sem responsável'.includes(query)
-    ? `<button type="button" class="assignee-option none ${currentId === '' ? 'selected' : ''}" data-assignee-choice=""><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsável</strong><small>Deixar na fila para atribuir depois</small></span><span class="assignee-option-state"><i data-lucide="${currentId === '' ? 'check' : 'chevron-right'}"></i></span></button>`
-    : '';
-  $('assigneePickerList').innerHTML = noneOption + (people.length ? people.map(({ person, stats, projectedHours, projectedUtilization, extra }) => {
+    .sort((a, b) => Number(b.already) - Number(a.already) || (TEAM_RISK[a.stats.risk]?.score || 0) - (TEAM_RISK[b.stats.risk]?.score || 0) || a.stats.hours - b.stats.hours || String(a.person.nome || '').localeCompare(String(b.person.nome || ''), 'pt-BR'));
+  if ($('assigneePickerSelectionSummary')) $('assigneePickerSelectionSummary').textContent = selectedIds.length ? `${selectedIds.length} responsável${selectedIds.length === 1 ? '' : 'is'} selecionado${selectedIds.length === 1 ? '' : 's'}` : 'Nenhuma pessoa selecionada';
+  $('assigneePickerContext').innerHTML = `<i data-lucide="${picker.multi ? 'users-round' : 'info'}"></i><span>${picker.multi ? `${selectedIds.length} selecionado${selectedIds.length === 1 ? '' : 's'}. O primeiro da lista será a referência principal; todos os demais têm acesso operacional igual.` : `${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}.`}</span>`;
+  const clearOption = picker.multi && (!query || 'sem responsável'.includes(query))
+    ? `<button type="button" class="assignee-option none ${selectedIds.length === 0 ? 'selected' : ''}" data-assignee-clear="true"><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsáveis</strong><small>Limpar todas as pessoas selecionadas</small></span><span class="assignee-option-state"><i data-lucide="${selectedIds.length === 0 ? 'check' : 'x'}"></i></span></button>`
+    : (!picker.multi && (!query || 'sem responsável'.includes(query)) ? `<button type="button" class="assignee-option none ${currentId === '' ? 'selected' : ''}" data-assignee-choice=""><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsável</strong><small>Deixar na fila para atribuir depois</small></span><span class="assignee-option-state"><i data-lucide="${currentId === '' ? 'check' : 'chevron-right'}"></i></span></button>` : '');
+  $('assigneePickerList').innerHTML = clearOption + (people.length ? people.map(({ person, stats, projectedHours, projectedUtilization, extra, already }) => {
     const risk = teamRiskLabel(stats);
-    return `<button type="button" class="assignee-option risk-${stats.risk} ${currentId === person.id ? 'selected' : ''}" data-assignee-choice="${person.id}">
+    const order = selectedIds.indexOf(person.id);
+    return `<button type="button" class="assignee-option risk-${stats.risk} ${already ? 'selected multi-selected' : ''}" data-assignee-choice="${person.id}">
       <span class="assignee-option-avatar">${avatarStatusHTML(person, stats, 'md')}</span>
-      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}${extra ? ` · após transferência: ${formatHours(projectedHours)}` : ''}</em></span>
-      <span class="assignee-option-load"><b>${extra ? `${Math.round(stats.hours)}h → ${Math.round(projectedHours)}h` : `${Math.round(stats.hours)}h`}</b><small>${extra ? `${projectedUtilization}% projetado` : risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, extra ? projectedUtilization : (stats.utilization || 0))}%"></span></i></span>
-      <span class="assignee-option-state"><i data-lucide="${currentId === person.id ? 'check' : 'chevron-right'}"></i></span>
+      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}${order === 0 && picker.multi ? ' <em class="primary-assignee-tag">principal</em>' : ''}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}${extra ? ` · com esta demanda: ${formatHours(projectedHours)}` : ''}</em></span>
+      <span class="assignee-option-load"><b>${Math.round(stats.hours)}h</b><small>${extra ? `${projectedUtilization}% projetado` : risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, extra ? projectedUtilization : (stats.utilization || 0))}%"></span></i></span>
+      <span class="assignee-option-state multi-state"><i data-lucide="${already ? 'check' : picker.multi ? 'plus' : 'chevron-right'}"></i></span>
     </button>`;
   }).join('') : `<div class="assignee-picker-empty"><i data-lucide="user-search"></i><strong>Ninguém encontrado</strong><span>Tente outro nome ou cargo.</span></div>`);
   refreshIcons();
 }
-
 async function chooseAssignee(personId) {
-  const picker = { ...state.assigneePicker };
-  closeModal('assigneePickerModal');
-  if (picker.taskId) {
-    await updateTaskAssignee(picker.taskId, personId || null);
+  const picker = state.assigneePicker || {};
+  if (picker.multi) {
+    const ids = [...new Set((picker.selectedIds || []).filter(Boolean))];
+    if (personId) {
+      const index = ids.indexOf(personId);
+      if (index >= 0) ids.splice(index, 1); else ids.push(personId);
+    }
+    picker.selectedIds = ids;
+    state.assigneePicker = picker;
+    renderAssigneePicker();
     return;
   }
-  const select = $(picker.selectId);
-  if (!select) return;
+  closeModal('assigneePickerModal');
+  if (picker.taskId) { await updateTaskAssignee(picker.taskId, personId || null); return; }
+  const select = $(picker.selectId); if (!select) return;
   select.value = personId || '';
   renderAssigneePreview(picker.selectId, picker.previewId);
 }
-
+async function applyAssigneePickerSelection() {
+  const picker = { ...(state.assigneePicker || {}) };
+  const ids = [...new Set((picker.selectedIds || []).filter(Boolean))];
+  if (picker.taskId) { closeModal('assigneePickerModal'); await updateTaskAssigneesV37(picker.taskId, ids); return; }
+  if (picker.recurrenceId) { closeModal('assigneePickerModal'); await updateRecurringAssigneesV37(picker.recurrenceId, ids); return; }
+  const select = $(picker.selectId);
+  if (select) select.value = ids[0] || '';
+  setAssigneeJson(picker.jsonInputId, ids);
+  renderAssigneePreview(picker.selectId, picker.previewId);
+  closeModal('assigneePickerModal');
+}
 function statusFlowHTML(task, canChangeStatus) {
   const currentIndex = STATUS_ORDER.indexOf(task.status);
   return STATUS_ORDER.map((status, index) => {
@@ -329,7 +362,7 @@ function statusFlowHTML(task, canChangeStatus) {
     const current = status === task.status;
     const passed = currentIndex >= 0 && index < currentIndex;
     let disabled = !canChangeStatus || Boolean(task.arquivada_em) || current;
-    const claimMode = !isManager() && !task.responsavel_id && task.prioridade === 'imediata' && task.alerta_para_todos;
+    const claimMode = !isManager() && taskAssigneeIds(task).length === 0 && task.prioridade === 'imediata' && task.alerta_para_todos;
     if (claimMode && status !== 'andamento') disabled = true;
     if (status === 'concluida') disabled = disabled || !isManager() || task.status !== 'revisao';
     if (!isManager() && status === 'nova' && task.status !== 'nova') disabled = true;
@@ -479,7 +512,7 @@ function renderShell() {
   $$('.manager-only').forEach(el => el.classList.toggle('hidden', !isManager()));
   $$('.academy-manager-only').forEach(el => el.classList.toggle('hidden', !canManageAcademy()));
   const activeTasks = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const mine = activeTasks.filter(task => task.responsavel_id === state.me?.id);
+  const mine = activeTasks.filter(task => taskHasAssignee(task, state.me?.id));
   $('navTaskCount').textContent = activeTasks.length;
   $('navTodayCount').textContent = mine.filter(task => taskDueKey(task) === todayKey() || isOverdue(task)).length;
   $('navTodayCount').classList.toggle('hidden', Number($('navTodayCount').textContent) === 0);
@@ -512,7 +545,7 @@ function renderToday() {
   $('heroMonth').textContent = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', month: 'short' }).format(now).replace('.', '').toUpperCase();
 
   const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const mine = active.filter(task => task.responsavel_id === state.me?.id);
+  const mine = active.filter(task => taskHasAssignee(task, state.me?.id));
   const overdue = mine.filter(isOverdue);
   const todayTasks = mine.filter(task => taskDueKey(task) === todayKey());
   const weekEnd = addDays(new Date(), 7);
@@ -567,7 +600,7 @@ function renderActivityFeed() {
 function agendaPersonMatches(taskOrReminder, type = 'task') {
   const filter = state.agendaPersonFilter || '';
   if (!filter) return true;
-  if (type === 'task') return taskOrReminder.responsavel_id === filter;
+  if (type === 'task') return taskHasAssignee(taskOrReminder, filter);
   return taskOrReminder.colaborador_id === filter || taskOrReminder.criado_por === filter;
 }
 
@@ -585,7 +618,7 @@ function calendarItemsForDate(key) {
   const tasks = state.tasks.filter(task => {
     if (task.arquivada_em || taskDueKey(task) !== key) return false;
     if (teamMode) return agendaPersonMatches(task, 'task');
-    return task.responsavel_id === state.me?.id;
+    return taskHasAssignee(task, state.me?.id);
   }).map(task => ({ kind: 'task', id: task.id, title: task.titulo, time: taskDue(task), item: task }));
 
   const reminders = state.reminders.filter(reminder => {
@@ -605,7 +638,7 @@ function renderAgendaScopeSummary() {
   const teamMode = state.agendaScope === 'team';
   const tasks = state.tasks.filter(task => {
     if (task.arquivada_em || !taskDueKey(task).startsWith(monthKey)) return false;
-    return teamMode ? agendaPersonMatches(task, 'task') : task.responsavel_id === state.me?.id;
+    return teamMode ? agendaPersonMatches(task, 'task') : taskHasAssignee(task, state.me?.id);
   });
   const reminders = state.reminders.filter(reminder => {
     if (reminder.concluido_em || !dateKey(reminderEffectiveTime(reminder)).startsWith(monthKey)) return false;
@@ -659,7 +692,7 @@ function renderSelectedDayItems() {
       ? `<span class="day-item-avatar">${taskAvatarHTML(taskPerson, entry.item, 'sm')}</span>`
       : `<span class="day-item-symbol ${entry.kind}"><i data-lucide="${entry.kind === 'meeting' ? 'calendar-clock' : 'bell'}"></i></span>`;
     const project = entry.kind === 'task' && entry.item.projeto ? `<span class="day-item-project"><i data-lucide="folder-kanban"></i>${escapeHtml(entry.item.projeto)}</span>` : '';
-    return `<div class="day-item enriched ${entry.kind === 'task' && entry.item.prioridade === 'imediata' ? 'immediate' : ''}" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskPerson?.nome || 'Sem responsável')}</span>${project}` : ''}</div></div>`;
+    return `<div class="day-item enriched ${entry.kind === 'task' && entry.item.prioridade === 'imediata' ? 'immediate' : ''}" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskAssigneeShortNames(entry.item))}</span>${project}` : ''}</div></div>`;
   }).join('') : `<div class="empty-state"><i data-lucide="calendar-x-2"></i>Nenhum item neste dia.</div>`;
 }
 
@@ -670,7 +703,7 @@ function filteredTasks() {
   return state.tasks.filter(task => {
     const blob = [task.titulo, task.descricao, ...(task.tags || [])].join(' ').toLowerCase();
     if (search && !blob.includes(search)) return false;
-    if (assignee && (assignee === 'none' ? Boolean(task.responsavel_id) : task.responsavel_id !== assignee)) return false;
+    if (assignee && (assignee === 'none' ? taskAssigneeIds(task).length > 0 : !taskHasAssignee(task, assignee))) return false;
     if (project && String(task.projeto || '') !== project) return false;
     if (priority && task.prioridade !== priority) return false;
     if (archive === 'ativas' && task.arquivada_em) return false;
@@ -678,7 +711,7 @@ function filteredTasks() {
     if (state.smartFilter === 'atrasadas' && !isOverdue(task)) return false;
     if (state.smartFilter === 'hoje' && taskDueKey(task) !== todayKey()) return false;
     if (state.smartFilter === 'semana') { const due = taskDue(task); if (!due || new Date(due) < now || new Date(due) > weekEnd) return false; }
-    if (state.smartFilter === 'minhas' && task.responsavel_id !== state.me?.id) return false;
+    if (state.smartFilter === 'minhas' && !taskHasAssignee(task, state.me?.id)) return false;
     return true;
   });
 }
@@ -714,8 +747,8 @@ function renderTaskAvatarFilters() {
   const container = $('taskAvatarFilters'); if (!container) return;
   const selected = $('taskAssigneeFilter')?.value || '';
   const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const countFor = personId => active.filter(task => task.responsavel_id === personId).length;
-  const unassigned = active.filter(task => !task.responsavel_id).length;
+  const countFor = personId => active.filter(task => taskHasAssignee(task, personId)).length;
+  const unassigned = active.filter(task => taskAssigneeIds(task).length === 0).length;
   const buttons = [
     `<button type="button" class="task-avatar-filter ${selected === '' ? 'active' : ''}" data-avatar-filter="" title="Mostrar todos"><span class="task-avatar-filter-all"><i data-lucide="users-round"></i></span><span><strong>Todos</strong><small>${active.length} abertas</small></span></button>`,
     ...state.collaborators.map(person => `<button type="button" class="task-avatar-filter ${selected === person.id ? 'active' : ''}" data-avatar-filter="${person.id}" title="Filtrar demandas de ${escapeHtml(person.nome)}">${avatarHTML(person, 'sm')}<span><strong>${escapeHtml(firstName(person.nome))}</strong><small>${countFor(person.id)} aberta(s)</small></span></button>`),
@@ -735,20 +768,20 @@ function renderBoard() {
 }
 function taskCardHTML(task) {
   const person = collaborator(task.responsavel_id);
-  const canMove = !task.arquivada_em && (isManager() || task.responsavel_id === state.me?.id || task.criado_por === state.me?.id);
+  const canMove = !task.arquivada_em && (isManager() || taskHasAssignee(task, state.me?.id) || task.criado_por === state.me?.id);
   return `<article class="task-card" data-open-task="${task.id}" data-task-id="${task.id}" data-priority="${task.prioridade}" draggable="${canMove}">
     <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(task.projeto)}</span>` : ''}${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
     <h3>${escapeHtml(task.titulo)}</h3>${task.descricao ? `<p>${escapeHtml(task.descricao)}</p>` : ''}
     ${(task.tags || []).length ? `<div class="task-tags">${task.tags.slice(0, 4).map(tag => `<span class="task-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     <div class="task-progress-meta"><span>${task.estimativa_horas ? `${Number(task.estimativa_horas)}h estimadas` : 'Sem estimativa'}</span><span>${STATUS[task.status]?.label}</span></div>
-    <div class="task-card-footer"><span class="task-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span><div class="task-card-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div></div>
+    <div class="task-card-footer"><span class="task-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span><div class="task-card-person multi">${taskAssigneeAvatarGroupHTML(task, 'sm', 3)}<span>${escapeHtml(taskAssigneeShortNames(task))}</span></div></div>
   </article>`;
 }
 function renderTaskList() {
   const tasks = filteredTasks();
   $('taskRows').innerHTML = tasks.length ? tasks.map(task => { const person = collaborator(task.responsavel_id); return `<div class="task-row" data-open-task="${task.id}">
     <div class="task-row-title"><i class="priority-line" style="background:${task.prioridade === 'urgente' ? 'var(--red)' : task.prioridade === 'alta' ? 'var(--amber)' : task.prioridade === 'baixa' ? 'var(--blue)' : 'var(--green-300)'}"></i><div><strong>${escapeHtml(task.titulo)}</strong><small>${escapeHtml([task.projeto ? `Projeto: ${task.projeto}` : '', (task.tags || []).join(' · ')].filter(Boolean).join(' · ') || 'Sem projeto ou tags')}</small></div></div>
-    <div class="task-row-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
+    <div class="task-row-person multi">${taskAssigneeAvatarGroupHTML(task, 'sm', 3)}<span>${escapeHtml(taskAssigneeShortNames(task))}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
     : `<div class="empty-state" style="margin:15px"><i data-lucide="search-x"></i>Nenhuma demanda encontrada.</div>`;
 }
 function bindTaskDrag() {
@@ -780,7 +813,7 @@ function taskSortByAttention(a, b) {
   return new Date(taskDue(a) || '9999-12-31').getTime() - new Date(taskDue(b) || '9999-12-31').getTime();
 }
 function teamPersonStats(person) {
-  const assigned = state.tasks.filter(task => !task.arquivada_em && task.responsavel_id === person.id);
+  const assigned = state.tasks.filter(task => !task.arquivada_em && taskHasAssignee(task, person.id));
   const active = assigned.filter(task => task.status !== 'concluida');
   const completed30 = assigned.filter(task => task.status === 'concluida' && isWithinDays(task.concluida_em || task.atualizado_em, 30));
   const completed7 = completed30.filter(task => isWithinDays(task.concluida_em || task.atualizado_em, 7));
@@ -792,7 +825,7 @@ function teamPersonStats(person) {
     return due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
   });
   const urgent = active.filter(task => ['imediata', 'urgente'].includes(task.prioridade));
-  const hours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
+  const hours = active.reduce((sum, task) => sum + taskEffortShare(task), 0);
   const utilization = Math.min(140, Math.round((hours / TEAM_CAPACITY_HOURS) * 100));
   const deadlineCompleted = completed30.filter(task => taskDue(task) && task.concluida_em);
   const onTime = deadlineCompleted.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
@@ -825,7 +858,7 @@ function renderEquipe() {
   const overdue = active.filter(isOverdue);
   const weekEnd = addDays(new Date(), 7);
   const dueWeek = active.filter(task => { const due = taskDue(task); return due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
-  const unassigned = active.filter(task => !task.responsavel_id);
+  const unassigned = active.filter(task => taskAssigneeIds(task).length === 0);
   let stats = state.collaborators.map(teamPersonStats);
   renderTeamAvatarStrip(stats, manager);
 
@@ -836,9 +869,9 @@ function renderEquipe() {
   $('teamUpdatedAt').textContent = `Atualizado ${relativeTime(new Date().toISOString())}`;
 
   const operationalPeople = state.collaborators.filter(person => person.role !== 'gestor');
-  const busyPeople = operationalPeople.filter(person => active.some(task => task.responsavel_id === person.id)).length;
+  const busyPeople = operationalPeople.filter(person => active.some(task => taskHasAssignee(task, person.id))).length;
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const peopleCompletedMonth = operationalPeople.filter(person => state.tasks.some(task => task.responsavel_id === person.id && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= monthStart)).length;
+  const peopleCompletedMonth = operationalPeople.filter(person => state.tasks.some(task => taskHasAssignee(task, person.id) && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= monthStart)).length;
   const pendingEvaluation = active.filter(task => task.status === 'revisao').length;
   $('teamSummary').innerHTML = manager
     ? [
@@ -1062,7 +1095,7 @@ function openQuickAdd(type = 'demanda', preset = {}) {
     populateAssigneeSelects();
     populateDependencySelects('itemDependencies', null);
     renderTaskTemplateSelect();
-    $('itemAssignee').value = preset.assigneeId || '';
+    $('itemAssignee').value = preset.assigneeId || ''; setAssigneeJson('itemAssigneesJson', preset.assigneeIds || (preset.assigneeId ? [preset.assigneeId] : []));
     if ($('itemProject')) $('itemProject').value = preset.project || '';
     if ($('itemChecklist')) $('itemChecklist').value = '';
     $('itemPriority').value = preset.priority || 'media';
@@ -1118,15 +1151,21 @@ async function createTaskV2() {
   if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
   const checklist = checklistFromText($('itemChecklist')?.value || '');
   const dependencies = selectedValues($('itemDependencies'));
-  const { error } = await db.rpc('criar_tarefa_v4', {
+  const assigneeIds = selectedFormAssigneeIdsV37('item');
+  if (priority === 'imediata' && !assigneeIds.length && !alertAll) throw new Error('Escolha pelo menos um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
+  const { data: taskId, error } = await db.rpc('criar_tarefa_v4', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: priority, p_responsavel_id: $('itemAssignee').value || null,
+    p_prioridade: priority, p_responsavel_id: assigneeIds[0] || null,
     p_prazo_em: dueAt, p_lembrar_em: remindAt, p_tags: tags,
     p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
     p_alerta_para_todos: alertAll, p_projeto: $('itemProject')?.value.trim() || null,
     p_checklist: checklist, p_dependencias: dependencies
   });
   if (error) throw error;
+  if (taskId && state.multiAssigneeReady) {
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: assigneeIds });
+    if (assigneeError) throw assigneeError;
+  }
 }
 async function createReminderV2() {
   const start = localDateTime($('reminderDate').value || todayKey(), $('reminderTime').value || '09:00');
@@ -1167,12 +1206,13 @@ async function openTask(taskId) {
 function renderTaskDrawer() {
   const task = state.selectedTask; if (!task) return;
   const person = collaborator(task.responsavel_id);
+  const responsiblePeople = taskAssigneePeople(task);
   const creator = collaborator(task.criado_por);
   const evaluator = collaborator(task.avaliado_por);
   const personStats = person ? assigneeStats(person) : null;
   $('taskDrawerKicker').textContent = `Demanda #${task.id.slice(0, 5).toUpperCase()}`; $('taskDrawerTitle').textContent = task.titulo;
-  const canClaimImmediate = !task.responsavel_id && task.prioridade === 'imediata' && task.alerta_para_todos && task.status === 'nova';
-  const canChangeStatus = isManager() || task.responsavel_id === state.me.id || canClaimImmediate;
+  const canClaimImmediate = taskAssigneeIds(task).length === 0 && task.prioridade === 'imediata' && task.alerta_para_todos && task.status === 'nova';
+  const canChangeStatus = isManager() || taskHasAssignee(task, state.me.id) || canClaimImmediate;
   const nextAction = statusActionForTask(task);
   const canAssign = isManager() && !task.arquivada_em && task.status !== 'concluida';
   const immediate = task.prioridade === 'imediata';
@@ -1202,7 +1242,7 @@ function renderTaskDrawer() {
       <div class="task-people-flow">
         <div class="task-person-identity"><span>${avatarHTML(creator, 'md')}</span><div><small>Criada por</small><strong>${escapeHtml(creator?.nome || 'Sistema')}</strong></div></div>
         <i data-lucide="arrow-right"></i>
-        <div class="task-person-identity assigned"><span>${taskAvatarHTML(person, task, 'md')}</span><div><small>Responsável</small><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong></div></div>
+        <div class="task-person-identity assigned multi"><span>${taskAssigneeAvatarGroupHTML(task, 'md', 4)}</span><div><small>Responsáveis</small><strong>${escapeHtml(taskAssigneeNames(task))}</strong></div></div>
       </div>
       <div class="task-overview-meta"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.alerta_para_todos ? '<span class="team-alert-pill"><i data-lucide="users-round"></i>Alerta para toda a equipe</span>' : ''}<span class="task-overview-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div>
       <p>${escapeHtml(task.descricao || 'Esta demanda ainda não possui descrição.')}</p>
@@ -1218,12 +1258,13 @@ function renderTaskDrawer() {
     </section>
 
     <section class="task-assignee-section">
-      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Transferência preserva tudo</span>' : ''}</div>
-      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card ${canAssign ? 'editable' : ''}" ${canAssign ? '' : 'disabled'}>
-        <span class="drawer-assignee-avatar">${person ? avatarStatusHTML(person, personStats, 'lg') : avatarHTML(null, 'lg')}</span>
-        <span class="drawer-assignee-copy"><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Aguardando atribuição')}</small><em>${escapeHtml(person ? assigneeLoadText(personStats) : 'A demanda ainda não pertence a ninguém. Em alerta coletivo imediato, a primeira pessoa que iniciar assume o item.')}</em></span>
-        ${canAssign ? '<span class="drawer-assignee-change"><span>Transferir demanda</span><i data-lucide="arrow-right-left"></i></span>' : ''}
+      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade compartilhada</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Uma demanda pode ter várias pessoas</span>' : ''}</div>
+      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card multi ${canAssign ? 'editable' : ''}" ${canAssign ? '' : 'disabled'}>
+        <span class="drawer-assignee-avatar">${taskAssigneeAvatarGroupHTML(task, 'lg', 4)}</span>
+        <span class="drawer-assignee-copy"><strong>${escapeHtml(taskAssigneeNames(task))}</strong><small>${responsiblePeople.length ? `${responsiblePeople.length} responsável${responsiblePeople.length === 1 ? '' : 'is'} · ${escapeHtml(person?.nome || responsiblePeople[0]?.nome || '')} é a referência principal` : 'Aguardando atribuição'}</small><em>${responsiblePeople.length ? 'Todos os responsáveis podem movimentar a demanda e recebem os alertas relacionados ao trabalho.' : 'A demanda ainda não possui responsáveis.'}</em></span>
+        ${canAssign ? '<span class="drawer-assignee-change"><span>Gerenciar responsáveis</span><i data-lucide="users-round"></i></span>' : ''}
       </button>
+      ${responsiblePeople.length ? `<div class="drawer-assignee-team-list">${responsiblePeople.map((member,index) => `<div class="drawer-assignee-team-row">${avatarHTML(member,'sm')}<span><strong>${escapeHtml(member.nome)}</strong><small>${index === 0 ? 'Responsável principal' : 'Corresponsável'} · ${escapeHtml(member.cargo || 'Marketing')}</small></span>${index === 0 ? '<b>Principal</b>' : '<b>Equipe</b>'}</div>`).join('')}</div>` : ''}
     </section>
 
     ${isManager() && !task.arquivada_em && task.status !== 'concluida' ? `
@@ -1288,7 +1329,7 @@ function bindTaskDrawerEvents() {
   });
   $('drawerApproveEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'approve'));
   $('drawerRejectEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'reject'));
-  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
+  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ taskId: state.selectedTask.id, multi: true, title: 'Gerenciar responsáveis' }));
   $('drawerPriorityManagerBtn')?.addEventListener('click', () => openPriorityManager(state.selectedTask.id));
   $('transferTaskBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
   $('drawerCommentForm')?.addEventListener('submit', addComment);
@@ -1386,7 +1427,7 @@ async function saveManagedPriority(event) {
 function openEditTask() {
   const task = state.selectedTask; if (!task) return; const due = splitDateTime(taskDue(task));
   $('editTaskId').value = task.id; $('editTaskTitle').value = task.titulo; $('editTaskDescription').value = task.descricao || '';
-  populateAssigneeSelects(); $('editTaskAssignee').value = task.responsavel_id || ''; $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
+  populateAssigneeSelects(); const editAssigneeIds = taskAssigneeIds(task); $('editTaskAssignee').value = editAssigneeIds[0] || ''; setAssigneeJson('editTaskAssigneesJson', editAssigneeIds); $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
   if ($('editTaskAlertAll')) $('editTaskAlertAll').value = String(Boolean(task.alerta_para_todos));
   $('editTaskSize').value = task.tamanho || 'media'; $('editTaskDueDate').value = due.date; $('editTaskDueTime').value = due.time || '17:00';
   $('editTaskEstimate').value = task.estimativa_horas || ''; if ($('editTaskProject')) $('editTaskProject').value = task.projeto || ''; $('editTaskTags').value = (task.tags || []).join(', ');
@@ -1403,7 +1444,8 @@ async function saveEditedTask(event) {
   try {
     const taskId = $('editTaskId').value;
     const originalAssignee = $('editTaskAssignee').dataset.originalValue || '';
-    const desiredAssignee = $('editTaskAssignee').value || '';
+    const desiredAssignees = selectedFormAssigneeIdsV37('editTask');
+    const desiredAssignee = desiredAssignees[0] || '';
     const date = $('editTaskDueDate').value; const dueAt = date ? localDateTime(date, $('editTaskDueTime').value || '17:00') : null;
     const offset = $('editTaskReminderOffset').value; const remindAt = dueAt && offset !== '' ? new Date(new Date(dueAt).getTime() - Number(offset) * 60000).toISOString() : null;
     const priority = $('editTaskPriority').value;
@@ -1417,9 +1459,12 @@ async function saveEditedTask(event) {
       p_checklist: checklistFromText($('editTaskChecklist')?.value || ''), p_dependencias: selectedValues($('editTaskDependencies'))
     });
     if (error) throw error;
-    if (desiredAssignee !== originalAssignee) {
-      if (!desiredAssignee) throw new Error('Para retirar um responsável, use o painel da demanda. Transferências precisam ter um destino.');
-      const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável alterado durante a edição da demanda.' });
+    if (state.multiAssigneeReady) {
+      const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: desiredAssignees });
+      if (assigneeError) throw assigneeError;
+    } else if (desiredAssignee !== originalAssignee) {
+      if (!desiredAssignee) throw new Error('Execute o SQL de múltiplos responsáveis para remover todos os responsáveis.');
+      const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável principal alterado durante a edição da demanda.' });
       if (transferError) throw transferError;
     }
     closeModal('editTaskModal'); await refreshData(); await openTask(taskId); await dispatchPendingPush(); toast('Demanda atualizada.');
@@ -1951,6 +1996,8 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'fechamentos_mensais' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes_ocorrencias' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_responsaveis' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'demanda_recorrente_responsaveis' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => {
       await loadNotifications();
       renderNotifications();
@@ -1988,7 +2035,7 @@ function renderGlobalSearch() {
   $('globalSearchResults').innerHTML = `${tasks.length ? `<div class="search-group-label">Demandas</div>${tasks.map(task => taskSearchResultHTML(task)).join('')}` : ''}${reminders.length ? `<div class="search-group-label">Agenda</div>${reminders.map(item => searchResultHTML('reminder', item.id, item.titulo, `${item.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'} · ${formatDateTime(item.inicio_em)}`, item.tipo === 'compromisso' ? 'calendar-clock' : 'bell')).join('')}` : ''}${!tasks.length && !reminders.length ? `<div class="empty-state" style="margin:8px"><i data-lucide="search-x"></i>Nenhum resultado encontrado.</div>` : ''}`; refreshIcons();
 }
 function searchResultHTML(type, id, title, meta, icon) { return `<button class="search-result" data-search-${type}="${id}"><span class="search-result-icon"><i data-lucide="${icon}"></i></span><span class="search-result-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
-function taskSearchResultHTML(task) { const person = collaborator(task.responsavel_id); return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar">${taskAvatarHTML(person, task, 'sm')}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${task.projeto ? `${escapeHtml(task.projeto)} · ` : ''}${escapeHtml(person?.nome || 'Sem responsável')} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
+function taskSearchResultHTML(task) { return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar multi">${taskAssigneeAvatarGroupHTML(task, 'sm', 3)}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${task.projeto ? `${escapeHtml(task.projeto)} · ` : ''}${escapeHtml(taskAssigneeShortNames(task))} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
 function openSearch() { $('searchModal').classList.remove('hidden'); $('globalSearchInput').value = ''; renderGlobalSearch(); setTimeout(() => $('globalSearchInput').focus(), 40); }
 function closeSearch() { $('searchModal').classList.add('hidden'); }
 
@@ -2743,10 +2790,10 @@ function buildMonthlyReport(value){
   const {start,end,label}=monthBounds(value),operators=state.collaborators.filter(p=>p.role!=='gestor');
   const operatorIds=new Set(operators.map(p=>p.id));
   const rows=operators.map(person=>{
-    const completed=state.tasks.filter(t=>t.responsavel_id===person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
-    const created=state.tasks.filter(t=>t.responsavel_id===person.id&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
-    const overdue=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&isOverdue(t));
-    const active=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&t.status!=='concluida');
+    const completed=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
+    const created=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
+    const overdue=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&!t.arquivada_em&&isOverdue(t));
+    const active=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&!t.arquivada_em&&t.status!=='concluida');
     const approved=completed.filter(t=>t.avaliacao_status==='aprovada').length;
     const immediates=completed.filter(t=>t.prioridade==='imediata').length;
     const hours=completed.reduce((sum,t)=>sum+sizeWeight(t),0);
@@ -3013,8 +3060,10 @@ function bindEvents() {
   $('academyImportMapping')?.addEventListener('change', event => { const select = event.target.closest('[data-academy-map]'); if (!select) return; state.academyImportMap[select.dataset.academyMap] = select.value; renderAcademyImportPreview(); });
   $('academyImportConfirmBtn')?.addEventListener('click', importAcademyFormsRows);
   ['academyDate','academyStartTime','academyEndTime'].forEach(id => $(id)?.addEventListener('change', updateAcademyConflictPreview));
-  $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', title: 'Selecionar responsável' }));
-  $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', title: 'Alterar responsável' }));
+  $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', jsonInputId: 'itemAssigneesJson', multi: true, title: 'Selecionar responsáveis' }));
+  $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', jsonInputId: 'editTaskAssigneesJson', multi: true, title: 'Gerenciar responsáveis' }));
+  $('recurrenceEditAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'recurrenceEditAssignee', previewId: 'recurrenceEditAssigneePreview', jsonInputId: 'recurrenceEditAssigneesJson', multi: true, title: 'Responsáveis da recorrência' }));
+  $('assigneePickerApplyBtn')?.addEventListener('click', applyAssigneePickerSelection);
   $('assigneePickerSearch')?.addEventListener('input', debounce(event => { state.assigneePicker.search = event.target.value; renderAssigneePicker(); }, 100));
   $('userMenuTrigger')?.addEventListener('click', toggleUserMenu);
   $('userMenuProfileBtn')?.addEventListener('click', () => { closeUserMenu(); openProfile(false); });
@@ -3067,6 +3116,8 @@ function bindEvents() {
     const trainingType = event.target.closest('[data-training-type]'); if (trainingType) { setAcademyTrainingType(trainingType.dataset.trainingType); return; }
     const choice = event.target.closest('[data-choice-target]');
     if (choice) { const select = $(choice.dataset.choiceTarget); if (select) { select.value = choice.dataset.choiceValue; syncChoiceCards(choice.dataset.choiceTarget); if (['itemPriority','editTaskPriority'].includes(choice.dataset.choiceTarget)) syncImmediateAudience(choice.dataset.choiceTarget === 'editTaskPriority' ? 'editTask' : 'item'); } return; }
+    const assigneeClear = event.target.closest('[data-assignee-clear]');
+    if (assigneeClear) { state.assigneePicker.selectedIds = []; renderAssigneePicker(); return; }
     const assigneeChoice = event.target.closest('[data-assignee-choice]');
     if (assigneeChoice) { chooseAssignee(assigneeChoice.dataset.assigneeChoice); return; }
     const avatarFilter = event.target.closest('[data-avatar-filter]');
@@ -3350,7 +3401,7 @@ function dependencyPanelHTML(task) {
 function checklistPanelHTML(task) {
   const list = normalizeChecklist(task.checklist);
   const done = list.filter(item => item.concluido).length;
-  const canEdit = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
+  const canEdit = !task.arquivada_em && task.status !== 'concluida' && (isManager() || taskHasAssignee(task, state.me?.id));
   const percent = list.length ? Math.round(done / list.length * 100) : 0;
   return `<section class="productivity-card checklist-card"><div class="productivity-card-head"><div><span class="eyebrow">Execução</span><h3>Checklist da demanda</h3></div><span class="checklist-progress-label">${done}/${list.length || 0} · ${percent}%</span></div>${list.length ? `<div class="checklist-progress-track"><i style="width:${percent}%"></i></div><div class="checklist-items">${list.map((item, index) => `<button type="button" class="checklist-item ${item.concluido ? 'done' : ''}" data-checklist-toggle="${index}" ${canEdit ? '' : 'disabled'}><span><i data-lucide="${item.concluido ? 'check' : 'circle'}"></i></span><strong>${escapeHtml(item.texto)}</strong></button>`).join('')}</div>` : `<div class="productivity-empty"><i data-lucide="list-checks"></i><span>Sem checklist. O gestor pode adicionar itens em Editar detalhes.</span></div>`}</section>`;
 }
@@ -3363,7 +3414,7 @@ function timerPanelHTML(task) {
   const percent = estimated > 0 ? Math.min(160, Math.round(actualHours / estimated * 100)) : 0;
   const active = activeTimerFor(state.me?.id, task.id);
   const another = activeTimerFor(state.me?.id);
-  const canTrack = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
+  const canTrack = !task.arquivada_em && task.status !== 'concluida' && (isManager() || taskHasAssignee(task, state.me?.id));
   const action = active
     ? `<button type="button" class="time-action stop" data-task-time-stop="${task.id}"><i data-lucide="square"></i><span><strong>Pausar cronômetro</strong><small id="taskLiveTimer">${formatMinutesHuman(entryElapsedMinutes(active))}</small></span></button>`
     : canTrack
@@ -3454,10 +3505,10 @@ function buildMonthlyReport(value) {
   const actualHoursForPerson = personId => monthTimes.filter(entry => entry.colaborador_id === personId).reduce((sum, entry) => sum + entryMinutesInsideMonth(entry, start, end), 0) / 60;
 
   const rows = operators.map(person => {
-    const completed = state.tasks.filter(task => task.responsavel_id === person.id && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= start && new Date(task.concluida_em || task.atualizado_em) < end);
-    const created = state.tasks.filter(task => task.responsavel_id === person.id && new Date(task.criado_em) >= start && new Date(task.criado_em) < end);
-    const overdue = state.tasks.filter(task => task.responsavel_id === person.id && !task.arquivada_em && isOverdue(task));
-    const active = state.tasks.filter(task => task.responsavel_id === person.id && !task.arquivada_em && task.status !== 'concluida');
+    const completed = state.tasks.filter(task => taskHasAssignee(task, person.id) && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= start && new Date(task.concluida_em || task.atualizado_em) < end);
+    const created = state.tasks.filter(task => taskHasAssignee(task, person.id) && new Date(task.criado_em) >= start && new Date(task.criado_em) < end);
+    const overdue = state.tasks.filter(task => taskHasAssignee(task, person.id) && !task.arquivada_em && isOverdue(task));
+    const active = state.tasks.filter(task => taskHasAssignee(task, person.id) && !task.arquivada_em && task.status !== 'concluida');
     const approved = completed.filter(task => task.avaliacao_status === 'aprovada').length;
     const immediates = completed.filter(task => task.prioridade === 'imediata').length;
     const estimatedHours = completed.reduce((sum, task) => sum + sizeWeight(task), 0);
@@ -3680,10 +3731,10 @@ function smartDayTaskHTML(task) {
 
 function forecastHours(personId, days) {
   const limit = addDays(new Date(), days).getTime();
-  return state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === personId).filter(task => {
+  return state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && taskHasAssignee(task, personId)).filter(task => {
     const due = taskDue(task); if (!due) return days >= 30;
     return new Date(due).getTime() <= limit;
-  }).reduce((sum, task) => sum + sizeWeight(task), 0);
+  }).reduce((sum, task) => sum + taskEffortShare(task), 0);
 }
 function forecastPercent(hours, days) {
   const capacity = TEAM_CAPACITY_HOURS * Math.max(1, days / 7);
@@ -3789,12 +3840,12 @@ function monthValueShift(value,offset){const [y,m]=String(value).split('-').map(
 function pctDelta(current,previous){if(previous===0)return current===0?0:null;return Math.round((current-previous)/previous*100);}
 function average(values){return values.length?values.reduce((a,b)=>a+b,0)/values.length:null;}
 const buildMonthlyReportV34=buildMonthlyReport;
-buildMonthlyReport=function buildMonthlyReportV35(value){const report=buildMonthlyReportV34(value);report.version='3.5';report.rows=(report.rows||[]).map(row=>{const bounds=monthBounds(value);const completed=state.tasks.filter(t=>t.responsavel_id===row.person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const rework=completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0);const accuracy=row.estimatedHours>0&&row.actualHours>0?Math.max(0,Math.round(100-Math.abs(row.actualHours-row.estimatedHours)/row.estimatedHours*100)):null;return{...row,rework,accuracy}}).sort((a,b)=>a.person.nome.localeCompare(b.person.nome,'pt-BR'));report.totalRework=report.rows.reduce((s,r)=>s+r.rework,0);const acc=report.rows.map(r=>r.accuracy).filter(v=>v!==null);report.estimateAccuracy=acc.length?Math.round(acc.reduce((a,b)=>a+b,0)/acc.length):null;const cycles=report.rows.map(r=>r.avgCycle).filter(v=>v!==null);report.teamAvgCycle=average(cycles);report.totalTransfers=report.rows.reduce((s,r)=>s+r.transfersIn+r.transfersOut,0)/2;const previous=buildMonthlyReportV34(monthValueShift(value,-1));report.comparison={previousLabel:previous.label,completed:pctDelta(report.totalCompleted,previous.totalCompleted),created:pctDelta(report.totalCreated,previous.totalCreated),hours:pctDelta(report.totalActualHours,previous.totalActualHours),onTime:report.teamOnTimeRate!==null&&previous.teamOnTimeRate!==null?report.teamOnTimeRate-previous.teamOnTimeRate:null};return report;}
+buildMonthlyReport=function buildMonthlyReportV35(value){const report=buildMonthlyReportV34(value);report.version='3.5';report.rows=(report.rows||[]).map(row=>{const bounds=monthBounds(value);const completed=state.tasks.filter(t=>taskHasAssignee(t, row.person.id)&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const rework=completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0);const accuracy=row.estimatedHours>0&&row.actualHours>0?Math.max(0,Math.round(100-Math.abs(row.actualHours-row.estimatedHours)/row.estimatedHours*100)):null;return{...row,rework,accuracy}}).sort((a,b)=>a.person.nome.localeCompare(b.person.nome,'pt-BR'));report.totalRework=report.rows.reduce((s,r)=>s+r.rework,0);const acc=report.rows.map(r=>r.accuracy).filter(v=>v!==null);report.estimateAccuracy=acc.length?Math.round(acc.reduce((a,b)=>a+b,0)/acc.length):null;const cycles=report.rows.map(r=>r.avgCycle).filter(v=>v!==null);report.teamAvgCycle=average(cycles);report.totalTransfers=report.rows.reduce((s,r)=>s+r.transfersIn+r.transfersOut,0)/2;const previous=buildMonthlyReportV34(monthValueShift(value,-1));report.comparison={previousLabel:previous.label,completed:pctDelta(report.totalCompleted,previous.totalCompleted),created:pctDelta(report.totalCreated,previous.totalCreated),hours:pctDelta(report.totalActualHours,previous.totalActualHours),onTime:report.teamOnTimeRate!==null&&previous.teamOnTimeRate!==null?report.teamOnTimeRate-previous.teamOnTimeRate:null};return report;}
 function deltaHTML(value,suffix='%'){if(value===null||value===undefined)return'<span class="monthly-delta neutral">sem base</span>';const tone=value>0?'up':value<0?'down':'neutral';return`<span class="monthly-delta ${tone}"><i data-lucide="${value>0?'trending-up':value<0?'trending-down':'minus'}"></i>${value>0?'+':''}${value}${suffix}</span>`;}
 const renderMonthlyReportV34=renderMonthlyReport;
 renderMonthlyReport=function renderMonthlyReportV35(){renderMonthlyReportV34();const report=state.monthlyReportData;if(!report)return;const hero=$('monthlyReportContent')?.querySelector('.monthly-report-hero');if(!hero)return;const attention=[];if((report.teamOnTimeRate??100)<85)attention.push(`Pontualidade em ${report.teamOnTimeRate}%`);if(report.totalRework>0)attention.push(`${report.totalRework} ciclo(s) de retrabalho`);if((report.estimateAccuracy??100)<75)attention.push(`Precisão das estimativas em ${report.estimateAccuracy}%`);if((report.totalTransfers||0)>=5)attention.push(`${Math.round(report.totalTransfers)} transferências no mês`);const compare=document.createElement('section');compare.className='monthly-comparison';compare.innerHTML=`<div class="monthly-section-title"><div><span class="eyebrow">Comparação</span><h4>Em relação a ${escapeHtml(report.comparison?.previousLabel||'mês anterior')}</h4></div></div><div class="monthly-comparison-grid"><div><span>Concluídas</span><strong>${report.totalCompleted}</strong>${deltaHTML(report.comparison?.completed)}</div><div><span>Demandas recebidas</span><strong>${report.totalCreated}</strong>${deltaHTML(report.comparison?.created)}</div><div><span>Horas reais</span><strong>${formatHours(report.totalActualHours||0)}</strong>${deltaHTML(report.comparison?.hours)}</div><div><span>No prazo</span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>${deltaHTML(report.comparison?.onTime,' p.p.')}</div><div><span>Estimativa x real</span><strong>${report.estimateAccuracy===null?'—':report.estimateAccuracy+'%'}</strong><small>precisão média</small></div><div><span>Retrabalho</span><strong>${report.totalRework||0}</strong><small>retornos para ajustes</small></div></div><div class="monthly-attention ${attention.length?'has-alerts':'clean'}"><i data-lucide="${attention.length?'scan-search':'circle-check-big'}"></i><div><strong>${attention.length?'O que merece atenção':'Mês operacionalmente saudável'}</strong><span>${attention.length?escapeHtml(attention.join(' · ')):'Nenhum sinal relevante de prazo, retrabalho ou estimativa fora da faixa definida.'}</span></div></div>`;hero.insertAdjacentElement('afterend',compare);const rankMarkers=$('monthlyReportContent').querySelectorAll('.monthly-person small');rankMarkers.forEach(el=>{el.textContent=el.textContent.replace(/\s·\s#\d+/,'')});refreshIcons();}
 
-function personMonthMetrics(personId,offset){const now=new Date(),base=new Date(now.getFullYear(),now.getMonth()+offset,1),value=`${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}`,bounds=monthBounds(value);const completed=state.tasks.filter(t=>t.responsavel_id===personId&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const deadline=completed.filter(t=>taskDue(t)&&t.concluida_em),onTime=deadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;const entries=state.timeEntries.filter(e=>e.colaborador_id===personId&&new Date(e.inicio_em)<bounds.end&&new Date(e.fim_em||Date.now())>=bounds.start);const hours=entries.reduce((s,e)=>s+entryMinutesInsideMonth(e,bounds.start,bounds.end),0)/60;return{label:new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(base).replace('.',''),completed:completed.length,onTime:deadline.length?Math.round(onTime/deadline.length*100):null,rework:completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0),hours};}
+function personMonthMetrics(personId,offset){const now=new Date(),base=new Date(now.getFullYear(),now.getMonth()+offset,1),value=`${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}`,bounds=monthBounds(value);const completed=state.tasks.filter(t=>taskHasAssignee(t, personId)&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const deadline=completed.filter(t=>taskDue(t)&&t.concluida_em),onTime=deadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;const entries=state.timeEntries.filter(e=>e.colaborador_id===personId&&new Date(e.inicio_em)<bounds.end&&new Date(e.fim_em||Date.now())>=bounds.start);const hours=entries.reduce((s,e)=>s+entryMinutesInsideMonth(e,bounds.start,bounds.end),0)/60;return{label:new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(base).replace('.',''),completed:completed.length,onTime:deadline.length?Math.round(onTime/deadline.length*100):null,rework:completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0),hours};}
 function performanceEvolutionHTML(person){if(person.role==='gestor')return'';const months=[-2,-1,0].map(o=>personMonthMetrics(person.id,o));const maxCompleted=Math.max(1,...months.map(m=>m.completed));return `<section class="person-drawer-section person-evolution"><div class="person-section-head"><div><span class="eyebrow">Evolução pessoal</span><h3>Últimos 3 meses</h3></div><span>Sem ranking</span></div><div class="evolution-chart">${months.map(m=>`<div class="evolution-month"><div class="evolution-bar"><i style="height:${Math.max(8,Math.round(m.completed/maxCompleted*100))}%"></i></div><strong>${m.completed}</strong><span>${escapeHtml(m.label)}</span></div>`).join('')}</div><div class="evolution-metrics">${months.map(m=>`<div><span>${escapeHtml(m.label)}</span><strong>${m.onTime===null?'—':m.onTime+'%'}</strong><small>no prazo</small><b>${formatHours(m.hours)} · ${m.rework} ajuste(s)</b></div>`).join('')}</div></section>`;}
 const renderPersonDrawerV34=renderPersonDrawer;
 renderPersonDrawer=function renderPersonDrawerV35(person){renderPersonDrawerV34(person);const actions=$('personDrawerContent')?.querySelector('.person-drawer-actions');if(actions){actions.insertAdjacentHTML('beforebegin',performanceEvolutionHTML(person));refreshIcons();}}
@@ -3915,8 +3966,8 @@ function recurrenceSeriesAppliesToDate(series, key) {
   return false;
 }
 function recurrenceRelevantForAgenda(series) {
-  if (state.agendaScope === 'team') return !state.agendaPersonFilter || series.responsavel_id === state.agendaPersonFilter;
-  return series.responsavel_id === state.me?.id;
+  if (state.agendaScope === 'team') return !state.agendaPersonFilter || seriesHasAssignee(series, state.agendaPersonFilter);
+  return seriesHasAssignee(series, state.me?.id);
 }
 
 async function loadRecurringV36() {
@@ -3944,7 +3995,7 @@ async function processRecurringV36({ refresh = false } = {}) {
     if (error) throw error;
     const changed = Number(data || 0);
     if (refresh && changed) {
-      await Promise.all([loadTasks(), loadNotifications(), loadRecurringV36()]);
+      await Promise.all([loadTasks(), loadNotifications(), loadRecurringV36(), typeof loadMultipleAssigneesV37 === 'function' ? loadMultipleAssigneesV37() : Promise.resolve()]);
       renderAll();
       queueUnreadIntrusiveNotifications();
     }
@@ -4008,11 +4059,12 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
   const priority = $('itemPriority').value;
   const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
   if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável ou envie o alerta imediato para toda a equipe.');
-  const { error } = await db.rpc('criar_demanda_recorrente_v1', {
+  const assigneeIds = selectedFormAssigneeIdsV37('item');
+  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
     p_titulo: $('itemTitle').value.trim(),
     p_descricao: $('itemDescription').value.trim() || null,
     p_prioridade: priority,
-    p_responsavel_id: $('itemAssignee').value || null,
+    p_responsavel_id: assigneeIds[0] || null,
     p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
     p_tamanho: $('itemSize').value,
     p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
@@ -4029,6 +4081,7 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
     p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
   });
   if (error) throw error;
+  if (recurringId && state.multiAssigneeReady) { const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: recurringId, p_responsaveis: assigneeIds, p_aplicar_ocorrencias: true }); if (assigneeError) throw assigneeError; }
   await loadRecurringV36();
 };
 
@@ -4054,7 +4107,7 @@ function renderRecurringTodayStrip() {
   if (!metrics) return;
   document.querySelector('#viewHoje .recurring-today-strip')?.remove();
   if (!state.recurrenceReady) return;
-  const relevant = state.recurringSeries.filter(series => recurrenceSeriesAppliesToDate(series, todayKey()) && series.responsavel_id === state.me?.id);
+  const relevant = state.recurringSeries.filter(series => recurrenceSeriesAppliesToDate(series, todayKey()) && seriesHasAssignee(series, state.me?.id));
   if (!relevant.length) return;
   const done = relevant.filter(series => {
     const occ = state.recurringOccurrences.find(o => o.recorrencia_id === series.id && o.data_referencia === todayKey());
@@ -4164,10 +4217,8 @@ renderTaskDrawer = function renderTaskDrawerRecurringIntegrated() {
 };
 
 function populateRecurrenceAssigneeSelect(selected = '') {
-  const select = $('recurrenceEditAssignee');
-  if (!select) return;
-  select.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
-  select.value = selected || '';
+  const select = $('recurrenceEditAssignee'); if (!select) return;
+  select.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`; select.value = selected || '';
 }
 function fillRecurrenceEditor(series, { convertTask = null } = {}) {
   const converting = Boolean(convertTask);
@@ -4178,7 +4229,7 @@ function fillRecurrenceEditor(series, { convertTask = null } = {}) {
   const source = series || convertTask || {};
   $('recurrenceEditTitle').value = source.titulo || '';
   $('recurrenceEditDescription').value = source.descricao || '';
-  populateRecurrenceAssigneeSelect(source.responsavel_id || '');
+  const recurrenceAssigneeIds = series ? seriesAssigneeIds(series) : (convertTask ? taskAssigneeIds(convertTask) : (source.responsavel_id ? [source.responsavel_id] : [])); populateRecurrenceAssigneeSelect(recurrenceAssigneeIds[0] || ''); setAssigneeJson('recurrenceEditAssigneesJson', recurrenceAssigneeIds); renderAssigneePreview('recurrenceEditAssignee','recurrenceEditAssigneePreview');
   $('recurrenceEditPriority').value = source.prioridade || 'media';
   $('recurrenceEditSize').value = source.tamanho || 'media';
   $('recurrenceEditEstimate').value = source.estimativa_horas || '';
@@ -4243,7 +4294,7 @@ async function saveRecurrenceSeriesV36(event) {
       p_titulo: $('recurrenceEditTitle').value.trim(),
       p_descricao: $('recurrenceEditDescription').value.trim() || null,
       p_prioridade: $('recurrenceEditPriority').value,
-      p_responsavel_id: $('recurrenceEditAssignee').value || null,
+      p_responsavel_id: selectedFormAssigneeIdsV37('recurrenceEdit')[0] || null,
       p_tags: $('recurrenceEditTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
       p_tamanho: $('recurrenceEditSize').value,
       p_estimativa_horas: $('recurrenceEditEstimate').value ? Number($('recurrenceEditEstimate').value) : null,
@@ -4258,6 +4309,7 @@ async function saveRecurrenceSeriesV36(event) {
       p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
     });
     if (error) throw error;
+    if (seriesId && state.multiAssigneeReady) { const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: seriesId, p_responsaveis: selectedFormAssigneeIdsV37('recurrenceEdit'), p_aplicar_ocorrencias: true }); if (assigneeError) throw assigneeError; }
     closeModal('recurrenceModal');
     await refreshData();
     if (convertTaskId && state.tasks.some(task => task.id === convertTaskId)) await openTask(convertTaskId);
@@ -4382,14 +4434,14 @@ function appendRecurringProjectIntegrationV36() {
   if (!items.length) return;
   const section = document.createElement('section');
   section.className = 'productivity-card project-recurring-series';
-  section.innerHTML = `<div class="productivity-card-head"><div><span class="eyebrow">Rotinas recorrentes</span><h3>${items.length} série${items.length === 1 ? '' : 's'} vinculada${items.length === 1 ? '' : 's'} ao projeto</h3></div><span class="recurrence-state"><i data-lucide="repeat-2"></i>Automáticas</span></div><div class="recurrence-manager-list">${items.map(series => `<button type="button" class="recurrence-manager-item" data-open-recurring-series="${series.id}"><div class="recurrence-manager-item-main"><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(collaborator(series.responsavel_id)?.nome || 'Sem responsável')}</p></div><i data-lucide="chevron-right"></i></button>`).join('')}</div>`;
+  section.innerHTML = `<div class="productivity-card-head"><div><span class="eyebrow">Rotinas recorrentes</span><h3>${items.length} série${items.length === 1 ? '' : 's'} vinculada${items.length === 1 ? '' : 's'} ao projeto</h3></div><span class="recurrence-state"><i data-lucide="repeat-2"></i>Automáticas</span></div><div class="recurrence-manager-list">${items.map(series => `<button type="button" class="recurrence-manager-item" data-open-recurring-series="${series.id}"><div class="recurrence-manager-item-main"><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(seriesAssigneeShortNames(series))}</p></div><i data-lucide="chevron-right"></i></button>`).join('')}</div>`;
   detail.appendChild(section);
   refreshIcons();
 }
 function appendTeamRecurringIntegrationV36() {
   $$('#teamGrid [data-open-person]').forEach(card => {
     const personId = card.dataset.openPerson;
-    const count = state.recurringSeries.filter(series => series.responsavel_id === personId && recurrenceSeriesStatus(series) === 'active').length;
+    const count = state.recurringSeries.filter(series => seriesHasAssignee(series, personId) && recurrenceSeriesStatus(series) === 'active').length;
     if (!count || card.querySelector('.team-recurring-chip')) return;
     const line = card.querySelector('.person-state-line') || card.querySelector('.person-copy');
     line?.insertAdjacentHTML('beforeend', `<span class="team-recurring-chip"><i data-lucide="repeat-2"></i>${count} rotina${count === 1 ? '' : 's'}</span>`);
@@ -4400,7 +4452,7 @@ function appendPersonRecurringIntegrationV36(person) {
   const root = $('personDrawerContent');
   if (!root || !person) return;
   root.querySelector('.person-recurring-series')?.remove();
-  const items = state.recurringSeries.filter(series => series.responsavel_id === person.id && recurrenceSeriesStatus(series) !== 'ended');
+  const items = state.recurringSeries.filter(series => seriesHasAssignee(series, person.id) && recurrenceSeriesStatus(series) !== 'ended');
   if (!items.length) return;
   const section = document.createElement('section');
   section.className = 'person-drawer-section person-recurring-series';
@@ -4472,7 +4524,7 @@ renderGlobalSearch = function renderGlobalSearchRecurringIntegrated() {
   if (!query || !state.recurrenceReady) return;
   const matches = state.recurringSeries.filter(series => [series.titulo,series.descricao,series.projeto,collaborator(series.responsavel_id)?.nome].join(' ').toLowerCase().includes(query)).slice(0,6);
   if (!matches.length) return;
-  $('globalSearchResults').insertAdjacentHTML('beforeend', `<div class="search-group-label">Rotinas recorrentes</div>${matches.map(series => `<button type="button" class="search-result" data-search-recurring="${series.id}"><span class="search-result-icon"><i data-lucide="repeat-2"></i></span><span><strong>${escapeHtml(series.titulo)}</strong><small>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(collaborator(series.responsavel_id)?.nome || 'Sem responsável')}</small></span><i data-lucide="chevron-right"></i></button>`).join('')}`);
+  $('globalSearchResults').insertAdjacentHTML('beforeend', `<div class="search-group-label">Rotinas recorrentes</div>${matches.map(series => `<button type="button" class="search-result" data-search-recurring="${series.id}"><span class="search-result-icon"><i data-lucide="repeat-2"></i></span><span><strong>${escapeHtml(series.titulo)}</strong><small>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(seriesAssigneeShortNames(series))}</small></span><i data-lucide="chevron-right"></i></button>`).join('')}`);
   refreshIcons();
 };
 
@@ -4506,3 +4558,129 @@ function bindRecurringV36Events() {
 
 
 bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); bindRecurringV36Events(); initOverlayStability(); refreshIcons(); bootstrap();
+
+
+/* =========================================================
+   PMG CONNECT V3.7 — MÚLTIPLOS RESPONSÁVEIS
+   ========================================================= */
+function isMissingMultiAssigneeSchemaV37(error) {
+  const text = String(error?.message || error?.details || error || '');
+  return /tarefa_responsaveis|demanda_recorrente_responsaveis|42P01|PGRST205|does not exist/i.test(text);
+}
+function uniqueIdsV37(values) { return [...new Set((values || []).filter(Boolean))]; }
+function taskAssigneeIds(taskOrId) {
+  const task = typeof taskOrId === 'string' ? state.tasks.find(item => item.id === taskOrId) : taskOrId;
+  if (!task) return [];
+  const rows = (state.taskAssignees || []).filter(row => row.tarefa_id === task.id).sort((a,b) => Number(b.principal) - Number(a.principal) || String(a.adicionado_em || '').localeCompare(String(b.adicionado_em || '')));
+  const ids = rows.map(row => row.colaborador_id);
+  if (task.responsavel_id && !ids.includes(task.responsavel_id)) ids.unshift(task.responsavel_id);
+  return uniqueIdsV37(ids);
+}
+function taskHasAssignee(task, personId) { return Boolean(personId && taskAssigneeIds(task).includes(personId)); }
+function taskAssigneePeople(task) { return taskAssigneeIds(task).map(collaborator).filter(Boolean); }
+function taskAssigneeNames(task) { const people = taskAssigneePeople(task); return people.length ? people.map(p => p.nome).join(', ') : 'Sem responsáveis'; }
+function taskAssigneeShortNames(task) {
+  const people = taskAssigneePeople(task);
+  if (!people.length) return 'Sem responsáveis';
+  if (people.length === 1) return people[0].nome;
+  return `${firstName(people[0].nome)} +${people.length - 1}`;
+}
+function taskEffortShare(task, forcedCount = null) {
+  const count = Math.max(1, Number(forcedCount) || taskAssigneeIds(task).length || 1);
+  return sizeWeight(task) / count;
+}
+function taskAssigneeAvatarGroupHTML(task, size = 'sm', max = 3) {
+  const people = taskAssigneePeople(task);
+  if (!people.length) return `<span class="multi-avatar-group empty">${avatarHTML(null,size)}</span>`;
+  const shown = people.slice(0,max);
+  return `<span class="multi-avatar-group size-${size}" title="${escapeHtml(people.map(p=>p.nome).join(', '))}">${shown.map((person,index)=>`<span class="multi-avatar-item" style="--avatar-index:${index}">${avatarHTML(person,size)}</span>`).join('')}${people.length > max ? `<span class="multi-avatar-more">+${people.length-max}</span>` : ''}</span>`;
+}
+function seriesAssigneeIds(seriesOrId) {
+  const series = typeof seriesOrId === 'string' ? recurrenceSeriesById(seriesOrId) : seriesOrId;
+  if (!series) return [];
+  const rows = (state.recurringAssignees || []).filter(row => row.recorrencia_id === series.id).sort((a,b) => Number(b.principal)-Number(a.principal) || String(a.adicionado_em||'').localeCompare(String(b.adicionado_em||'')));
+  const ids = rows.map(row => row.colaborador_id);
+  if (series.responsavel_id && !ids.includes(series.responsavel_id)) ids.unshift(series.responsavel_id);
+  return uniqueIdsV37(ids);
+}
+function seriesHasAssignee(series, personId) { return Boolean(personId && seriesAssigneeIds(series).includes(personId)); }
+function seriesAssigneePeople(series) { return seriesAssigneeIds(series).map(collaborator).filter(Boolean); }
+function seriesAssigneeShortNames(series) { const people=seriesAssigneePeople(series); return !people.length?'Sem responsáveis':people.length===1?people[0].nome:`${firstName(people[0].nome)} +${people.length-1}`; }
+function selectedFormAssigneeIdsV37(prefix) {
+  const map = { item: ['itemAssigneesJson','itemAssignee'], editTask: ['editTaskAssigneesJson','editTaskAssignee'], recurrenceEdit: ['recurrenceEditAssigneesJson','recurrenceEditAssignee'] };
+  const [jsonId,selectId] = map[prefix] || [];
+  const ids = parseAssigneeJson(jsonId);
+  if (!ids.length && selectId && $(selectId)?.value) ids.push($(selectId).value);
+  return uniqueIdsV37(ids);
+}
+function assigneePreviewMultiHTML(ids) {
+  const people = uniqueIdsV37(ids).map(collaborator).filter(Boolean);
+  if (!people.length) return `<span class="assignee-preview-avatar">${avatarHTML(null,'md')}</span><span class="assignee-preview-copy"><strong>Sem responsáveis</strong><small>A demanda ficará disponível para atribuição.</small></span>`;
+  const fakeTask = { id: '__preview__' };
+  const avatars = `<span class="multi-avatar-group size-md">${people.slice(0,4).map((person,index)=>`<span class="multi-avatar-item" style="--avatar-index:${index}">${avatarHTML(person,'md')}</span>`).join('')}${people.length>4?`<span class="multi-avatar-more">+${people.length-4}</span>`:''}</span>`;
+  return `<span class="assignee-preview-avatar multi">${avatars}</span><span class="assignee-preview-copy"><strong>${people.length === 1 ? escapeHtml(people[0].nome) : `${people.length} responsáveis`}</strong><small>${escapeHtml(people.map(person=>firstName(person.nome)).join(' · '))}</small></span>`;
+}
+renderAssigneePreview = function renderAssigneePreviewMultiV37(selectId, previewId) {
+  const preview=$(previewId); if(!preview) return;
+  const jsonId=formAssigneeJsonId(selectId); const ids=parseAssigneeJson(jsonId);
+  preview.innerHTML = ids.length ? assigneePreviewMultiHTML(ids) : assigneePreviewHTML(collaborator($(selectId)?.value));
+  refreshIcons();
+};
+async function loadMultipleAssigneesV37() {
+  try {
+    const { data, error } = await db.from('tarefa_responsaveis').select('tarefa_id,colaborador_id,principal,adicionado_em').limit(5000);
+    if (error) throw error;
+    state.taskAssignees = data || [];
+    state.multiAssigneeReady = true;
+  } catch (error) {
+    if (!isMissingMultiAssigneeSchemaV37(error)) console.warn('[múltiplos responsáveis]', error);
+    state.taskAssignees = [];
+    state.multiAssigneeReady = false;
+  }
+  try {
+    const { data, error } = await db.from('demanda_recorrente_responsaveis').select('recorrencia_id,colaborador_id,principal,adicionado_em').limit(5000);
+    if (error) throw error;
+    state.recurringAssignees = data || [];
+  } catch (error) {
+    state.recurringAssignees = [];
+    if (!isMissingMultiAssigneeSchemaV37(error)) console.warn('[responsáveis recorrentes]', error);
+  }
+}
+const loadAllBeforeMultiAssigneeV37 = loadAll;
+loadAll = async function loadAllMultiAssigneeV37() {
+  await loadAllBeforeMultiAssigneeV37();
+  await loadMultipleAssigneesV37();
+};
+async function updateTaskAssigneesV37(taskId, ids) {
+  if (!isManager()) return toast('Somente gestores podem alterar os responsáveis da demanda.','error');
+  if (!state.multiAssigneeReady) return toast('Execute o SQL de múltiplos responsáveis no Supabase.','error');
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: uniqueIdsV37(ids) });
+    if (error) throw error;
+    await refreshData();
+    await openTask(taskId);
+    await dispatchPendingPush();
+    toast(ids.length ? `${ids.length} responsável${ids.length===1?'':'is'} definido${ids.length===1?'':'s'}.` : 'Demanda ficou sem responsáveis.');
+  } catch(error) { toast(errorMessage(error),'error'); }
+  finally { setLoading(false); }
+}
+async function updateRecurringAssigneesV37(recurringId, ids) {
+  if (!isManager()) return toast('Somente gestores podem alterar responsáveis da recorrência.','error');
+  if (!state.multiAssigneeReady) return toast('Execute o SQL de múltiplos responsáveis no Supabase.','error');
+  setLoading(true);
+  try {
+    const { error } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: recurringId, p_responsaveis: uniqueIdsV37(ids), p_aplicar_ocorrencias: true });
+    if (error) throw error;
+    await refreshData();
+    renderRecurrenceManagerV36();
+    toast('Responsáveis da recorrência atualizados.');
+  } catch(error) { toast(errorMessage(error),'error'); }
+  finally { setLoading(false); }
+}
+// Mantém o formulário de recorrência visualmente sincronizado depois de qualquer carga.
+const populateRecurrenceAssigneeSelectBeforeMultiV37 = populateRecurrenceAssigneeSelect;
+populateRecurrenceAssigneeSelect = function populateRecurrenceAssigneeSelectMultiV37(selected='') {
+  populateRecurrenceAssigneeSelectBeforeMultiV37(selected);
+  if ($('recurrenceEditAssigneePreview')) renderAssigneePreview('recurrenceEditAssignee','recurrenceEditAssigneePreview');
+};

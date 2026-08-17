@@ -3192,3 +3192,38 @@ body.ui-theme-dark .priority-manager-note{
   .priority-manager-grid{grid-template-columns:1fr}
   .priority-manager-choice{min-height:74px;flex-direction:row;align-items:center;justify-content:flex-start}
 }
+
+
+/* =========================================================
+   V3.7 — MÚLTIPLOS RESPONSÁVEIS
+   ========================================================= */
+.multi-avatar-group{display:inline-flex;align-items:center;position:relative;min-width:32px;vertical-align:middle}
+.multi-avatar-item{display:inline-flex;position:relative;margin-left:calc(var(--avatar-index,0) * -10px);z-index:calc(20 - var(--avatar-index,0))}
+.multi-avatar-item:first-child{margin-left:0}
+.multi-avatar-item .avatar{box-shadow:0 0 0 2px var(--surface),0 4px 10px rgba(7,26,16,.12)}
+.multi-avatar-more{width:30px;height:30px;margin-left:-8px;border:2px solid var(--surface);border-radius:50%;background:var(--green-100);color:var(--green-800);display:grid;place-items:center;font:800 9px Sora,sans-serif;z-index:1}
+.multi-avatar-group.size-md .multi-avatar-more{width:36px;height:36px;font-size:10px}
+.multi-avatar-group.size-lg .multi-avatar-more{width:48px;height:48px;font-size:11px}
+.assignee-preview-avatar.multi{width:auto;min-width:50px;overflow:visible}
+.assignee-selector-button.compact{min-height:54px;padding:8px 10px}
+.assignee-picker-footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.assignee-picker-footer>div{display:flex;gap:8px}
+.assignee-picker-selection-summary{font-size:10px;color:var(--muted);font-weight:750}
+.assignee-option.multi-selected{border-color:var(--green-400);background:var(--green-50);box-shadow:inset 0 0 0 1px var(--green-300)}
+.assignee-option-state.multi-state{border-radius:9px;background:var(--surface-2);color:var(--muted)}
+.assignee-option.multi-selected .assignee-option-state.multi-state{background:var(--green-600);color:#fff}
+.primary-assignee-tag{display:inline-flex!important;margin-left:5px;padding:3px 6px;border-radius:999px;background:var(--green-100);color:var(--green-700);font:800 7px Inter,sans-serif;text-transform:uppercase;letter-spacing:.4px;vertical-align:middle}
+.task-card-person.multi,.task-row-person.multi{gap:8px;min-width:0}.task-card-person.multi>span:last-child,.task-row-person.multi>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-person-identity.assigned.multi>span:first-child{width:auto;min-width:48px;overflow:visible}
+.drawer-assignee-card.multi{grid-template-columns:auto minmax(0,1fr) auto;align-items:center}
+.drawer-assignee-card.multi .drawer-assignee-avatar{width:auto;min-width:68px;overflow:visible}
+.drawer-assignee-team-list{display:grid;gap:7px;margin-top:9px}
+.drawer-assignee-team-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2)}
+.drawer-assignee-team-row span{min-width:0}.drawer-assignee-team-row strong{display:block;color:var(--ink);font-size:10px}.drawer-assignee-team-row small{display:block;margin-top:3px;color:var(--muted);font-size:8px}.drawer-assignee-team-row>b{padding:4px 7px;border-radius:99px;background:var(--green-100);color:var(--green-700);font-size:7px;text-transform:uppercase;letter-spacing:.45px}
+.recurrence-assignee-field{min-width:0}
+.search-result-avatar.multi{width:auto;min-width:38px;overflow:visible}
+body.ui-theme-dark .assignee-option.multi-selected{background:#173021;border-color:#4e9d68;box-shadow:inset 0 0 0 1px #4e9d68}
+body.ui-theme-dark .primary-assignee-tag,body.ui-theme-dark .drawer-assignee-team-row>b{background:#1b3826;color:#8ee0a8}
+body.ui-theme-dark .drawer-assignee-team-row{background:var(--surface-2);border-color:var(--line)}
+body.ui-theme-dark .multi-avatar-item .avatar,body.ui-theme-dark .multi-avatar-more{border-color:var(--surface);box-shadow:0 0 0 2px var(--surface)}
+@media(max-width:720px){.assignee-picker-footer{align-items:stretch;flex-direction:column}.assignee-picker-footer>div{width:100%}.assignee-picker-footer .btn{flex:1}.drawer-assignee-card.multi{grid-template-columns:auto minmax(0,1fr)}.drawer-assignee-change{grid-column:1/-1}.multi-avatar-more{width:27px;height:27px}}
