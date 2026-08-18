@@ -644,8 +644,8 @@
 
           <div id="reminderFields" class="hidden">
             <div class="form-grid two">
-              <label class="field"><span>Data</span><input id="reminderDate" type="date"></label>
-              <label class="field"><span>Horário</span><input id="reminderTime" type="time" value="09:00"></label>
+              <label class="field"><span>Data inicial</span><input id="reminderDate" type="date"></label>
+              <label class="field"><span>Primeiro horário</span><input id="reminderTime" type="time" value="09:00"></label>
             </div>
             <div id="meetingEndFields" class="form-grid two hidden">
               <label class="field"><span>Termina em</span><input id="meetingEndDate" type="date"></label>
@@ -655,7 +655,20 @@
               <label class="field"><span>Avisar</span><select id="reminderOffset"><option value="0">No horário</option><option value="10">10 min antes</option><option value="30" selected>30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
               <label class="field"><span>Repetir</span><select id="reminderRecurrence"><option value="nenhuma">Não repetir</option><option value="diaria">Todos os dias</option><option value="semanal">Toda semana</option><option value="mensal">Todo mês</option><option value="anual">Todo ano</option></select></label>
             </div>
-            <label id="visibilityField" class="field"><span>Visibilidade</span><select id="reminderVisibility"><option value="pessoal">Somente eu</option><option value="equipe">Toda a equipe</option></select></label>
+
+            <div id="reminderMultiTimesField" class="reminder-multi-times hidden">
+              <div class="reminder-multi-times-head">
+                <div>
+                  <span class="visual-field-label">Mais horários na mesma recorrência</span>
+                  <strong>Disparar mais de uma vez no mesmo dia</strong>
+                  <small>Ex.: todo dia às 15:00 e às 17:00. Cada horário dispara sozinho.</small>
+                </div>
+                <button id="addReminderTimeBtn" type="button" class="btn secondary small"><i data-lucide="plus"></i>Adicionar horário</button>
+              </div>
+              <div id="reminderExtraTimesList" class="reminder-extra-times-list"></div>
+            </div>
+
+            <label id="visibilityField" class="field reminder-visibility-field"><span>Quem recebe</span><select id="reminderVisibility"><option value="pessoal">Somente eu</option><option value="equipe">Toda a equipe</option></select><small>Qualquer colaborador pode criar um lembrete para toda a equipe.</small></label>
           </div>
         </div>
         <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="quickAddModal">Cancelar</button><button id="saveItemBtn" class="btn primary" type="submit"><i data-lucide="check"></i>Criar demanda</button></div>

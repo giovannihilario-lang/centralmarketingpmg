@@ -4002,3 +4002,32 @@ body.ui-theme-dark .review-deadline-pause>b{
   .review-deadline-pause{grid-template-columns:42px minmax(0,1fr)}
   .review-deadline-pause>b{grid-column:1/-1;justify-self:start}
 }
+
+
+/* =========================================================
+   PMG CONNECT V3.7.6 — LEMBRETES DE EQUIPE + MULTIHORÁRIO
+   ========================================================= */
+.reminder-visibility-field small{display:block;margin-top:5px;color:var(--muted);font-size:8px}
+.reminder-multi-times{margin:13px 0;padding:14px;border:1px solid var(--line);border-radius:15px;background:var(--surface-2)}
+.reminder-multi-times-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.reminder-multi-times-head strong{display:block;margin-top:3px;color:var(--ink);font:800 10px/1.35 Sora,sans-serif}
+.reminder-multi-times-head small{display:block;margin-top:4px;color:var(--muted);font-size:8px;line-height:1.45}
+.reminder-extra-times-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:11px}
+.reminder-extra-time-row{display:grid;grid-template-columns:30px minmax(0,1fr) 30px;align-items:center;gap:6px;padding:6px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
+.reminder-extra-time-row>span{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:var(--green-50);color:var(--green-700)}
+.reminder-extra-time-row>span svg{width:14px}
+.reminder-extra-time-row input{min-width:0;border:0!important;background:transparent!important;box-shadow:none!important;padding:0!important}
+.reminder-extra-times-empty{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:7px;min-height:48px;border:1px dashed var(--line);border-radius:11px;color:var(--muted);font-size:8px}
+.reminder-extra-times-empty svg{width:15px}
+.team-reminder-drawer-note,.recurring-reminder-auto-note{display:flex;align-items:center;gap:10px;margin:12px 0;padding:11px 12px;border:1px solid var(--green-200);border-radius:13px;background:var(--green-50);color:var(--green-900)}
+.team-reminder-drawer-note>svg,.recurring-reminder-auto-note>svg{width:18px;flex:none}
+.team-reminder-drawer-note strong,.recurring-reminder-auto-note strong{display:block;font-size:9px}
+.team-reminder-drawer-note small,.recurring-reminder-auto-note small{display:block;margin-top:3px;color:var(--muted);font-size:8px;line-height:1.45}
+.reminder-group-times strong{display:flex!important;flex-wrap:wrap;gap:5px}
+.reminder-group-times strong span{padding:5px 7px;border-radius:8px;background:var(--green-50);color:var(--green-800);font-size:8px}
+body.ui-theme-dark .reminder-multi-times{background:var(--surface-2);border-color:var(--line)}
+body.ui-theme-dark .reminder-extra-time-row{background:var(--surface);border-color:var(--line)}
+body.ui-theme-dark .team-reminder-drawer-note,body.ui-theme-dark .recurring-reminder-auto-note{background:#16271c;border-color:#31543b;color:#b7e9c5}
+body.ui-theme-dark .reminder-group-times strong span{background:#172b1e;color:#b4e8c3}
+@media(max-width:760px){.reminder-extra-times-list{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.reminder-multi-times-head{flex-direction:column}.reminder-extra-times-list{grid-template-columns:1fr}}

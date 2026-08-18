@@ -83,7 +83,7 @@ const state = {
   session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, authorshipReviews: [], authorshipConfirmations: [], taskExecutors: [], authorshipReady: false, evaluationExecutorIds: [], authorshipPostponed: new Set(), reminders: [], notifications: [], activities: [],
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
   comments: [], taskActivities: [], realtime: null, loading: 0, quickType: 'demanda',
-  quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
+  quickCaptureType: 'lembrete', editingReminderId: null, reminderExtraTimes: [], calendarCursor: startOfMonth(new Date()),
   selectedDate: dateKey(new Date()), pushSubscription: null,
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
   assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
@@ -129,6 +129,9 @@ function errorMessage(error) {
   }
   if (/academia_reservas|transferencias_tarefa|criar_tarefa_v3|editar_tarefa_v3|avaliar_conclusao|transferir_tarefa/i.test(message)) {
     return 'A migração Demandas V3 ainda não foi executada no Supabase. Rode sql/demandas_v3_operacao.sql.';
+  }
+  if (/criar_lembrete_multihorario_v376|editar_lembrete_multihorario_v376|excluir_lembrete_grupo_v376|grupo_recorrencia|ordem_horario/i.test(message)) {
+    return 'Execute o SQL 16-LEMBRETES-EQUIPE-MULTIHORARIO-V3-7-6.sql no Supabase.';
   }
   if (/lembretes|atividades_tarefa|criar_tarefa_v2|relation .* does not exist/i.test(message)) {
     return 'A migração Demandas V2 ainda não foi executada no Supabase.';
@@ -459,7 +462,7 @@ function dueClass(task) {
   if (isDeadlinePausedV375(task)) return 'paused';
   return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : '';
 }
-function reminderEffectiveTime(reminder) { return reminder.adiado_ate || reminder.inicio_em; }
+function reminderEffectiveTime(reminder) { return reminder.adiando_ate || reminder.adiado_ate || reminder.inicio_em; }
 function itemTitle(item) { return item.titulo || 'Sem título'; }
 function priorityWeight(task) { return ({ imediata: 6, urgente: 4, alta: 3, media: 2, baixa: 1 })[task.prioridade] || 2; }
 function sizeWeight(task) { return Number(task.estimativa_horas) || ({ rapida: 1, media: 2.5, grande: 5 })[task.tamanho] || 2.5; }
@@ -1110,9 +1113,59 @@ function switchView(view) {
 }
 function applySmartFilter(filter) { state.smartFilter = filter; switchView('demandas'); renderDemandas(); }
 
+
+function reminderGroupMembersV376(reminder) {
+  if (!reminder) return [];
+  if (!reminder.grupo_recorrencia) return [reminder];
+  return state.reminders
+    .filter(item => item.grupo_recorrencia === reminder.grupo_recorrencia)
+    .sort((a,b) => String(splitDateTime(a.inicio_em).time).localeCompare(String(splitDateTime(b.inicio_em).time)));
+}
+function reminderGroupTimesV376(reminder) {
+  return [...new Set(reminderGroupMembersV376(reminder).map(item => splitDateTime(item.inicio_em).time).filter(Boolean))].sort();
+}
+function selectedReminderTimesV376() {
+  const primary = $('reminderTime')?.value || '09:00';
+  return [...new Set([primary, ...(state.reminderExtraTimes || [])].filter(Boolean))].sort();
+}
+function renderReminderExtraTimesV376() {
+  const container = $('reminderExtraTimesList');
+  if (!container) return;
+  const primary = $('reminderTime')?.value || '';
+  const extras = [...new Set(state.reminderExtraTimes || [])].filter(time => time && time !== primary).sort();
+  state.reminderExtraTimes = extras;
+  container.innerHTML = extras.length
+    ? extras.map((time,index) => `<div class="reminder-extra-time-row">
+        <span><i data-lucide="alarm-clock"></i></span>
+        <input type="time" value="${escapeHtml(time)}" data-reminder-extra-time="${index}">
+        <button type="button" class="icon-btn subtle" data-remove-reminder-time="${index}" title="Remover horário"><i data-lucide="x"></i></button>
+      </div>`).join('')
+    : `<div class="reminder-extra-times-empty"><i data-lucide="clock-3"></i><span>Nenhum horário adicional.</span></div>`;
+  refreshIcons();
+}
+function syncReminderMultiTimeUIV376() {
+  const recurring = $('reminderRecurrence')?.value !== 'nenhuma';
+  const isReminder = state.quickType === 'lembrete';
+  $('reminderMultiTimesField')?.classList.toggle('hidden', !(recurring && isReminder));
+  if (!(recurring && isReminder)) state.reminderExtraTimes = [];
+  renderReminderExtraTimesV376();
+}
+function addReminderExtraTimeV376() {
+  const times = selectedReminderTimesV376();
+  const last = times[times.length - 1] || '09:00';
+  const [h,m] = last.split(':').map(Number);
+  const total = (h * 60 + m + 60) % 1440;
+  const next = `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+  if (!state.reminderExtraTimes.includes(next) && next !== $('reminderTime').value) {
+    state.reminderExtraTimes.push(next);
+  }
+  renderReminderExtraTimesV376();
+}
+
 function openQuickAdd(type = 'demanda', preset = {}) {
   if (type === 'demanda' && !isManager()) { toast('Somente gestores podem criar demandas.', 'error'); type = 'lembrete'; }
   state.editingReminderId = preset.editingReminderId || null;
+  state.reminderExtraTimes = [];
   $('quickAddForm').reset();
   setQuickType(type);
   const today = preset.date || todayKey();
@@ -1120,7 +1173,7 @@ function openQuickAdd(type = 'demanda', preset = {}) {
   $('itemDueDate').value = preset.date || ''; $('itemDueTime').value = preset.time || '17:00';
   $('reminderDate').value = today; $('reminderTime').value = preset.time || '09:00';
   $('meetingEndDate').value = today; $('meetingEndTime').value = preset.endTime || '10:00';
-  $('reminderVisibility').value = isManager() ? (preset.visibility || 'pessoal') : 'pessoal';
+  $('reminderVisibility').value = preset.visibility || 'pessoal';
   if (type === 'demanda') {
     populateAssigneeSelects();
     populateDependencySelects('itemDependencies', null);
@@ -1134,6 +1187,7 @@ function openQuickAdd(type = 'demanda', preset = {}) {
     syncTaskFormVisuals('item');
   }
   if (preset.reminder) fillReminderForm(preset.reminder);
+  syncReminderMultiTimeUIV376();
   $('quickAddModal').classList.remove('hidden'); setTimeout(() => $('itemTitle').focus(), 60); refreshIcons();
 }
 function setQuickType(type) {
@@ -1141,22 +1195,30 @@ function setQuickType(type) {
   $$('[data-item-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.itemType === type));
   $('demandFields').classList.toggle('hidden', type !== 'demanda'); $('reminderFields').classList.toggle('hidden', type === 'demanda');
   $('meetingEndFields').classList.toggle('hidden', type !== 'compromisso');
-  $('visibilityField').classList.toggle('hidden', !isManager());
+  $('visibilityField').classList.toggle('hidden', type === 'demanda');
   if ($('taskTemplateToolbar')) $('taskTemplateToolbar').classList.toggle('hidden', type !== 'demanda' || !isManager());
   if (type === 'demanda') { populateAssigneeSelects(); populateDependencySelects('itemDependencies', null); renderTaskTemplateSelect(); syncTaskFormVisuals('item'); }
   $('saveItemBtn').innerHTML = `<i data-lucide="check"></i>${state.editingReminderId ? 'Salvar alterações' : type === 'demanda' ? 'Criar demanda' : type === 'compromisso' ? 'Criar compromisso' : 'Criar lembrete'}`;
+  syncReminderMultiTimeUIV376();
   refreshIcons();
 }
 function fillReminderForm(reminder) {
-  const start = splitDateTime(reminder.inicio_em); const end = splitDateTime(reminder.fim_em);
+  const members = reminderGroupMembersV376(reminder);
+  const times = reminderGroupTimesV376(reminder);
+  const firstByDate = [...members].sort((a,b) => new Date(a.inicio_em) - new Date(b.inicio_em))[0] || reminder;
+  const start = splitDateTime(firstByDate.inicio_em);
+  const end = splitDateTime(reminder.fim_em);
   $('itemTitle').value = reminder.titulo; $('itemDescription').value = reminder.descricao || '';
-  $('reminderDate').value = start.date; $('reminderTime').value = start.time;
-  $('meetingEndDate').value = end.date || start.date; $('meetingEndTime').value = end.time || start.time;
+  $('reminderDate').value = start.date;
+  $('reminderTime').value = times[0] || splitDateTime(reminder.inicio_em).time;
+  state.reminderExtraTimes = times.slice(1);
+  $('meetingEndDate').value = end.date || start.date; $('meetingEndTime').value = end.time || $('reminderTime').value;
   $('reminderRecurrence').value = reminder.recorrencia || 'nenhuma'; $('reminderVisibility').value = reminder.visibilidade || 'pessoal';
   if (reminder.lembrar_em) {
     const diff = Math.round((new Date(reminder.inicio_em) - new Date(reminder.lembrar_em)) / 60000);
     $('reminderOffset').value = ['0', '10', '30', '60', '1440'].includes(String(diff)) ? String(diff) : '0';
   }
+  syncReminderMultiTimeUIV376();
 }
 function closeModal(id) { $(id).classList.add('hidden'); if (id === 'quickAddModal') state.editingReminderId = null; if (id === 'assigneePickerModal') state.assigneePicker = { selectId: null, previewId: null, taskId: null, search: '' }; }
 
@@ -1205,24 +1267,61 @@ async function createTaskV2() {
   }
 }
 async function createReminderV2() {
-  const start = localDateTime($('reminderDate').value || todayKey(), $('reminderTime').value || '09:00');
-  const end = state.quickType === 'compromisso' ? localDateTime($('meetingEndDate').value || $('reminderDate').value, $('meetingEndTime').value || $('reminderTime').value) : null;
+  const date = $('reminderDate').value || todayKey();
+  const visibility = $('reminderVisibility').value || 'pessoal';
+  const recurrence = $('reminderRecurrence').value || 'nenhuma';
+
+  if (state.quickType === 'lembrete') {
+    const { error } = await db.rpc('criar_lembrete_multihorario_v376', {
+      p_titulo: $('itemTitle').value.trim(),
+      p_descricao: $('itemDescription').value.trim() || null,
+      p_data_inicio: date,
+      p_horarios: selectedReminderTimesV376(),
+      p_antecedencia_minutos: Number($('reminderOffset').value || 0),
+      p_recorrencia: recurrence,
+      p_visibilidade: visibility
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const start = localDateTime(date, $('reminderTime').value || '09:00');
+  const end = localDateTime($('meetingEndDate').value || date, $('meetingEndTime').value || $('reminderTime').value);
   const remindAt = new Date(new Date(start).getTime() - Number($('reminderOffset').value || 0) * 60000).toISOString();
   const { error } = await db.rpc('criar_lembrete', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
     p_tipo: state.quickType, p_inicio_em: start, p_fim_em: end, p_lembrar_em: remindAt,
-    p_recorrencia: $('reminderRecurrence').value, p_visibilidade: isManager() ? $('reminderVisibility').value : 'pessoal'
+    p_recorrencia: recurrence, p_visibilidade: visibility
   });
   if (error) throw error;
 }
 async function updateReminderV2() {
-  const start = localDateTime($('reminderDate').value, $('reminderTime').value || '09:00');
-  const end = state.quickType === 'compromisso' ? localDateTime($('meetingEndDate').value || $('reminderDate').value, $('meetingEndTime').value || $('reminderTime').value) : null;
+  const date = $('reminderDate').value || todayKey();
+  const visibility = $('reminderVisibility').value || 'pessoal';
+  const recurrence = $('reminderRecurrence').value || 'nenhuma';
+
+  if (state.quickType === 'lembrete') {
+    const { error } = await db.rpc('editar_lembrete_multihorario_v376', {
+      p_id: state.editingReminderId,
+      p_titulo: $('itemTitle').value.trim(),
+      p_descricao: $('itemDescription').value.trim() || null,
+      p_data_inicio: date,
+      p_horarios: selectedReminderTimesV376(),
+      p_antecedencia_minutos: Number($('reminderOffset').value || 0),
+      p_recorrencia: recurrence,
+      p_visibilidade: visibility
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const start = localDateTime(date, $('reminderTime').value || '09:00');
+  const end = localDateTime($('meetingEndDate').value || date, $('meetingEndTime').value || $('reminderTime').value);
   const remindAt = new Date(new Date(start).getTime() - Number($('reminderOffset').value || 0) * 60000).toISOString();
   const { error } = await db.rpc('editar_lembrete', {
     p_id: state.editingReminderId, p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_tipo: state.quickType, p_inicio_em: start, p_fim_em: end, p_lembrar_em: remindAt, p_recorrencia: $('reminderRecurrence').value,
-    p_visibilidade: isManager() ? $('reminderVisibility').value : 'pessoal'
+    p_tipo: state.quickType, p_inicio_em: start, p_fim_em: end, p_lembrar_em: remindAt, p_recorrencia: recurrence,
+    p_visibilidade: visibility
   });
   if (error) throw error;
 }
@@ -1590,16 +1689,39 @@ function openReminder(reminderId) {
   state.selectedReminder = reminder; state.selectedTask = null;
   $('taskDrawerKicker').textContent = reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'; $('taskDrawerTitle').textContent = reminder.titulo;
   const isOwner = reminder.colaborador_id === state.me.id || reminder.criado_por === state.me.id || isManager();
-  $('taskDrawerContent').innerHTML = `<div class="detail-banner"><p>${escapeHtml(reminder.descricao || 'Sem observações.')}</p><div class="detail-tags"><span class="detail-tag">${reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'}</span><span class="detail-tag">${RECURRENCE[reminder.recorrencia]}</span><span class="detail-tag">${reminder.visibilidade === 'equipe' ? 'Equipe' : 'Pessoal'}</span></div></div>
-    <div class="detail-grid"><div class="detail-field"><label>Data e horário</label><strong>${formatDateTime(reminder.inicio_em)}</strong></div><div class="detail-field"><label>Aviso programado</label><strong>${formatDateTime(reminder.adiado_ate || reminder.lembrar_em)}</strong></div>${reminder.fim_em ? `<div class="detail-field"><label>Término</label><strong>${formatDateTime(reminder.fim_em)}</strong></div>` : ''}<div class="detail-field"><label>Situação</label><strong>${reminder.concluido_em ? 'Concluído' : 'Pendente'}</strong></div></div>
-    <div class="drawer-footer-actions">${!reminder.concluido_em && isOwner ? `<button id="snoozeReminderBtn" class="btn secondary"><i data-lucide="alarm-clock-plus"></i>Adiar 10 min</button><button id="completeReminderBtn" class="btn primary"><i data-lucide="check"></i>Concluir</button>` : ''}${isOwner ? `<button id="editReminderBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar</button><button id="deleteReminderBtn" class="btn danger-soft"><i data-lucide="trash-2"></i>Excluir</button>` : ''}</div>`;
+  const times = reminderGroupTimesV376(reminder);
+  const creator = collaborator(reminder.criado_por);
+  const recurring = reminder.recorrencia !== 'nenhuma';
+  const multi = times.length > 1;
+  const timesField = multi ? `<div class="detail-field reminder-group-times"><label>Horários da série</label><strong>${times.map(time => `<span>${escapeHtml(time)}</span>`).join('')}</strong></div>` : '';
+  const teamInfo = reminder.visibilidade === 'equipe'
+    ? `<div class="team-reminder-drawer-note"><i data-lucide="users-round"></i><span><strong>Lembrete para toda a equipe</strong><small>Criado por ${escapeHtml(creator?.nome || 'um colaborador')}. Cada pessoa recebe sua própria notificação.</small></span></div>`
+    : '';
+
+  $('taskDrawerContent').innerHTML = `<div class="detail-banner"><p>${escapeHtml(reminder.descricao || 'Sem observações.')}</p><div class="detail-tags"><span class="detail-tag">${reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'}</span><span class="detail-tag">${RECURRENCE[reminder.recorrencia]}</span><span class="detail-tag">${reminder.visibilidade === 'equipe' ? 'Toda a equipe' : 'Pessoal'}</span>${multi ? `<span class="detail-tag">${times.length} horários</span>` : ''}</div></div>
+    ${teamInfo}
+    <div class="detail-grid"><div class="detail-field"><label>Próxima ocorrência</label><strong>${formatDateTime(reminder.inicio_em)}</strong></div><div class="detail-field"><label>Aviso programado</label><strong>${formatDateTime(reminder.adiando_ate || reminder.adiado_ate || reminder.lembrar_em)}</strong></div>${reminder.fim_em ? `<div class="detail-field"><label>Término</label><strong>${formatDateTime(reminder.fim_em)}</strong></div>` : ''}${timesField}<div class="detail-field"><label>Situação</label><strong>${recurring ? 'Recorrência ativa' : reminder.concluido_em ? 'Concluído' : 'Pendente'}</strong></div></div>
+    ${recurring ? `<div class="recurring-reminder-auto-note"><i data-lucide="repeat-2"></i><span><strong>A série avança automaticamente</strong><small>Depois de cada disparo, o próximo horário é preparado sem depender de alguém clicar em “Concluir”.</small></span></div>` : ''}
+    <div class="drawer-footer-actions">${!recurring && !reminder.concluido_em && isOwner ? `<button id="snoozeReminderBtn" class="btn secondary"><i data-lucide="alarm-clock-plus"></i>Adiar 10 min</button><button id="completeReminderBtn" class="btn primary"><i data-lucide="check"></i>Concluir</button>` : ''}${isOwner ? `<button id="editReminderBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar${multi || recurring ? ' série' : ''}</button><button id="deleteReminderBtn" class="btn danger-soft"><i data-lucide="trash-2"></i>Excluir${multi || recurring ? ' série' : ''}</button>` : ''}</div>`;
   $('snoozeReminderBtn')?.addEventListener('click', () => snoozeReminder(reminder.id, 10)); $('completeReminderBtn')?.addEventListener('click', () => completeReminder(reminder.id));
   $('editReminderBtn')?.addEventListener('click', () => { closeDrawer('taskDrawer'); openQuickAdd(reminder.tipo, { editingReminderId: reminder.id, reminder }); });
-  $('deleteReminderBtn')?.addEventListener('click', () => deleteReminder(reminder.id)); openDrawer('taskDrawer'); markNotificationsForTarget('reminder', reminder.id); refreshIcons();
+  $('deleteReminderBtn')?.addEventListener('click', () => deleteReminder(reminder.id, Boolean(reminder.grupo_recorrencia || recurring))); openDrawer('taskDrawer'); markNotificationsForTarget('reminder', reminder.id); refreshIcons();
 }
 async function snoozeReminder(id, minutes) { setLoading(true); try { const { error } = await db.rpc('adiar_lembrete', { p_id: id, p_minutos: minutes }); if (error) throw error; closeDrawer('taskDrawer'); await refreshData(); toast(`Lembrete adiado por ${minutes} minutos.`); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); } }
 async function completeReminder(id) { setLoading(true); try { const { error } = await db.rpc('concluir_lembrete', { p_id: id }); if (error) throw error; closeDrawer('taskDrawer'); await refreshData(); toast('Lembrete concluído.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); } }
-async function deleteReminder(id) { if (!confirm('Excluir este item da agenda?')) return; setLoading(true); try { const { error } = await db.rpc('excluir_lembrete', { p_id: id }); if (error) throw error; closeDrawer('taskDrawer'); await refreshData(); toast('Item excluído.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); } }
+async function deleteReminder(id, wholeSeries = false) {
+  if (!confirm(wholeSeries ? 'Excluir toda esta série de lembretes? Todos os horários recorrentes serão removidos.' : 'Excluir este item da agenda?')) return;
+  setLoading(true);
+  try {
+    const { error } = wholeSeries
+      ? await db.rpc('excluir_lembrete_grupo_v376', { p_id: id })
+      : await db.rpc('excluir_lembrete', { p_id: id });
+    if (error) throw error;
+    closeDrawer('taskDrawer'); await refreshData();
+    toast(wholeSeries ? 'Série de lembretes excluída.' : 'Item excluído.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+}
 
 function openDrawer(id) { $(id).classList.remove('hidden'); $('drawerBackdrop').classList.remove('hidden'); refreshIcons(); }
 function closeDrawer(id) { $(id).classList.add('hidden'); if ($$('.right-drawer:not(.hidden)').length === 0) $('drawerBackdrop').classList.add('hidden'); }
@@ -2050,6 +2172,7 @@ function managerPopupRelationshipV374(notification) {
   if (notification.lembrete_id) {
     const reminder = state.reminders.find(item => item.id === notification.lembrete_id);
     if (!reminder) return false;
+    if (reminder.visibilidade === 'equipe') return true;
     return reminder.colaborador_id === meId || reminder.criado_por === meId;
   }
 
@@ -3475,6 +3598,21 @@ function bindEvents() {
   $('transferTaskForm')?.addEventListener('submit', submitTransferTask);
   $('transferAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'transferAssignee', previewId: 'transferAssigneePreview', title: 'Transferir para' }));
   $('evaluationApproveBtn')?.addEventListener('click', () => submitTaskEvaluation(true));
+  $('reminderRecurrence')?.addEventListener('change', syncReminderMultiTimeUIV376);
+  $('reminderTime')?.addEventListener('change', renderReminderExtraTimesV376);
+  $('addReminderTimeBtn')?.addEventListener('click', addReminderExtraTimeV376);
+  $('reminderExtraTimesList')?.addEventListener('input', event => {
+    const input = event.target.closest('[data-reminder-extra-time]');
+    if (!input) return;
+    state.reminderExtraTimes[Number(input.dataset.reminderExtraTime)] = input.value;
+  });
+  $('reminderExtraTimesList')?.addEventListener('change', renderReminderExtraTimesV376);
+  $('reminderExtraTimesList')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-remove-reminder-time]');
+    if (!button) return;
+    state.reminderExtraTimes.splice(Number(button.dataset.removeReminderTime), 1);
+    renderReminderExtraTimesV376();
+  });
   $('evaluationRejectBtn')?.addEventListener('click', () => submitTaskEvaluation(false));
   $('evaluationExecutorSearch')?.addEventListener('input', renderEvaluationExecutorsV372);
   $('evaluationExecutorList')?.addEventListener('click', event => {
