@@ -392,7 +392,7 @@ function avatarStatusHTML(person, stats, size = 'md') {
 }
 function taskAvatarHTML(person, task, size = 'sm') {
   const late = isOverdue(task);
-  const today = taskDueKey(task) === todayKey();
+  const today = !isDeadlinePausedV379(task) && taskDueKey(task) === todayKey();
   const tone = late ? 'late' : today ? 'today' : task?.status || 'nova';
   const icon = late ? 'triangle-alert' : today ? 'clock-3' : (STATUS[task?.status]?.icon || 'circle-user-round');
   const description = `${person?.nome || 'Sem responsável'} · ${late ? 'Demanda atrasada' : today ? 'Prazo hoje' : STATUS[task?.status]?.label || 'Demanda'}`;
@@ -438,7 +438,7 @@ function assigneeStats(person) {
   try { return teamPersonStats(person); }
   catch (error) {
     const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === person.id);
-    return { active, overdue: active.filter(isOverdue), dueToday: active.filter(task => taskDueKey(task) === todayKey()), hours: active.reduce((sum, task) => sum + sizeWeight(task), 0), utilization: 0, risk: 'balanced' };
+    return { active, overdue: active.filter(isOverdue), dueToday: active.filter(task => !isDeadlinePausedV379(task) && taskDueKey(task) === todayKey()), hours: active.reduce((sum, task) => sum + sizeWeight(task), 0), utilization: 0, risk: 'balanced' };
   }
 }
 
@@ -627,16 +627,25 @@ function taskDue(task) {
   return null;
 }
 function taskDueKey(task) { return taskDue(task) ? dateKey(taskDue(task)) : ''; }
-function isOverdue(task) { const due = taskDue(task); return due && new Date(due) < new Date() && task.status !== 'concluida'; }
+function isDeadlinePausedV379(task) { return Boolean(task && task.status === 'revisao'); }
+function isOverdue(task) {
+  const due = taskDue(task);
+  return Boolean(due && !isDeadlinePausedV379(task) && new Date(due) < new Date() && task.status !== 'concluida');
+}
 function dueLabel(task) {
-  const due = taskDue(task); if (!due) return 'Sem prazo';
+  const due = taskDue(task);
+  if (isDeadlinePausedV379(task)) return due ? `Prazo pausado · ${formatDate(due)}` : 'Prazo pausado · Em revisão';
+  if (!due) return 'Sem prazo';
   const key = dateKey(due), today = todayKey();
   if (isOverdue(task)) return `Atrasada · ${formatDate(due)}`;
   if (key === today) return `Hoje, ${formatTime(due)}`;
   if (key === dateKey(addDays(new Date(), 1))) return `Amanhã, ${formatTime(due)}`;
   return `${formatDate(due)} · ${formatTime(due)}`;
 }
-function dueClass(task) { return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : ''; }
+function dueClass(task) {
+  if (isDeadlinePausedV379(task)) return 'paused';
+  return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : '';
+}
 function reminderEffectiveTime(reminder) { return reminder.adiado_ate || reminder.inicio_em; }
 function itemTitle(item) { return item.titulo || 'Sem título'; }
 function priorityWeight(task) { return ({ imediata: 6, urgente: 4, alta: 3, media: 2, baixa: 1 })[task.prioridade] || 2; }
@@ -732,7 +741,7 @@ function renderShell() {
   const activeTasks = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
   const mine = activeTasks.filter(task => task.responsavel_id === state.me?.id);
   $('navTaskCount').textContent = activeTasks.length;
-  $('navTodayCount').textContent = mine.filter(task => taskDueKey(task) === todayKey() || isOverdue(task)).length;
+  $('navTodayCount').textContent = mine.filter(task => (!isDeadlinePausedV379(task) && taskDueKey(task) === todayKey()) || isOverdue(task)).length;
   $('navTodayCount').classList.toggle('hidden', Number($('navTodayCount').textContent) === 0);
   const academyPending = state.academyReservations.filter(item => item.status === 'solicitada').length;
   if ($('navAcademyPending')) { $('navAcademyPending').textContent = academyPending; $('navAcademyPending').classList.toggle('hidden', academyPending === 0); }
@@ -765,9 +774,9 @@ function renderToday() {
   const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
   const mine = active.filter(task => task.responsavel_id === state.me?.id);
   const overdue = mine.filter(isOverdue);
-  const todayTasks = mine.filter(task => taskDueKey(task) === todayKey());
+  const todayTasks = mine.filter(task => !isDeadlinePausedV379(task) && taskDueKey(task) === todayKey());
   const weekEnd = addDays(new Date(), 7);
-  const week = mine.filter(task => { const due = taskDue(task); return due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
+  const week = mine.filter(task => { const due = taskDue(task); return !isDeadlinePausedV379(task) && due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
   const todayReminders = state.reminders.filter(reminder => !reminder.concluido_em && dateKey(reminderEffectiveTime(reminder)) === todayKey());
   $('metricOverdue').textContent = overdue.length; $('metricToday').textContent = todayTasks.length + todayReminders.length;
   $('metricWeek').textContent = week.length; $('metricMine').textContent = mine.length;
@@ -927,8 +936,8 @@ function filteredTasks() {
     if (archive === 'ativas' && task.arquivada_em) return false;
     if (archive === 'arquivadas' && !task.arquivada_em) return false;
     if (state.smartFilter === 'atrasadas' && !isOverdue(task)) return false;
-    if (state.smartFilter === 'hoje' && taskDueKey(task) !== todayKey()) return false;
-    if (state.smartFilter === 'semana') { const due = taskDue(task); if (!due || new Date(due) < now || new Date(due) > weekEnd) return false; }
+    if (state.smartFilter === 'hoje' && (isDeadlinePausedV379(task) || taskDueKey(task) !== todayKey())) return false;
+    if (state.smartFilter === 'semana') { const due = taskDue(task); if (isDeadlinePausedV379(task) || !due || new Date(due) < now || new Date(due) > weekEnd) return false; }
     if (state.smartFilter === 'minhas' && task.responsavel_id !== state.me?.id) return false;
     return true;
   });
@@ -1036,11 +1045,11 @@ function teamPersonStats(person) {
   const completed30 = assigned.filter(task => task.status === 'concluida' && isWithinDays(task.concluida_em || task.atualizado_em, 30));
   const completed7 = completed30.filter(task => isWithinDays(task.concluida_em || task.atualizado_em, 7));
   const overdue = active.filter(isOverdue);
-  const dueToday = active.filter(task => taskDueKey(task) === todayKey());
+  const dueToday = active.filter(task => !isDeadlinePausedV379(task) && taskDueKey(task) === todayKey());
   const weekEnd = addDays(new Date(), 7);
   const dueWeek = active.filter(task => {
     const due = taskDue(task);
-    return due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
+    return !isDeadlinePausedV379(task) && due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
   });
   const urgent = active.filter(task => ['imediata', 'urgente'].includes(task.prioridade));
   const hours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
@@ -1075,7 +1084,7 @@ function renderEquipe() {
   const totalHours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
   const overdue = active.filter(isOverdue);
   const weekEnd = addDays(new Date(), 7);
-  const dueWeek = active.filter(task => { const due = taskDue(task); return due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
+  const dueWeek = active.filter(task => { const due = taskDue(task); return !isDeadlinePausedV379(task) && due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
   const unassigned = active.filter(task => !task.responsavel_id);
   let stats = state.collaborators.map(teamPersonStats);
   renderTeamAvatarStrip(stats, manager);
@@ -1593,6 +1602,15 @@ function renderTaskDrawer() {
   const evaluationFeedback = task.avaliacao_status === 'ajustes' && task.avaliacao_observacao;
   const evaluationApproved = task.avaliacao_status === 'aprovada';
   const reviewTimePanel = reviewFeedbackPanelV378(task);
+  const reviewDeadlinePausePanel = isDeadlinePausedV379(task) ? `<section class="review-deadline-pause-v379">
+    <span><i data-lucide="pause"></i></span>
+    <div>
+      <span class="eyebrow">Prazo congelado</span>
+      <strong>Esta demanda não está atrasada enquanto aguarda revisão.</strong>
+      <small>${taskDue(task) ? `Prazo original: ${escapeHtml(formatDate(taskDue(task)))}. ` : ''}Se o gestor devolver para ajustes, o sistema devolve ao prazo exatamente o período que ficou em revisão.</small>
+    </div>
+    <b>PAUSADO</b>
+  </section>` : '';
 
   const evaluationPanel = evaluationPending
     ? isManager()
@@ -1623,6 +1641,7 @@ function renderTaskDrawer() {
       ${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     </section>
 
+    ${reviewDeadlinePausePanel}
     ${reviewTimePanel}
     ${evaluationPanel}
 
@@ -1862,7 +1881,7 @@ async function updateTaskStatus(taskId, status) {
     const { error } = await db.rpc('atualizar_status', { p_tarefa_id: taskId, p_status: status });
     if (error) throw error;
     await refreshData(); if (!$('taskDrawer').classList.contains('hidden')) await openTask(taskId); await dispatchPendingPush();
-    toast(status === 'revisao' ? 'Demanda enviada para revisão. O tempo de espera da gestão começou a ser registrado.' : 'Status atualizado.');
+    toast(status === 'revisao' ? 'Demanda enviada para revisão. Prazo, atraso e execução foram congelados enquanto aguarda o gestor.' : 'Status atualizado.');
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskAssignee(taskId, personId) {
@@ -2254,6 +2273,10 @@ function playIntrusiveNotificationSound(tone = 'blue') {
 
 function playNotificationArrivalSound(notification) {
   if (!notification || document.hidden) return;
+  if (notification.tarefa_id && ['prazo_proximo','prazo_atrasado'].includes(notification.tipo)) {
+    const task = state.tasks.find(item => item.id === notification.tarefa_id);
+    if (isDeadlinePausedV379(task)) return;
+  }
   const level = notificationLevel(notification);
   if (['critica','importante'].includes(level)) return; // o popup invasivo toca o som
   playNotificationSound(level);
@@ -2305,6 +2328,10 @@ function maybeShowNextIntrusiveNotification() {
 
 function enqueueIntrusiveNotification(notification) {
   if (!notification?.id || notification.lida || intrusiveWasDismissed(notification.id)) return;
+  if (notification.tarefa_id && ['prazo_proximo','prazo_atrasado'].includes(notification.tipo)) {
+    const task = state.tasks.find(item => item.id === notification.tarefa_id);
+    if (isDeadlinePausedV379(task)) return;
+  }
   if (!['critica','importante'].includes(notificationLevel(notification))) return;
   if (state.intrusiveActive?.id === notification.id || state.intrusiveShownIds.has(notification.id) || state.intrusiveQueue.some(item => item.id === notification.id)) return;
   state.intrusiveQueue.push(notification);
@@ -3775,7 +3802,7 @@ function dependencyPanelHTML(task) {
 function checklistPanelHTML(task) {
   const list = normalizeChecklist(task.checklist);
   const done = list.filter(item => item.concluido).length;
-  const canEdit = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
+  const canEdit = !task.arquivada_em && !['concluida','revisao'].includes(task.status) && (isManager() || task.responsavel_id === state.me?.id);
   const percent = list.length ? Math.round(done / list.length * 100) : 0;
   return `<section class="productivity-card checklist-card"><div class="productivity-card-head"><div><span class="eyebrow">Execução</span><h3>Checklist da demanda</h3></div><span class="checklist-progress-label">${done}/${list.length || 0} · ${percent}%</span></div>${list.length ? `<div class="checklist-progress-track"><i style="width:${percent}%"></i></div><div class="checklist-items">${list.map((item, index) => `<button type="button" class="checklist-item ${item.concluido ? 'done' : ''}" data-checklist-toggle="${index}" ${canEdit ? '' : 'disabled'}><span><i data-lucide="${item.concluido ? 'check' : 'circle'}"></i></span><strong>${escapeHtml(item.texto)}</strong></button>`).join('')}</div>` : `<div class="productivity-empty"><i data-lucide="list-checks"></i><span>Sem checklist. O gestor pode adicionar itens em Editar detalhes.</span></div>`}</section>`;
 }
@@ -3788,7 +3815,7 @@ function timerPanelHTML(task) {
   const percent = estimated > 0 ? Math.min(160, Math.round(actualHours / estimated * 100)) : 0;
   const active = activeTimerFor(state.me?.id, task.id);
   const another = activeTimerFor(state.me?.id);
-  const canTrack = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
+  const canTrack = !task.arquivada_em && !['concluida','revisao'].includes(task.status) && (isManager() || task.responsavel_id === state.me?.id);
   const action = active
     ? `<button type="button" class="time-action stop" data-task-time-stop="${task.id}"><i data-lucide="square"></i><span><strong>Pausar cronômetro</strong><small id="taskLiveTimer">${formatMinutesHuman(entryElapsedMinutes(active))}</small></span></button>`
     : canTrack
@@ -3836,6 +3863,8 @@ async function toggleChecklistItem(index) {
 }
 
 async function startTaskTimer(taskId) {
+  const target = state.tasks.find(task => task.id === taskId);
+  if (target?.status === 'revisao') return toast('O cronômetro fica pausado enquanto a demanda aguarda revisão.', 'error');
   setLoading(true);
   try {
     const { error } = await db.rpc('iniciar_tempo_tarefa', { p_tarefa_id: taskId });
@@ -4082,9 +4111,9 @@ function renderSmartDay(mine) {
   const used = new Set();
   const take = predicate => candidates.filter(task => !used.has(task.id) && predicate(task)).sort(taskSortByAttention).filter(task => { used.add(task.id); return true; });
   const now = take(task => task.prioridade === 'imediata' || isOverdue(task) || (isManager() && task.status === 'revisao'));
-  const today = take(task => taskDueKey(task) === todayKey());
+  const today = take(task => !isDeadlinePausedV379(task) && taskDueKey(task) === todayKey());
   const weekLimit = addDays(new Date(), 7).getTime();
-  const week = take(task => { const due = taskDue(task); return due && new Date(due).getTime() <= weekLimit; });
+  const week = take(task => { const due = taskDue(task); return !isDeadlinePausedV379(task) && due && new Date(due).getTime() <= weekLimit; });
   const later = take(() => true);
   const buckets = [
     ['agora', 'Agora', 'siren', now, 'Críticas, atrasadas e revisões'],

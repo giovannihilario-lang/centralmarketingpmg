@@ -3354,3 +3354,82 @@ body.ui-theme-dark .review-time-feedback-v378.finished>b{
     justify-self:start;
   }
 }
+
+
+/* =========================================================
+   PMG CONNECT V3.7.9 — PRAZO CONGELADO EM REVISÃO
+   ========================================================= */
+.due.paused,
+.task-due.paused,
+.due-date.paused,
+[class*="due"].paused{
+  color:#745a13!important;
+  border-color:#e4c66d!important;
+  background:#fff7d8!important;
+}
+.review-deadline-pause-v379{
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr) auto;
+  align-items:center;
+  gap:12px;
+  margin:13px 0;
+  padding:14px 15px;
+  border:1px solid #dfc063;
+  border-radius:15px;
+  background:linear-gradient(135deg,#fff9e6,#fff2bf);
+}
+.review-deadline-pause-v379>span{
+  width:46px;height:46px;
+  display:grid;place-items:center;
+  border-radius:13px;
+  color:#765706;
+  background:#ffe18b;
+}
+.review-deadline-pause-v379>span svg{width:20px}
+.review-deadline-pause-v379 strong{
+  display:block;
+  margin-top:3px;
+  color:var(--ink);
+  font:800 10px/1.4 Sora,sans-serif;
+}
+.review-deadline-pause-v379 small{
+  display:block;
+  margin-top:4px;
+  color:#77622c;
+  font-size:8px;
+  line-height:1.5;
+}
+.review-deadline-pause-v379>b{
+  align-self:start;
+  padding:6px 8px;
+  border-radius:999px;
+  background:#efd069;
+  color:#684d05;
+  font-size:7px;
+  letter-spacing:.55px;
+}
+body.ui-theme-dark .due.paused,
+body.ui-theme-dark .task-due.paused,
+body.ui-theme-dark .due-date.paused,
+body.ui-theme-dark [class*="due"].paused{
+  color:#f1ce75!important;
+  border-color:#655225!important;
+  background:#302715!important;
+}
+body.ui-theme-dark .review-deadline-pause-v379{
+  border-color:#655225;
+  background:linear-gradient(135deg,#302715,#292111);
+}
+body.ui-theme-dark .review-deadline-pause-v379>span{
+  color:#f3cf74;
+  background:#493814;
+}
+body.ui-theme-dark .review-deadline-pause-v379 small{color:#d6bd7c}
+body.ui-theme-dark .review-deadline-pause-v379>b{
+  color:#f6d67e;
+  background:#4b3915;
+}
+@media(max-width:620px){
+  .review-deadline-pause-v379{grid-template-columns:42px minmax(0,1fr)}
+  .review-deadline-pause-v379>b{grid-column:1/-1;justify-self:start}
+}
