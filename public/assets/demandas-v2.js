@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Demandas V3.5 / Gestão Inteligente */
+/* PMG Connect — Central de Demandas V3.7.7 / Markdown seguro */
 let db = null;
 let VAPID_PUBLIC_KEY = '';
 let publicConfigPromise = null;
@@ -80,10 +80,10 @@ const VIEW_META = {
 };
 
 const state = {
-  session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, authorshipReviews: [], authorshipConfirmations: [], taskExecutors: [], authorshipReady: false, evaluationExecutorIds: [], authorshipPostponed: new Set(), reminders: [], notifications: [], activities: [],
+  session: null, me: null, collaborators: [], tasks: [], reminders: [], notifications: [], activities: [],
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
   comments: [], taskActivities: [], realtime: null, loading: 0, quickType: 'demanda',
-  quickCaptureType: 'lembrete', editingReminderId: null, reminderExtraTimes: [], calendarCursor: startOfMonth(new Date()),
+  quickCaptureType: 'lembrete', editingReminderId: null, calendarCursor: startOfMonth(new Date()),
   selectedDate: dateKey(new Date()), pushSubscription: null,
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
   assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
@@ -98,6 +98,246 @@ const state = {
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+const markdownSafeUrlV377 = value => {
+  const raw = String(value || '').trim();
+  if (/^(https?:\/\/|mailto:)/i.test(raw)) return raw;
+  if (/^\/(?!\/)/.test(raw)) return raw;
+  return '';
+};
+function markdownInlineV377(value) {
+  let source = String(value ?? '');
+  const tokens = [];
+  const hold = html => {
+    const token = `MDTOKENV377${tokens.length}TOKEN`;
+    tokens.push(html);
+    return token;
+  };
+
+  source = source.replace(/`([^`\n]+)`/g, (_, code) => hold(`<code>${escapeHtml(code)}</code>`));
+  source = source.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, label, url) => {
+    const safe = markdownSafeUrlV377(url);
+    if (!safe) return `${label} (${url})`;
+    const external = /^https?:\/\//i.test(safe);
+    return hold(`<a href="${escapeHtml(safe)}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${escapeHtml(label)}</a>`);
+  });
+
+  source = escapeHtml(source);
+  source = source
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=$|[\s).,!?:;])/g, '$1<em>$2</em>')
+    .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s).,!?:;])/g, '$1<em>$2</em>');
+
+  tokens.forEach((html, index) => {
+    source = source.replace(`MDTOKENV377${index}TOKEN`, html);
+  });
+  return source;
+}
+function renderMarkdownV377(value) {
+  const source = String(value ?? '').replace(/\r\n?/g, '\n').trim();
+  if (!source) return '';
+  const lines = source.split('\n');
+  const output = [];
+  let list = null;
+  let code = false;
+  let codeLines = [];
+
+  const closeList = () => {
+    if (!list) return;
+    output.push(`</${list}>`);
+    list = null;
+  };
+  const openList = type => {
+    if (list === type) return;
+    closeList();
+    list = type;
+    output.push(`<${type}>`);
+  };
+
+  lines.forEach(line => {
+    const fence = line.match(/^\s*```/);
+    if (fence) {
+      closeList();
+      if (code) {
+        output.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+        codeLines = [];
+      }
+      code = !code;
+      return;
+    }
+    if (code) {
+      codeLines.push(line);
+      return;
+    }
+
+    if (!line.trim()) {
+      closeList();
+      return;
+    }
+
+    let match;
+    if ((match = line.match(/^\s*(#{1,3})\s+(.+)$/))) {
+      closeList();
+      const level = Math.min(3, match[1].length);
+      output.push(`<h${level}>${markdownInlineV377(match[2])}</h${level}>`);
+      return;
+    }
+    if ((match = line.match(/^\s*>\s?(.*)$/))) {
+      closeList();
+      output.push(`<blockquote>${markdownInlineV377(match[1])}</blockquote>`);
+      return;
+    }
+    if ((match = line.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.+)$/))) {
+      openList('ul');
+      const checked = /x/i.test(match[1]);
+      output.push(`<li class="md-check"><input type="checkbox" disabled ${checked ? 'checked' : ''}><span>${markdownInlineV377(match[2])}</span></li>`);
+      return;
+    }
+    if ((match = line.match(/^\s*[-*+]\s+(.+)$/))) {
+      openList('ul');
+      output.push(`<li>${markdownInlineV377(match[1])}</li>`);
+      return;
+    }
+    if ((match = line.match(/^\s*\d+\.\s+(.+)$/))) {
+      openList('ol');
+      output.push(`<li>${markdownInlineV377(match[1])}</li>`);
+      return;
+    }
+    if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
+      closeList();
+      output.push('<hr>');
+      return;
+    }
+
+    closeList();
+    output.push(`<p>${markdownInlineV377(line)}</p>`);
+  });
+
+  closeList();
+  if (code) output.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+  return output.join('');
+}
+function markdownPlainTextV377(value) {
+  return String(value ?? '')
+    .replace(/```([\s\S]*?)```/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*#{1,6}\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/[~*_`]/g, '')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+function markdownWrapV377(textarea, before, after = before, placeholder = 'texto') {
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  const selected = textarea.value.slice(start, end) || placeholder;
+  textarea.setRangeText(`${before}${selected}${after}`, start, end, 'select');
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  textarea.focus();
+}
+function markdownPrefixV377(textarea, prefix, ordered = false) {
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? 0;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  const blockStart = textarea.value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+  const nextBreak = textarea.value.indexOf('\n', end);
+  const blockEnd = nextBreak === -1 ? textarea.value.length : nextBreak;
+  const lines = textarea.value.slice(blockStart, blockEnd).split('\n');
+  const replaced = lines.map((line, index) => `${ordered ? `${index + 1}. ` : prefix}${line}`).join('\n');
+  textarea.setRangeText(replaced, blockStart, blockEnd, 'select');
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  textarea.focus();
+}
+function markdownActionV377(textarea, action) {
+  if (action === 'bold') return markdownWrapV377(textarea, '**', '**', 'negrito');
+  if (action === 'italic') return markdownWrapV377(textarea, '*', '*', 'itálico');
+  if (action === 'strike') return markdownWrapV377(textarea, '~~', '~~', 'riscado');
+  if (action === 'code') return markdownWrapV377(textarea, '`', '`', 'código');
+  if (action === 'link') return markdownWrapV377(textarea, '[', '](https://)', 'texto do link');
+  if (action === 'heading') return markdownPrefixV377(textarea, '## ');
+  if (action === 'bullet') return markdownPrefixV377(textarea, '- ');
+  if (action === 'number') return markdownPrefixV377(textarea, '', true);
+  if (action === 'check') return markdownPrefixV377(textarea, '- [ ] ');
+  if (action === 'quote') return markdownPrefixV377(textarea, '> ');
+}
+function enhanceMarkdownTextareaV377(textarea, options = {}) {
+  if (!textarea || textarea.dataset.markdownV377 === '1') return;
+  textarea.dataset.markdownV377 = '1';
+  textarea.classList.add('markdown-source');
+
+  const shell = document.createElement('div');
+  shell.className = `markdown-editor-v377${options.compact ? ' compact' : ''}`;
+  textarea.parentNode.insertBefore(shell, textarea);
+  shell.appendChild(textarea);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'markdown-toolbar-v377';
+  toolbar.innerHTML = `<span class="markdown-badge-v377"><i data-lucide="pilcrow"></i>Markdown</span>
+    <div class="markdown-tools-v377">
+      <button type="button" data-md-action="bold" title="Negrito (Ctrl+B)"><strong>B</strong></button>
+      <button type="button" data-md-action="italic" title="Itálico (Ctrl+I)"><em>I</em></button>
+      <button type="button" data-md-action="strike" title="Riscado"><s>S</s></button>
+      <button type="button" data-md-action="heading" title="Subtítulo"><i data-lucide="heading-2"></i></button>
+      <button type="button" data-md-action="bullet" title="Lista"><i data-lucide="list"></i></button>
+      <button type="button" data-md-action="number" title="Lista numerada"><i data-lucide="list-ordered"></i></button>
+      <button type="button" data-md-action="check" title="Checklist"><i data-lucide="list-checks"></i></button>
+      <button type="button" data-md-action="quote" title="Citação"><i data-lucide="text-quote"></i></button>
+      <button type="button" data-md-action="code" title="Código"><i data-lucide="code-2"></i></button>
+      <button type="button" data-md-action="link" title="Link (Ctrl+K)"><i data-lucide="link-2"></i></button>
+      <button type="button" class="markdown-preview-toggle-v377" data-md-preview title="Visualizar Markdown"><i data-lucide="eye"></i><span>Visualizar</span></button>
+    </div>`;
+  shell.insertBefore(toolbar, textarea);
+
+  const preview = document.createElement('div');
+  preview.className = 'markdown-preview-v377 markdown-body-v377 hidden';
+  shell.appendChild(preview);
+
+  const hint = document.createElement('div');
+  hint.className = 'markdown-hint-v377';
+  hint.innerHTML = '<span>**negrito** · - [ ] checklist · [link](https://...)</span><span>HTML é bloqueado por segurança</span>';
+  shell.appendChild(hint);
+
+  const refreshPreview = () => {
+    preview.innerHTML = renderMarkdownV377(textarea.value) || '<p class="md-empty-v377">Nada para visualizar ainda.</p>';
+  };
+  const togglePreview = () => {
+    const on = !shell.classList.contains('is-previewing');
+    shell.classList.toggle('is-previewing', on);
+    textarea.classList.toggle('hidden', on);
+    preview.classList.toggle('hidden', !on);
+    const btn = toolbar.querySelector('[data-md-preview]');
+    if (btn) btn.innerHTML = on ? '<i data-lucide="pencil"></i><span>Editar</span>' : '<i data-lucide="eye"></i><span>Visualizar</span>';
+    if (on) refreshPreview();
+    refreshIcons();
+  };
+
+  toolbar.addEventListener('click', event => {
+    const previewButton = event.target.closest('[data-md-preview]');
+    if (previewButton) return togglePreview();
+    const button = event.target.closest('[data-md-action]');
+    if (!button) return;
+    markdownActionV377(textarea, button.dataset.mdAction);
+  });
+  textarea.addEventListener('input', () => {
+    if (shell.classList.contains('is-previewing')) refreshPreview();
+  });
+  textarea.addEventListener('keydown', event => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === 'b') { event.preventDefault(); markdownActionV377(textarea, 'bold'); }
+    if (key === 'i') { event.preventDefault(); markdownActionV377(textarea, 'italic'); }
+    if (key === 'k') { event.preventDefault(); markdownActionV377(textarea, 'link'); }
+  });
+}
+function setupMarkdownEditorsV377() {
+  ['itemDescription','editTaskDescription','recurrenceEditDescription','evaluationNote','projectObjective'].forEach(id => enhanceMarkdownTextareaV377($(id)));
+  refreshIcons();
+}
 const debounce = (fn, wait = 250) => { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), wait); }; };
 
 function refreshIcons() {
@@ -118,9 +358,6 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
-  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'Execute o SQL 12-CONFIRMACAO-AUTORIA-V3-7-2.sql no Supabase para ativar a confirmação de autoria.';
-  if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'Execute o SQL 11-MODO-RESPONSABILIDADE-V3-7-1.sql no Supabase para ativar Compartilhada / Primeiro a cumprir.';
-  if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
     return 'A função de alteração rápida de urgência ainda não foi instalada. Execute sql/09-GESTOR-ALTERAR-URGENCIA-V3-6-3.sql no Supabase.';
   }
@@ -129,9 +366,6 @@ function errorMessage(error) {
   }
   if (/academia_reservas|transferencias_tarefa|criar_tarefa_v3|editar_tarefa_v3|avaliar_conclusao|transferir_tarefa/i.test(message)) {
     return 'A migração Demandas V3 ainda não foi executada no Supabase. Rode sql/demandas_v3_operacao.sql.';
-  }
-  if (/criar_lembrete_multihorario_v376|editar_lembrete_multihorario_v376|excluir_lembrete_grupo_v376|grupo_recorrencia|ordem_horario/i.test(message)) {
-    return 'Execute o SQL 16-LEMBRETES-EQUIPE-MULTIHORARIO-V3-7-6.sql no Supabase.';
   }
   if (/lembretes|atividades_tarefa|criar_tarefa_v2|relation .* does not exist/i.test(message)) {
     return 'A migração Demandas V2 ainda não foi executada no Supabase.';
@@ -203,7 +437,7 @@ function assigneeStats(person) {
   if (!person) return null;
   try { return teamPersonStats(person); }
   catch (error) {
-    const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && taskHasAssignee(task, person.id));
+    const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === person.id);
     return { active, overdue: active.filter(isOverdue), dueToday: active.filter(task => taskDueKey(task) === todayKey()), hours: active.reduce((sum, task) => sum + sizeWeight(task), 0), utilization: 0, risk: 'balanced' };
   }
 }
@@ -241,7 +475,6 @@ function syncTaskFormVisuals(prefix) {
   renderAssigneePreview(assigneeId, previewId);
   syncChoiceCards(priorityId);
   syncChoiceCards(sizeId);
-  syncChoiceCards(isEdit ? 'editTaskResponsibilityMode' : 'itemResponsibilityMode');
   syncImmediateAudience(prefix);
 }
 
@@ -269,98 +502,66 @@ function setImmediateAudience(all, isEdit = false) {
   syncImmediateAudience(isEdit ? 'editTask' : 'item');
 }
 
-function formAssigneeJsonId(selectId) {
-  return ({ itemAssignee: 'itemAssigneesJson', editTaskAssignee: 'editTaskAssigneesJson', recurrenceEditAssignee: 'recurrenceEditAssigneesJson' })[selectId] || null;
-}
-function parseAssigneeJson(id) {
-  if (!id || !$(id)) return [];
-  try { const raw = JSON.parse($(id).value || '[]'); return [...new Set((Array.isArray(raw) ? raw : []).filter(Boolean))]; }
-  catch (_) { return []; }
-}
-function setAssigneeJson(id, ids) { if ($(id)) $(id).value = JSON.stringify([...new Set((ids || []).filter(Boolean))]); }
-function openAssigneePicker({ selectId = null, previewId = null, jsonInputId = null, taskId = null, recurrenceId = null, multi = false, title = 'Selecionar responsáveis' } = {}) {
-  const resolvedJsonId = jsonInputId || formAssigneeJsonId(selectId);
-  let selectedIds = [];
-  if (taskId) selectedIds = taskAssigneeIds(state.tasks.find(task => task.id === taskId));
-  else if (recurrenceId) selectedIds = seriesAssigneeIds(recurrenceSeriesById(recurrenceId));
-  else if (multi) selectedIds = parseAssigneeJson(resolvedJsonId);
-  else if (selectId && $(selectId)?.value) selectedIds = [$(selectId).value];
-  state.assigneePicker = { selectId, previewId, jsonInputId: resolvedJsonId, taskId, recurrenceId, multi, selectedIds, search: '' };
+function openAssigneePicker({ selectId = null, previewId = null, taskId = null, title = 'Selecionar responsável' } = {}) {
+  state.assigneePicker = { selectId, previewId, taskId, search: '' };
   $('assigneePickerTitle').textContent = title;
-  if ($('assigneePickerDescription')) $('assigneePickerDescription').textContent = multi
-    ? 'Selecione uma ou mais pessoas. Todos enxergam a demanda, recebem os alertas e podem movimentar o trabalho.'
-    : 'Consulte a carga atual e escolha a pessoa mais adequada para a demanda.';
   $('assigneePickerSearch').value = '';
-  $('assigneePickerApplyBtn')?.classList.toggle('hidden', !multi);
   renderAssigneePicker();
   $('assigneePickerModal').classList.remove('hidden');
   setTimeout(() => $('assigneePickerSearch').focus(), 60);
   refreshIcons();
 }
+
 function renderAssigneePicker() {
-  const picker = state.assigneePicker || {};
-  const query = (picker.search || '').trim().toLowerCase();
-  const selectedIds = [...new Set((picker.selectedIds || []).filter(Boolean))];
-  const currentId = selectedIds[0] || '';
-  const transferTask = picker.taskId ? state.tasks.find(task => task.id === picker.taskId) : null;
+  const query = (state.assigneePicker.search || '').trim().toLowerCase();
+  const currentId = state.assigneePicker.taskId
+    ? state.tasks.find(task => task.id === state.assigneePicker.taskId)?.responsavel_id || ''
+    : $(state.assigneePicker.selectId)?.value || '';
+  const transferTask = state.assigneePicker.taskId ? state.tasks.find(task => task.id === state.assigneePicker.taskId) : null;
   const people = state.collaborators
     .filter(person => !query || [person.nome, person.cargo, person.role].join(' ').toLowerCase().includes(query))
     .map(person => {
       const stats = assigneeStats(person);
-      const already = selectedIds.includes(person.id);
-      const extra = transferTask && !already ? taskEffortShare(transferTask, Math.max(1, selectedIds.length + 1)) : 0;
+      const extra = transferTask && person.id !== currentId ? sizeWeight(transferTask) : 0;
       const projectedHours = Math.max(0, stats.hours + extra);
       const projectedUtilization = Math.round(projectedHours / TEAM_CAPACITY_HOURS * 100);
-      return { person, stats, projectedHours, projectedUtilization, extra, already };
+      return { person, stats, projectedHours, projectedUtilization, extra };
     })
-    .sort((a, b) => Number(b.already) - Number(a.already) || (TEAM_RISK[a.stats.risk]?.score || 0) - (TEAM_RISK[b.stats.risk]?.score || 0) || a.stats.hours - b.stats.hours || String(a.person.nome || '').localeCompare(String(b.person.nome || ''), 'pt-BR'));
-  if ($('assigneePickerSelectionSummary')) $('assigneePickerSelectionSummary').textContent = selectedIds.length ? `${selectedIds.length} responsável${selectedIds.length === 1 ? '' : 'is'} selecionado${selectedIds.length === 1 ? '' : 's'}` : 'Nenhuma pessoa selecionada';
-  $('assigneePickerContext').innerHTML = `<i data-lucide="${picker.multi ? 'users-round' : 'info'}"></i><span>${picker.multi ? `${selectedIds.length} selecionado${selectedIds.length === 1 ? '' : 's'}. O primeiro da lista será a referência principal; todos os demais têm acesso operacional igual.` : `${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}.`}</span>`;
-  const clearOption = picker.multi && (!query || 'sem responsável'.includes(query))
-    ? `<button type="button" class="assignee-option none ${selectedIds.length === 0 ? 'selected' : ''}" data-assignee-clear="true"><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsáveis</strong><small>Limpar todas as pessoas selecionadas</small></span><span class="assignee-option-state"><i data-lucide="${selectedIds.length === 0 ? 'check' : 'x'}"></i></span></button>`
-    : (!picker.multi && (!query || 'sem responsável'.includes(query)) ? `<button type="button" class="assignee-option none ${currentId === '' ? 'selected' : ''}" data-assignee-choice=""><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsável</strong><small>Deixar na fila para atribuir depois</small></span><span class="assignee-option-state"><i data-lucide="${currentId === '' ? 'check' : 'chevron-right'}"></i></span></button>` : '');
-  $('assigneePickerList').innerHTML = clearOption + (people.length ? people.map(({ person, stats, projectedHours, projectedUtilization, extra, already }) => {
+    .sort((a, b) => {
+      const selectedDiff = Number(b.person.id === currentId) - Number(a.person.id === currentId);
+      const riskDiff = (TEAM_RISK[a.stats.risk]?.score || 0) - (TEAM_RISK[b.stats.risk]?.score || 0);
+      return selectedDiff || riskDiff || a.stats.hours - b.stats.hours || String(a.person.nome || '').localeCompare(String(b.person.nome || ''), 'pt-BR');
+    });
+
+  $('assigneePickerContext').innerHTML = `<i data-lucide="info"></i><span>${people.length} pessoa${people.length === 1 ? '' : 's'} encontrada${people.length === 1 ? '' : 's'}. ${transferTask ? `A projeção já inclui as ${formatHours(sizeWeight(transferTask))} desta demanda caso ela seja transferida.` : 'Carga calculada pelas demandas abertas e estimativas registradas.'}</span>`;
+  const noneOption = !query || 'sem responsável'.includes(query)
+    ? `<button type="button" class="assignee-option none ${currentId === '' ? 'selected' : ''}" data-assignee-choice=""><span class="assignee-option-avatar">${avatarHTML(null, 'md')}</span><span class="assignee-option-copy"><strong>Sem responsável</strong><small>Deixar na fila para atribuir depois</small></span><span class="assignee-option-state"><i data-lucide="${currentId === '' ? 'check' : 'chevron-right'}"></i></span></button>`
+    : '';
+  $('assigneePickerList').innerHTML = noneOption + (people.length ? people.map(({ person, stats, projectedHours, projectedUtilization, extra }) => {
     const risk = teamRiskLabel(stats);
-    const order = selectedIds.indexOf(person.id);
-    return `<button type="button" class="assignee-option risk-${stats.risk} ${already ? 'selected multi-selected' : ''}" data-assignee-choice="${person.id}">
+    return `<button type="button" class="assignee-option risk-${stats.risk} ${currentId === person.id ? 'selected' : ''}" data-assignee-choice="${person.id}">
       <span class="assignee-option-avatar">${avatarStatusHTML(person, stats, 'md')}</span>
-      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}${order === 0 && picker.multi ? ' <em class="primary-assignee-tag">principal</em>' : ''}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}${extra ? ` · com esta demanda: ${formatHours(projectedHours)}` : ''}</em></span>
-      <span class="assignee-option-load"><b>${Math.round(stats.hours)}h</b><small>${extra ? `${projectedUtilization}% projetado` : risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, extra ? projectedUtilization : (stats.utilization || 0))}%"></span></i></span>
-      <span class="assignee-option-state multi-state"><i data-lucide="${already ? 'check' : picker.multi ? 'plus' : 'chevron-right'}"></i></span>
+      <span class="assignee-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small><em>${escapeHtml(assigneeLoadText(stats))}${extra ? ` · após transferência: ${formatHours(projectedHours)}` : ''}</em></span>
+      <span class="assignee-option-load"><b>${extra ? `${Math.round(stats.hours)}h → ${Math.round(projectedHours)}h` : `${Math.round(stats.hours)}h`}</b><small>${extra ? `${projectedUtilization}% projetado` : risk.label}</small><i class="assignee-load-track"><span style="width:${Math.min(100, extra ? projectedUtilization : (stats.utilization || 0))}%"></span></i></span>
+      <span class="assignee-option-state"><i data-lucide="${currentId === person.id ? 'check' : 'chevron-right'}"></i></span>
     </button>`;
   }).join('') : `<div class="assignee-picker-empty"><i data-lucide="user-search"></i><strong>Ninguém encontrado</strong><span>Tente outro nome ou cargo.</span></div>`);
   refreshIcons();
 }
+
 async function chooseAssignee(personId) {
-  const picker = state.assigneePicker || {};
-  if (picker.multi) {
-    const ids = [...new Set((picker.selectedIds || []).filter(Boolean))];
-    if (personId) {
-      const index = ids.indexOf(personId);
-      if (index >= 0) ids.splice(index, 1); else ids.push(personId);
-    }
-    picker.selectedIds = ids;
-    state.assigneePicker = picker;
-    renderAssigneePicker();
+  const picker = { ...state.assigneePicker };
+  closeModal('assigneePickerModal');
+  if (picker.taskId) {
+    await updateTaskAssignee(picker.taskId, personId || null);
     return;
   }
-  closeModal('assigneePickerModal');
-  if (picker.taskId) { await updateTaskAssignee(picker.taskId, personId || null); return; }
-  const select = $(picker.selectId); if (!select) return;
+  const select = $(picker.selectId);
+  if (!select) return;
   select.value = personId || '';
   renderAssigneePreview(picker.selectId, picker.previewId);
 }
-async function applyAssigneePickerSelection() {
-  const picker = { ...(state.assigneePicker || {}) };
-  const ids = [...new Set((picker.selectedIds || []).filter(Boolean))];
-  if (picker.taskId) { closeModal('assigneePickerModal'); await updateTaskAssigneesV37(picker.taskId, ids); return; }
-  if (picker.recurrenceId) { closeModal('assigneePickerModal'); await updateRecurringAssigneesV37(picker.recurrenceId, ids); return; }
-  const select = $(picker.selectId);
-  if (select) select.value = ids[0] || '';
-  setAssigneeJson(picker.jsonInputId, ids);
-  renderAssigneePreview(picker.selectId, picker.previewId);
-  closeModal('assigneePickerModal');
-}
+
 function statusFlowHTML(task, canChangeStatus) {
   const currentIndex = STATUS_ORDER.indexOf(task.status);
   return STATUS_ORDER.map((status, index) => {
@@ -368,7 +569,7 @@ function statusFlowHTML(task, canChangeStatus) {
     const current = status === task.status;
     const passed = currentIndex >= 0 && index < currentIndex;
     let disabled = !canChangeStatus || Boolean(task.arquivada_em) || current;
-    const claimMode = !isManager() && taskAssigneeIds(task).length === 0 && task.prioridade === 'imediata' && task.alerta_para_todos;
+    const claimMode = !isManager() && !task.responsavel_id && task.prioridade === 'imediata' && task.alerta_para_todos;
     if (claimMode && status !== 'andamento') disabled = true;
     if (status === 'concluida') disabled = disabled || !isManager() || task.status !== 'revisao';
     if (!isManager() && status === 'nova' && task.status !== 'nova') disabled = true;
@@ -426,43 +627,17 @@ function taskDue(task) {
   return null;
 }
 function taskDueKey(task) { return taskDue(task) ? dateKey(taskDue(task)) : ''; }
-function isDeadlinePausedV375(task) { return Boolean(task && task.status === 'revisao'); }
-function isOverdue(task) {
-  const due = taskDue(task);
-  return Boolean(due && !isDeadlinePausedV375(task) && new Date(due) < new Date() && task.status !== 'concluida');
-}
-function reviewPauseElapsedV375(task) {
-  if (!task?.prazo_pausado_em) return 0;
-  return Math.max(0, Date.now() - new Date(task.prazo_pausado_em).getTime());
-}
-function reviewPauseLabelV375(task) {
-  if (!isDeadlinePausedV375(task)) return '';
-  const elapsed = reviewPauseElapsedV375(task);
-  const hours = Math.floor(elapsed / 3600000);
-  const minutes = Math.floor((elapsed % 3600000) / 60000);
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    const rest = hours % 24;
-    return `${days}d${rest ? ` ${rest}h` : ''}`;
-  }
-  if (hours) return `${hours}h${minutes ? ` ${minutes}min` : ''}`;
-  return `${Math.max(0, minutes)}min`;
-}
+function isOverdue(task) { const due = taskDue(task); return due && new Date(due) < new Date() && task.status !== 'concluida'; }
 function dueLabel(task) {
-  const due = taskDue(task);
-  if (!due) return isDeadlinePausedV375(task) ? 'Prazo pausado · Em revisão' : 'Sem prazo';
-  if (isDeadlinePausedV375(task)) return 'Prazo pausado · Em revisão';
+  const due = taskDue(task); if (!due) return 'Sem prazo';
   const key = dateKey(due), today = todayKey();
   if (isOverdue(task)) return `Atrasada · ${formatDate(due)}`;
   if (key === today) return `Hoje, ${formatTime(due)}`;
   if (key === dateKey(addDays(new Date(), 1))) return `Amanhã, ${formatTime(due)}`;
   return `${formatDate(due)} · ${formatTime(due)}`;
 }
-function dueClass(task) {
-  if (isDeadlinePausedV375(task)) return 'paused';
-  return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : '';
-}
-function reminderEffectiveTime(reminder) { return reminder.adiando_ate || reminder.adiado_ate || reminder.inicio_em; }
+function dueClass(task) { return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : ''; }
+function reminderEffectiveTime(reminder) { return reminder.adiado_ate || reminder.inicio_em; }
 function itemTitle(item) { return item.titulo || 'Sem título'; }
 function priorityWeight(task) { return ({ imediata: 6, urgente: 4, alta: 3, media: 2, baixa: 1 })[task.prioridade] || 2; }
 function sizeWeight(task) { return Number(task.estimativa_horas) || ({ rapida: 1, media: 2.5, grande: 5 })[task.tamanho] || 2.5; }
@@ -496,7 +671,6 @@ async function initializeUser() {
   await handleUrlActions();
   if (!needsProfile) setTimeout(() => maybeOpenOnboarding(), 420);
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
-  setTimeout(() => maybeShowAuthorshipConfirmationV372(), 1250);
 }
 async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4(), loadIntelligenceV5()]);
@@ -545,7 +719,7 @@ function renderShell() {
   $$('.manager-only').forEach(el => el.classList.toggle('hidden', !isManager()));
   $$('.academy-manager-only').forEach(el => el.classList.toggle('hidden', !canManageAcademy()));
   const activeTasks = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const mine = activeTasks.filter(task => taskHasAssignee(task, state.me?.id));
+  const mine = activeTasks.filter(task => task.responsavel_id === state.me?.id);
   $('navTaskCount').textContent = activeTasks.length;
   $('navTodayCount').textContent = mine.filter(task => taskDueKey(task) === todayKey() || isOverdue(task)).length;
   $('navTodayCount').classList.toggle('hidden', Number($('navTodayCount').textContent) === 0);
@@ -578,7 +752,7 @@ function renderToday() {
   $('heroMonth').textContent = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', month: 'short' }).format(now).replace('.', '').toUpperCase();
 
   const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const mine = active.filter(task => taskHasAssignee(task, state.me?.id));
+  const mine = active.filter(task => task.responsavel_id === state.me?.id);
   const overdue = mine.filter(isOverdue);
   const todayTasks = mine.filter(task => taskDueKey(task) === todayKey());
   const weekEnd = addDays(new Date(), 7);
@@ -633,7 +807,7 @@ function renderActivityFeed() {
 function agendaPersonMatches(taskOrReminder, type = 'task') {
   const filter = state.agendaPersonFilter || '';
   if (!filter) return true;
-  if (type === 'task') return taskHasAssignee(taskOrReminder, filter);
+  if (type === 'task') return taskOrReminder.responsavel_id === filter;
   return taskOrReminder.colaborador_id === filter || taskOrReminder.criado_por === filter;
 }
 
@@ -651,7 +825,7 @@ function calendarItemsForDate(key) {
   const tasks = state.tasks.filter(task => {
     if (task.arquivada_em || taskDueKey(task) !== key) return false;
     if (teamMode) return agendaPersonMatches(task, 'task');
-    return taskHasAssignee(task, state.me?.id);
+    return task.responsavel_id === state.me?.id;
   }).map(task => ({ kind: 'task', id: task.id, title: task.titulo, time: taskDue(task), item: task }));
 
   const reminders = state.reminders.filter(reminder => {
@@ -671,7 +845,7 @@ function renderAgendaScopeSummary() {
   const teamMode = state.agendaScope === 'team';
   const tasks = state.tasks.filter(task => {
     if (task.arquivada_em || !taskDueKey(task).startsWith(monthKey)) return false;
-    return teamMode ? agendaPersonMatches(task, 'task') : taskHasAssignee(task, state.me?.id);
+    return teamMode ? agendaPersonMatches(task, 'task') : task.responsavel_id === state.me?.id;
   });
   const reminders = state.reminders.filter(reminder => {
     if (reminder.concluido_em || !dateKey(reminderEffectiveTime(reminder)).startsWith(monthKey)) return false;
@@ -725,7 +899,7 @@ function renderSelectedDayItems() {
       ? `<span class="day-item-avatar">${taskAvatarHTML(taskPerson, entry.item, 'sm')}</span>`
       : `<span class="day-item-symbol ${entry.kind}"><i data-lucide="${entry.kind === 'meeting' ? 'calendar-clock' : 'bell'}"></i></span>`;
     const project = entry.kind === 'task' && entry.item.projeto ? `<span class="day-item-project"><i data-lucide="folder-kanban"></i>${escapeHtml(entry.item.projeto)}</span>` : '';
-    return `<div class="day-item enriched ${entry.kind === 'task' && entry.item.prioridade === 'imediata' ? 'immediate' : ''}" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskAssigneeShortNames(entry.item))}</span>${project}` : ''}</div></div>`;
+    return `<div class="day-item enriched ${entry.kind === 'task' && entry.item.prioridade === 'imediata' ? 'immediate' : ''}" data-open-${entry.kind === 'task' ? 'task' : 'reminder'}="${entry.id}">${visual}<div class="day-item-main"><div class="day-item-head"><i class="day-item-type ${entry.kind}"></i><small>${formatTime(entry.time)} · ${entry.kind === 'task' ? 'Demanda' : entry.kind === 'meeting' ? 'Compromisso' : 'Lembrete'}</small></div><strong>${escapeHtml(entry.title)}</strong>${entry.kind === 'task' ? `<span>${escapeHtml(taskPerson?.nome || 'Sem responsável')}</span>${project}` : ''}</div></div>`;
   }).join('') : `<div class="empty-state"><i data-lucide="calendar-x-2"></i>Nenhum item neste dia.</div>`;
 }
 
@@ -736,7 +910,7 @@ function filteredTasks() {
   return state.tasks.filter(task => {
     const blob = [task.titulo, task.descricao, ...(task.tags || [])].join(' ').toLowerCase();
     if (search && !blob.includes(search)) return false;
-    if (assignee && (assignee === 'none' ? taskAssigneeIds(task).length > 0 : !taskHasAssignee(task, assignee))) return false;
+    if (assignee && (assignee === 'none' ? Boolean(task.responsavel_id) : task.responsavel_id !== assignee)) return false;
     if (project && String(task.projeto || '') !== project) return false;
     if (priority && task.prioridade !== priority) return false;
     if (archive === 'ativas' && task.arquivada_em) return false;
@@ -744,7 +918,7 @@ function filteredTasks() {
     if (state.smartFilter === 'atrasadas' && !isOverdue(task)) return false;
     if (state.smartFilter === 'hoje' && taskDueKey(task) !== todayKey()) return false;
     if (state.smartFilter === 'semana') { const due = taskDue(task); if (!due || new Date(due) < now || new Date(due) > weekEnd) return false; }
-    if (state.smartFilter === 'minhas' && !taskHasAssignee(task, state.me?.id)) return false;
+    if (state.smartFilter === 'minhas' && task.responsavel_id !== state.me?.id) return false;
     return true;
   });
 }
@@ -780,8 +954,8 @@ function renderTaskAvatarFilters() {
   const container = $('taskAvatarFilters'); if (!container) return;
   const selected = $('taskAssigneeFilter')?.value || '';
   const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
-  const countFor = personId => active.filter(task => taskHasAssignee(task, personId)).length;
-  const unassigned = active.filter(task => taskAssigneeIds(task).length === 0).length;
+  const countFor = personId => active.filter(task => task.responsavel_id === personId).length;
+  const unassigned = active.filter(task => !task.responsavel_id).length;
   const buttons = [
     `<button type="button" class="task-avatar-filter ${selected === '' ? 'active' : ''}" data-avatar-filter="" title="Mostrar todos"><span class="task-avatar-filter-all"><i data-lucide="users-round"></i></span><span><strong>Todos</strong><small>${active.length} abertas</small></span></button>`,
     ...state.collaborators.map(person => `<button type="button" class="task-avatar-filter ${selected === person.id ? 'active' : ''}" data-avatar-filter="${person.id}" title="Filtrar demandas de ${escapeHtml(person.nome)}">${avatarHTML(person, 'sm')}<span><strong>${escapeHtml(firstName(person.nome))}</strong><small>${countFor(person.id)} aberta(s)</small></span></button>`),
@@ -801,20 +975,20 @@ function renderBoard() {
 }
 function taskCardHTML(task) {
   const person = collaborator(task.responsavel_id);
-  const canMove = !task.arquivada_em && (isManager() || taskHasAssignee(task, state.me?.id) || task.criado_por === state.me?.id);
+  const canMove = !task.arquivada_em && (isManager() || task.responsavel_id === state.me?.id || task.criado_por === state.me?.id);
   return `<article class="task-card" data-open-task="${task.id}" data-task-id="${task.id}" data-priority="${task.prioridade}" draggable="${canMove}">
-    <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${responsibilityModeBadgeHTMLV371(task)}${task.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(task.projeto)}</span>` : ''}${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
-    <h3>${escapeHtml(task.titulo)}</h3>${task.descricao ? `<p>${escapeHtml(task.descricao)}</p>` : ''}
+    <div class="task-card-top"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(task.projeto)}</span>` : ''}${task.arquivada_em ? '<span class="archived-pill">Arquivada</span>' : ''}<span class="task-card-id">#${task.id.slice(0, 5).toUpperCase()}</span></div>
+    <h3>${escapeHtml(task.titulo)}</h3>${task.descricao ? `<p>${escapeHtml(markdownPlainTextV377(task.descricao))}</p>` : ''}
     ${(task.tags || []).length ? `<div class="task-tags">${task.tags.slice(0, 4).map(tag => `<span class="task-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     <div class="task-progress-meta"><span>${task.estimativa_horas ? `${Number(task.estimativa_horas)}h estimadas` : 'Sem estimativa'}</span><span>${STATUS[task.status]?.label}</span></div>
-    <div class="task-card-footer"><span class="task-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span><div class="task-card-person multi">${taskAssigneeAvatarGroupHTML(task, 'sm', 3)}<span>${escapeHtml(taskAssigneeShortNames(task))}</span></div></div>
+    <div class="task-card-footer"><span class="task-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span><div class="task-card-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div></div>
   </article>`;
 }
 function renderTaskList() {
   const tasks = filteredTasks();
   $('taskRows').innerHTML = tasks.length ? tasks.map(task => { const person = collaborator(task.responsavel_id); return `<div class="task-row" data-open-task="${task.id}">
     <div class="task-row-title"><i class="priority-line" style="background:${task.prioridade === 'urgente' ? 'var(--red)' : task.prioridade === 'alta' ? 'var(--amber)' : task.prioridade === 'baixa' ? 'var(--blue)' : 'var(--green-300)'}"></i><div><strong>${escapeHtml(task.titulo)}</strong><small>${escapeHtml([task.projeto ? `Projeto: ${task.projeto}` : '', (task.tags || []).join(' · ')].filter(Boolean).join(' · ') || 'Sem projeto ou tags')}</small></div></div>
-    <div class="task-row-person multi">${taskAssigneeAvatarGroupHTML(task, 'sm', 3)}<span>${escapeHtml(taskAssigneeShortNames(task))}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
+    <div class="task-row-person">${taskAvatarHTML(person, task, 'sm')}<span>${escapeHtml(person?.nome || 'Sem responsável')}</span></div><span class="table-pill ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span><span class="table-pill">${STATUS[task.status]?.label}</span><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span></div>`; }).join('')
     : `<div class="empty-state" style="margin:15px"><i data-lucide="search-x"></i>Nenhuma demanda encontrada.</div>`;
 }
 function bindTaskDrag() {
@@ -846,19 +1020,19 @@ function taskSortByAttention(a, b) {
   return new Date(taskDue(a) || '9999-12-31').getTime() - new Date(taskDue(b) || '9999-12-31').getTime();
 }
 function teamPersonStats(person) {
-  const assigned = state.tasks.filter(task => !task.arquivada_em && taskHasAssignee(task, person.id));
+  const assigned = state.tasks.filter(task => !task.arquivada_em && task.responsavel_id === person.id);
   const active = assigned.filter(task => task.status !== 'concluida');
   const completed30 = assigned.filter(task => task.status === 'concluida' && isWithinDays(task.concluida_em || task.atualizado_em, 30));
   const completed7 = completed30.filter(task => isWithinDays(task.concluida_em || task.atualizado_em, 7));
   const overdue = active.filter(isOverdue);
-  const dueToday = active.filter(task => !isDeadlinePausedV375(task) && taskDueKey(task) === todayKey());
+  const dueToday = active.filter(task => taskDueKey(task) === todayKey());
   const weekEnd = addDays(new Date(), 7);
   const dueWeek = active.filter(task => {
     const due = taskDue(task);
-    return !isDeadlinePausedV375(task) && due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
+    return due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
   });
   const urgent = active.filter(task => ['imediata', 'urgente'].includes(task.prioridade));
-  const hours = active.reduce((sum, task) => sum + taskEffortShare(task), 0);
+  const hours = active.reduce((sum, task) => sum + sizeWeight(task), 0);
   const utilization = Math.min(140, Math.round((hours / TEAM_CAPACITY_HOURS) * 100));
   const deadlineCompleted = completed30.filter(task => taskDue(task) && task.concluida_em);
   const onTime = deadlineCompleted.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
@@ -891,7 +1065,7 @@ function renderEquipe() {
   const overdue = active.filter(isOverdue);
   const weekEnd = addDays(new Date(), 7);
   const dueWeek = active.filter(task => { const due = taskDue(task); return due && new Date(due) >= new Date() && new Date(due) <= weekEnd; });
-  const unassigned = active.filter(task => taskAssigneeIds(task).length === 0);
+  const unassigned = active.filter(task => !task.responsavel_id);
   let stats = state.collaborators.map(teamPersonStats);
   renderTeamAvatarStrip(stats, manager);
 
@@ -902,9 +1076,9 @@ function renderEquipe() {
   $('teamUpdatedAt').textContent = `Atualizado ${relativeTime(new Date().toISOString())}`;
 
   const operationalPeople = state.collaborators.filter(person => person.role !== 'gestor');
-  const busyPeople = operationalPeople.filter(person => active.some(task => taskHasAssignee(task, person.id))).length;
+  const busyPeople = operationalPeople.filter(person => active.some(task => task.responsavel_id === person.id)).length;
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const peopleCompletedMonth = operationalPeople.filter(person => state.tasks.some(task => taskHasAssignee(task, person.id) && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= monthStart)).length;
+  const peopleCompletedMonth = operationalPeople.filter(person => state.tasks.some(task => task.responsavel_id === person.id && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= monthStart)).length;
   const pendingEvaluation = active.filter(task => task.status === 'revisao').length;
   $('teamSummary').innerHTML = manager
     ? [
@@ -1113,59 +1287,9 @@ function switchView(view) {
 }
 function applySmartFilter(filter) { state.smartFilter = filter; switchView('demandas'); renderDemandas(); }
 
-
-function reminderGroupMembersV376(reminder) {
-  if (!reminder) return [];
-  if (!reminder.grupo_recorrencia) return [reminder];
-  return state.reminders
-    .filter(item => item.grupo_recorrencia === reminder.grupo_recorrencia)
-    .sort((a,b) => String(splitDateTime(a.inicio_em).time).localeCompare(String(splitDateTime(b.inicio_em).time)));
-}
-function reminderGroupTimesV376(reminder) {
-  return [...new Set(reminderGroupMembersV376(reminder).map(item => splitDateTime(item.inicio_em).time).filter(Boolean))].sort();
-}
-function selectedReminderTimesV376() {
-  const primary = $('reminderTime')?.value || '09:00';
-  return [...new Set([primary, ...(state.reminderExtraTimes || [])].filter(Boolean))].sort();
-}
-function renderReminderExtraTimesV376() {
-  const container = $('reminderExtraTimesList');
-  if (!container) return;
-  const primary = $('reminderTime')?.value || '';
-  const extras = [...new Set(state.reminderExtraTimes || [])].filter(time => time && time !== primary).sort();
-  state.reminderExtraTimes = extras;
-  container.innerHTML = extras.length
-    ? extras.map((time,index) => `<div class="reminder-extra-time-row">
-        <span><i data-lucide="alarm-clock"></i></span>
-        <input type="time" value="${escapeHtml(time)}" data-reminder-extra-time="${index}">
-        <button type="button" class="icon-btn subtle" data-remove-reminder-time="${index}" title="Remover horário"><i data-lucide="x"></i></button>
-      </div>`).join('')
-    : `<div class="reminder-extra-times-empty"><i data-lucide="clock-3"></i><span>Nenhum horário adicional.</span></div>`;
-  refreshIcons();
-}
-function syncReminderMultiTimeUIV376() {
-  const recurring = $('reminderRecurrence')?.value !== 'nenhuma';
-  const isReminder = state.quickType === 'lembrete';
-  $('reminderMultiTimesField')?.classList.toggle('hidden', !(recurring && isReminder));
-  if (!(recurring && isReminder)) state.reminderExtraTimes = [];
-  renderReminderExtraTimesV376();
-}
-function addReminderExtraTimeV376() {
-  const times = selectedReminderTimesV376();
-  const last = times[times.length - 1] || '09:00';
-  const [h,m] = last.split(':').map(Number);
-  const total = (h * 60 + m + 60) % 1440;
-  const next = `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
-  if (!state.reminderExtraTimes.includes(next) && next !== $('reminderTime').value) {
-    state.reminderExtraTimes.push(next);
-  }
-  renderReminderExtraTimesV376();
-}
-
 function openQuickAdd(type = 'demanda', preset = {}) {
   if (type === 'demanda' && !isManager()) { toast('Somente gestores podem criar demandas.', 'error'); type = 'lembrete'; }
   state.editingReminderId = preset.editingReminderId || null;
-  state.reminderExtraTimes = [];
   $('quickAddForm').reset();
   setQuickType(type);
   const today = preset.date || todayKey();
@@ -1173,21 +1297,19 @@ function openQuickAdd(type = 'demanda', preset = {}) {
   $('itemDueDate').value = preset.date || ''; $('itemDueTime').value = preset.time || '17:00';
   $('reminderDate').value = today; $('reminderTime').value = preset.time || '09:00';
   $('meetingEndDate').value = today; $('meetingEndTime').value = preset.endTime || '10:00';
-  $('reminderVisibility').value = preset.visibility || 'pessoal';
+  $('reminderVisibility').value = isManager() ? (preset.visibility || 'pessoal') : 'pessoal';
   if (type === 'demanda') {
     populateAssigneeSelects();
     populateDependencySelects('itemDependencies', null);
     renderTaskTemplateSelect();
-    $('itemAssignee').value = preset.assigneeId || ''; setAssigneeJson('itemAssigneesJson', preset.assigneeIds || (preset.assigneeId ? [preset.assigneeId] : []));
+    $('itemAssignee').value = preset.assigneeId || '';
     if ($('itemProject')) $('itemProject').value = preset.project || '';
     if ($('itemChecklist')) $('itemChecklist').value = '';
     $('itemPriority').value = preset.priority || 'media';
     $('itemSize').value = preset.size || 'media';
-    if ($('itemResponsibilityMode')) $('itemResponsibilityMode').value = preset.responsibilityMode || 'compartilhada';
     syncTaskFormVisuals('item');
   }
   if (preset.reminder) fillReminderForm(preset.reminder);
-  syncReminderMultiTimeUIV376();
   $('quickAddModal').classList.remove('hidden'); setTimeout(() => $('itemTitle').focus(), 60); refreshIcons();
 }
 function setQuickType(type) {
@@ -1195,30 +1317,22 @@ function setQuickType(type) {
   $$('[data-item-type]').forEach(btn => btn.classList.toggle('active', btn.dataset.itemType === type));
   $('demandFields').classList.toggle('hidden', type !== 'demanda'); $('reminderFields').classList.toggle('hidden', type === 'demanda');
   $('meetingEndFields').classList.toggle('hidden', type !== 'compromisso');
-  $('visibilityField').classList.toggle('hidden', type === 'demanda');
+  $('visibilityField').classList.toggle('hidden', !isManager());
   if ($('taskTemplateToolbar')) $('taskTemplateToolbar').classList.toggle('hidden', type !== 'demanda' || !isManager());
   if (type === 'demanda') { populateAssigneeSelects(); populateDependencySelects('itemDependencies', null); renderTaskTemplateSelect(); syncTaskFormVisuals('item'); }
   $('saveItemBtn').innerHTML = `<i data-lucide="check"></i>${state.editingReminderId ? 'Salvar alterações' : type === 'demanda' ? 'Criar demanda' : type === 'compromisso' ? 'Criar compromisso' : 'Criar lembrete'}`;
-  syncReminderMultiTimeUIV376();
   refreshIcons();
 }
 function fillReminderForm(reminder) {
-  const members = reminderGroupMembersV376(reminder);
-  const times = reminderGroupTimesV376(reminder);
-  const firstByDate = [...members].sort((a,b) => new Date(a.inicio_em) - new Date(b.inicio_em))[0] || reminder;
-  const start = splitDateTime(firstByDate.inicio_em);
-  const end = splitDateTime(reminder.fim_em);
+  const start = splitDateTime(reminder.inicio_em); const end = splitDateTime(reminder.fim_em);
   $('itemTitle').value = reminder.titulo; $('itemDescription').value = reminder.descricao || '';
-  $('reminderDate').value = start.date;
-  $('reminderTime').value = times[0] || splitDateTime(reminder.inicio_em).time;
-  state.reminderExtraTimes = times.slice(1);
-  $('meetingEndDate').value = end.date || start.date; $('meetingEndTime').value = end.time || $('reminderTime').value;
+  $('reminderDate').value = start.date; $('reminderTime').value = start.time;
+  $('meetingEndDate').value = end.date || start.date; $('meetingEndTime').value = end.time || start.time;
   $('reminderRecurrence').value = reminder.recorrencia || 'nenhuma'; $('reminderVisibility').value = reminder.visibilidade || 'pessoal';
   if (reminder.lembrar_em) {
     const diff = Math.round((new Date(reminder.inicio_em) - new Date(reminder.lembrar_em)) / 60000);
     $('reminderOffset').value = ['0', '10', '30', '60', '1440'].includes(String(diff)) ? String(diff) : '0';
   }
-  syncReminderMultiTimeUIV376();
 }
 function closeModal(id) { $(id).classList.add('hidden'); if (id === 'quickAddModal') state.editingReminderId = null; if (id === 'assigneePickerModal') state.assigneePicker = { selectId: null, previewId: null, taskId: null, search: '' }; }
 
@@ -1244,84 +1358,35 @@ async function createTaskV2() {
   if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
   const checklist = checklistFromText($('itemChecklist')?.value || '');
   const dependencies = selectedValues($('itemDependencies'));
-  const assigneeIds = selectedFormAssigneeIdsV37('item');
-  const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
-  if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
-  if (priority === 'imediata' && !assigneeIds.length && !alertAll) throw new Error('Escolha pelo menos um responsável para a demanda imediata ou envie o alerta para toda a equipe.');
-  const { data: taskId, error } = await db.rpc('criar_tarefa_v4', {
+  const { error } = await db.rpc('criar_tarefa_v4', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: priority, p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+    p_prioridade: priority, p_responsavel_id: $('itemAssignee').value || null,
     p_prazo_em: dueAt, p_lembrar_em: remindAt, p_tags: tags,
     p_tamanho: $('itemSize').value, p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
     p_alerta_para_todos: alertAll, p_projeto: $('itemProject')?.value.trim() || null,
     p_checklist: checklist, p_dependencias: dependencies
   });
   if (error) throw error;
-  if (taskId && state.multiAssigneeReady) {
-    const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_modo_v1', {
-      p_tarefa_id: taskId,
-      p_responsaveis: assigneeIds,
-      p_modo: responsibilityMode
-    });
-    if (assigneeError) throw assigneeError;
-  }
 }
 async function createReminderV2() {
-  const date = $('reminderDate').value || todayKey();
-  const visibility = $('reminderVisibility').value || 'pessoal';
-  const recurrence = $('reminderRecurrence').value || 'nenhuma';
-
-  if (state.quickType === 'lembrete') {
-    const { error } = await db.rpc('criar_lembrete_multihorario_v376', {
-      p_titulo: $('itemTitle').value.trim(),
-      p_descricao: $('itemDescription').value.trim() || null,
-      p_data_inicio: date,
-      p_horarios: selectedReminderTimesV376(),
-      p_antecedencia_minutos: Number($('reminderOffset').value || 0),
-      p_recorrencia: recurrence,
-      p_visibilidade: visibility
-    });
-    if (error) throw error;
-    return;
-  }
-
-  const start = localDateTime(date, $('reminderTime').value || '09:00');
-  const end = localDateTime($('meetingEndDate').value || date, $('meetingEndTime').value || $('reminderTime').value);
+  const start = localDateTime($('reminderDate').value || todayKey(), $('reminderTime').value || '09:00');
+  const end = state.quickType === 'compromisso' ? localDateTime($('meetingEndDate').value || $('reminderDate').value, $('meetingEndTime').value || $('reminderTime').value) : null;
   const remindAt = new Date(new Date(start).getTime() - Number($('reminderOffset').value || 0) * 60000).toISOString();
   const { error } = await db.rpc('criar_lembrete', {
     p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
     p_tipo: state.quickType, p_inicio_em: start, p_fim_em: end, p_lembrar_em: remindAt,
-    p_recorrencia: recurrence, p_visibilidade: visibility
+    p_recorrencia: $('reminderRecurrence').value, p_visibilidade: isManager() ? $('reminderVisibility').value : 'pessoal'
   });
   if (error) throw error;
 }
 async function updateReminderV2() {
-  const date = $('reminderDate').value || todayKey();
-  const visibility = $('reminderVisibility').value || 'pessoal';
-  const recurrence = $('reminderRecurrence').value || 'nenhuma';
-
-  if (state.quickType === 'lembrete') {
-    const { error } = await db.rpc('editar_lembrete_multihorario_v376', {
-      p_id: state.editingReminderId,
-      p_titulo: $('itemTitle').value.trim(),
-      p_descricao: $('itemDescription').value.trim() || null,
-      p_data_inicio: date,
-      p_horarios: selectedReminderTimesV376(),
-      p_antecedencia_minutos: Number($('reminderOffset').value || 0),
-      p_recorrencia: recurrence,
-      p_visibilidade: visibility
-    });
-    if (error) throw error;
-    return;
-  }
-
-  const start = localDateTime(date, $('reminderTime').value || '09:00');
-  const end = localDateTime($('meetingEndDate').value || date, $('meetingEndTime').value || $('reminderTime').value);
+  const start = localDateTime($('reminderDate').value, $('reminderTime').value || '09:00');
+  const end = state.quickType === 'compromisso' ? localDateTime($('meetingEndDate').value || $('reminderDate').value, $('meetingEndTime').value || $('reminderTime').value) : null;
   const remindAt = new Date(new Date(start).getTime() - Number($('reminderOffset').value || 0) * 60000).toISOString();
   const { error } = await db.rpc('editar_lembrete', {
     p_id: state.editingReminderId, p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_tipo: state.quickType, p_inicio_em: start, p_fim_em: end, p_lembrar_em: remindAt, p_recorrencia: recurrence,
-    p_visibilidade: visibility
+    p_tipo: state.quickType, p_inicio_em: start, p_fim_em: end, p_lembrar_em: remindAt, p_recorrencia: $('reminderRecurrence').value,
+    p_visibilidade: isManager() ? $('reminderVisibility').value : 'pessoal'
   });
   if (error) throw error;
 }
@@ -1342,15 +1407,12 @@ async function openTask(taskId) {
 function renderTaskDrawer() {
   const task = state.selectedTask; if (!task) return;
   const person = collaborator(task.responsavel_id);
-  const responsiblePeople = taskAssigneePeople(task);
   const creator = collaborator(task.criado_por);
   const evaluator = collaborator(task.avaliado_por);
   const personStats = person ? assigneeStats(person) : null;
   $('taskDrawerKicker').textContent = `Demanda #${task.id.slice(0, 5).toUpperCase()}`; $('taskDrawerTitle').textContent = task.titulo;
-  const canClaimImmediate = taskAssigneeIds(task).length === 0 && task.prioridade === 'imediata' && task.alerta_para_todos && task.status === 'nova';
-  const canClaimRace = taskRaceIsOpenV371(task) && taskHasAssignee(task, state.me.id);
-  const canClaimTask = canClaimImmediate || canClaimRace;
-  const canChangeStatus = isManager() || taskHasAssignee(task, state.me.id) || canClaimImmediate;
+  const canClaimImmediate = !task.responsavel_id && task.prioridade === 'imediata' && task.alerta_para_todos && task.status === 'nova';
+  const canChangeStatus = isManager() || task.responsavel_id === state.me.id || canClaimImmediate;
   const nextAction = statusActionForTask(task);
   const canAssign = isManager() && !task.arquivada_em && task.status !== 'concluida';
   const immediate = task.prioridade === 'imediata';
@@ -1358,42 +1420,35 @@ function renderTaskDrawer() {
   const evaluationFeedback = task.avaliacao_status === 'ajustes' && task.avaliacao_observacao;
   const evaluationApproved = task.avaliacao_status === 'aprovada';
 
-  const evaluationPanel = evaluationPanelHTMLV372(task, evaluator);
-  const reviewPausePanel = isDeadlinePausedV375(task) ? `<section class="review-deadline-pause">
-    <span class="review-deadline-pause-icon"><i data-lucide="pause"></i></span>
-    <div>
-      <span class="eyebrow">Relógio da demanda pausado</span>
-      <strong>O prazo não corre enquanto a entrega está em revisão.</strong>
-      <small>${task.prazo_pausado_em ? `Pausado há ${escapeHtml(reviewPauseLabelV375(task))}. ` : ''}Se houver devolução para ajustes, o prazo será prorrogado automaticamente pelo mesmo período.</small>
-    </div>
-    <b>PAUSADO</b>
-  </section>` : '';
+  const evaluationPanel = evaluationPending
+    ? isManager()
+      ? `<section class="manager-evaluation-panel"><div class="manager-evaluation-icon"><i data-lucide="scan-eye"></i></div><div><span class="eyebrow">Sua ação é necessária</span><h3>O colaborador solicitou a conclusão</h3><p>Confira o resultado, comentários e briefing antes de encerrar. Você pode aprovar ou devolver para ajustes.</p></div><div class="manager-evaluation-actions"><button id="drawerRejectEvaluationBtn" type="button" class="btn secondary"><i data-lucide="undo-2"></i>Devolver para ajustes</button><button id="drawerApproveEvaluationBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Aprovar conclusão</button></div></section>`
+      : `<section class="manager-evaluation-panel waiting"><div class="manager-evaluation-icon"><i data-lucide="hourglass"></i></div><div><span class="eyebrow">Aguardando gestor</span><h3>Sua entrega foi enviada para avaliação</h3><p>O status final só será liberado depois que um gestor validar a conclusão. Se houver ajustes, eles aparecerão aqui e por notificação.</p></div></section>`
+    : evaluationFeedback
+      ? `<section class="evaluation-feedback adjustments"><span><i data-lucide="message-square-warning"></i></span><div><strong>Ajustes solicitados${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><div class="markdown-body-v377 evaluation-markdown-v377">${renderMarkdownV377(task.avaliacao_observacao)}</div><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`
+      : evaluationApproved
+        ? `<section class="evaluation-feedback approved"><span><i data-lucide="badge-check"></i></span><div><strong>Conclusão aprovada${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><div class="markdown-body-v377 evaluation-markdown-v377">${renderMarkdownV377(task.avaliacao_observacao || 'Entrega validada e encerrada.')}</div><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`
+        : '';
 
   const nextActionMarkup = canChangeStatus && !task.arquivada_em && nextAction
-    ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimTask ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimRace ? 'Você está entre os candidatos. Quem iniciar primeiro assume esta demanda sozinho.' : canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
+    ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimImmediate ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
     : evaluationPending && !isManager()
       ? `<div class="status-waiting-note"><i data-lucide="clock-3"></i><span><strong>Aguardando avaliação</strong><small>Você não precisa alterar o status enquanto o gestor revisa.</small></span></div>`
       : '';
 
-  const raceOpen = taskRaceIsOpenV371(task);
-  const raceClaimed = taskIsFirstToCompleteV371(task) && Boolean(task.responsavel_id);
-  const raceWinner = raceClaimed ? collaborator(task.responsavel_id) : null;
-
   $('taskDrawerContent').innerHTML = `
-    ${taskIsFirstToCompleteV371(task) ? `<div class="task-race-banner ${raceClaimed ? 'claimed' : ''}"><span><i data-lucide="${raceClaimed ? 'flag-triangle-right' : 'flag'}"></i></span><div><strong>${raceClaimed ? `Demanda assumida por ${escapeHtml(raceWinner?.nome || 'um responsável')}` : 'PRIMEIRO A CUMPRIR'}</strong><small>${raceClaimed ? 'A corrida terminou. A carga completa e a execução desta ocorrência ficaram com quem iniciou primeiro.' : `${taskAssigneeIds(task).length} candidato${taskAssigneeIds(task).length === 1 ? '' : 's'} pode${taskAssigneeIds(task).length === 1 ? '' : 'm'} assumir. O primeiro a clicar em Iniciar fica com a tarefa e os demais deixam de ser responsáveis por esta ocorrência.`}</small></div><b>${raceClaimed ? 'ASSUMIDA' : 'EM DISPUTA'}</b></div>` : ''}
     ${immediate ? `<div class="task-immediate-strip"><span class="task-immediate-siren"><i data-lucide="siren"></i></span><div><strong>DEMANDA IMEDIATA</strong><span>Este item deve interromper as prioridades normais e ser tratado agora.${task.alerta_para_todos ? ' O alerta foi enviado para toda a equipe.' : ''}</span></div><span class="task-immediate-pulse">AGORA</span></div>` : ''}
     <section class="task-overview-hero ${immediate ? 'immediate' : ''}">
       <div class="task-people-flow">
         <div class="task-person-identity"><span>${avatarHTML(creator, 'md')}</span><div><small>Criada por</small><strong>${escapeHtml(creator?.nome || 'Sistema')}</strong></div></div>
         <i data-lucide="arrow-right"></i>
-        <div class="task-person-identity assigned multi"><span>${taskAssigneeAvatarGroupHTML(task, 'md', 4)}</span><div><small>Responsáveis</small><strong>${escapeHtml(taskAssigneeNames(task))}</strong></div></div>
+        <div class="task-person-identity assigned"><span>${taskAvatarHTML(person, task, 'md')}</span><div><small>Responsável</small><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong></div></div>
       </div>
       <div class="task-overview-meta"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span><span class="size-pill">${SIZE[task.tamanho] || 'Média'}</span>${task.alerta_para_todos ? '<span class="team-alert-pill"><i data-lucide="users-round"></i>Alerta para toda a equipe</span>' : ''}<span class="task-overview-due ${dueClass(task)}"><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div>
-      <p>${escapeHtml(task.descricao || 'Esta demanda ainda não possui descrição.')}</p>
+      <div class="markdown-body-v377 markdown-body-inverse-v377">${renderMarkdownV377(task.descricao || 'Esta demanda ainda não possui descrição.')}</div>
       ${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     </section>
 
-    ${reviewPausePanel}
     ${evaluationPanel}
 
     <section class="task-status-section">
@@ -1403,13 +1458,12 @@ function renderTaskDrawer() {
     </section>
 
     <section class="task-assignee-section">
-      <div class="task-section-heading"><div><span class="eyebrow">${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Primeiro a cumprir · assumida' : 'Primeiro a cumprir') : 'Responsabilidade compartilhada'}</span><h3>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Quem assumiu esta demanda' : 'Quem pode assumir esta demanda') : 'Quem está com esta demanda'}</h3></div>${canAssign ? `<span class="section-hint">${taskIsFirstToCompleteV371(task) ? 'Candidatos podem ser alterados antes do início' : 'Uma demanda pode ter várias pessoas'}</span>` : ''}</div>
-      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card multi ${canAssign && (!taskIsFirstToCompleteV371(task) || task.status === 'nova') ? 'editable' : ''}" ${canAssign && (!taskIsFirstToCompleteV371(task) || task.status === 'nova') ? '' : 'disabled'}>
-        <span class="drawer-assignee-avatar">${taskAssigneeAvatarGroupHTML(task, 'lg', 4)}</span>
-        <span class="drawer-assignee-copy"><strong>${escapeHtml(taskAssigneeNames(task))}</strong><small>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Responsável vencedor da ocorrência' : `${responsiblePeople.length} candidato${responsiblePeople.length === 1 ? '' : 's'} disponível${responsiblePeople.length === 1 ? '' : 'is'}`) : responsiblePeople.length ? `${responsiblePeople.length} responsável${responsiblePeople.length === 1 ? '' : 'is'} · ${escapeHtml(person?.nome || responsiblePeople[0]?.nome || '')} é a referência principal` : 'Aguardando atribuição'}</small><em>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Somente quem assumiu fica responsável pela execução e recebe a carga completa desta ocorrência.' : 'Todos os candidatos enxergam a demanda; quem iniciar primeiro assume e remove a tarefa da fila dos demais.') : responsiblePeople.length ? 'Todos os responsáveis podem movimentar a demanda e recebem os alertas relacionados ao trabalho.' : 'A demanda ainda não possui responsáveis.'}</em></span>
-        ${canAssign && (!taskIsFirstToCompleteV371(task) || task.status === 'nova') ? '<span class="drawer-assignee-change"><span>Gerenciar pessoas</span><i data-lucide="users-round"></i></span>' : ''}
+      <div class="task-section-heading"><div><span class="eyebrow">Responsabilidade</span><h3>Quem está com esta demanda</h3></div>${canAssign ? '<span class="section-hint">Transferência preserva tudo</span>' : ''}</div>
+      <button id="drawerAssigneePickerBtn" type="button" class="drawer-assignee-card ${canAssign ? 'editable' : ''}" ${canAssign ? '' : 'disabled'}>
+        <span class="drawer-assignee-avatar">${person ? avatarStatusHTML(person, personStats, 'lg') : avatarHTML(null, 'lg')}</span>
+        <span class="drawer-assignee-copy"><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Aguardando atribuição')}</small><em>${escapeHtml(person ? assigneeLoadText(personStats) : 'A demanda ainda não pertence a ninguém. Em alerta coletivo imediato, a primeira pessoa que iniciar assume o item.')}</em></span>
+        ${canAssign ? '<span class="drawer-assignee-change"><span>Transferir demanda</span><i data-lucide="arrow-right-left"></i></span>' : ''}
       </button>
-      ${responsiblePeople.length ? `<div class="drawer-assignee-team-list">${responsiblePeople.map((member,index) => `<div class="drawer-assignee-team-row">${avatarHTML(member,'sm')}<span><strong>${escapeHtml(member.nome)}</strong><small>${taskIsFirstToCompleteV371(task) ? (raceClaimed ? 'Responsável da ocorrência' : 'Candidato · quem iniciar primeiro assume') : `${index === 0 ? 'Responsável principal' : 'Corresponsável'} · ${escapeHtml(member.cargo || 'Marketing')}`}</small></span>${taskIsFirstToCompleteV371(task) ? `<b>${raceClaimed ? 'Assumiu' : 'Candidato'}</b>` : index === 0 ? '<b>Principal</b>' : '<b>Equipe</b>'}</div>`).join('')}</div>` : ''}
     </section>
 
     ${isManager() && !task.arquivada_em && task.status !== 'concluida' ? `
@@ -1443,7 +1497,7 @@ function renderTaskDrawer() {
   bindTaskDrawerEvents(); refreshIcons();
 }
 function renderComments() {
-  return state.comments.length ? state.comments.map(comment => `<div class="comment">${activityAvatarHTML(comment.colaborador, 'comentario', 'sm')}<div class="comment-bubble"><div class="comment-meta"><strong>${escapeHtml(comment.colaborador?.nome || 'Colaborador')}</strong><span>${formatDateTime(comment.criado_em)}</span></div><p>${escapeHtml(comment.texto)}</p></div></div>`).join('') : `<div class="empty-state">Sem comentários ainda.</div>`;
+  return state.comments.length ? state.comments.map(comment => `<div class="comment">${activityAvatarHTML(comment.colaborador, 'comentario', 'sm')}<div class="comment-bubble"><div class="comment-meta"><strong>${escapeHtml(comment.colaborador?.nome || 'Colaborador')}</strong><span>${formatDateTime(comment.criado_em)}</span></div><div class="markdown-body-v377 comment-markdown-v377">${renderMarkdownV377(comment.texto)}</div></div></div>`).join('') : `<div class="empty-state">Sem comentários ainda.</div>`;
 }
 function renderTaskActivities() {
   if (!state.taskActivities.length) return `<div class="empty-state">O histórico começará a aparecer nas próximas alterações.</div>`;
@@ -1456,20 +1510,9 @@ function renderTaskActivities() {
       text = 'transferiu a responsabilidade';
       detail = `${escapeHtml(from?.nome || 'Sem responsável')} → ${escapeHtml(to?.nome || 'Sem responsável')}${activity.detalhes?.horas != null ? ` · ${Number(activity.detalhes.horas)}h transferidas` : ''}${activity.detalhes?.observacao ? ` · ${escapeHtml(activity.detalhes.observacao)}` : ''}`;
     } else if (activity.tipo === 'avaliacao') {
-      const result = activity.detalhes?.resultado;
-      const approved = ['aprovada','aprovada_com_autoria'].includes(result);
-      if (result === 'aguardando_confirmacao_autoria') {
-        text = 'validou a entrega e solicitou confirmação de autoria';
-        const ids = activity.detalhes?.executores || [];
-        const names = ids.map(id => collaborator(id)?.nome).filter(Boolean).map(firstName);
-        detail = names.length ? `Executores propostos: ${escapeHtml(names.join(', '))}` : 'Aguardando confirmação dos executores.';
-      } else if (result === 'autoria_contestada') {
-        text = 'registrou uma contestação de autoria';
-        detail = escapeHtml(activity.detalhes?.observacao || 'A autoria precisa ser revista.');
-      } else {
-        text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
-        detail = activity.detalhes?.observacao ? escapeHtml(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
-      }
+      const approved = activity.detalhes?.resultado === 'aprovada';
+      text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
+      detail = activity.detalhes?.observacao ? markdownInlineV377(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
     }
     return `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${ACTIVITY_ICON[activity.tipo] || (activity.tipo === 'status' ? 'refresh-cw' : 'activity')}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${text}</p>${detail ? `<em>${detail}</em>` : ''}<span>${formatDateTime(activity.criado_em)}</span></div></div>`;
   }).join('');
@@ -1485,18 +1528,11 @@ function bindTaskDrawerEvents() {
   });
   $('drawerApproveEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'approve'));
   $('drawerRejectEvaluationBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id, 'reject'));
-  $('drawerReviewAuthorshipBtn')?.addEventListener('click', () => openTaskEvaluation(state.selectedTask.id));
-  $('drawerConfirmAuthorshipBtn')?.addEventListener('click', () => {
-    const pending = myPendingAuthorshipConfirmationsV372().find(row => {
-      const review = (state.authorshipReviews || []).find(item => item.id === row.revisao_id);
-      return review?.tarefa_id === state.selectedTask.id;
-    });
-    if (pending) openAuthorshipConfirmationV372(pending);
-  });
-  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ taskId: state.selectedTask.id, multi: true, title: 'Gerenciar responsáveis' }));
+  $('drawerAssigneePickerBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
   $('drawerPriorityManagerBtn')?.addEventListener('click', () => openPriorityManager(state.selectedTask.id));
   $('transferTaskBtn')?.addEventListener('click', () => openTransferTask(state.selectedTask.id));
   $('drawerCommentForm')?.addEventListener('submit', addComment);
+  enhanceMarkdownTextareaV377($('drawerCommentText'), { compact: true });
   $('editTaskBtn')?.addEventListener('click', openEditTask);
   $('archiveTaskBtn')?.addEventListener('click', archiveTask);
   $('restoreTaskBtn')?.addEventListener('click', restoreTask);
@@ -1591,13 +1627,7 @@ async function saveManagedPriority(event) {
 function openEditTask() {
   const task = state.selectedTask; if (!task) return; const due = splitDateTime(taskDue(task));
   $('editTaskId').value = task.id; $('editTaskTitle').value = task.titulo; $('editTaskDescription').value = task.descricao || '';
-  populateAssigneeSelects(); const editAssigneeIds = taskAssigneeIds(task); $('editTaskAssignee').value = editAssigneeIds[0] || ''; setAssigneeJson('editTaskAssigneesJson', editAssigneeIds); $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
-  if ($('editTaskResponsibilityMode')) {
-    $('editTaskResponsibilityMode').value = taskResponsibilityModeV371(task);
-    const locked = task.status !== 'nova';
-    $$('[data-choice-target="editTaskResponsibilityMode"]').forEach(button => button.disabled = locked);
-    $('editTaskResponsibilityLock')?.classList.toggle('hidden', !locked);
-  }
+  populateAssigneeSelects(); $('editTaskAssignee').value = task.responsavel_id || ''; $('editTaskAssignee').dataset.originalValue = task.responsavel_id || ''; $('editTaskPriority').value = task.prioridade;
   if ($('editTaskAlertAll')) $('editTaskAlertAll').value = String(Boolean(task.alerta_para_todos));
   $('editTaskSize').value = task.tamanho || 'media'; $('editTaskDueDate').value = due.date; $('editTaskDueTime').value = due.time || '17:00';
   $('editTaskEstimate').value = task.estimativa_horas || ''; if ($('editTaskProject')) $('editTaskProject').value = task.projeto || ''; $('editTaskTags').value = (task.tags || []).join(', ');
@@ -1614,13 +1644,7 @@ async function saveEditedTask(event) {
   try {
     const taskId = $('editTaskId').value;
     const originalAssignee = $('editTaskAssignee').dataset.originalValue || '';
-    const desiredAssignees = selectedFormAssigneeIdsV37('editTask');
-    const desiredAssignee = desiredAssignees[0] || '';
-    const originalTask = state.tasks.find(item => item.id === taskId);
-    const currentResponsibilityMode = taskResponsibilityModeV371(originalTask);
-    const desiredResponsibilityMode = $('editTaskResponsibilityMode')?.value || currentResponsibilityMode;
-    if (originalTask?.status !== 'nova' && desiredResponsibilityMode !== currentResponsibilityMode) throw new Error('O modo de responsabilidade só pode ser trocado antes da execução começar.');
-    if (originalTask?.status === 'nova' && desiredResponsibilityMode === 'primeiro_cumprir' && desiredAssignees.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
+    const desiredAssignee = $('editTaskAssignee').value || '';
     const date = $('editTaskDueDate').value; const dueAt = date ? localDateTime(date, $('editTaskDueTime').value || '17:00') : null;
     const offset = $('editTaskReminderOffset').value; const remindAt = dueAt && offset !== '' ? new Date(new Date(dueAt).getTime() - Number(offset) * 60000).toISOString() : null;
     const priority = $('editTaskPriority').value;
@@ -1634,21 +1658,9 @@ async function saveEditedTask(event) {
       p_checklist: checklistFromText($('editTaskChecklist')?.value || ''), p_dependencias: selectedValues($('editTaskDependencies'))
     });
     if (error) throw error;
-    if (state.multiAssigneeReady) {
-      if (originalTask?.status === 'nova') {
-        const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_modo_v1', {
-          p_tarefa_id: taskId,
-          p_responsaveis: desiredAssignees,
-          p_modo: desiredResponsibilityMode
-        });
-        if (assigneeError) throw assigneeError;
-      } else if (currentResponsibilityMode === 'compartilhada') {
-        const { error: assigneeError } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: desiredAssignees });
-        if (assigneeError) throw assigneeError;
-      }
-    } else if (desiredAssignee !== originalAssignee) {
-      if (!desiredAssignee) throw new Error('Execute o SQL de múltiplos responsáveis para remover todos os responsáveis.');
-      const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável principal alterado durante a edição da demanda.' });
+    if (desiredAssignee !== originalAssignee) {
+      if (!desiredAssignee) throw new Error('Para retirar um responsável, use o painel da demanda. Transferências precisam ter um destino.');
+      const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável alterado durante a edição da demanda.' });
       if (transferError) throw transferError;
     }
     closeModal('editTaskModal'); await refreshData(); await openTask(taskId); await dispatchPendingPush(); toast('Demanda atualizada.');
@@ -1666,7 +1678,7 @@ async function updateTaskStatus(taskId, status) {
     const { error } = await db.rpc('atualizar_status', { p_tarefa_id: taskId, p_status: status });
     if (error) throw error;
     await refreshData(); if (!$('taskDrawer').classList.contains('hidden')) await openTask(taskId); await dispatchPendingPush();
-    toast(status === 'revisao' ? 'Demanda enviada para revisão. O prazo foi pausado até a decisão do gestor.' : 'Status atualizado.');
+    toast(status === 'revisao' ? 'Demanda enviada para avaliação do gestor.' : 'Status atualizado.');
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskAssignee(taskId, personId) {
@@ -1689,39 +1701,16 @@ function openReminder(reminderId) {
   state.selectedReminder = reminder; state.selectedTask = null;
   $('taskDrawerKicker').textContent = reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'; $('taskDrawerTitle').textContent = reminder.titulo;
   const isOwner = reminder.colaborador_id === state.me.id || reminder.criado_por === state.me.id || isManager();
-  const times = reminderGroupTimesV376(reminder);
-  const creator = collaborator(reminder.criado_por);
-  const recurring = reminder.recorrencia !== 'nenhuma';
-  const multi = times.length > 1;
-  const timesField = multi ? `<div class="detail-field reminder-group-times"><label>Horários da série</label><strong>${times.map(time => `<span>${escapeHtml(time)}</span>`).join('')}</strong></div>` : '';
-  const teamInfo = reminder.visibilidade === 'equipe'
-    ? `<div class="team-reminder-drawer-note"><i data-lucide="users-round"></i><span><strong>Lembrete para toda a equipe</strong><small>Criado por ${escapeHtml(creator?.nome || 'um colaborador')}. Cada pessoa recebe sua própria notificação.</small></span></div>`
-    : '';
-
-  $('taskDrawerContent').innerHTML = `<div class="detail-banner"><p>${escapeHtml(reminder.descricao || 'Sem observações.')}</p><div class="detail-tags"><span class="detail-tag">${reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'}</span><span class="detail-tag">${RECURRENCE[reminder.recorrencia]}</span><span class="detail-tag">${reminder.visibilidade === 'equipe' ? 'Toda a equipe' : 'Pessoal'}</span>${multi ? `<span class="detail-tag">${times.length} horários</span>` : ''}</div></div>
-    ${teamInfo}
-    <div class="detail-grid"><div class="detail-field"><label>Próxima ocorrência</label><strong>${formatDateTime(reminder.inicio_em)}</strong></div><div class="detail-field"><label>Aviso programado</label><strong>${formatDateTime(reminder.adiando_ate || reminder.adiado_ate || reminder.lembrar_em)}</strong></div>${reminder.fim_em ? `<div class="detail-field"><label>Término</label><strong>${formatDateTime(reminder.fim_em)}</strong></div>` : ''}${timesField}<div class="detail-field"><label>Situação</label><strong>${recurring ? 'Recorrência ativa' : reminder.concluido_em ? 'Concluído' : 'Pendente'}</strong></div></div>
-    ${recurring ? `<div class="recurring-reminder-auto-note"><i data-lucide="repeat-2"></i><span><strong>A série avança automaticamente</strong><small>Depois de cada disparo, o próximo horário é preparado sem depender de alguém clicar em “Concluir”.</small></span></div>` : ''}
-    <div class="drawer-footer-actions">${!recurring && !reminder.concluido_em && isOwner ? `<button id="snoozeReminderBtn" class="btn secondary"><i data-lucide="alarm-clock-plus"></i>Adiar 10 min</button><button id="completeReminderBtn" class="btn primary"><i data-lucide="check"></i>Concluir</button>` : ''}${isOwner ? `<button id="editReminderBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar${multi || recurring ? ' série' : ''}</button><button id="deleteReminderBtn" class="btn danger-soft"><i data-lucide="trash-2"></i>Excluir${multi || recurring ? ' série' : ''}</button>` : ''}</div>`;
+  $('taskDrawerContent').innerHTML = `<div class="detail-banner"><div class="markdown-body-v377 markdown-body-inverse-v377">${renderMarkdownV377(reminder.descricao || 'Sem observações.')}</div><div class="detail-tags"><span class="detail-tag">${reminder.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'}</span><span class="detail-tag">${RECURRENCE[reminder.recorrencia]}</span><span class="detail-tag">${reminder.visibilidade === 'equipe' ? 'Equipe' : 'Pessoal'}</span></div></div>
+    <div class="detail-grid"><div class="detail-field"><label>Data e horário</label><strong>${formatDateTime(reminder.inicio_em)}</strong></div><div class="detail-field"><label>Aviso programado</label><strong>${formatDateTime(reminder.adiado_ate || reminder.lembrar_em)}</strong></div>${reminder.fim_em ? `<div class="detail-field"><label>Término</label><strong>${formatDateTime(reminder.fim_em)}</strong></div>` : ''}<div class="detail-field"><label>Situação</label><strong>${reminder.concluido_em ? 'Concluído' : 'Pendente'}</strong></div></div>
+    <div class="drawer-footer-actions">${!reminder.concluido_em && isOwner ? `<button id="snoozeReminderBtn" class="btn secondary"><i data-lucide="alarm-clock-plus"></i>Adiar 10 min</button><button id="completeReminderBtn" class="btn primary"><i data-lucide="check"></i>Concluir</button>` : ''}${isOwner ? `<button id="editReminderBtn" class="btn secondary"><i data-lucide="pencil"></i>Editar</button><button id="deleteReminderBtn" class="btn danger-soft"><i data-lucide="trash-2"></i>Excluir</button>` : ''}</div>`;
   $('snoozeReminderBtn')?.addEventListener('click', () => snoozeReminder(reminder.id, 10)); $('completeReminderBtn')?.addEventListener('click', () => completeReminder(reminder.id));
   $('editReminderBtn')?.addEventListener('click', () => { closeDrawer('taskDrawer'); openQuickAdd(reminder.tipo, { editingReminderId: reminder.id, reminder }); });
-  $('deleteReminderBtn')?.addEventListener('click', () => deleteReminder(reminder.id, Boolean(reminder.grupo_recorrencia || recurring))); openDrawer('taskDrawer'); markNotificationsForTarget('reminder', reminder.id); refreshIcons();
+  $('deleteReminderBtn')?.addEventListener('click', () => deleteReminder(reminder.id)); openDrawer('taskDrawer'); markNotificationsForTarget('reminder', reminder.id); refreshIcons();
 }
 async function snoozeReminder(id, minutes) { setLoading(true); try { const { error } = await db.rpc('adiar_lembrete', { p_id: id, p_minutos: minutes }); if (error) throw error; closeDrawer('taskDrawer'); await refreshData(); toast(`Lembrete adiado por ${minutes} minutos.`); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); } }
 async function completeReminder(id) { setLoading(true); try { const { error } = await db.rpc('concluir_lembrete', { p_id: id }); if (error) throw error; closeDrawer('taskDrawer'); await refreshData(); toast('Lembrete concluído.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); } }
-async function deleteReminder(id, wholeSeries = false) {
-  if (!confirm(wholeSeries ? 'Excluir toda esta série de lembretes? Todos os horários recorrentes serão removidos.' : 'Excluir este item da agenda?')) return;
-  setLoading(true);
-  try {
-    const { error } = wholeSeries
-      ? await db.rpc('excluir_lembrete_grupo_v376', { p_id: id })
-      : await db.rpc('excluir_lembrete', { p_id: id });
-    if (error) throw error;
-    closeDrawer('taskDrawer'); await refreshData();
-    toast(wholeSeries ? 'Série de lembretes excluída.' : 'Item excluído.');
-  } catch (error) { toast(errorMessage(error), 'error'); }
-  finally { setLoading(false); }
-}
+async function deleteReminder(id) { if (!confirm('Excluir este item da agenda?')) return; setLoading(true); try { const { error } = await db.rpc('excluir_lembrete', { p_id: id }); if (error) throw error; closeDrawer('taskDrawer'); await refreshData(); toast('Item excluído.'); } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); } }
 
 function openDrawer(id) { $(id).classList.remove('hidden'); $('drawerBackdrop').classList.remove('hidden'); refreshIcons(); }
 function closeDrawer(id) { $(id).classList.add('hidden'); if ($$('.right-drawer:not(.hidden)').length === 0) $('drawerBackdrop').classList.add('hidden'); }
@@ -2081,11 +2070,6 @@ function playIntrusiveNotificationSound(tone = 'blue') {
 
 function playNotificationArrivalSound(notification) {
   if (!notification || document.hidden) return;
-  if (notification.tarefa_id && ['prazo_proximo','prazo_atrasado'].includes(notification.tipo)) {
-    const task = state.tasks.find(item => item.id === notification.tarefa_id);
-    if (isDeadlinePausedV375(task)) return;
-  }
-  if (isManager() && !managerPopupRelationshipV374(notification)) return;
   const level = notificationLevel(notification);
   if (['critica','importante'].includes(level)) return; // o popup invasivo toca o som
   playNotificationSound(level);
@@ -2123,7 +2107,6 @@ function maybeShowNextIntrusiveNotification() {
   if (!$('intrusiveNotificationModal') || !$('intrusiveNotificationModal').classList.contains('hidden')) return;
   if ($('onboardingModal') && !$('onboardingModal').classList.contains('hidden')) return;
   if ($('profileModal') && !$('profileModal').classList.contains('hidden') && $('profileModal').dataset.required === '1') return;
-  if ($('authorshipConfirmationModal') && !$('authorshipConfirmationModal').classList.contains('hidden')) return;
 
   const notification = state.intrusiveQueue.shift();
   if (!notification || notification.lida) return maybeShowNextIntrusiveNotification();
@@ -2136,67 +2119,8 @@ function maybeShowNextIntrusiveNotification() {
   setTimeout(() => $('intrusiveNotificationOpenBtn')?.focus(), 80);
 }
 
-
-function managerPopupRelationshipV374(notification) {
-  // A regra abaixo vale APENAS para gestores.
-  // Colaboradores continuam recebendo alertas destinados a eles normalmente.
-  if (!isManager()) return true;
-  if (!notification || !state.me) return false;
-
-  const meId = state.me.id;
-
-  // Confirmação de autoria possui fluxo próprio e só existe quando este
-  // gestor foi explicitamente escolhido como executor.
-  if (String(notification.chave_deduplicacao || '').startsWith('autoria-confirmar')) {
-    return (state.authorshipConfirmations || []).some(row =>
-      row.colaborador_id === meId &&
-      row.resposta === 'pendente' &&
-      String(notification.chave_deduplicacao || '').includes(row.revisao_id)
-    );
-  }
-
-  if (notification.tarefa_id) {
-    const task = state.tasks.find(item => item.id === notification.tarefa_id);
-    if (!task) return false; // para gestor, falha fechada: sem contexto, sem popup.
-    if (isDeadlinePausedV375(task) && ['prazo_proximo','prazo_atrasado'].includes(notification.tipo)) return false;
-
-    const createdByMe = task.criado_por === meId;
-    const assignedToMe = taskHasAssignee(task, meId);
-    const finalExecutor = taskFinalExecutorIdsV372(task).includes(meId);
-    const reviewedByMe = task.avaliado_por === meId;
-
-    // Gestor só recebe overlay se realmente tiver vínculo com a demanda.
-    return createdByMe || assignedToMe || finalExecutor || reviewedByMe;
-  }
-
-  if (notification.lembrete_id) {
-    const reminder = state.reminders.find(item => item.id === notification.lembrete_id);
-    if (!reminder) return false;
-    if (reminder.visibilidade === 'equipe') return true;
-    return reminder.colaborador_id === meId || reminder.criado_por === meId;
-  }
-
-  // Notificações genéricas/broadcast sem uma demanda ou lembrete associado
-  // continuam disponíveis na Central de Notificações, mas não sequestram
-  // a tela do gestor com popup.
-  return false;
-}
-
-function shouldShowIntrusivePopupV374(notification) {
-  if (!notification || notification.lida) return false;
-  if (!['critica','importante'].includes(notificationLevel(notification))) return false;
-  return managerPopupRelationshipV374(notification);
-}
-
 function enqueueIntrusiveNotification(notification) {
   if (!notification?.id || notification.lida || intrusiveWasDismissed(notification.id)) return;
-  if (!shouldShowIntrusivePopupV374(notification)) return;
-  // A confirmação de autoria possui um popup próprio com Confirmar/Contestar.
-  // Mantemos a notificação na central/push, mas evitamos dois overlays concorrentes.
-  if (String(notification.chave_deduplicacao || '').startsWith('autoria-confirmar:')) {
-    setTimeout(async () => { await loadAuthorshipV372(); maybeShowAuthorshipConfirmationV372(); }, 120);
-    return;
-  }
   if (!['critica','importante'].includes(notificationLevel(notification))) return;
   if (state.intrusiveActive?.id === notification.id || state.intrusiveShownIds.has(notification.id) || state.intrusiveQueue.some(item => item.id === notification.id)) return;
   state.intrusiveQueue.push(notification);
@@ -2206,7 +2130,7 @@ function enqueueIntrusiveNotification(notification) {
 function queueUnreadIntrusiveNotifications() {
   if (state.intrusiveBootstrapped) return;
   state.intrusiveBootstrapped = true;
-  state.notifications.filter(item => shouldShowIntrusivePopupV374(item)).slice(0, 20).forEach(enqueueIntrusiveNotification);
+  state.notifications.filter(item => !item.lida && ['critica','importante'].includes(notificationLevel(item))).slice(0, 20).forEach(enqueueIntrusiveNotification);
   maybeShowNextIntrusiveNotification();
 }
 
@@ -2268,15 +2192,6 @@ function setupRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'fechamentos_mensais' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'demandas_recorrentes_ocorrencias' }, refreshDebounced)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_responsaveis' }, refreshDebounced)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'demanda_recorrente_responsaveis' }, refreshDebounced)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_autoria_revisoes' }, async () => {
-      await loadAuthorshipV372(); renderAll(); setTimeout(maybeShowAuthorshipConfirmationV372, 180); refreshIcons();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_autoria_confirmacoes' }, async () => {
-      await loadAuthorshipV372(); renderAll(); setTimeout(maybeShowAuthorshipConfirmationV372, 180); refreshIcons();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefa_executores' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificacoes', filter: `colaborador_id=eq.${state.me.id}` }, async payload => {
       await loadNotifications();
       renderNotifications();
@@ -2295,7 +2210,7 @@ function setupRealtime() {
     });
 }
 async function refreshData() {
-  await loadAll(); renderAll(); refreshIcons(); setTimeout(maybeShowAuthorshipConfirmationV372, 180);
+  await loadAll(); renderAll(); refreshIcons();
 }
 
 function parseQuickCapture(text) {
@@ -2314,7 +2229,7 @@ function renderGlobalSearch() {
   $('globalSearchResults').innerHTML = `${tasks.length ? `<div class="search-group-label">Demandas</div>${tasks.map(task => taskSearchResultHTML(task)).join('')}` : ''}${reminders.length ? `<div class="search-group-label">Agenda</div>${reminders.map(item => searchResultHTML('reminder', item.id, item.titulo, `${item.tipo === 'compromisso' ? 'Compromisso' : 'Lembrete'} · ${formatDateTime(item.inicio_em)}`, item.tipo === 'compromisso' ? 'calendar-clock' : 'bell')).join('')}` : ''}${!tasks.length && !reminders.length ? `<div class="empty-state" style="margin:8px"><i data-lucide="search-x"></i>Nenhum resultado encontrado.</div>` : ''}`; refreshIcons();
 }
 function searchResultHTML(type, id, title, meta, icon) { return `<button class="search-result" data-search-${type}="${id}"><span class="search-result-icon"><i data-lucide="${icon}"></i></span><span class="search-result-copy"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(meta)}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
-function taskSearchResultHTML(task) { return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar multi">${taskAssigneeAvatarGroupHTML(task, 'sm', 3)}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${task.projeto ? `${escapeHtml(task.projeto)} · ` : ''}${escapeHtml(taskAssigneeShortNames(task))} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
+function taskSearchResultHTML(task) { const person = collaborator(task.responsavel_id); return `<button class="search-result task-search-result" data-search-task="${task.id}"><span class="search-result-avatar">${taskAvatarHTML(person, task, 'sm')}</span><span class="search-result-copy"><strong>${escapeHtml(task.titulo)}</strong><span>${task.projeto ? `${escapeHtml(task.projeto)} · ` : ''}${escapeHtml(person?.nome || 'Sem responsável')} · ${escapeHtml(STATUS[task.status]?.label || task.status)} · ${escapeHtml(dueLabel(task))}</span></span><i data-lucide="arrow-up-right"></i></button>`; }
 function openSearch() { $('searchModal').classList.remove('hidden'); $('globalSearchInput').value = ''; renderGlobalSearch(); setTimeout(() => $('globalSearchInput').focus(), 40); }
 function closeSearch() { $('searchModal').classList.add('hidden'); }
 
@@ -2721,261 +2636,6 @@ function moveOnboarding(direction) {
 }
 
 
-
-/* =========================================================
-   PMG CONNECT V3.7.2 — AUTORIA DA ENTREGA
-   ========================================================= */
-function isMissingAuthorshipSchemaV372(error) {
-  const text = String(error?.message || error?.details || error || '');
-  return /tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores|PGRST205|42P01|does not exist/i.test(text);
-}
-async function loadAuthorshipV372() {
-  try {
-    const [reviewResult, confirmationResult, executorResult] = await Promise.all([
-      db.from('tarefa_autoria_revisoes').select('*').order('criado_em', { ascending:false }).limit(1800),
-      db.from('tarefa_autoria_confirmacoes').select('*').order('criado_em', { ascending:false }).limit(5000),
-      db.from('tarefa_executores').select('*').order('confirmado_em', { ascending:false }).limit(5000)
-    ]);
-    const error = reviewResult.error || confirmationResult.error || executorResult.error;
-    if (error) throw error;
-    state.authorshipReviews = reviewResult.data || [];
-    state.authorshipConfirmations = confirmationResult.data || [];
-    state.taskExecutors = executorResult.data || [];
-    state.authorshipReady = true;
-  } catch (error) {
-    if (!isMissingAuthorshipSchemaV372(error)) console.warn('[autoria da entrega]', error);
-    state.authorshipReviews = [];
-    state.authorshipConfirmations = [];
-    state.taskExecutors = [];
-    state.authorshipReady = false;
-  }
-}
-function taskFinalExecutorIdsV372(taskOrId) {
-  const taskId = typeof taskOrId === 'string' ? taskOrId : taskOrId?.id;
-  if (!taskId) return [];
-  return uniqueIdsV37((state.taskExecutors || []).filter(row => row.tarefa_id === taskId).map(row => row.colaborador_id));
-}
-function taskFinalExecutorsV372(taskOrId) {
-  return taskFinalExecutorIdsV372(taskOrId).map(collaborator).filter(Boolean);
-}
-function taskAuthorshipReviewV372(taskId) {
-  return (state.authorshipReviews || [])
-    .filter(row => row.tarefa_id === taskId)
-    .sort((a,b) => new Date(b.criado_em || 0) - new Date(a.criado_em || 0))[0] || null;
-}
-function authorshipReviewConfirmationsV372(reviewId) {
-  return (state.authorshipConfirmations || [])
-    .filter(row => row.revisao_id === reviewId)
-    .sort((a,b) => String(a.criado_em || '').localeCompare(String(b.criado_em || '')));
-}
-function myPendingAuthorshipConfirmationsV372() {
-  if (!state.me) return [];
-  const activeReviewIds = new Set((state.authorshipReviews || []).filter(row => row.status === 'aguardando').map(row => row.id));
-  return (state.authorshipConfirmations || [])
-    .filter(row => row.colaborador_id === state.me.id && row.resposta === 'pendente' && activeReviewIds.has(row.revisao_id))
-    .sort((a,b) => new Date(a.criado_em || 0) - new Date(b.criado_em || 0));
-}
-function taskTimeMinutesByPersonV372(taskId, personId) {
-  return (state.timeEntries || [])
-    .filter(entry => entry.tarefa_id === taskId && entry.colaborador_id === personId)
-    .reduce((sum, entry) => {
-      const start = new Date(entry.inicio_em).getTime();
-      const end = new Date(entry.fim_em || Date.now()).getTime();
-      return sum + Math.max(0, Math.round((end - start) / 60000));
-    }, 0);
-}
-function formatMinutesV372(minutes) {
-  const value = Math.max(0, Number(minutes || 0));
-  if (!value) return 'Sem tempo registrado';
-  const hours = Math.floor(value / 60);
-  const mins = value % 60;
-  return hours ? `${hours}h${mins ? ` ${mins}min` : ''} registrados` : `${mins}min registrados`;
-}
-function suggestedExecutorIdsV372(task) {
-  const timed = uniqueIdsV37((state.timeEntries || []).filter(entry => entry.tarefa_id === task.id && entry.colaborador_id).map(entry => entry.colaborador_id));
-  if (timed.length) return timed;
-  const lastReview = taskAuthorshipReviewV372(task.id);
-  if (lastReview) {
-    const previous = authorshipReviewConfirmationsV372(lastReview.id).map(row => row.colaborador_id);
-    if (previous.length) return uniqueIdsV37(previous);
-  }
-  return taskAssigneeIds(task);
-}
-function renderEvaluationExecutorsV372() {
-  const task = state.tasks.find(item => item.id === $('evaluationTaskId')?.value);
-  const list = $('evaluationExecutorList');
-  if (!task || !list) return;
-  const query = ($('evaluationExecutorSearch')?.value || '').trim().toLowerCase();
-  const selected = uniqueIdsV37(state.evaluationExecutorIds);
-  const relevant = new Set(uniqueIdsV37([...taskAssigneeIds(task), ...(state.timeEntries || []).filter(entry => entry.tarefa_id === task.id).map(entry => entry.colaborador_id)]));
-  const people = [...state.collaborators]
-    .filter(person => !query || [person.nome,person.cargo].join(' ').toLowerCase().includes(query))
-    .sort((a,b) => Number(relevant.has(b.id)) - Number(relevant.has(a.id)) || a.nome.localeCompare(b.nome,'pt-BR'));
-
-  list.innerHTML = people.length ? people.map(person => {
-    const isSelected = selected.includes(person.id);
-    const minutes = taskTimeMinutesByPersonV372(task.id, person.id);
-    const badges = [];
-    if (taskAssigneeIds(task).includes(person.id)) badges.push('Responsável');
-    if (minutes > 0) badges.push(formatMinutesV372(minutes));
-    return `<button type="button" class="evaluation-executor-option ${isSelected ? 'selected' : ''}" data-evaluation-executor="${person.id}" aria-pressed="${isSelected}">
-      ${avatarHTML(person,'sm')}
-      <span class="evaluation-executor-option-copy"><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small>${badges.length ? `<em>${escapeHtml(badges.join(' · '))}</em>` : ''}</span>
-      <span class="evaluation-executor-check"><i data-lucide="check"></i></span>
-    </button>`;
-  }).join('') : `<div class="empty-state" style="grid-column:1/-1"><i data-lucide="user-search"></i>Nenhum colaborador encontrado.</div>`;
-
-  const count = selected.length;
-  if ($('evaluationExecutorSummary')) $('evaluationExecutorSummary').textContent = `${count} selecionado${count === 1 ? '' : 's'}`;
-  refreshIcons();
-}
-function toggleEvaluationExecutorV372(personId) {
-  const ids = uniqueIdsV37(state.evaluationExecutorIds);
-  state.evaluationExecutorIds = ids.includes(personId) ? ids.filter(id => id !== personId) : [...ids, personId];
-  renderEvaluationExecutorsV372();
-}
-function authorshipPeopleStatusHTMLV372(review) {
-  if (!review) return '';
-  const rows = authorshipReviewConfirmationsV372(review.id);
-  return rows.map(row => {
-    const person = collaborator(row.colaborador_id);
-    return `<span class="authorship-status-person ${row.resposta}">${avatarHTML(person,'xs')}<span>${escapeHtml(firstName(person?.nome || 'Colaborador'))}</span><b>${row.resposta === 'confirmado' ? '✓' : row.resposta === 'contestado' ? '!' : '...'}</b></span>`;
-  }).join('');
-}
-function evaluationPanelHTMLV372(task, evaluator) {
-  const review = taskAuthorshipReviewV372(task.id);
-  const rows = review ? authorshipReviewConfirmationsV372(review.id) : [];
-  const confirmed = rows.filter(row => row.resposta === 'confirmado').length;
-  const contested = rows.filter(row => row.resposta === 'contestado').length;
-  const pending = rows.filter(row => row.resposta === 'pendente').length;
-  const total = rows.length;
-  const pct = total ? Math.round((confirmed / total) * 100) : 0;
-  const myRow = rows.find(row => row.colaborador_id === state.me?.id);
-
-  if (task.status === 'revisao' && task.avaliacao_status === 'confirmacao_autoria' && review) {
-    if (isManager()) {
-      return `<section class="authorship-status-panel pending">
-        <div class="authorship-status-panel-head"><span><i data-lucide="users-round"></i></span><div><strong>Aguardando confirmação de autoria</strong><small>Você validou a entrega. A demanda será concluída quando todos os executores selecionados confirmarem.</small></div></div>
-        <div class="authorship-progress"><div class="authorship-progress-track"><i style="width:${pct}%"></i></div><strong>${confirmed}/${total} confirmaram</strong></div>
-        <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
-        <div class="authorship-status-actions"><button id="drawerReviewAuthorshipBtn" type="button" class="btn secondary"><i data-lucide="pencil"></i>Revisar nomes</button></div>
-      </section>`;
-    }
-    if (myRow?.resposta === 'pendente') {
-      return `<section class="authorship-status-panel pending">
-        <div class="authorship-status-panel-head"><span><i data-lucide="badge-check"></i></span><div><strong>Sua confirmação é necessária</strong><small>O gestor registrou quem realizou a entrega. Confira os nomes para a demanda poder ser encerrada.</small></div></div>
-        <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
-        <div class="authorship-status-actions"><button id="drawerConfirmAuthorshipBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Confirmar autoria</button></div>
-      </section>`;
-    }
-    return `<section class="authorship-status-panel">
-      <div class="authorship-status-panel-head"><span><i data-lucide="hourglass"></i></span><div><strong>${myRow?.resposta === 'confirmado' ? 'Você já confirmou a autoria' : 'Autoria em confirmação'}</strong><small>${pending ? `Ainda faltam ${pending} confirmação${pending === 1 ? '' : 'ões'} para encerrar a demanda.` : 'Aguardando processamento da validação.'}</small></div></div>
-      <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
-    </section>`;
-  }
-
-  if (task.status === 'revisao' && task.avaliacao_status === 'autoria_contestada' && review) {
-    const contestedRows = rows.filter(row => row.resposta === 'contestado');
-    const detail = contestedRows.map(row => {
-      const person = collaborator(row.colaborador_id);
-      return `${firstName(person?.nome || 'Colaborador')}: ${row.observacao || 'contestou a autoria'}`;
-    }).join(' · ');
-    if (isManager()) {
-      return `<section class="authorship-status-panel contested">
-        <div class="authorship-status-panel-head"><span><i data-lucide="message-square-warning"></i></span><div><strong>Autoria contestada</strong><small>${escapeHtml(detail || 'Um dos participantes discordou dos nomes registrados.')} Revise os executores e envie uma nova confirmação.</small></div></div>
-        <div class="authorship-status-people">${authorshipPeopleStatusHTMLV372(review)}</div>
-        <div class="authorship-status-actions"><button id="drawerReviewAuthorshipBtn" type="button" class="btn primary"><i data-lucide="users-round"></i>Revisar autoria</button></div>
-      </section>`;
-    }
-    return `<section class="authorship-status-panel contested">
-      <div class="authorship-status-panel-head"><span><i data-lucide="message-square-warning"></i></span><div><strong>Autoria em revisão</strong><small>Houve uma contestação e o gestor precisa revisar os nomes antes de concluir a demanda.</small></div></div>
-    </section>`;
-  }
-
-  if (task.status === 'revisao') {
-    return isManager()
-      ? `<section class="manager-evaluation-panel"><div class="manager-evaluation-icon"><i data-lucide="scan-eye"></i></div><div><span class="eyebrow">Sua ação é necessária</span><h3>O colaborador solicitou a conclusão</h3><p>Confira o resultado e registre quem realmente realizou a entrega. Os executores confirmarão a autoria antes do encerramento.</p></div><div class="manager-evaluation-actions"><button id="drawerRejectEvaluationBtn" type="button" class="btn secondary"><i data-lucide="undo-2"></i>Devolver para ajustes</button><button id="drawerApproveEvaluationBtn" type="button" class="btn primary"><i data-lucide="users-round"></i>Validar e atribuir autoria</button></div></section>`
-      : `<section class="manager-evaluation-panel waiting"><div class="manager-evaluation-icon"><i data-lucide="hourglass"></i></div><div><span class="eyebrow">Aguardando gestor</span><h3>Sua entrega foi enviada para avaliação</h3><p>O gestor vai validar o resultado e registrar quem participou da execução.</p></div></section>`;
-  }
-
-  if (task.avaliacao_status === 'ajustes' && task.avaliacao_observacao) {
-    return `<section class="evaluation-feedback adjustments"><span><i data-lucide="message-square-warning"></i></span><div><strong>Ajustes solicitados${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${escapeHtml(task.avaliacao_observacao)}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`;
-  }
-
-  if (task.avaliacao_status === 'aprovada') {
-    const executors = taskFinalExecutorsV372(task);
-    const names = executors.length ? executors.map(person => firstName(person.nome)).join(', ') : '';
-    return `<section class="evaluation-feedback approved"><span><i data-lucide="badge-check"></i></span><div><strong>Conclusão aprovada${evaluator ? ` por ${escapeHtml(firstName(evaluator.nome))}` : ''}</strong><p>${names ? `Autoria confirmada: ${escapeHtml(names)}.` : escapeHtml(task.avaliacao_observacao || 'Entrega validada e encerrada.')}</p><small>${task.avaliado_em ? formatDateTime(task.avaliado_em) : ''}</small></div></section>`;
-  }
-  return '';
-}
-
-function openAuthorshipConfirmationV372(confirmation) {
-  if (!confirmation) return;
-  const review = (state.authorshipReviews || []).find(row => row.id === confirmation.revisao_id);
-  if (!review || review.status !== 'aguardando') return;
-  const task = state.tasks.find(item => item.id === review.tarefa_id);
-  if (!task) return;
-  const manager = collaborator(review.gestor_id);
-  const rows = authorshipReviewConfirmationsV372(review.id);
-  const people = rows.map(row => collaborator(row.colaborador_id)).filter(Boolean);
-
-  $('authorshipConfirmationReviewId').value = review.id;
-  $('authorshipContestReason').value = '';
-  $('authorshipContestBox').classList.add('hidden');
-  $('authorshipConfirmationFooter').classList.remove('hidden');
-
-  $('authorshipConfirmationTask').innerHTML = `<span><i data-lucide="clipboard-check"></i></span><div><small>${manager ? `Revisada por ${escapeHtml(manager.nome)}` : 'Revisão do gestor'}</small><strong>${escapeHtml(task.titulo)}</strong><em>${escapeHtml(task.descricao || 'Sem descrição registrada.')}</em></div>`;
-  $('authorshipConfirmationCount').textContent = `${people.length} pessoa${people.length === 1 ? '' : 's'}`;
-  $('authorshipConfirmationPeople').innerHTML = people.map(person => `<div class="authorship-confirmation-person">${avatarHTML(person,'sm')}<span><strong>${escapeHtml(person.nome)}</strong><small>${escapeHtml(person.cargo || 'Marketing')}</small></span><b>${person.id === state.me.id ? 'VOCÊ' : 'EXECUTOR'}</b></div>`).join('');
-  $('authorshipConfirmationManagerNote').classList.toggle('hidden', !review.observacao_gestor);
-  $('authorshipConfirmationManagerNote').innerHTML = review.observacao_gestor ? `<strong>Observação do gestor:</strong> ${escapeHtml(review.observacao_gestor)}` : '';
-  $('authorshipConfirmationModal').classList.remove('hidden');
-  refreshIcons();
-}
-function maybeShowAuthorshipConfirmationV372() {
-  if (!state.authorshipReady || !state.me || !$('authorshipConfirmationModal')?.classList.contains('hidden')) return;
-  if (!$('intrusiveNotificationModal')?.classList.contains('hidden')) return;
-  const pending = myPendingAuthorshipConfirmationsV372().find(row => !state.authorshipPostponed.has(row.revisao_id));
-  if (pending) openAuthorshipConfirmationV372(pending);
-}
-function postponeAuthorshipConfirmationV372() {
-  const reviewId = $('authorshipConfirmationReviewId')?.value;
-  if (reviewId) state.authorshipPostponed.add(reviewId);
-  closeModal('authorshipConfirmationModal');
-}
-async function respondAuthorshipConfirmationV372(confirm) {
-  const reviewId = $('authorshipConfirmationReviewId')?.value;
-  if (!reviewId) return;
-  const reason = $('authorshipContestReason')?.value.trim() || '';
-  if (!confirm && !reason) {
-    $('authorshipContestReason')?.focus();
-    return toast('Explique rapidamente o que está incorreto na autoria.', 'error');
-  }
-  setLoading(true);
-  try {
-    const { data, error } = await db.rpc('responder_confirmacao_autoria_v1', {
-      p_revisao_id: reviewId,
-      p_confirmar: Boolean(confirm),
-      p_observacao: reason || null
-    });
-    if (error) throw error;
-    closeModal('authorshipConfirmationModal');
-    state.authorshipPostponed.delete(reviewId);
-    await refreshData();
-    await dispatchPendingPush();
-    const result = data || {};
-    if (confirm && result?.concluida) toast('Autoria confirmada. Todos responderam e a demanda foi concluída.');
-    else if (confirm) toast('Sua confirmação foi registrada. Aguardando os demais executores.');
-    else toast('Contestação enviada ao gestor. A demanda continuará em revisão.');
-    setTimeout(maybeShowAuthorshipConfirmationV372, 500);
-  } catch (error) {
-    toast(errorMessage(error),'error');
-  } finally {
-    setLoading(false);
-  }
-}
-
 /* =========================================================
    DEMANDAS V3 — OPERAÇÃO, ACADEMIA, RELATÓRIOS E ACESSIBILIDADE
    ========================================================= */
@@ -3018,68 +2678,23 @@ function openTaskEvaluation(taskId = state.selectedTask?.id) {
   const person = collaborator(task.responsavel_id);
   $('evaluationTaskId').value = task.id;
   $('evaluationNote').value = task.avaliacao_observacao || '';
-  $('evaluationExecutorSearch').value = '';
-  state.evaluationExecutorIds = suggestedExecutorIdsV372(task);
-
-  const people = taskAssigneePeople(task);
-  const submittedBy = person || people[0] || null;
-  $('evaluationTaskSummary').innerHTML = `<div class="evaluation-summary-person">${taskAssigneeAvatarGroupHTML(task,'lg',4)}<div><span>Entrega enviada pela equipe</span><strong>${escapeHtml(people.length ? taskAssigneeShortNames(task) : submittedBy?.nome || 'Sem responsável')}</strong><small>${people.length > 1 ? `${people.length} responsáveis vinculados` : escapeHtml(submittedBy?.cargo || 'Marketing')}</small></div></div><div class="evaluation-summary-task"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade] || 'Média'}</span><h3>${escapeHtml(task.titulo)}</h3><p>${escapeHtml(task.descricao || 'Sem descrição registrada.')}</p><div><span><i data-lucide="clock-3"></i>${formatHours(sizeWeight(task))} estimadas</span><span><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div></div>`;
-  renderEvaluationExecutorsV372();
-  $('taskEvaluationModal').classList.remove('hidden');
-  refreshIcons();
+  $('evaluationTaskSummary').innerHTML = `<div class="evaluation-summary-person">${avatarHTML(person, 'lg')}<div><span>Entrega enviada por</span><strong>${escapeHtml(person?.nome || 'Sem responsável')}</strong><small>${escapeHtml(person?.cargo || 'Marketing')}</small></div></div><div class="evaluation-summary-task"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade] || 'Média'}</span><h3>${escapeHtml(task.titulo)}</h3><div class="markdown-body-v377 evaluation-summary-markdown-v377">${renderMarkdownV377(task.descricao || 'Sem descrição registrada.')}</div><div><span><i data-lucide="clock-3"></i>${formatHours(sizeWeight(task))} estimadas</span><span><i data-lucide="calendar-clock"></i>${escapeHtml(dueLabel(task))}</span></div></div>`;
+  $('taskEvaluationModal').classList.remove('hidden'); refreshIcons();
 }
 
 async function submitTaskEvaluation(approved) {
   const taskId = $('evaluationTaskId').value;
   const note = $('evaluationNote').value.trim();
-  if (!approved && !note) {
-    $('evaluationNote').focus();
-    return toast('Informe o que precisa ser ajustado antes de devolver a demanda.', 'error');
-  }
-
-  if (approved) {
-    if (!state.authorshipReady) return toast('Execute o SQL 12-CONFIRMACAO-AUTORIA-V3-7-2.sql antes de aprovar novas conclusões.', 'error');
-    const executors = uniqueIdsV37(state.evaluationExecutorIds);
-    if (!executors.length) return toast('Selecione pelo menos uma pessoa que realizou a demanda.', 'error');
-  }
-
+  if (!approved && !note) { $('evaluationNote').focus(); return toast('Informe o que precisa ser ajustado antes de devolver a demanda.', 'error'); }
   setLoading(true);
   try {
-    if (approved) {
-      const executors = uniqueIdsV37(state.evaluationExecutorIds);
-      const { data, error } = await db.rpc('solicitar_confirmacao_autoria_v1', {
-        p_tarefa_id: taskId,
-        p_executores: executors,
-        p_observacao: note || null
-      });
-      if (error) throw error;
-      closeModal('taskEvaluationModal');
-      await refreshData();
-      await dispatchPendingPush();
-      if (state.tasks.some(task => task.id === taskId)) await openTask(taskId);
-      const selectedManagers = executors.filter(id => collaborator(id)?.role === 'gestor');
-      toast(selectedManagers.length
-        ? `Entrega validada. Aguardando confirmação de ${selectedManagers.length} gestor${selectedManagers.length === 1 ? '' : 'es'} participante${selectedManagers.length === 1 ? '' : 's'}.`
-        : 'Entrega validada e autoria registrada. Nenhum gestor executor precisava confirmar.');
-      return;
-    }
-
-    const { error } = await db.rpc('avaliar_conclusao', {
-      p_tarefa_id: taskId,
-      p_aprovado: false,
-      p_observacao: note || null
-    });
+    const { error } = await db.rpc('avaliar_conclusao', { p_tarefa_id: taskId, p_aprovado: approved, p_observacao: note || null });
     if (error) throw error;
-    closeModal('taskEvaluationModal');
-    await refreshData();
-    await dispatchPendingPush();
+    closeModal('taskEvaluationModal'); await refreshData(); await dispatchPendingPush();
     if (state.tasks.some(task => task.id === taskId)) await openTask(taskId);
-    toast('Demanda devolvida para ajustes.');
-  } catch (error) {
-    toast(errorMessage(error),'error');
-  } finally {
-    setLoading(false);
-  }
+    toast(approved ? 'Conclusão aprovada. Demanda encerrada.' : 'Demanda devolvida para ajustes.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
 }
 
 function openTransferTask(taskId = state.selectedTask?.id) {
@@ -3369,17 +2984,17 @@ function buildMonthlyReport(value){
   const {start,end,label}=monthBounds(value),operators=state.collaborators.filter(p=>p.role!=='gestor');
   const operatorIds=new Set(operators.map(p=>p.id));
   const rows=operators.map(person=>{
-    const completed=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
-    const created=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
-    const overdue=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&!t.arquivada_em&&isOverdue(t));
-    const active=state.tasks.filter(t=>taskHasAssignee(t, person.id)&&!t.arquivada_em&&t.status!=='concluida');
+    const completed=state.tasks.filter(t=>t.responsavel_id===person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=start&&new Date(t.concluida_em||t.atualizado_em)<end);
+    const created=state.tasks.filter(t=>t.responsavel_id===person.id&&new Date(t.criado_em)>=start&&new Date(t.criado_em)<end);
+    const overdue=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&isOverdue(t));
+    const active=state.tasks.filter(t=>t.responsavel_id===person.id&&!t.arquivada_em&&t.status!=='concluida');
     const approved=completed.filter(t=>t.avaliacao_status==='aprovada').length;
     const immediates=completed.filter(t=>t.prioridade==='imediata').length;
     const hours=completed.reduce((sum,t)=>sum+sizeWeight(t),0);
     const deadlineCompleted=completed.filter(t=>taskDue(t)&&t.concluida_em);
     const onTime=deadlineCompleted.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
     const onTimeRate=deadlineCompleted.length?Math.round((onTime/deadlineCompleted.length)*100):null;
-    const cycleValues=completed.filter(t=>t.criado_em&&(t.concluida_em||t.atualizado_em)).map(t=>Math.max(0,((new Date(t.concluida_em||t.atualizado_em)-new Date(t.criado_em))-Math.max(0,Number(t.prazo_pausado_total_segundos||0)*1000))/86400000));
+    const cycleValues=completed.filter(t=>t.criado_em&&(t.concluida_em||t.atualizado_em)).map(t=>Math.max(0,(new Date(t.concluida_em||t.atualizado_em)-new Date(t.criado_em))/86400000));
     const avgCycle=cycleValues.length?cycleValues.reduce((a,b)=>a+b,0)/cycleValues.length:null;
     const transfersIn=state.transfers.filter(tr=>tr.para_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
     const transfersOut=state.transfers.filter(tr=>tr.de_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
@@ -3598,39 +3213,7 @@ function bindEvents() {
   $('transferTaskForm')?.addEventListener('submit', submitTransferTask);
   $('transferAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'transferAssignee', previewId: 'transferAssigneePreview', title: 'Transferir para' }));
   $('evaluationApproveBtn')?.addEventListener('click', () => submitTaskEvaluation(true));
-  $('reminderRecurrence')?.addEventListener('change', syncReminderMultiTimeUIV376);
-  $('reminderTime')?.addEventListener('change', renderReminderExtraTimesV376);
-  $('addReminderTimeBtn')?.addEventListener('click', addReminderExtraTimeV376);
-  $('reminderExtraTimesList')?.addEventListener('input', event => {
-    const input = event.target.closest('[data-reminder-extra-time]');
-    if (!input) return;
-    state.reminderExtraTimes[Number(input.dataset.reminderExtraTime)] = input.value;
-  });
-  $('reminderExtraTimesList')?.addEventListener('change', renderReminderExtraTimesV376);
-  $('reminderExtraTimesList')?.addEventListener('click', event => {
-    const button = event.target.closest('[data-remove-reminder-time]');
-    if (!button) return;
-    state.reminderExtraTimes.splice(Number(button.dataset.removeReminderTime), 1);
-    renderReminderExtraTimesV376();
-  });
   $('evaluationRejectBtn')?.addEventListener('click', () => submitTaskEvaluation(false));
-  $('evaluationExecutorSearch')?.addEventListener('input', renderEvaluationExecutorsV372);
-  $('evaluationExecutorList')?.addEventListener('click', event => {
-    const button = event.target.closest('[data-evaluation-executor]');
-    if (button) toggleEvaluationExecutorV372(button.dataset.evaluationExecutor);
-  });
-  $('authorshipConfirmBtn')?.addEventListener('click', () => respondAuthorshipConfirmationV372(true));
-  $('authorshipDisputeBtn')?.addEventListener('click', () => {
-    $('authorshipContestBox')?.classList.remove('hidden');
-    $('authorshipConfirmationFooter')?.classList.add('hidden');
-    $('authorshipContestReason')?.focus();
-  });
-  $('authorshipCancelContestBtn')?.addEventListener('click', () => {
-    $('authorshipContestBox')?.classList.add('hidden');
-    $('authorshipConfirmationFooter')?.classList.remove('hidden');
-  });
-  $('authorshipSendContestBtn')?.addEventListener('click', () => respondAuthorshipConfirmationV372(false));
-  $('authorshipLaterBtn')?.addEventListener('click', postponeAuthorshipConfirmationV372);
   $('teamMonthlyReportBtn')?.addEventListener('click', openMonthlyReport);
   $('monthlyReportMonth')?.addEventListener('change', renderMonthlyReport);
   $('monthlyReportCsvBtn')?.addEventListener('click', exportMonthlyReportCsv);
@@ -3671,10 +3254,8 @@ function bindEvents() {
   $('academyImportMapping')?.addEventListener('change', event => { const select = event.target.closest('[data-academy-map]'); if (!select) return; state.academyImportMap[select.dataset.academyMap] = select.value; renderAcademyImportPreview(); });
   $('academyImportConfirmBtn')?.addEventListener('click', importAcademyFormsRows);
   ['academyDate','academyStartTime','academyEndTime'].forEach(id => $(id)?.addEventListener('change', updateAcademyConflictPreview));
-  $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', jsonInputId: 'itemAssigneesJson', multi: true, title: 'Selecionar responsáveis' }));
-  $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', jsonInputId: 'editTaskAssigneesJson', multi: true, title: 'Gerenciar responsáveis' }));
-  $('recurrenceEditAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'recurrenceEditAssignee', previewId: 'recurrenceEditAssigneePreview', jsonInputId: 'recurrenceEditAssigneesJson', multi: true, title: 'Responsáveis da recorrência' }));
-  $('assigneePickerApplyBtn')?.addEventListener('click', applyAssigneePickerSelection);
+  $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', title: 'Selecionar responsável' }));
+  $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', title: 'Alterar responsável' }));
   $('assigneePickerSearch')?.addEventListener('input', debounce(event => { state.assigneePicker.search = event.target.value; renderAssigneePicker(); }, 100));
   $('userMenuTrigger')?.addEventListener('click', toggleUserMenu);
   $('userMenuProfileBtn')?.addEventListener('click', () => { closeUserMenu(); openProfile(false); });
@@ -3727,8 +3308,6 @@ function bindEvents() {
     const trainingType = event.target.closest('[data-training-type]'); if (trainingType) { setAcademyTrainingType(trainingType.dataset.trainingType); return; }
     const choice = event.target.closest('[data-choice-target]');
     if (choice) { const select = $(choice.dataset.choiceTarget); if (select) { select.value = choice.dataset.choiceValue; syncChoiceCards(choice.dataset.choiceTarget); if (['itemPriority','editTaskPriority'].includes(choice.dataset.choiceTarget)) syncImmediateAudience(choice.dataset.choiceTarget === 'editTaskPriority' ? 'editTask' : 'item'); } return; }
-    const assigneeClear = event.target.closest('[data-assignee-clear]');
-    if (assigneeClear) { state.assigneePicker.selectedIds = []; renderAssigneePicker(); return; }
     const assigneeChoice = event.target.closest('[data-assignee-choice]');
     if (assigneeChoice) { chooseAssignee(assigneeChoice.dataset.assigneeChoice); return; }
     const avatarFilter = event.target.closest('[data-avatar-filter]');
@@ -4012,7 +3591,7 @@ function dependencyPanelHTML(task) {
 function checklistPanelHTML(task) {
   const list = normalizeChecklist(task.checklist);
   const done = list.filter(item => item.concluido).length;
-  const canEdit = !task.arquivada_em && task.status !== 'concluida' && (isManager() || taskHasAssignee(task, state.me?.id));
+  const canEdit = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
   const percent = list.length ? Math.round(done / list.length * 100) : 0;
   return `<section class="productivity-card checklist-card"><div class="productivity-card-head"><div><span class="eyebrow">Execução</span><h3>Checklist da demanda</h3></div><span class="checklist-progress-label">${done}/${list.length || 0} · ${percent}%</span></div>${list.length ? `<div class="checklist-progress-track"><i style="width:${percent}%"></i></div><div class="checklist-items">${list.map((item, index) => `<button type="button" class="checklist-item ${item.concluido ? 'done' : ''}" data-checklist-toggle="${index}" ${canEdit ? '' : 'disabled'}><span><i data-lucide="${item.concluido ? 'check' : 'circle'}"></i></span><strong>${escapeHtml(item.texto)}</strong></button>`).join('')}</div>` : `<div class="productivity-empty"><i data-lucide="list-checks"></i><span>Sem checklist. O gestor pode adicionar itens em Editar detalhes.</span></div>`}</section>`;
 }
@@ -4025,7 +3604,7 @@ function timerPanelHTML(task) {
   const percent = estimated > 0 ? Math.min(160, Math.round(actualHours / estimated * 100)) : 0;
   const active = activeTimerFor(state.me?.id, task.id);
   const another = activeTimerFor(state.me?.id);
-  const canTrack = !task.arquivada_em && task.status !== 'concluida' && (isManager() || taskHasAssignee(task, state.me?.id));
+  const canTrack = !task.arquivada_em && task.status !== 'concluida' && (isManager() || task.responsavel_id === state.me?.id);
   const action = active
     ? `<button type="button" class="time-action stop" data-task-time-stop="${task.id}"><i data-lucide="square"></i><span><strong>Pausar cronômetro</strong><small id="taskLiveTimer">${formatMinutesHuman(entryElapsedMinutes(active))}</small></span></button>`
     : canTrack
@@ -4073,8 +3652,6 @@ async function toggleChecklistItem(index) {
 }
 
 async function startTaskTimer(taskId) {
-  const task = state.tasks.find(item => item.id === taskId);
-  if (taskRaceIsOpenV371(task)) return toast('Primeiro clique em Iniciar demanda para assumir a tarefa. Depois disso o cronômetro fica disponível.', 'error');
   setLoading(true);
   try {
     const { error } = await db.rpc('iniciar_tempo_tarefa', { p_tarefa_id: taskId });
@@ -4118,10 +3695,10 @@ function buildMonthlyReport(value) {
   const actualHoursForPerson = personId => monthTimes.filter(entry => entry.colaborador_id === personId).reduce((sum, entry) => sum + entryMinutesInsideMonth(entry, start, end), 0) / 60;
 
   const rows = operators.map(person => {
-    const completed = state.tasks.filter(task => taskHasAssignee(task, person.id) && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= start && new Date(task.concluida_em || task.atualizado_em) < end);
-    const created = state.tasks.filter(task => taskHasAssignee(task, person.id) && new Date(task.criado_em) >= start && new Date(task.criado_em) < end);
-    const overdue = state.tasks.filter(task => taskHasAssignee(task, person.id) && !task.arquivada_em && isOverdue(task));
-    const active = state.tasks.filter(task => taskHasAssignee(task, person.id) && !task.arquivada_em && task.status !== 'concluida');
+    const completed = state.tasks.filter(task => task.responsavel_id === person.id && task.status === 'concluida' && new Date(task.concluida_em || task.atualizado_em) >= start && new Date(task.concluida_em || task.atualizado_em) < end);
+    const created = state.tasks.filter(task => task.responsavel_id === person.id && new Date(task.criado_em) >= start && new Date(task.criado_em) < end);
+    const overdue = state.tasks.filter(task => task.responsavel_id === person.id && !task.arquivada_em && isOverdue(task));
+    const active = state.tasks.filter(task => task.responsavel_id === person.id && !task.arquivada_em && task.status !== 'concluida');
     const approved = completed.filter(task => task.avaliacao_status === 'aprovada').length;
     const immediates = completed.filter(task => task.prioridade === 'imediata').length;
     const estimatedHours = completed.reduce((sum, task) => sum + sizeWeight(task), 0);
@@ -4129,11 +3706,7 @@ function buildMonthlyReport(value) {
     const deadlineCompleted = completed.filter(task => taskDue(task) && task.concluida_em);
     const onTime = deadlineCompleted.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
     const onTimeRate = deadlineCompleted.length ? Math.round(onTime / deadlineCompleted.length * 100) : null;
-    const cycleValues = completed.filter(task => task.criado_em && (task.concluida_em || task.atualizado_em)).map(task => {
-      const grossMs = new Date(task.concluida_em || task.atualizado_em) - new Date(task.criado_em);
-      const pausedMs = Math.max(0, Number(task.prazo_pausado_total_segundos || 0) * 1000);
-      return Math.max(0, (grossMs - pausedMs) / 86400000);
-    });
+    const cycleValues = completed.filter(task => task.criado_em && (task.concluida_em || task.atualizado_em)).map(task => Math.max(0, (new Date(task.concluida_em || task.atualizado_em) - new Date(task.criado_em)) / 86400000));
     const avgCycle = cycleValues.length ? cycleValues.reduce((a, b) => a + b, 0) / cycleValues.length : null;
     const transfersIn = state.transfers.filter(item => item.para_colaborador_id === person.id && new Date(item.criado_em) >= start && new Date(item.criado_em) < end);
     const transfersOut = state.transfers.filter(item => item.de_colaborador_id === person.id && new Date(item.criado_em) >= start && new Date(item.criado_em) < end);
@@ -4348,10 +3921,10 @@ function smartDayTaskHTML(task) {
 
 function forecastHours(personId, days) {
   const limit = addDays(new Date(), days).getTime();
-  return state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && taskHasAssignee(task, personId)).filter(task => {
+  return state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && task.responsavel_id === personId).filter(task => {
     const due = taskDue(task); if (!due) return days >= 30;
     return new Date(due).getTime() <= limit;
-  }).reduce((sum, task) => sum + taskEffortShare(task), 0);
+  }).reduce((sum, task) => sum + sizeWeight(task), 0);
 }
 function forecastPercent(hours, days) {
   const capacity = TEAM_CAPACITY_HOURS * Math.max(1, days / 7);
@@ -4414,18 +3987,18 @@ function renderProjects() {
   if(state.selectedProjectId){const p=projectCatalog().find(x=>x.id===state.selectedProjectId||x.nome===state.selectedProjectId); if(p)renderProjectDetail(p); else $('projectDetail').classList.add('hidden');}
   refreshIcons();
 }
-function projectCardHTML(project,stats){const owner=collaborator(project.responsavel_id);const status=project.status||'ativo';return `<article class="project-card status-${status}" data-open-project="${escapeHtml(project.id||project.nome)}"><div class="project-card-head"><span class="project-card-icon"><i data-lucide="folder-kanban"></i></span><div><span class="project-status ${status}">${status==='concluido'?'Concluído':status==='planejado'?'Planejado':status==='pausado'?'Pausado':'Ativo'}</span><h3>${escapeHtml(project.nome)}</h3><p>${escapeHtml(project.objetivo||'Projeto criado a partir das demandas existentes.')}</p></div><button class="icon-btn subtle manager-only" type="button" data-edit-project="${escapeHtml(project.id||'')}" ${project.registered?'':'disabled'} title="Editar projeto"><i data-lucide="pencil"></i></button></div><div class="project-progress"><span><strong>${stats.progress}%</strong><small>${stats.completed.length}/${stats.tasks.length} concluídas</small></span><div><i style="width:${stats.progress}%"></i></div></div><div class="project-card-metrics"><span><strong>${stats.active.length}</strong><small>abertas</small></span><span class="${stats.overdue.length?'danger':''}"><strong>${stats.overdue.length}</strong><small>atrasadas</small></span><span><strong>${formatHours(stats.actual)}</strong><small>reais</small></span><span><strong>${formatHours(stats.estimated)}</strong><small>estimadas</small></span></div><footer>${owner?avatarHTML(owner,'sm'):`<span class="project-owner-empty"><i data-lucide="user-round"></i></span>`}<span>${escapeHtml(owner?.nome||'Sem responsável principal')}</span><small>${project.prazo_em?`Prazo ${formatPlainDate(project.prazo_em)}`:'Sem prazo final'}</small></footer></article>`;}
-function renderProjectDetail(project){const el=$('projectDetail');if(!el)return;const s=projectStats(project);const ordered=[...s.tasks].sort((a,b)=>new Date(taskDue(a)||'9999-12-31')-new Date(taskDue(b)||'9999-12-31'));const ids=new Set(ordered.map(t=>t.id));const edges=state.dependencies.filter(d=>ids.has(d.tarefa_id)&&ids.has(d.depende_de_tarefa_id));el.classList.remove('hidden');el.innerHTML=`<div class="project-detail-head"><div><span class="eyebrow">Timeline e dependências</span><h3>${escapeHtml(project.nome)}</h3><p>${escapeHtml(project.objetivo||'Acompanhe a sequência das entregas e onde o fluxo está bloqueado.')}</p></div><button class="icon-btn subtle" data-close-project-detail title="Fechar"><i data-lucide="x"></i></button></div><div class="project-timeline">${ordered.length?ordered.map((t,i)=>{const deps=edges.filter(d=>d.tarefa_id===t.id).map(d=>state.tasks.find(x=>x.id===d.depende_de_tarefa_id)).filter(Boolean);return `<button class="project-timeline-task ${t.status} ${isOverdue(t)?'late':''} ${taskIsBlocked(t.id)?'blocked':''}" data-open-task="${t.id}"><span class="project-timeline-index">${i+1}</span><div><strong>${escapeHtml(t.titulo)}</strong><small>${STATUS[t.status]?.label||t.status} · ${escapeHtml(dueLabel(t))}${deps.length?` · depende de ${deps.map(x=>x.titulo).join(', ')}`:''}</small></div><span class="priority-pill ${t.prioridade}">${PRIORITY[t.prioridade]}</span><i data-lucide="chevron-right"></i></button>`}).join(''):`<div class="empty-state"><i data-lucide="workflow"></i>Nenhuma demanda vinculada a este projeto.</div>`}</div>`;refreshIcons();}
+function projectCardHTML(project,stats){const owner=collaborator(project.responsavel_id);const status=project.status||'ativo';return `<article class="project-card status-${status}" data-open-project="${escapeHtml(project.id||project.nome)}"><div class="project-card-head"><span class="project-card-icon"><i data-lucide="folder-kanban"></i></span><div><span class="project-status ${status}">${status==='concluido'?'Concluído':status==='planejado'?'Planejado':status==='pausado'?'Pausado':'Ativo'}</span><h3>${escapeHtml(project.nome)}</h3><p>${escapeHtml(markdownPlainTextV377(project.objetivo||'Projeto criado a partir das demandas existentes.'))}</p></div><button class="icon-btn subtle manager-only" type="button" data-edit-project="${escapeHtml(project.id||'')}" ${project.registered?'':'disabled'} title="Editar projeto"><i data-lucide="pencil"></i></button></div><div class="project-progress"><span><strong>${stats.progress}%</strong><small>${stats.completed.length}/${stats.tasks.length} concluídas</small></span><div><i style="width:${stats.progress}%"></i></div></div><div class="project-card-metrics"><span><strong>${stats.active.length}</strong><small>abertas</small></span><span class="${stats.overdue.length?'danger':''}"><strong>${stats.overdue.length}</strong><small>atrasadas</small></span><span><strong>${formatHours(stats.actual)}</strong><small>reais</small></span><span><strong>${formatHours(stats.estimated)}</strong><small>estimadas</small></span></div><footer>${owner?avatarHTML(owner,'sm'):`<span class="project-owner-empty"><i data-lucide="user-round"></i></span>`}<span>${escapeHtml(owner?.nome||'Sem responsável principal')}</span><small>${project.prazo_em?`Prazo ${formatPlainDate(project.prazo_em)}`:'Sem prazo final'}</small></footer></article>`;}
+function renderProjectDetail(project){const el=$('projectDetail');if(!el)return;const s=projectStats(project);const ordered=[...s.tasks].sort((a,b)=>new Date(taskDue(a)||'9999-12-31')-new Date(taskDue(b)||'9999-12-31'));const ids=new Set(ordered.map(t=>t.id));const edges=state.dependencies.filter(d=>ids.has(d.tarefa_id)&&ids.has(d.depende_de_tarefa_id));el.classList.remove('hidden');el.innerHTML=`<div class="project-detail-head"><div><span class="eyebrow">Timeline e dependências</span><h3>${escapeHtml(project.nome)}</h3><div class="markdown-body-v377 project-markdown-v377">${renderMarkdownV377(project.objetivo||'Acompanhe a sequência das entregas e onde o fluxo está bloqueado.')}</div></div><button class="icon-btn subtle" data-close-project-detail title="Fechar"><i data-lucide="x"></i></button></div><div class="project-timeline">${ordered.length?ordered.map((t,i)=>{const deps=edges.filter(d=>d.tarefa_id===t.id).map(d=>state.tasks.find(x=>x.id===d.depende_de_tarefa_id)).filter(Boolean);return `<button class="project-timeline-task ${t.status} ${isOverdue(t)?'late':''} ${taskIsBlocked(t.id)?'blocked':''}" data-open-task="${t.id}"><span class="project-timeline-index">${i+1}</span><div><strong>${escapeHtml(t.titulo)}</strong><small>${STATUS[t.status]?.label||t.status} · ${escapeHtml(dueLabel(t))}${deps.length?` · depende de ${deps.map(x=>x.titulo).join(', ')}`:''}</small></div><span class="priority-pill ${t.prioridade}">${PRIORITY[t.prioridade]}</span><i data-lucide="chevron-right"></i></button>`}).join(''):`<div class="empty-state"><i data-lucide="workflow"></i>Nenhuma demanda vinculada a este projeto.</div>`}</div>`;refreshIcons();}
 
 function openProjectModal(project=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de cadastrar projetos.','error');$('projectForm').reset();$('projectId').value=project?.id||'';$('projectModalTitle').textContent=project?'Editar projeto':'Novo projeto';$('projectName').value=project?.nome||'';$('projectObjective').value=project?.objetivo||'';$('projectStatus').value=project?.status||'ativo';$('projectStart').value=String(project?.inicio_em||'').slice(0,10);$('projectDue').value=String(project?.prazo_em||'').slice(0,10);$('projectOwner').innerHTML=`<option value="">Sem responsável principal</option>${state.collaborators.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}`;$('projectOwner').value=project?.responsavel_id||'';$('projectModal').classList.remove('hidden');refreshIcons();}
 async function saveProject(event){event.preventDefault();if(!state.intelligenceReady)return;setLoading(true);try{const {error}=await db.rpc('salvar_projeto_marketing',{p_id:$('projectId').value||null,p_nome:$('projectName').value.trim(),p_objetivo:$('projectObjective').value.trim()||null,p_responsavel_id:$('projectOwner').value||null,p_inicio_em:$('projectStart').value||null,p_prazo_em:$('projectDue').value||null,p_status:$('projectStatus').value});if(error)throw error;closeModal('projectModal');await loadIntelligenceV5();await loadTasks();renderProjects();renderShell();toast('Projeto salvo.');}catch(error){toast(errorMessage(error),'error')}finally{setLoading(false)}}
 
 const AUTOMATION_TRIGGER_LABELS={tarefa_criada:'Demanda criada',status_alterado:'Status alterado',prioridade_alterada:'Prioridade alterada',revisao:'Entrou em revisão',conclusao:'Concluída',prazo_24h:'Prazo em até 24h',atrasada:'Demanda atrasada',sem_movimentacao_3d:'3 dias sem movimentação'};
-const AUTOMATION_DEST_LABELS={responsavel:'Responsável',criador:'Gestor/criador',gestores:'Gestor/criador (migrado)',equipe:'Toda a equipe operacional'};
+const AUTOMATION_DEST_LABELS={responsavel:'Responsável',criador:'Criador',gestores:'Gestores',equipe:'Toda a equipe'};
 function renderAutomations(){const list=$('automationList');if(!list)return;renderV5SetupNotice('automationSetupNotice','Central de Automações');if(!isManager()){list.innerHTML='<div class="empty-state"><i data-lucide="lock-keyhole"></i>Somente gestores configuram automações.</div>';return}const active=state.automations.filter(a=>a.ativo).length;$('automationSummary').innerHTML=[teamSummaryCard('workflow',state.automations.length,'Regras criadas'),teamSummaryCard('toggle-right',active,'Ativas'),teamSummaryCard('bell-ring',state.automations.filter(a=>['critica','importante'].includes(a.nivel)).length,'Alertas prioritários')].join('');list.innerHTML=state.intelligenceReady?(state.automations.length?state.automations.map(automationCardHTML).join(''):`<div class="automation-empty card"><i data-lucide="workflow"></i><strong>Nenhuma automação criada</strong><span>Use um dos exemplos acima ou crie uma regra personalizada.</span></div>`):'';refreshIcons();}
 function automationCardHTML(rule){const condition=rule.condicao_campo&&rule.condicao_campo!=='qualquer'?`${rule.condicao_campo} = ${rule.condicao_valor}`:'qualquer demanda';return `<article class="automation-card ${rule.ativo?'active':'disabled'} level-${rule.nivel||'normal'}"><div class="automation-card-main"><span class="automation-card-level ${rule.nivel||'normal'}"><i data-lucide="${rule.nivel==='critica'?'siren':rule.nivel==='importante'?'triangle-alert':rule.nivel==='informativa'?'info':'bell'}"></i></span><div><div class="automation-card-title"><strong>${escapeHtml(rule.nome)}</strong><span>${rule.ativo?'Ativa':'Pausada'}</span></div><p><b>SE</b> ${escapeHtml(AUTOMATION_TRIGGER_LABELS[rule.gatilho]||rule.gatilho)} <b>E</b> ${escapeHtml(condition)} <b>ENTÃO</b> notificar ${escapeHtml(AUTOMATION_DEST_LABELS[rule.acao_destino]||rule.acao_destino)}.</p><small>${escapeHtml(rule.mensagem||'Mensagem padrão do PMG Connect')}</small></div></div><div class="automation-card-actions"><button type="button" class="btn soft" data-toggle-automation="${rule.id}"><i data-lucide="${rule.ativo?'pause':'play'}"></i>${rule.ativo?'Pausar':'Ativar'}</button><button type="button" class="icon-btn subtle" data-edit-automation="${rule.id}"><i data-lucide="pencil"></i></button></div></article>`;}
-function openAutomationModal(rule=null,template=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de criar automações.','error');$('automationForm').reset();$('automationId').value=rule?.id||'';$('automationModalTitle').textContent=rule?'Editar automação':'Nova automação';$('automationName').value=rule?.nome||'';$('automationTrigger').value=rule?.gatilho||'tarefa_criada';$('automationConditionField').value=rule?.condicao_campo||'qualquer';$('automationConditionValue').value=rule?.condicao_valor||'';$('automationDestination').value=(rule?.acao_destino==='gestores'?'criador':rule?.acao_destino)||'responsavel';$('automationLevel').value=rule?.nivel||'normal';$('automationMessage').value=rule?.mensagem||'';$('automationEnabled').checked=rule?.ativo!==false;$('automationDeleteBtn').classList.toggle('hidden',!rule);if(template)applyAutomationTemplate(template);$('automationModal').classList.remove('hidden');refreshIcons();}
-function applyAutomationTemplate(template){const presets={imediata:{name:'Alerta de demanda imediata',trigger:'tarefa_criada',field:'prioridade',value:'imediata',dest:'responsavel',level:'critica',message:'Você recebeu uma demanda IMEDIATA. Abra agora e verifique o briefing.'},revisao:{name:'Revisão aguardando gestor',trigger:'revisao',field:'qualquer',value:'',dest:'criador',level:'importante',message:'Uma demanda que você criou entrou em revisão e aguarda avaliação.'},prazo:{name:'Prazo em 24 horas',trigger:'prazo_24h',field:'qualquer',value:'',dest:'responsavel',level:'importante',message:'Esta demanda vence em até 24 horas. Revise o andamento e o prazo.'},parada:{name:'Demanda sem movimentação',trigger:'sem_movimentacao_3d',field:'qualquer',value:'',dest:'criador',level:'importante',message:'Uma demanda que você criou está há pelo menos 3 dias sem movimentação.'}};const p=presets[template];if(!p)return;$('automationName').value=p.name;$('automationTrigger').value=p.trigger;$('automationConditionField').value=p.field;$('automationConditionValue').value=p.value;$('automationDestination').value=p.dest;$('automationLevel').value=p.level;$('automationMessage').value=p.message;}
+function openAutomationModal(rule=null,template=null){if(!isManager())return;if(!state.intelligenceReady)return toast('Execute o SQL V3.5 no Supabase antes de criar automações.','error');$('automationForm').reset();$('automationId').value=rule?.id||'';$('automationModalTitle').textContent=rule?'Editar automação':'Nova automação';$('automationName').value=rule?.nome||'';$('automationTrigger').value=rule?.gatilho||'tarefa_criada';$('automationConditionField').value=rule?.condicao_campo||'qualquer';$('automationConditionValue').value=rule?.condicao_valor||'';$('automationDestination').value=rule?.acao_destino||'responsavel';$('automationLevel').value=rule?.nivel||'normal';$('automationMessage').value=rule?.mensagem||'';$('automationEnabled').checked=rule?.ativo!==false;$('automationDeleteBtn').classList.toggle('hidden',!rule);if(template)applyAutomationTemplate(template);$('automationModal').classList.remove('hidden');refreshIcons();}
+function applyAutomationTemplate(template){const presets={imediata:{name:'Alerta de demanda imediata',trigger:'tarefa_criada',field:'prioridade',value:'imediata',dest:'responsavel',level:'critica',message:'Você recebeu uma demanda IMEDIATA. Abra agora e verifique o briefing.'},revisao:{name:'Revisão aguardando gestor',trigger:'revisao',field:'qualquer',value:'',dest:'gestores',level:'importante',message:'Uma demanda entrou em revisão e aguarda avaliação do gestor.'},prazo:{name:'Prazo em 24 horas',trigger:'prazo_24h',field:'qualquer',value:'',dest:'responsavel',level:'importante',message:'Esta demanda vence em até 24 horas. Revise o andamento e o prazo.'},parada:{name:'Demanda sem movimentação',trigger:'sem_movimentacao_3d',field:'qualquer',value:'',dest:'gestores',level:'importante',message:'Esta demanda está há pelo menos 3 dias sem movimentação.'}};const p=presets[template];if(!p)return;$('automationName').value=p.name;$('automationTrigger').value=p.trigger;$('automationConditionField').value=p.field;$('automationConditionValue').value=p.value;$('automationDestination').value=p.dest;$('automationLevel').value=p.level;$('automationMessage').value=p.message;}
 async function saveAutomation(event){event.preventDefault();setLoading(true);try{const {error}=await db.rpc('salvar_automacao_demanda',{p_id:$('automationId').value||null,p_nome:$('automationName').value.trim(),p_gatilho:$('automationTrigger').value,p_condicao_campo:$('automationConditionField').value,p_condicao_valor:$('automationConditionValue').value.trim()||null,p_acao_destino:$('automationDestination').value,p_nivel:$('automationLevel').value,p_mensagem:$('automationMessage').value.trim()||null,p_ativo:$('automationEnabled').checked});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação salva.');}catch(error){toast(errorMessage(error),'error')}finally{setLoading(false)}}
 async function toggleAutomation(id){const r=state.automations.find(x=>x.id===id);if(!r)return;setLoading(true);try{const {error}=await db.rpc('alternar_automacao_demanda',{p_id:id,p_ativo:!r.ativo});if(error)throw error;await loadIntelligenceV5();renderAutomations();renderShell();toast(!r.ativo?'Automação ativada.':'Automação pausada.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
 async function deleteAutomation(){const id=$('automationId').value;if(!id||!confirm('Excluir esta automação?'))return;setLoading(true);try{const {error}=await db.rpc('excluir_automacao_demanda',{p_id:id});if(error)throw error;closeModal('automationModal');await loadIntelligenceV5();renderAutomations();renderShell();toast('Automação excluída.');}catch(e){toast(errorMessage(e),'error')}finally{setLoading(false)}}
@@ -4457,12 +4030,12 @@ function monthValueShift(value,offset){const [y,m]=String(value).split('-').map(
 function pctDelta(current,previous){if(previous===0)return current===0?0:null;return Math.round((current-previous)/previous*100);}
 function average(values){return values.length?values.reduce((a,b)=>a+b,0)/values.length:null;}
 const buildMonthlyReportV34=buildMonthlyReport;
-buildMonthlyReport=function buildMonthlyReportV35(value){const report=buildMonthlyReportV34(value);report.version='3.5';report.rows=(report.rows||[]).map(row=>{const bounds=monthBounds(value);const completed=state.tasks.filter(t=>taskHasAssignee(t, row.person.id)&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const rework=completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0);const accuracy=row.estimatedHours>0&&row.actualHours>0?Math.max(0,Math.round(100-Math.abs(row.actualHours-row.estimatedHours)/row.estimatedHours*100)):null;return{...row,rework,accuracy}}).sort((a,b)=>a.person.nome.localeCompare(b.person.nome,'pt-BR'));report.totalRework=report.rows.reduce((s,r)=>s+r.rework,0);const acc=report.rows.map(r=>r.accuracy).filter(v=>v!==null);report.estimateAccuracy=acc.length?Math.round(acc.reduce((a,b)=>a+b,0)/acc.length):null;const cycles=report.rows.map(r=>r.avgCycle).filter(v=>v!==null);report.teamAvgCycle=average(cycles);report.totalTransfers=report.rows.reduce((s,r)=>s+r.transfersIn+r.transfersOut,0)/2;const previous=buildMonthlyReportV34(monthValueShift(value,-1));report.comparison={previousLabel:previous.label,completed:pctDelta(report.totalCompleted,previous.totalCompleted),created:pctDelta(report.totalCreated,previous.totalCreated),hours:pctDelta(report.totalActualHours,previous.totalActualHours),onTime:report.teamOnTimeRate!==null&&previous.teamOnTimeRate!==null?report.teamOnTimeRate-previous.teamOnTimeRate:null};return report;}
+buildMonthlyReport=function buildMonthlyReportV35(value){const report=buildMonthlyReportV34(value);report.version='3.5';report.rows=(report.rows||[]).map(row=>{const bounds=monthBounds(value);const completed=state.tasks.filter(t=>t.responsavel_id===row.person.id&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const rework=completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0);const accuracy=row.estimatedHours>0&&row.actualHours>0?Math.max(0,Math.round(100-Math.abs(row.actualHours-row.estimatedHours)/row.estimatedHours*100)):null;return{...row,rework,accuracy}}).sort((a,b)=>a.person.nome.localeCompare(b.person.nome,'pt-BR'));report.totalRework=report.rows.reduce((s,r)=>s+r.rework,0);const acc=report.rows.map(r=>r.accuracy).filter(v=>v!==null);report.estimateAccuracy=acc.length?Math.round(acc.reduce((a,b)=>a+b,0)/acc.length):null;const cycles=report.rows.map(r=>r.avgCycle).filter(v=>v!==null);report.teamAvgCycle=average(cycles);report.totalTransfers=report.rows.reduce((s,r)=>s+r.transfersIn+r.transfersOut,0)/2;const previous=buildMonthlyReportV34(monthValueShift(value,-1));report.comparison={previousLabel:previous.label,completed:pctDelta(report.totalCompleted,previous.totalCompleted),created:pctDelta(report.totalCreated,previous.totalCreated),hours:pctDelta(report.totalActualHours,previous.totalActualHours),onTime:report.teamOnTimeRate!==null&&previous.teamOnTimeRate!==null?report.teamOnTimeRate-previous.teamOnTimeRate:null};return report;}
 function deltaHTML(value,suffix='%'){if(value===null||value===undefined)return'<span class="monthly-delta neutral">sem base</span>';const tone=value>0?'up':value<0?'down':'neutral';return`<span class="monthly-delta ${tone}"><i data-lucide="${value>0?'trending-up':value<0?'trending-down':'minus'}"></i>${value>0?'+':''}${value}${suffix}</span>`;}
 const renderMonthlyReportV34=renderMonthlyReport;
 renderMonthlyReport=function renderMonthlyReportV35(){renderMonthlyReportV34();const report=state.monthlyReportData;if(!report)return;const hero=$('monthlyReportContent')?.querySelector('.monthly-report-hero');if(!hero)return;const attention=[];if((report.teamOnTimeRate??100)<85)attention.push(`Pontualidade em ${report.teamOnTimeRate}%`);if(report.totalRework>0)attention.push(`${report.totalRework} ciclo(s) de retrabalho`);if((report.estimateAccuracy??100)<75)attention.push(`Precisão das estimativas em ${report.estimateAccuracy}%`);if((report.totalTransfers||0)>=5)attention.push(`${Math.round(report.totalTransfers)} transferências no mês`);const compare=document.createElement('section');compare.className='monthly-comparison';compare.innerHTML=`<div class="monthly-section-title"><div><span class="eyebrow">Comparação</span><h4>Em relação a ${escapeHtml(report.comparison?.previousLabel||'mês anterior')}</h4></div></div><div class="monthly-comparison-grid"><div><span>Concluídas</span><strong>${report.totalCompleted}</strong>${deltaHTML(report.comparison?.completed)}</div><div><span>Demandas recebidas</span><strong>${report.totalCreated}</strong>${deltaHTML(report.comparison?.created)}</div><div><span>Horas reais</span><strong>${formatHours(report.totalActualHours||0)}</strong>${deltaHTML(report.comparison?.hours)}</div><div><span>No prazo</span><strong>${report.teamOnTimeRate===null?'—':report.teamOnTimeRate+'%'}</strong>${deltaHTML(report.comparison?.onTime,' p.p.')}</div><div><span>Estimativa x real</span><strong>${report.estimateAccuracy===null?'—':report.estimateAccuracy+'%'}</strong><small>precisão média</small></div><div><span>Retrabalho</span><strong>${report.totalRework||0}</strong><small>retornos para ajustes</small></div></div><div class="monthly-attention ${attention.length?'has-alerts':'clean'}"><i data-lucide="${attention.length?'scan-search':'circle-check-big'}"></i><div><strong>${attention.length?'O que merece atenção':'Mês operacionalmente saudável'}</strong><span>${attention.length?escapeHtml(attention.join(' · ')):'Nenhum sinal relevante de prazo, retrabalho ou estimativa fora da faixa definida.'}</span></div></div>`;hero.insertAdjacentElement('afterend',compare);const rankMarkers=$('monthlyReportContent').querySelectorAll('.monthly-person small');rankMarkers.forEach(el=>{el.textContent=el.textContent.replace(/\s·\s#\d+/,'')});refreshIcons();}
 
-function personMonthMetrics(personId,offset){const now=new Date(),base=new Date(now.getFullYear(),now.getMonth()+offset,1),value=`${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}`,bounds=monthBounds(value);const completed=state.tasks.filter(t=>taskHasAssignee(t, personId)&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const deadline=completed.filter(t=>taskDue(t)&&t.concluida_em),onTime=deadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;const entries=state.timeEntries.filter(e=>e.colaborador_id===personId&&new Date(e.inicio_em)<bounds.end&&new Date(e.fim_em||Date.now())>=bounds.start);const hours=entries.reduce((s,e)=>s+entryMinutesInsideMonth(e,bounds.start,bounds.end),0)/60;return{label:new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(base).replace('.',''),completed:completed.length,onTime:deadline.length?Math.round(onTime/deadline.length*100):null,rework:completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0),hours};}
+function personMonthMetrics(personId,offset){const now=new Date(),base=new Date(now.getFullYear(),now.getMonth()+offset,1),value=`${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}`,bounds=monthBounds(value);const completed=state.tasks.filter(t=>t.responsavel_id===personId&&t.status==='concluida'&&new Date(t.concluida_em||t.atualizado_em)>=bounds.start&&new Date(t.concluida_em||t.atualizado_em)<bounds.end);const deadline=completed.filter(t=>taskDue(t)&&t.concluida_em),onTime=deadline.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;const entries=state.timeEntries.filter(e=>e.colaborador_id===personId&&new Date(e.inicio_em)<bounds.end&&new Date(e.fim_em||Date.now())>=bounds.start);const hours=entries.reduce((s,e)=>s+entryMinutesInsideMonth(e,bounds.start,bounds.end),0)/60;return{label:new Intl.DateTimeFormat('pt-BR',{month:'short'}).format(base).replace('.',''),completed:completed.length,onTime:deadline.length?Math.round(onTime/deadline.length*100):null,rework:completed.reduce((s,t)=>s+Number(t.retrabalhos||0),0),hours};}
 function performanceEvolutionHTML(person){if(person.role==='gestor')return'';const months=[-2,-1,0].map(o=>personMonthMetrics(person.id,o));const maxCompleted=Math.max(1,...months.map(m=>m.completed));return `<section class="person-drawer-section person-evolution"><div class="person-section-head"><div><span class="eyebrow">Evolução pessoal</span><h3>Últimos 3 meses</h3></div><span>Sem ranking</span></div><div class="evolution-chart">${months.map(m=>`<div class="evolution-month"><div class="evolution-bar"><i style="height:${Math.max(8,Math.round(m.completed/maxCompleted*100))}%"></i></div><strong>${m.completed}</strong><span>${escapeHtml(m.label)}</span></div>`).join('')}</div><div class="evolution-metrics">${months.map(m=>`<div><span>${escapeHtml(m.label)}</span><strong>${m.onTime===null?'—':m.onTime+'%'}</strong><small>no prazo</small><b>${formatHours(m.hours)} · ${m.rework} ajuste(s)</b></div>`).join('')}</div></section>`;}
 const renderPersonDrawerV34=renderPersonDrawer;
 renderPersonDrawer=function renderPersonDrawerV35(person){renderPersonDrawerV34(person);const actions=$('personDrawerContent')?.querySelector('.person-drawer-actions');if(actions){actions.insertAdjacentHTML('beforebegin',performanceEvolutionHTML(person));refreshIcons();}}
@@ -4583,8 +4156,8 @@ function recurrenceSeriesAppliesToDate(series, key) {
   return false;
 }
 function recurrenceRelevantForAgenda(series) {
-  if (state.agendaScope === 'team') return !state.agendaPersonFilter || seriesHasAssignee(series, state.agendaPersonFilter);
-  return seriesHasAssignee(series, state.me?.id);
+  if (state.agendaScope === 'team') return !state.agendaPersonFilter || series.responsavel_id === state.agendaPersonFilter;
+  return series.responsavel_id === state.me?.id;
 }
 
 async function loadRecurringV36() {
@@ -4612,7 +4185,7 @@ async function processRecurringV36({ refresh = false } = {}) {
     if (error) throw error;
     const changed = Number(data || 0);
     if (refresh && changed) {
-      await Promise.all([loadTasks(), loadNotifications(), loadRecurringV36(), typeof loadMultipleAssigneesV37 === 'function' ? loadMultipleAssigneesV37() : Promise.resolve()]);
+      await Promise.all([loadTasks(), loadNotifications(), loadRecurringV36()]);
       renderAll();
       queueUnreadIntrusiveNotifications();
     }
@@ -4676,14 +4249,11 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
   const priority = $('itemPriority').value;
   const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
   if (priority === 'imediata' && !$('itemAssignee').value && !alertAll) throw new Error('Escolha um responsável ou envie o alerta imediato para toda a equipe.');
-  const assigneeIds = selectedFormAssigneeIdsV37('item');
-  const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
-  if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
-  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
+  const { error } = await db.rpc('criar_demanda_recorrente_v1', {
     p_titulo: $('itemTitle').value.trim(),
     p_descricao: $('itemDescription').value.trim() || null,
     p_prioridade: priority,
-    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+    p_responsavel_id: $('itemAssignee').value || null,
     p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
     p_tamanho: $('itemSize').value,
     p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
@@ -4700,15 +4270,6 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
     p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
   });
   if (error) throw error;
-  if (recurringId && state.multiAssigneeReady) {
-    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
-      p_recorrencia_id: recurringId,
-      p_responsaveis: assigneeIds,
-      p_modo: responsibilityMode,
-      p_aplicar_ocorrencias: true
-    });
-    if (assigneeError) throw assigneeError;
-  }
   await loadRecurringV36();
 };
 
@@ -4734,7 +4295,7 @@ function renderRecurringTodayStrip() {
   if (!metrics) return;
   document.querySelector('#viewHoje .recurring-today-strip')?.remove();
   if (!state.recurrenceReady) return;
-  const relevant = state.recurringSeries.filter(series => recurrenceSeriesAppliesToDate(series, todayKey()) && seriesHasAssignee(series, state.me?.id));
+  const relevant = state.recurringSeries.filter(series => recurrenceSeriesAppliesToDate(series, todayKey()) && series.responsavel_id === state.me?.id);
   if (!relevant.length) return;
   const done = relevant.filter(series => {
     const occ = state.recurringOccurrences.find(o => o.recorrencia_id === series.id && o.data_referencia === todayKey());
@@ -4844,8 +4405,10 @@ renderTaskDrawer = function renderTaskDrawerRecurringIntegrated() {
 };
 
 function populateRecurrenceAssigneeSelect(selected = '') {
-  const select = $('recurrenceEditAssignee'); if (!select) return;
-  select.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`; select.value = selected || '';
+  const select = $('recurrenceEditAssignee');
+  if (!select) return;
+  select.innerHTML = `<option value="">Sem responsável</option>${state.collaborators.map(person => `<option value="${person.id}">${escapeHtml(person.nome)}</option>`).join('')}`;
+  select.value = selected || '';
 }
 function fillRecurrenceEditor(series, { convertTask = null } = {}) {
   const converting = Boolean(convertTask);
@@ -4856,11 +4419,9 @@ function fillRecurrenceEditor(series, { convertTask = null } = {}) {
   const source = series || convertTask || {};
   $('recurrenceEditTitle').value = source.titulo || '';
   $('recurrenceEditDescription').value = source.descricao || '';
-  const recurrenceAssigneeIds = series ? seriesAssigneeIds(series) : (convertTask ? taskAssigneeIds(convertTask) : (source.responsavel_id ? [source.responsavel_id] : [])); populateRecurrenceAssigneeSelect(recurrenceAssigneeIds[0] || ''); setAssigneeJson('recurrenceEditAssigneesJson', recurrenceAssigneeIds); renderAssigneePreview('recurrenceEditAssignee','recurrenceEditAssigneePreview');
+  populateRecurrenceAssigneeSelect(source.responsavel_id || '');
   $('recurrenceEditPriority').value = source.prioridade || 'media';
   $('recurrenceEditSize').value = source.tamanho || 'media';
-  if ($('recurrenceEditResponsibilityMode')) $('recurrenceEditResponsibilityMode').value = series?.modo_responsabilidade || taskResponsibilityModeV371(convertTask) || 'compartilhada';
-  syncChoiceCards('recurrenceEditResponsibilityMode');
   $('recurrenceEditEstimate').value = source.estimativa_horas || '';
   $('recurrenceEditProject').value = source.projeto || '';
   $('recurrenceEditTags').value = (source.tags || []).join(', ');
@@ -4899,9 +4460,6 @@ async function saveRecurrenceSeriesV36(event) {
   if (['semanal','personalizada'].includes(frequency) && !weekdays.length) return toast('Selecione pelo menos um dia da semana.', 'error');
   const start = $('recurrenceEditStart').value;
   const end = $('recurrenceEditEnd').value || null;
-  const responsibilityMode = $('recurrenceEditResponsibilityMode')?.value || 'compartilhada';
-  const recurrenceAssignees = selectedFormAssigneeIdsV37('recurrenceEdit');
-  if (responsibilityMode === 'primeiro_cumprir' && recurrenceAssignees.length < 2) return toast('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.', 'error');
   if (!start) return toast('Informe quando a recorrência começa.', 'error');
   if (end && end < start) return toast('A data final não pode ser anterior ao início.', 'error');
   setLoading(true);
@@ -4926,7 +4484,7 @@ async function saveRecurrenceSeriesV36(event) {
       p_titulo: $('recurrenceEditTitle').value.trim(),
       p_descricao: $('recurrenceEditDescription').value.trim() || null,
       p_prioridade: $('recurrenceEditPriority').value,
-      p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (recurrenceAssignees[0] || null),
+      p_responsavel_id: $('recurrenceEditAssignee').value || null,
       p_tags: $('recurrenceEditTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
       p_tamanho: $('recurrenceEditSize').value,
       p_estimativa_horas: $('recurrenceEditEstimate').value ? Number($('recurrenceEditEstimate').value) : null,
@@ -4941,15 +4499,6 @@ async function saveRecurrenceSeriesV36(event) {
       p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
     });
     if (error) throw error;
-    if (seriesId && state.multiAssigneeReady) {
-      const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
-        p_recorrencia_id: seriesId,
-        p_responsaveis: recurrenceAssignees,
-        p_modo: responsibilityMode,
-        p_aplicar_ocorrencias: true
-      });
-      if (assigneeError) throw assigneeError;
-    }
     closeModal('recurrenceModal');
     await refreshData();
     if (convertTaskId && state.tasks.some(task => task.id === convertTaskId)) await openTask(convertTaskId);
@@ -5053,7 +4602,7 @@ function renderRecurrenceManagerV36() {
     const status = recurrenceSeriesStatus(series);
     const occurrences = state.recurringOccurrences.filter(item => item.recorrencia_id === series.id);
     const completed = occurrences.filter(item => recurrenceOccurrenceStatus(item).tone === 'done').length;
-    return `<article class="recurrence-manager-item"><div class="recurrence-manager-item-main"><div class="recurrence-manager-item-top"><span class="recurrence-state ${status === 'paused' ? 'paused' : ''}"><i data-lucide="repeat-2"></i>${escapeHtml(recurrenceStatusLabel(series))}</span>${series.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(series.projeto)}</span>` : ''}</div><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(series.descricao || 'Sem descrição.')}</p><div class="recurrence-manager-item-meta"><span><i data-lucide="calendar-sync"></i>${escapeHtml(recurrenceFrequencyLabel(series))}</span><span><i data-lucide="user-round"></i>${escapeHtml(person?.nome || 'Sem responsável')}</span><span><i data-lucide="clock-3"></i>${String(series.horario_prazo || '17:00').slice(0,5)}</span><span><i data-lucide="circle-check-big"></i>${completed} concluída(s)</span></div></div><div class="recurrence-manager-item-actions"><button type="button" class="btn secondary" data-edit-recurrence="${series.id}"><i data-lucide="pencil"></i>Editar</button>${status !== 'ended' ? `<button type="button" class="btn soft" data-toggle-recurrence="${series.id}" data-next-active="${status === 'active' ? 'false' : 'true'}"><i data-lucide="${status === 'active' ? 'pause' : 'play'}"></i>${status === 'active' ? 'Pausar' : 'Retomar'}</button><button type="button" class="btn danger-soft" data-end-recurrence="${series.id}"><i data-lucide="square"></i>Encerrar</button>` : ''}</div></article>`;
+    return `<article class="recurrence-manager-item"><div class="recurrence-manager-item-main"><div class="recurrence-manager-item-top"><span class="recurrence-state ${status === 'paused' ? 'paused' : ''}"><i data-lucide="repeat-2"></i>${escapeHtml(recurrenceStatusLabel(series))}</span>${series.projeto ? `<span class="project-pill"><i data-lucide="folder-kanban"></i>${escapeHtml(series.projeto)}</span>` : ''}</div><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(markdownPlainTextV377(series.descricao || 'Sem descrição.'))}</p><div class="recurrence-manager-item-meta"><span><i data-lucide="calendar-sync"></i>${escapeHtml(recurrenceFrequencyLabel(series))}</span><span><i data-lucide="user-round"></i>${escapeHtml(person?.nome || 'Sem responsável')}</span><span><i data-lucide="clock-3"></i>${String(series.horario_prazo || '17:00').slice(0,5)}</span><span><i data-lucide="circle-check-big"></i>${completed} concluída(s)</span></div></div><div class="recurrence-manager-item-actions"><button type="button" class="btn secondary" data-edit-recurrence="${series.id}"><i data-lucide="pencil"></i>Editar</button>${status !== 'ended' ? `<button type="button" class="btn soft" data-toggle-recurrence="${series.id}" data-next-active="${status === 'active' ? 'false' : 'true'}"><i data-lucide="${status === 'active' ? 'pause' : 'play'}"></i>${status === 'active' ? 'Pausar' : 'Retomar'}</button><button type="button" class="btn danger-soft" data-end-recurrence="${series.id}"><i data-lucide="square"></i>Encerrar</button>` : ''}</div></article>`;
   }).join('') : `<div class="recurrence-manager-empty"><i data-lucide="repeat-2"></i><br>Nenhuma rotina recorrente encontrada com estes filtros.</div>`;
   refreshIcons();
 }
@@ -5074,14 +4623,14 @@ function appendRecurringProjectIntegrationV36() {
   if (!items.length) return;
   const section = document.createElement('section');
   section.className = 'productivity-card project-recurring-series';
-  section.innerHTML = `<div class="productivity-card-head"><div><span class="eyebrow">Rotinas recorrentes</span><h3>${items.length} série${items.length === 1 ? '' : 's'} vinculada${items.length === 1 ? '' : 's'} ao projeto</h3></div><span class="recurrence-state"><i data-lucide="repeat-2"></i>Automáticas</span></div><div class="recurrence-manager-list">${items.map(series => `<button type="button" class="recurrence-manager-item" data-open-recurring-series="${series.id}"><div class="recurrence-manager-item-main"><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(seriesAssigneeShortNames(series))}</p></div><i data-lucide="chevron-right"></i></button>`).join('')}</div>`;
+  section.innerHTML = `<div class="productivity-card-head"><div><span class="eyebrow">Rotinas recorrentes</span><h3>${items.length} série${items.length === 1 ? '' : 's'} vinculada${items.length === 1 ? '' : 's'} ao projeto</h3></div><span class="recurrence-state"><i data-lucide="repeat-2"></i>Automáticas</span></div><div class="recurrence-manager-list">${items.map(series => `<button type="button" class="recurrence-manager-item" data-open-recurring-series="${series.id}"><div class="recurrence-manager-item-main"><h4>${escapeHtml(series.titulo)}</h4><p>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(collaborator(series.responsavel_id)?.nome || 'Sem responsável')}</p></div><i data-lucide="chevron-right"></i></button>`).join('')}</div>`;
   detail.appendChild(section);
   refreshIcons();
 }
 function appendTeamRecurringIntegrationV36() {
   $$('#teamGrid [data-open-person]').forEach(card => {
     const personId = card.dataset.openPerson;
-    const count = state.recurringSeries.filter(series => seriesHasAssignee(series, personId) && recurrenceSeriesStatus(series) === 'active').length;
+    const count = state.recurringSeries.filter(series => series.responsavel_id === personId && recurrenceSeriesStatus(series) === 'active').length;
     if (!count || card.querySelector('.team-recurring-chip')) return;
     const line = card.querySelector('.person-state-line') || card.querySelector('.person-copy');
     line?.insertAdjacentHTML('beforeend', `<span class="team-recurring-chip"><i data-lucide="repeat-2"></i>${count} rotina${count === 1 ? '' : 's'}</span>`);
@@ -5092,7 +4641,7 @@ function appendPersonRecurringIntegrationV36(person) {
   const root = $('personDrawerContent');
   if (!root || !person) return;
   root.querySelector('.person-recurring-series')?.remove();
-  const items = state.recurringSeries.filter(series => seriesHasAssignee(series, person.id) && recurrenceSeriesStatus(series) !== 'ended');
+  const items = state.recurringSeries.filter(series => series.responsavel_id === person.id && recurrenceSeriesStatus(series) !== 'ended');
   if (!items.length) return;
   const section = document.createElement('section');
   section.className = 'person-drawer-section person-recurring-series';
@@ -5164,7 +4713,7 @@ renderGlobalSearch = function renderGlobalSearchRecurringIntegrated() {
   if (!query || !state.recurrenceReady) return;
   const matches = state.recurringSeries.filter(series => [series.titulo,series.descricao,series.projeto,collaborator(series.responsavel_id)?.nome].join(' ').toLowerCase().includes(query)).slice(0,6);
   if (!matches.length) return;
-  $('globalSearchResults').insertAdjacentHTML('beforeend', `<div class="search-group-label">Rotinas recorrentes</div>${matches.map(series => `<button type="button" class="search-result" data-search-recurring="${series.id}"><span class="search-result-icon"><i data-lucide="repeat-2"></i></span><span><strong>${escapeHtml(series.titulo)}</strong><small>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(seriesAssigneeShortNames(series))}</small></span><i data-lucide="chevron-right"></i></button>`).join('')}`);
+  $('globalSearchResults').insertAdjacentHTML('beforeend', `<div class="search-group-label">Rotinas recorrentes</div>${matches.map(series => `<button type="button" class="search-result" data-search-recurring="${series.id}"><span class="search-result-icon"><i data-lucide="repeat-2"></i></span><span><strong>${escapeHtml(series.titulo)}</strong><small>${escapeHtml(recurrenceFrequencyLabel(series))} · ${escapeHtml(collaborator(series.responsavel_id)?.nome || 'Sem responsável')}</small></span><i data-lucide="chevron-right"></i></button>`).join('')}`);
   refreshIcons();
 };
 
@@ -5197,162 +4746,4 @@ function bindRecurringV36Events() {
 }
 
 
-bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); bindRecurringV36Events(); initOverlayStability(); refreshIcons(); bootstrap();
-
-
-/* =========================================================
-   PMG CONNECT V3.7 — MÚLTIPLOS RESPONSÁVEIS
-   ========================================================= */
-function isMissingMultiAssigneeSchemaV37(error) {
-  const text = String(error?.message || error?.details || error || '');
-  return /tarefa_responsaveis|demanda_recorrente_responsaveis|42P01|PGRST205|does not exist/i.test(text);
-}
-function uniqueIdsV37(values) { return [...new Set((values || []).filter(Boolean))]; }
-function taskResponsibilityModeV371(task) {
-  return task?.modo_responsabilidade === 'primeiro_cumprir' ? 'primeiro_cumprir' : 'compartilhada';
-}
-function taskIsFirstToCompleteV371(task) {
-  return taskResponsibilityModeV371(task) === 'primeiro_cumprir';
-}
-function taskRaceIsOpenV371(task) {
-  return Boolean(task && taskIsFirstToCompleteV371(task) && !task.responsavel_id && task.status === 'nova');
-}
-function responsibilityModeBadgeHTMLV371(task) {
-  if (taskIsFirstToCompleteV371(task)) {
-    return `<span class="responsibility-mode-badge race"><i data-lucide="flag"></i>${taskRaceIsOpenV371(task) ? 'Primeiro a cumprir' : 'Assumida'}</span>`;
-  }
-  if (taskAssigneeIds(task).length > 1) {
-    return `<span class="responsibility-mode-badge"><i data-lucide="users-round"></i>Compartilhada</span>`;
-  }
-  return '';
-}
-function taskAssigneeIds(taskOrId) {
-  const task = typeof taskOrId === 'string' ? state.tasks.find(item => item.id === taskOrId) : taskOrId;
-  if (!task) return [];
-  const rows = (state.taskAssignees || []).filter(row => row.tarefa_id === task.id).sort((a,b) => Number(b.principal) - Number(a.principal) || String(a.adicionado_em || '').localeCompare(String(b.adicionado_em || '')));
-  const ids = rows.map(row => row.colaborador_id);
-  if (task.responsavel_id && !ids.includes(task.responsavel_id)) ids.unshift(task.responsavel_id);
-  return uniqueIdsV37(ids);
-}
-function taskHasAssignee(task, personId) {
-  if (!personId || !task) return false;
-  const finalExecutors = task.status === 'concluida' ? taskFinalExecutorIdsV372(task) : [];
-  if (finalExecutors.length) return finalExecutors.includes(personId);
-  return taskAssigneeIds(task).includes(personId);
-}
-function taskAssigneePeople(task) { return taskAssigneeIds(task).map(collaborator).filter(Boolean); }
-function taskAssigneeNames(task) { const people = taskAssigneePeople(task); return people.length ? people.map(p => p.nome).join(', ') : 'Sem responsáveis'; }
-function taskAssigneeShortNames(task) {
-  const people = taskAssigneePeople(task);
-  if (!people.length) return 'Sem responsáveis';
-  if (people.length === 1) return people[0].nome;
-  return `${firstName(people[0].nome)} +${people.length - 1}`;
-}
-function taskEffortShare(task, forcedCount = null) {
-  const finalExecutors = task?.status === 'concluida' ? taskFinalExecutorIdsV372(task) : [];
-  if (finalExecutors.length) return sizeWeight(task) / Math.max(1, finalExecutors.length);
-  if (isDeadlinePausedV375(task)) return 0;
-  // Em "Primeiro a cumprir" ninguém recebe carga antes de assumir.
-  // Depois do claim, a pessoa vencedora recebe a carga completa.
-  if (taskIsFirstToCompleteV371(task)) {
-    return task?.responsavel_id ? sizeWeight(task) : 0;
-  }
-  const count = Math.max(1, Number(forcedCount) || taskAssigneeIds(task).length || 1);
-  return sizeWeight(task) / count;
-}
-function taskAssigneeAvatarGroupHTML(task, size = 'sm', max = 3) {
-  const people = taskAssigneePeople(task);
-  if (!people.length) return `<span class="multi-avatar-group empty">${avatarHTML(null,size)}</span>`;
-  const shown = people.slice(0,max);
-  return `<span class="multi-avatar-group size-${size}" title="${escapeHtml(people.map(p=>p.nome).join(', '))}">${shown.map((person,index)=>`<span class="multi-avatar-item" style="--avatar-index:${index}">${avatarHTML(person,size)}</span>`).join('')}${people.length > max ? `<span class="multi-avatar-more">+${people.length-max}</span>` : ''}</span>`;
-}
-function seriesAssigneeIds(seriesOrId) {
-  const series = typeof seriesOrId === 'string' ? recurrenceSeriesById(seriesOrId) : seriesOrId;
-  if (!series) return [];
-  const rows = (state.recurringAssignees || []).filter(row => row.recorrencia_id === series.id).sort((a,b) => Number(b.principal)-Number(a.principal) || String(a.adicionado_em||'').localeCompare(String(b.adicionado_em||'')));
-  const ids = rows.map(row => row.colaborador_id);
-  if (series.responsavel_id && !ids.includes(series.responsavel_id)) ids.unshift(series.responsavel_id);
-  return uniqueIdsV37(ids);
-}
-function seriesHasAssignee(series, personId) { return Boolean(personId && seriesAssigneeIds(series).includes(personId)); }
-function seriesAssigneePeople(series) { return seriesAssigneeIds(series).map(collaborator).filter(Boolean); }
-function seriesAssigneeShortNames(series) { const people=seriesAssigneePeople(series); return !people.length?'Sem responsáveis':people.length===1?people[0].nome:`${firstName(people[0].nome)} +${people.length-1}`; }
-function selectedFormAssigneeIdsV37(prefix) {
-  const map = { item: ['itemAssigneesJson','itemAssignee'], editTask: ['editTaskAssigneesJson','editTaskAssignee'], recurrenceEdit: ['recurrenceEditAssigneesJson','recurrenceEditAssignee'] };
-  const [jsonId,selectId] = map[prefix] || [];
-  const ids = parseAssigneeJson(jsonId);
-  if (!ids.length && selectId && $(selectId)?.value) ids.push($(selectId).value);
-  return uniqueIdsV37(ids);
-}
-function assigneePreviewMultiHTML(ids) {
-  const people = uniqueIdsV37(ids).map(collaborator).filter(Boolean);
-  if (!people.length) return `<span class="assignee-preview-avatar">${avatarHTML(null,'md')}</span><span class="assignee-preview-copy"><strong>Sem responsáveis</strong><small>A demanda ficará disponível para atribuição.</small></span>`;
-  const fakeTask = { id: '__preview__' };
-  const avatars = `<span class="multi-avatar-group size-md">${people.slice(0,4).map((person,index)=>`<span class="multi-avatar-item" style="--avatar-index:${index}">${avatarHTML(person,'md')}</span>`).join('')}${people.length>4?`<span class="multi-avatar-more">+${people.length-4}</span>`:''}</span>`;
-  return `<span class="assignee-preview-avatar multi">${avatars}</span><span class="assignee-preview-copy"><strong>${people.length === 1 ? escapeHtml(people[0].nome) : `${people.length} responsáveis`}</strong><small>${escapeHtml(people.map(person=>firstName(person.nome)).join(' · '))}</small></span>`;
-}
-renderAssigneePreview = function renderAssigneePreviewMultiV37(selectId, previewId) {
-  const preview=$(previewId); if(!preview) return;
-  const jsonId=formAssigneeJsonId(selectId); const ids=parseAssigneeJson(jsonId);
-  preview.innerHTML = ids.length ? assigneePreviewMultiHTML(ids) : assigneePreviewHTML(collaborator($(selectId)?.value));
-  refreshIcons();
-};
-async function loadMultipleAssigneesV37() {
-  try {
-    const { data, error } = await db.from('tarefa_responsaveis').select('tarefa_id,colaborador_id,principal,adicionado_em').limit(5000);
-    if (error) throw error;
-    state.taskAssignees = data || [];
-    state.multiAssigneeReady = true;
-  } catch (error) {
-    if (!isMissingMultiAssigneeSchemaV37(error)) console.warn('[múltiplos responsáveis]', error);
-    state.taskAssignees = [];
-    state.multiAssigneeReady = false;
-  }
-  try {
-    const { data, error } = await db.from('demanda_recorrente_responsaveis').select('recorrencia_id,colaborador_id,principal,adicionado_em').limit(5000);
-    if (error) throw error;
-    state.recurringAssignees = data || [];
-  } catch (error) {
-    state.recurringAssignees = [];
-    if (!isMissingMultiAssigneeSchemaV37(error)) console.warn('[responsáveis recorrentes]', error);
-  }
-}
-const loadAllBeforeMultiAssigneeV37 = loadAll;
-loadAll = async function loadAllMultiAssigneeV37() {
-  await loadAllBeforeMultiAssigneeV37();
-  await loadMultipleAssigneesV37();
-  await loadAuthorshipV372();
-};
-async function updateTaskAssigneesV37(taskId, ids) {
-  if (!isManager()) return toast('Somente gestores podem alterar os responsáveis da demanda.','error');
-  if (!state.multiAssigneeReady) return toast('Execute o SQL de múltiplos responsáveis no Supabase.','error');
-  setLoading(true);
-  try {
-    const { error } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: uniqueIdsV37(ids) });
-    if (error) throw error;
-    await refreshData();
-    await openTask(taskId);
-    await dispatchPendingPush();
-    toast(ids.length ? `${ids.length} responsável${ids.length===1?'':'is'} definido${ids.length===1?'':'s'}.` : 'Demanda ficou sem responsáveis.');
-  } catch(error) { toast(errorMessage(error),'error'); }
-  finally { setLoading(false); }
-}
-async function updateRecurringAssigneesV37(recurringId, ids) {
-  if (!isManager()) return toast('Somente gestores podem alterar responsáveis da recorrência.','error');
-  if (!state.multiAssigneeReady) return toast('Execute o SQL de múltiplos responsáveis no Supabase.','error');
-  setLoading(true);
-  try {
-    const { error } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: recurringId, p_responsaveis: uniqueIdsV37(ids), p_aplicar_ocorrencias: true });
-    if (error) throw error;
-    await refreshData();
-    renderRecurrenceManagerV36();
-    toast('Responsáveis da recorrência atualizados.');
-  } catch(error) { toast(errorMessage(error),'error'); }
-  finally { setLoading(false); }
-}
-// Mantém o formulário de recorrência visualmente sincronizado depois de qualquer carga.
-const populateRecurrenceAssigneeSelectBeforeMultiV37 = populateRecurrenceAssigneeSelect;
-populateRecurrenceAssigneeSelect = function populateRecurrenceAssigneeSelectMultiV37(selected='') {
-  populateRecurrenceAssigneeSelectBeforeMultiV37(selected);
-  if ($('recurrenceEditAssigneePreview')) renderAssigneePreview('recurrenceEditAssignee','recurrenceEditAssigneePreview');
-};
+bindEvents(); bindProductivityV4Events(); bindIntelligenceV5Events(); bindRecurringV36Events(); setupMarkdownEditorsV377(); initOverlayStability(); refreshIcons(); bootstrap();

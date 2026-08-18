@@ -394,7 +394,7 @@
           </section>
 
           <section id="taskListView" class="task-list-view card hidden">
-            <div class="task-table-head"><span>Demanda</span><span>Responsáveis</span><span>Prazo</span><span>Status</span><span>Prioridade</span></div>
+            <div class="task-table-head"><span>Demanda</span><span>Responsável</span><span>Prazo</span><span>Status</span><span>Prioridade</span></div>
             <div id="taskRows" class="task-rows"></div>
           </section>
         </section>
@@ -428,9 +428,9 @@
             <div class="section-header"><div><span class="eyebrow">Exemplos úteis</span><h3>Regras que combinam com o fluxo da PMG</h3></div></div>
             <div class="automation-example-grid">
               <button type="button" data-automation-template="imediata"><i data-lucide="siren"></i><span><strong>Demanda imediata</strong><small>Ao criar prioridade IMEDIATA → alerta crítico para o responsável.</small></span></button>
-              <button type="button" data-automation-template="revisao"><i data-lucide="scan-eye"></i><span><strong>Chegou em revisão</strong><small>Ao entrar em revisão → alerta importante para quem criou a demanda.</small></span></button>
+              <button type="button" data-automation-template="revisao"><i data-lucide="scan-eye"></i><span><strong>Chegou em revisão</strong><small>Ao entrar em revisão → alerta importante para gestores.</small></span></button>
               <button type="button" data-automation-template="prazo"><i data-lucide="clock-alert"></i><span><strong>Prazo em 24h</strong><small>Quando faltar um dia → avisar o responsável.</small></span></button>
-              <button type="button" data-automation-template="parada"><i data-lucide="hourglass"></i><span><strong>Sem movimentação</strong><small>3 dias sem atualizar → avisar quem criou a demanda.</small></span></button>
+              <button type="button" data-automation-template="parada"><i data-lucide="hourglass"></i><span><strong>Sem movimentação</strong><small>3 dias sem atualizar → avisar gestores.</small></span></button>
             </div>
           </section>
           <div id="automationList" class="automation-list"></div>
@@ -523,7 +523,7 @@
 
           <input id="itemType" type="hidden" value="demanda">
           <label class="field"><span>Título</span><input id="itemTitle" required maxlength="160" placeholder="O que precisa acontecer?"></label>
-          <label class="field"><span>Descrição <em>opcional</em></span><textarea id="itemDescription" rows="3" placeholder="Contexto, briefing ou observações"></textarea></label>
+          <label class="field"><span>Descrição <em>opcional · aceita Markdown</em></span><textarea id="itemDescription" rows="3" placeholder="Contexto, briefing ou observações"></textarea></label>
 
           <div id="demandFields">
             <section class="task-config-section">
@@ -534,31 +534,12 @@
 
               <div class="task-setup-grid">
                 <div class="visual-field assignee-visual-field">
-                  <span class="visual-field-label">Responsáveis</span>
+                  <span class="visual-field-label">Responsável</span>
                   <select id="itemAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="">Sem responsável</option></select>
-                  <input id="itemAssigneesJson" type="hidden" value="[]">
                   <button id="itemAssigneePickerBtn" class="assignee-selector-button" type="button">
                     <span id="itemAssigneePreview" class="assignee-selector-preview"></span>
-                    <span class="assignee-selector-action"><span>Selecionar pessoas</span><i data-lucide="users-round"></i></span>
+                    <span class="assignee-selector-action"><span>Selecionar</span><i data-lucide="chevron-right"></i></span>
                   </button>
-                </div>
-
-                <div class="visual-field responsibility-mode-field">
-                  <span class="visual-field-label">Modo de responsabilidade</span>
-                  <select id="itemResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
-                    <option value="compartilhada" selected>Compartilhada</option>
-                    <option value="primeiro_cumprir">Primeiro a cumprir</option>
-                  </select>
-                  <div class="responsibility-mode-grid">
-                    <button type="button" class="responsibility-mode-choice shared" data-choice-target="itemResponsibilityMode" data-choice-value="compartilhada">
-                      <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
-                      <span><strong>Compartilhada</strong><small>Todos trabalham juntos. A carga estimada é dividida entre os responsáveis e cada um registra suas próprias horas.</small></span>
-                    </button>
-                    <button type="button" class="responsibility-mode-choice race" data-choice-target="itemResponsibilityMode" data-choice-value="primeiro_cumprir">
-                      <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
-                      <span><strong>Primeiro a cumprir</strong><small>Todos recebem a demanda, mas a primeira pessoa que clicar em Iniciar assume sozinha a tarefa e a carga completa.</small></span>
-                    </button>
-                  </div>
                 </div>
 
                 <div class="visual-field">
@@ -644,8 +625,8 @@
 
           <div id="reminderFields" class="hidden">
             <div class="form-grid two">
-              <label class="field"><span>Data inicial</span><input id="reminderDate" type="date"></label>
-              <label class="field"><span>Primeiro horário</span><input id="reminderTime" type="time" value="09:00"></label>
+              <label class="field"><span>Data</span><input id="reminderDate" type="date"></label>
+              <label class="field"><span>Horário</span><input id="reminderTime" type="time" value="09:00"></label>
             </div>
             <div id="meetingEndFields" class="form-grid two hidden">
               <label class="field"><span>Termina em</span><input id="meetingEndDate" type="date"></label>
@@ -655,20 +636,7 @@
               <label class="field"><span>Avisar</span><select id="reminderOffset"><option value="0">No horário</option><option value="10">10 min antes</option><option value="30" selected>30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
               <label class="field"><span>Repetir</span><select id="reminderRecurrence"><option value="nenhuma">Não repetir</option><option value="diaria">Todos os dias</option><option value="semanal">Toda semana</option><option value="mensal">Todo mês</option><option value="anual">Todo ano</option></select></label>
             </div>
-
-            <div id="reminderMultiTimesField" class="reminder-multi-times hidden">
-              <div class="reminder-multi-times-head">
-                <div>
-                  <span class="visual-field-label">Mais horários na mesma recorrência</span>
-                  <strong>Disparar mais de uma vez no mesmo dia</strong>
-                  <small>Ex.: todo dia às 15:00 e às 17:00. Cada horário dispara sozinho.</small>
-                </div>
-                <button id="addReminderTimeBtn" type="button" class="btn secondary small"><i data-lucide="plus"></i>Adicionar horário</button>
-              </div>
-              <div id="reminderExtraTimesList" class="reminder-extra-times-list"></div>
-            </div>
-
-            <label id="visibilityField" class="field reminder-visibility-field"><span>Quem recebe</span><select id="reminderVisibility"><option value="pessoal">Somente eu</option><option value="equipe">Toda a equipe</option></select><small>Qualquer colaborador pode criar um lembrete para toda a equipe.</small></label>
+            <label id="visibilityField" class="field"><span>Visibilidade</span><select id="reminderVisibility"><option value="pessoal">Somente eu</option><option value="equipe">Toda a equipe</option></select></label>
           </div>
         </div>
         <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="quickAddModal">Cancelar</button><button id="saveItemBtn" class="btn primary" type="submit"><i data-lucide="check"></i>Criar demanda</button></div>
@@ -687,26 +655,9 @@
           <label class="field"><span>Título</span><input id="recurrenceEditTitle" required maxlength="160"></label>
           <label class="field"><span>Descrição</span><textarea id="recurrenceEditDescription" rows="3"></textarea></label>
           <div class="form-grid three">
-            <div class="visual-field recurrence-assignee-field"><span class="visual-field-label">Responsáveis</span><select id="recurrenceEditAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select><input id="recurrenceEditAssigneesJson" type="hidden" value="[]"><button id="recurrenceEditAssigneePickerBtn" class="assignee-selector-button compact" type="button"><span id="recurrenceEditAssigneePreview" class="assignee-selector-preview"></span><span class="assignee-selector-action"><span>Gerenciar</span><i data-lucide="users-round"></i></span></button></div>
+            <label class="field"><span>Responsável</span><select id="recurrenceEditAssignee"></select></label>
             <label class="field"><span>Prioridade / urgência</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
             <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
-          </div>
-          <div class="recurrence-responsibility-mode">
-            <span class="visual-field-label">Modo de responsabilidade das ocorrências</span>
-            <select id="recurrenceEditResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
-              <option value="compartilhada">Compartilhada</option>
-              <option value="primeiro_cumprir">Primeiro a cumprir</option>
-            </select>
-            <div class="responsibility-mode-grid">
-              <button type="button" class="responsibility-mode-choice shared" data-choice-target="recurrenceEditResponsibilityMode" data-choice-value="compartilhada">
-                <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
-                <span><strong>Compartilhada</strong><small>Cada ocorrência nasce para todos os responsáveis e a carga é dividida entre eles.</small></span>
-              </button>
-              <button type="button" class="responsibility-mode-choice race" data-choice-target="recurrenceEditResponsibilityMode" data-choice-value="primeiro_cumprir">
-                <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
-                <span><strong>Primeiro a cumprir</strong><small>Cada ocorrência nasce aberta para os candidatos. Quem iniciar primeiro assume aquela ocorrência.</small></span>
-              </button>
-            </div>
           </div>
           <div class="form-grid three">
             <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="recurrenceEditEstimate" type="number" min="0" step="0.5"><span>horas</span></div></label>
@@ -861,36 +812,16 @@
         <input id="editTaskId" type="hidden">
         <div class="modal-body">
           <label class="field"><span>Título</span><input id="editTaskTitle" required maxlength="160"></label>
-          <label class="field"><span>Descrição</span><textarea id="editTaskDescription" rows="4"></textarea></label>
+          <label class="field"><span>Descrição <em>aceita Markdown</em></span><textarea id="editTaskDescription" rows="4"></textarea></label>
           <section class="task-config-section edit-task-config">
             <div class="task-setup-grid">
               <div class="visual-field assignee-visual-field">
-                <span class="visual-field-label">Responsáveis</span>
+                <span class="visual-field-label">Responsável</span>
                 <select id="editTaskAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select>
-                <input id="editTaskAssigneesJson" type="hidden" value="[]">
                 <button id="editTaskAssigneePickerBtn" class="assignee-selector-button" type="button">
                   <span id="editTaskAssigneePreview" class="assignee-selector-preview"></span>
-                  <span class="assignee-selector-action"><span>Gerenciar pessoas</span><i data-lucide="users-round"></i></span>
+                  <span class="assignee-selector-action"><span>Alterar</span><i data-lucide="chevron-right"></i></span>
                 </button>
-              </div>
-
-              <div class="visual-field responsibility-mode-field">
-                <span class="visual-field-label">Modo de responsabilidade</span>
-                <select id="editTaskResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
-                  <option value="compartilhada">Compartilhada</option>
-                  <option value="primeiro_cumprir">Primeiro a cumprir</option>
-                </select>
-                <div class="responsibility-mode-grid compact">
-                  <button type="button" class="responsibility-mode-choice shared" data-choice-target="editTaskResponsibilityMode" data-choice-value="compartilhada">
-                    <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
-                    <span><strong>Compartilhada</strong><small>Todos os responsáveis participam da execução.</small></span>
-                  </button>
-                  <button type="button" class="responsibility-mode-choice race" data-choice-target="editTaskResponsibilityMode" data-choice-value="primeiro_cumprir">
-                    <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
-                    <span><strong>Primeiro a cumprir</strong><small>O primeiro que iniciar assume a ocorrência inteira.</small></span>
-                  </button>
-                </div>
-                <small id="editTaskResponsibilityLock" class="responsibility-mode-lock hidden"><i data-lucide="lock-keyhole"></i>O modo não pode ser trocado depois que a execução começou.</small>
               </div>
               <div class="visual-field">
                 <span class="visual-field-label">Prioridade / urgência</span>
@@ -955,7 +886,7 @@
   <div id="assigneePickerModal" class="modal-layer hidden">
     <div class="modal-card assignee-picker-modal">
       <div class="modal-head">
-        <div><span class="eyebrow">Equipe</span><h2 id="assigneePickerTitle">Selecionar responsáveis</h2><p id="assigneePickerDescription">Consulte a carga atual e selecione uma ou mais pessoas para trabalhar na demanda.</p></div>
+        <div><span class="eyebrow">Equipe</span><h2 id="assigneePickerTitle">Selecionar responsável</h2><p>Consulte a carga atual e escolha a pessoa mais adequada para a demanda.</p></div>
         <button class="icon-btn subtle" data-close-modal="assigneePickerModal" type="button"><i data-lucide="x"></i></button>
       </div>
       <div class="modal-body assignee-picker-body">
@@ -963,13 +894,13 @@
         <div id="assigneePickerContext" class="assignee-picker-context"></div>
         <div id="assigneePickerList" class="assignee-picker-list"></div>
       </div>
-      <div class="modal-footer assignee-picker-footer"><span id="assigneePickerSelectionSummary" class="assignee-picker-selection-summary">Nenhuma pessoa selecionada</span><div><button type="button" class="btn secondary" data-close-modal="assigneePickerModal">Cancelar</button><button id="assigneePickerApplyBtn" type="button" class="btn primary hidden"><i data-lucide="users-round"></i>Aplicar responsáveis</button></div></div>
+      <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="assigneePickerModal">Cancelar</button></div>
     </div>
   </div>
 
   <div id="transferTaskModal" class="modal-layer hidden">
     <div class="modal-card transfer-task-modal">
-      <div class="modal-head"><div><span class="eyebrow">Responsável principal</span><h2>Trocar responsável principal</h2><p>A demanda pode ter vários responsáveis. Esta ação troca apenas a pessoa principal usada como referência do fluxo legado.</p></div><button class="icon-btn subtle" data-close-modal="transferTaskModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Transferência</span><h2>Transferir demanda</h2><p>Todo o briefing, prazo, histórico, comentários, status e horas estimadas seguem com a mesma demanda.</p></div><button class="icon-btn subtle" data-close-modal="transferTaskModal"><i data-lucide="x"></i></button></div>
       <form id="transferTaskForm">
         <input id="transferTaskId" type="hidden">
         <div class="modal-body">
@@ -981,7 +912,7 @@
               <button id="transferAssigneePickerBtn" class="transfer-person-card choose" type="button"><span id="transferAssigneePreview"></span><i data-lucide="chevron-right"></i></button>
             </div>
           </div>
-          <div class="transfer-preserved"><i data-lucide="package-check"></i><div><strong>O que muda?</strong><span>O novo colaborador passa a ser o responsável principal. Os demais corresponsáveis continuam na demanda até serem removidos em “Gerenciar responsáveis”.</span></div></div>
+          <div class="transfer-preserved"><i data-lucide="package-check"></i><div><strong>O que vai junto?</strong><span>Descrição, links citados no briefing/comentários, comentários, histórico, prioridade, prazo, status atual, lembretes e a estimativa de horas. A carga sai do colaborador anterior e passa ao novo responsável.</span></div></div>
           <section id="transferRecurrenceScope" class="transfer-recurrence-scope hidden">
             <div><i data-lucide="repeat-2"></i><span><strong>Esta demanda faz parte de uma recorrência</strong><small>Escolha se a troca vale só para esta ocorrência ou também para os próximos dias.</small></span></div>
             <label><input id="transferApplySeries" type="checkbox"><span><strong>Aplicar às próximas ocorrências</strong><small>Atualiza o responsável da série sem alterar ocorrências já concluídas.</small></span></label>
@@ -994,81 +925,19 @@
   </div>
 
   <div id="taskEvaluationModal" class="modal-layer hidden">
-    <div class="modal-card evaluation-modal authorship-evaluation-modal">
-      <div class="modal-head"><div><span class="eyebrow">Validação do gestor</span><h2>Avaliar conclusão</h2><p>Valide a entrega e registre quem realmente realizou o trabalho.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
+    <div class="modal-card evaluation-modal">
+      <div class="modal-head"><div><span class="eyebrow">Validação do gestor</span><h2>Avaliar conclusão</h2><p>A demanda só será concluída depois da sua avaliação.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
       <form id="taskEvaluationForm">
         <input id="evaluationTaskId" type="hidden">
         <div class="modal-body">
           <div id="evaluationTaskSummary" class="evaluation-task-summary"></div>
-
-          <section class="evaluation-authorship-section">
-            <div class="evaluation-authorship-head">
-              <div>
-                <span class="eyebrow">Autoria da entrega</span>
-                <h3>Quem realmente fez esta demanda?</h3>
-                <p>Selecione uma ou mais pessoas. A autoria será registrada para todos, mas o popup de confirmação será enviado apenas aos gestores escolhidos.</p>
-              </div>
-              <span id="evaluationExecutorSummary" class="evaluation-executor-summary">0 selecionados</span>
-            </div>
-            <label class="evaluation-executor-search">
-              <i data-lucide="search"></i>
-              <input id="evaluationExecutorSearch" type="search" autocomplete="off" placeholder="Buscar colaborador...">
-            </label>
-            <div id="evaluationExecutorList" class="evaluation-executor-list"></div>
-            <div class="evaluation-authorship-info">
-              <i data-lucide="shield-check"></i>
-              <span>O gestor propõe a autoria. Apenas executores com papel de gestor recebem o popup de confirmação. Colaboradores escolhidos entram na autoria sem precisar responder.</span>
-            </div>
-          </section>
-
-          <label class="field"><span>Observação da revisão <em>opcional ao aprovar, obrigatória ao pedir ajustes</em></span><textarea id="evaluationNote" rows="4" placeholder="Ex.: material validado, entrega realizada em conjunto, pontos que precisam ser corrigidos..."></textarea></label>
-
+          <label class="field"><span>Observação para o colaborador <em>Markdown · recomendado ao pedir ajustes</em></span><textarea id="evaluationNote" rows="4" placeholder="O que foi validado ou o que precisa ser corrigido?"></textarea></label>
           <div class="evaluation-choice-grid">
-            <button id="evaluationRejectBtn" type="button" class="evaluation-choice reject"><i data-lucide="undo-2"></i><span><strong>Devolver para ajustes</strong><small>Volta para Em andamento e cancela qualquer confirmação de autoria pendente.</small></span></button>
-            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="users-round"></i><span><strong>Validar e pedir confirmação</strong><small>Envia um popup para cada executor selecionado confirmar a autoria.</small></span></button>
+            <button id="evaluationRejectBtn" type="button" class="evaluation-choice reject"><i data-lucide="undo-2"></i><span><strong>Devolver para ajustes</strong><small>Volta para Em andamento e avisa o responsável.</small></span></button>
+            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="badge-check"></i><span><strong>Aprovar e concluir</strong><small>Encerra a demanda como conclusão validada.</small></span></button>
           </div>
         </div>
       </form>
-    </div>
-  </div>
-
-  <div id="authorshipConfirmationModal" class="modal-layer authorship-confirmation-layer hidden" role="alertdialog" aria-modal="true" aria-labelledby="authorshipConfirmationTitle">
-    <div class="modal-card authorship-confirmation-modal">
-      <div class="authorship-confirmation-accent"></div>
-      <div class="modal-head">
-        <div><span class="eyebrow">Confirmação de autoria</span><h2 id="authorshipConfirmationTitle">Você participou desta entrega?</h2><p>O gestor validou a demanda e registrou os executores abaixo.</p></div>
-      </div>
-      <div class="modal-body">
-        <input id="authorshipConfirmationReviewId" type="hidden">
-        <div id="authorshipConfirmationTask" class="authorship-confirmation-task"></div>
-
-        <section class="authorship-confirmation-executors">
-          <div class="authorship-confirmation-section-title"><span><i data-lucide="users-round"></i>Executores registrados pelo gestor</span><strong id="authorshipConfirmationCount">0 pessoas</strong></div>
-          <div id="authorshipConfirmationPeople" class="authorship-confirmation-people"></div>
-        </section>
-
-        <div id="authorshipConfirmationManagerNote" class="authorship-manager-note hidden"></div>
-
-        <div class="authorship-confirmation-question">
-          <span><i data-lucide="badge-check"></i></span>
-          <div><strong>Essa lista representa corretamente quem realizou a demanda?</strong><small>Confirme apenas se os nomes estiverem corretos. Se alguém estiver faltando ou incluído por engano, conteste e explique.</small></div>
-        </div>
-
-        <div id="authorshipContestBox" class="authorship-contest-box hidden">
-          <label class="field"><span>O que está errado na autoria?</span><textarea id="authorshipContestReason" rows="4" maxlength="700" placeholder="Ex.: também participei junto com..., ou esta pessoa não executou esta entrega..."></textarea></label>
-          <div class="authorship-contest-actions">
-            <button id="authorshipCancelContestBtn" type="button" class="btn secondary">Voltar</button>
-            <button id="authorshipSendContestBtn" type="button" class="btn danger-soft"><i data-lucide="message-square-warning"></i>Enviar contestação</button>
-          </div>
-        </div>
-      </div>
-      <div id="authorshipConfirmationFooter" class="modal-footer authorship-confirmation-footer">
-        <button id="authorshipLaterBtn" type="button" class="btn secondary"><i data-lucide="clock-3"></i>Responder depois</button>
-        <div>
-          <button id="authorshipDisputeBtn" type="button" class="btn danger-soft"><i data-lucide="message-square-warning"></i>Não, está incorreto</button>
-          <button id="authorshipConfirmBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Sim, confirmo</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1289,7 +1158,7 @@
           <div class="automation-flow-builder">
             <section><span class="automation-flow-step">SE</span><label class="field"><span>Gatilho</span><select id="automationTrigger" required><option value="tarefa_criada">Uma demanda for criada</option><option value="status_alterado">O status mudar</option><option value="prioridade_alterada">A prioridade mudar</option><option value="revisao">Entrar em revisão</option><option value="conclusao">For concluída</option><option value="prazo_24h">Faltar até 24h para o prazo</option><option value="atrasada">Ficar atrasada</option><option value="sem_movimentacao_3d">Ficar 3 dias sem movimentação</option></select></label></section>
             <section><span class="automation-flow-step muted">E</span><div class="automation-condition-grid"><label class="field"><span>Condição</span><select id="automationConditionField"><option value="qualquer">Qualquer demanda</option><option value="prioridade">Prioridade</option><option value="status">Status</option><option value="projeto">Projeto</option><option value="responsavel">Responsável</option></select></label><label class="field"><span>Valor</span><input id="automationConditionValue" placeholder="Ex.: urgente, revisao ou nome do projeto"></label></div></section>
-            <section><span class="automation-flow-step then">ENTÃO</span><div class="automation-condition-grid"><label class="field"><span>Notificar</span><select id="automationDestination"><option value="responsavel">Responsável da demanda</option><option value="criador">Gestor/criador da demanda</option><option value="equipe">Toda a equipe operacional</option></select></label><label class="field"><span>Nível</span><select id="automationLevel"><option value="critica">Crítica</option><option value="importante">Importante</option><option value="normal" selected>Normal</option><option value="informativa">Informativa</option></select></label></div></section>
+            <section><span class="automation-flow-step then">ENTÃO</span><div class="automation-condition-grid"><label class="field"><span>Notificar</span><select id="automationDestination"><option value="responsavel">Responsável da demanda</option><option value="criador">Quem criou a demanda</option><option value="gestores">Todos os gestores</option><option value="equipe">Toda a equipe</option></select></label><label class="field"><span>Nível</span><select id="automationLevel"><option value="critica">Crítica</option><option value="importante">Importante</option><option value="normal" selected>Normal</option><option value="informativa">Informativa</option></select></label></div></section>
           </div>
           <label class="field"><span>Mensagem</span><textarea id="automationMessage" rows="3" maxlength="240" placeholder="Ex.: Esta demanda está há 3 dias sem movimentação."></textarea></label>
           <label class="academy-full-day-toggle automation-enabled-toggle"><span><strong>Automação ativa</strong><small>Desative sem excluir a regra.</small></span><input id="automationEnabled" type="checkbox" checked></label>
