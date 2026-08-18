@@ -26,6 +26,7 @@ async function exigirSessaoLocal(req) {
   if (!supabaseAuth) {
     const error = new Error('Autenticação local indisponível: configure SUPABASE_URL e SUPABASE_ANON_KEY.');
     error.status = 503;
+    error.code = 'PMG_AUTH_UNAVAILABLE';
     throw error;
   }
 
@@ -34,6 +35,7 @@ async function exigirSessaoLocal(req) {
   if (!token) {
     const error = new Error('Sessão do PMG Connect obrigatória para consultar o SQL local.');
     error.status = 401;
+    error.code = 'PMG_AUTH_REQUIRED';
     throw error;
   }
 
@@ -46,6 +48,7 @@ async function exigirSessaoLocal(req) {
     if (error || !data?.user) {
       const authError = new Error('Sessão inválida ou expirada.');
       authError.status = 401;
+      authError.code = 'PMG_AUTH_INVALID';
       throw authError;
     }
     authCache.set(token, { user: data.user, expiresAt: Date.now() + AUTH_CACHE_MS });
@@ -167,7 +170,7 @@ async function registrarDiretorioApi(nomeDiretorio) {
           } catch (error) {
             return res.status(error.status || 401).json({
               message: error.message || 'Não autorizado.',
-              codigo: 'PMG_AUTH_REQUIRED'
+              codigo: error.code || 'PMG_AUTH_REQUIRED'
             });
           }
         });
