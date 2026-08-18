@@ -671,6 +671,17 @@ async function initializeUser() {
   await handleUrlActions();
   if (!needsProfile) setTimeout(() => maybeOpenOnboarding(), 420);
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
+  if (!window.__pmgReviewFeedbackClockV378) {
+    window.__pmgReviewFeedbackClockV378 = setInterval(() => {
+      if (state.selectedTask?.status === 'revisao' && !$('taskDrawer')?.classList.contains('hidden')) {
+        renderTaskDrawer();
+        refreshIcons();
+      }
+      if (state.currentPage === 'equipe' || document.querySelector('[data-page="equipe"].active')) {
+        try { renderEquipe(); refreshIcons(); } catch (_) {}
+      }
+    }, 60000);
+  }
 }
 async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4(), loadIntelligenceV5()]);
@@ -1140,9 +1151,14 @@ function renderTeamInsights(stats, active, unassigned) {
     const diff = new Date(due) - new Date(); return diff >= 0 && diff <= 48 * 3600000;
   }).sort(taskSortByAttention);
   const idleWithWork = stats.filter(item => item.active.length && item.lastActivity && !isWithinDays(item.lastActivity, 7));
+  const pendingReviews = active
+    .filter(task => task.status === 'revisao')
+    .sort((a,b) => currentReviewBusinessSecondsV378(b) - currentReviewBusinessSecondsV378(a));
+  const myPendingReviews = pendingReviews.filter(task => reviewManagerV378(task)?.id === state.me?.id);
   const alerts = [
-    ...attention.slice(0, 3).map(item => ({ icon: TEAM_RISK[item.risk].icon, title: item.person.nome, text: `${item.overdue.length} atrasada(s) · ${Math.round(item.hours)}h em aberto`, personId: item.person.id, person: item.person, stats: item, tone: item.risk })),
-    ...unassigned.slice(0, 2).map(task => ({ icon: 'user-round-x', title: task.titulo, text: 'Demanda sem responsável', taskId: task.id, tone: 'attention' }))
+    ...myPendingReviews.slice(0, 3).map(task => ({ icon: 'scan-eye', title: task.titulo, text: reviewAlertTextV378(task), taskId: task.id, tone: 'attention' })),
+    ...attention.slice(0, 2).map(item => ({ icon: TEAM_RISK[item.risk].icon, title: item.person.nome, text: `${item.overdue.length} atrasada(s) · ${Math.round(item.hours)}h em aberto`, personId: item.person.id, person: item.person, stats: item, tone: item.risk })),
+    ...unassigned.slice(0, 1).map(task => ({ icon: 'user-round-x', title: task.titulo, text: 'Demanda sem responsável', taskId: task.id, tone: 'attention' }))
   ].slice(0, 5);
   const statusTotals = Object.keys(STATUS).map(status => ({ status, count: state.tasks.filter(task => !task.arquivada_em && task.status === status).length }));
   const totalStatus = Math.max(1, statusTotals.reduce((sum, item) => sum + item.count, 0));
@@ -1404,6 +1420,163 @@ async function openTask(taskId) {
     renderTaskDrawer(); openDrawer('taskDrawer'); await markNotificationsForTarget('task', taskId);
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
+
+/* =========================================================
+   PMG CONNECT V3.7.8 — FEEDBACK DE TEMPO DE REVISÃO
+   ========================================================= */
+function reviewManagerV378(task) {
+  if (!task) return null;
+  const explicit = collaborator(task.revisao_gestor_responsavel_id);
+  if (explicit?.role === 'gestor') return explicit;
+  const creator = collaborator(task.criado_por);
+  if (creator?.role === 'gestor') return creator;
+  const evaluator = collaborator(task.avaliado_por);
+  if (evaluator?.role === 'gestor') return evaluator;
+  return null;
+}
+
+function businessSecondsBetweenV378(startValue, endValue = new Date()) {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
+
+  // Expediente usado no feedback: segunda a sexta, 08:00–18:00.
+  // Feriados não são descontados nesta versão.
+  let total = 0;
+  const cursor = new Date(start);
+  cursor.setHours(0,0,0,0);
+  const lastDay = new Date(end);
+  lastDay.setHours(0,0,0,0);
+
+  while (cursor <= lastDay) {
+    const weekday = cursor.getDay();
+    if (weekday >= 1 && weekday <= 5) {
+      const workStart = new Date(cursor);
+      workStart.setHours(8,0,0,0);
+      const workEnd = new Date(cursor);
+      workEnd.setHours(18,0,0,0);
+
+      const segmentStart = new Date(Math.max(start.getTime(), workStart.getTime()));
+      const segmentEnd = new Date(Math.min(end.getTime(), workEnd.getTime()));
+      if (segmentEnd > segmentStart) total += Math.floor((segmentEnd - segmentStart) / 1000);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return Math.max(0, total);
+}
+
+function durationLabelV378(seconds) {
+  const value = Math.max(0, Math.floor(Number(seconds) || 0));
+  const days = Math.floor(value / 36000); // 10h úteis por dia
+  const hours = Math.floor((value % 36000) / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+
+  if (days > 0) return `${days}d útil${days === 1 ? '' : 'eis'}${hours ? ` ${hours}h` : ''}`;
+  if (hours > 0) return `${hours}h${minutes ? ` ${minutes}min` : ''}`;
+  return `${Math.max(0, minutes)}min`;
+}
+
+function elapsedClockLabelV378(startValue, endValue = new Date()) {
+  const start = new Date(startValue), end = new Date(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+  return durationLabelV378(Math.floor(Math.max(0, end - start) / 1000));
+}
+
+function currentReviewBusinessSecondsV378(task) {
+  if (!task || task.status !== 'revisao') return 0;
+  const started = task.revisao_iniciada_em || task.atualizado_em;
+  return businessSecondsBetweenV378(started, new Date());
+}
+
+function lastReviewBusinessSecondsV378(task) {
+  if (!task) return 0;
+  if (task.revisao_ultima_iniciada_em && task.revisao_ultima_finalizada_em) {
+    return businessSecondsBetweenV378(task.revisao_ultima_iniciada_em, task.revisao_ultima_finalizada_em);
+  }
+  return Number(task.revisao_ultima_duracao_segundos || 0);
+}
+
+function reviewFeedbackPanelV378(task) {
+  if (!task) return '';
+  const manager = reviewManagerV378(task);
+  const managerName = manager?.nome || 'Gestor responsável';
+
+  if (task.status === 'revisao') {
+    const started = task.revisao_iniciada_em || task.atualizado_em;
+    const useful = currentReviewBusinessSecondsV378(task);
+    const usefulLabel = durationLabelV378(useful);
+    const clockLabel = elapsedClockLabelV378(started, new Date());
+    const mine = Boolean(manager && state.me?.id === manager.id);
+
+    let title;
+    let text;
+    if (mine) {
+      title = `Esta revisão está com você há ${usefulLabel}`;
+      text = 'O colaborador já entregou a demanda e o tempo de execução dele está parado enquanto aguarda sua validação.';
+    } else if (manager) {
+      title = `${firstName(managerName)} está com esta demanda para revisar há ${usefulLabel}`;
+      text = isManager()
+        ? `Gestor responsável pela revisão: ${managerName}.`
+        : `Sua entrega está aguardando a validação de ${managerName}.`;
+    } else {
+      title = `Esta demanda está aguardando revisão há ${usefulLabel}`;
+      text = 'Ainda não foi possível identificar um gestor responsável específico para esta revisão.';
+    }
+
+    return `<section class="review-time-feedback-v378 waiting">
+      <span class="review-time-icon-v378"><i data-lucide="${mine ? 'timer' : 'hourglass'}"></i></span>
+      <div class="review-time-copy-v378">
+        <span class="eyebrow">Tempo de revisão</span>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(text)}</small>
+        <div class="review-time-meta-v378">
+          <span><i data-lucide="briefcase-business"></i>${escapeHtml(usefulLabel)} de expediente</span>
+          <span title="Tempo corrido desde o envio"><i data-lucide="clock-3"></i>${escapeHtml(clockLabel)} corridos</span>
+          ${task.revisao_quantidade ? `<span><i data-lucide="repeat-2"></i>${Number(task.revisao_quantidade)}ª passagem em revisão</span>` : ''}
+        </div>
+      </div>
+      <b>AGUARDANDO</b>
+    </section>`;
+  }
+
+  if (task.revisao_ultima_finalizada_em && task.revisao_ultima_iniciada_em) {
+    const seconds = lastReviewBusinessSecondsV378(task);
+    const label = durationLabelV378(seconds);
+    const clockLabel = elapsedClockLabelV378(task.revisao_ultima_iniciada_em, task.revisao_ultima_finalizada_em);
+    const reviewer = collaborator(task.avaliado_por) || manager;
+    const reviewerName = reviewer?.nome || managerName;
+    const outcome = task.avaliacao_status === 'ajustes'
+      ? 'devolveu a demanda para ajustes'
+      : task.avaliacao_status === 'aprovada'
+        ? 'aprovou a conclusão'
+        : 'encerrou a revisão';
+
+    return `<section class="review-time-feedback-v378 finished">
+      <span class="review-time-icon-v378"><i data-lucide="history"></i></span>
+      <div class="review-time-copy-v378">
+        <span class="eyebrow">Feedback da última revisão</span>
+        <strong>${escapeHtml(reviewerName)} ${escapeHtml(outcome)} após ${escapeHtml(label)} de expediente.</strong>
+        <small>Esse tempo fica registrado para separar tempo de execução do colaborador e tempo aguardando validação da gestão.</small>
+        <div class="review-time-meta-v378">
+          <span><i data-lucide="briefcase-business"></i>${escapeHtml(label)} úteis</span>
+          <span><i data-lucide="clock-3"></i>${escapeHtml(clockLabel)} corridos</span>
+          ${task.revisao_total_segundos != null ? `<span><i data-lucide="sigma"></i>${escapeHtml(durationLabelV378(Number(task.revisao_total_segundos || 0)))} corridos acumulados</span>` : ''}
+        </div>
+      </div>
+      <b>REGISTRADO</b>
+    </section>`;
+  }
+
+  return '';
+}
+
+function reviewAlertTextV378(task) {
+  const manager = reviewManagerV378(task);
+  const elapsed = durationLabelV378(currentReviewBusinessSecondsV378(task));
+  if (manager?.id === state.me?.id) return `Aguardando sua revisão há ${elapsed} de expediente`;
+  return manager ? `Aguardando ${firstName(manager.nome)} há ${elapsed} de expediente` : `Aguardando revisão há ${elapsed} de expediente`;
+}
+
 function renderTaskDrawer() {
   const task = state.selectedTask; if (!task) return;
   const person = collaborator(task.responsavel_id);
@@ -1419,6 +1592,7 @@ function renderTaskDrawer() {
   const evaluationPending = task.status === 'revisao';
   const evaluationFeedback = task.avaliacao_status === 'ajustes' && task.avaliacao_observacao;
   const evaluationApproved = task.avaliacao_status === 'aprovada';
+  const reviewTimePanel = reviewFeedbackPanelV378(task);
 
   const evaluationPanel = evaluationPending
     ? isManager()
@@ -1449,6 +1623,7 @@ function renderTaskDrawer() {
       ${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     </section>
 
+    ${reviewTimePanel}
     ${evaluationPanel}
 
     <section class="task-status-section">
@@ -1510,9 +1685,18 @@ function renderTaskActivities() {
       text = 'transferiu a responsabilidade';
       detail = `${escapeHtml(from?.nome || 'Sem responsável')} → ${escapeHtml(to?.nome || 'Sem responsável')}${activity.detalhes?.horas != null ? ` · ${Number(activity.detalhes.horas)}h transferidas` : ''}${activity.detalhes?.observacao ? ` · ${escapeHtml(activity.detalhes.observacao)}` : ''}`;
     } else if (activity.tipo === 'avaliacao') {
-      const approved = activity.detalhes?.resultado === 'aprovada';
-      text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
-      detail = activity.detalhes?.observacao ? markdownInlineV377(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
+      const result = activity.detalhes?.resultado;
+      if (result === 'tempo_revisao') {
+        const useful = Number(activity.detalhes?.duracao_util_segundos || 0);
+        const clock = Number(activity.detalhes?.duracao_segundos || 0);
+        const responsible = collaborator(activity.detalhes?.gestor_responsavel_id);
+        text = 'registrou o tempo da revisão';
+        detail = `${durationLabelV378(useful)} de expediente${clock ? ` · ${durationLabelV378(clock)} corridos` : ''}${responsible ? ` · gestor responsável: ${escapeHtml(responsible.nome)}` : ''}`;
+      } else {
+        const approved = result === 'aprovada';
+        text = approved ? 'aprovou a conclusão' : 'devolveu a demanda para ajustes';
+        detail = activity.detalhes?.observacao ? markdownInlineV377(activity.detalhes.observacao) : (approved ? 'Entrega validada.' : 'Ajustes solicitados.');
+      }
     }
     return `<div class="activity-log"><span class="activity-log-icon"><i data-lucide="${ACTIVITY_ICON[activity.tipo] || (activity.tipo === 'status' ? 'refresh-cw' : 'activity')}"></i></span><div><p><strong>${escapeHtml(activity.ator?.nome || 'Sistema')}</strong> ${text}</p>${detail ? `<em>${detail}</em>` : ''}<span>${formatDateTime(activity.criado_em)}</span></div></div>`;
   }).join('');
@@ -1678,7 +1862,7 @@ async function updateTaskStatus(taskId, status) {
     const { error } = await db.rpc('atualizar_status', { p_tarefa_id: taskId, p_status: status });
     if (error) throw error;
     await refreshData(); if (!$('taskDrawer').classList.contains('hidden')) await openTask(taskId); await dispatchPendingPush();
-    toast(status === 'revisao' ? 'Demanda enviada para avaliação do gestor.' : 'Status atualizado.');
+    toast(status === 'revisao' ? 'Demanda enviada para revisão. O tempo de espera da gestão começou a ser registrado.' : 'Status atualizado.');
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskAssignee(taskId, personId) {
