@@ -423,16 +423,42 @@ function taskDue(task) {
   return null;
 }
 function taskDueKey(task) { return taskDue(task) ? dateKey(taskDue(task)) : ''; }
-function isOverdue(task) { const due = taskDue(task); return due && new Date(due) < new Date() && task.status !== 'concluida'; }
+function isDeadlinePausedV375(task) { return Boolean(task && task.status === 'revisao'); }
+function isOverdue(task) {
+  const due = taskDue(task);
+  return Boolean(due && !isDeadlinePausedV375(task) && new Date(due) < new Date() && task.status !== 'concluida');
+}
+function reviewPauseElapsedV375(task) {
+  if (!task?.prazo_pausado_em) return 0;
+  return Math.max(0, Date.now() - new Date(task.prazo_pausado_em).getTime());
+}
+function reviewPauseLabelV375(task) {
+  if (!isDeadlinePausedV375(task)) return '';
+  const elapsed = reviewPauseElapsedV375(task);
+  const hours = Math.floor(elapsed / 3600000);
+  const minutes = Math.floor((elapsed % 3600000) / 60000);
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    const rest = hours % 24;
+    return `${days}d${rest ? ` ${rest}h` : ''}`;
+  }
+  if (hours) return `${hours}h${minutes ? ` ${minutes}min` : ''}`;
+  return `${Math.max(0, minutes)}min`;
+}
 function dueLabel(task) {
-  const due = taskDue(task); if (!due) return 'Sem prazo';
+  const due = taskDue(task);
+  if (!due) return isDeadlinePausedV375(task) ? 'Prazo pausado · Em revisão' : 'Sem prazo';
+  if (isDeadlinePausedV375(task)) return 'Prazo pausado · Em revisão';
   const key = dateKey(due), today = todayKey();
   if (isOverdue(task)) return `Atrasada · ${formatDate(due)}`;
   if (key === today) return `Hoje, ${formatTime(due)}`;
   if (key === dateKey(addDays(new Date(), 1))) return `Amanhã, ${formatTime(due)}`;
   return `${formatDate(due)} · ${formatTime(due)}`;
 }
-function dueClass(task) { return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : ''; }
+function dueClass(task) {
+  if (isDeadlinePausedV375(task)) return 'paused';
+  return isOverdue(task) ? 'late' : taskDueKey(task) === todayKey() ? 'today' : '';
+}
 function reminderEffectiveTime(reminder) { return reminder.adiado_ate || reminder.inicio_em; }
 function itemTitle(item) { return item.titulo || 'Sem título'; }
 function priorityWeight(task) { return ({ imediata: 6, urgente: 4, alta: 3, media: 2, baixa: 1 })[task.prioridade] || 2; }
@@ -822,11 +848,11 @@ function teamPersonStats(person) {
   const completed30 = assigned.filter(task => task.status === 'concluida' && isWithinDays(task.concluida_em || task.atualizado_em, 30));
   const completed7 = completed30.filter(task => isWithinDays(task.concluida_em || task.atualizado_em, 7));
   const overdue = active.filter(isOverdue);
-  const dueToday = active.filter(task => taskDueKey(task) === todayKey());
+  const dueToday = active.filter(task => !isDeadlinePausedV375(task) && taskDueKey(task) === todayKey());
   const weekEnd = addDays(new Date(), 7);
   const dueWeek = active.filter(task => {
     const due = taskDue(task);
-    return due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
+    return !isDeadlinePausedV375(task) && due && new Date(due) >= new Date() && new Date(due) <= weekEnd;
   });
   const urgent = active.filter(task => ['imediata', 'urgente'].includes(task.prioridade));
   const hours = active.reduce((sum, task) => sum + taskEffortShare(task), 0);
@@ -1234,6 +1260,15 @@ function renderTaskDrawer() {
   const evaluationApproved = task.avaliacao_status === 'aprovada';
 
   const evaluationPanel = evaluationPanelHTMLV372(task, evaluator);
+  const reviewPausePanel = isDeadlinePausedV375(task) ? `<section class="review-deadline-pause">
+    <span class="review-deadline-pause-icon"><i data-lucide="pause"></i></span>
+    <div>
+      <span class="eyebrow">Relógio da demanda pausado</span>
+      <strong>O prazo não corre enquanto a entrega está em revisão.</strong>
+      <small>${task.prazo_pausado_em ? `Pausado há ${escapeHtml(reviewPauseLabelV375(task))}. ` : ''}Se houver devolução para ajustes, o prazo será prorrogado automaticamente pelo mesmo período.</small>
+    </div>
+    <b>PAUSADO</b>
+  </section>` : '';
 
   const nextActionMarkup = canChangeStatus && !task.arquivada_em && nextAction
     ? `<button id="drawerNextStatusBtn" type="button" class="status-primary-action ${task.status} ${nextAction.next === '__avaliar__' ? 'evaluation' : ''}" data-next-status="${nextAction.next}"><i data-lucide="${nextAction.icon}"></i><span><strong>${canClaimTask ? 'Assumir e iniciar agora' : nextAction.label}</strong><small>${canClaimRace ? 'Você está entre os candidatos. Quem iniciar primeiro assume esta demanda sozinho.' : canClaimImmediate ? 'Ao iniciar, esta demanda passa a ficar sob sua responsabilidade.' : nextAction.next === '__avaliar__' ? 'Revise o material e decida se pode ser encerrado' : STATUS_HELP[nextAction.next]}</small></span><i data-lucide="arrow-right"></i></button>`
@@ -1259,6 +1294,7 @@ function renderTaskDrawer() {
       ${(task.tags || []).length ? `<div class="detail-tags">${task.tags.map(tag => `<span class="detail-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
     </section>
 
+    ${reviewPausePanel}
     ${evaluationPanel}
 
     <section class="task-status-section">
@@ -1531,7 +1567,7 @@ async function updateTaskStatus(taskId, status) {
     const { error } = await db.rpc('atualizar_status', { p_tarefa_id: taskId, p_status: status });
     if (error) throw error;
     await refreshData(); if (!$('taskDrawer').classList.contains('hidden')) await openTask(taskId); await dispatchPendingPush();
-    toast(status === 'revisao' ? 'Demanda enviada para avaliação do gestor.' : 'Status atualizado.');
+    toast(status === 'revisao' ? 'Demanda enviada para revisão. O prazo foi pausado até a decisão do gestor.' : 'Status atualizado.');
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskAssignee(taskId, personId) {
@@ -1923,6 +1959,10 @@ function playIntrusiveNotificationSound(tone = 'blue') {
 
 function playNotificationArrivalSound(notification) {
   if (!notification || document.hidden) return;
+  if (notification.tarefa_id && ['prazo_proximo','prazo_atrasado'].includes(notification.tipo)) {
+    const task = state.tasks.find(item => item.id === notification.tarefa_id);
+    if (isDeadlinePausedV375(task)) return;
+  }
   if (isManager() && !managerPopupRelationshipV374(notification)) return;
   const level = notificationLevel(notification);
   if (['critica','importante'].includes(level)) return; // o popup invasivo toca o som
@@ -1996,6 +2036,7 @@ function managerPopupRelationshipV374(notification) {
   if (notification.tarefa_id) {
     const task = state.tasks.find(item => item.id === notification.tarefa_id);
     if (!task) return false; // para gestor, falha fechada: sem contexto, sem popup.
+    if (isDeadlinePausedV375(task) && ['prazo_proximo','prazo_atrasado'].includes(notification.tipo)) return false;
 
     const createdByMe = task.criado_por === meId;
     const assignedToMe = taskHasAssignee(task, meId);
@@ -3215,7 +3256,7 @@ function buildMonthlyReport(value){
     const deadlineCompleted=completed.filter(t=>taskDue(t)&&t.concluida_em);
     const onTime=deadlineCompleted.filter(t=>new Date(t.concluida_em)<=new Date(taskDue(t))).length;
     const onTimeRate=deadlineCompleted.length?Math.round((onTime/deadlineCompleted.length)*100):null;
-    const cycleValues=completed.filter(t=>t.criado_em&&(t.concluida_em||t.atualizado_em)).map(t=>Math.max(0,(new Date(t.concluida_em||t.atualizado_em)-new Date(t.criado_em))/86400000));
+    const cycleValues=completed.filter(t=>t.criado_em&&(t.concluida_em||t.atualizado_em)).map(t=>Math.max(0,((new Date(t.concluida_em||t.atualizado_em)-new Date(t.criado_em))-Math.max(0,Number(t.prazo_pausado_total_segundos||0)*1000))/86400000));
     const avgCycle=cycleValues.length?cycleValues.reduce((a,b)=>a+b,0)/cycleValues.length:null;
     const transfersIn=state.transfers.filter(tr=>tr.para_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
     const transfersOut=state.transfers.filter(tr=>tr.de_colaborador_id===person.id&&new Date(tr.criado_em)>=start&&new Date(tr.criado_em)<end);
@@ -3950,7 +3991,11 @@ function buildMonthlyReport(value) {
     const deadlineCompleted = completed.filter(task => taskDue(task) && task.concluida_em);
     const onTime = deadlineCompleted.filter(task => new Date(task.concluida_em) <= new Date(taskDue(task))).length;
     const onTimeRate = deadlineCompleted.length ? Math.round(onTime / deadlineCompleted.length * 100) : null;
-    const cycleValues = completed.filter(task => task.criado_em && (task.concluida_em || task.atualizado_em)).map(task => Math.max(0, (new Date(task.concluida_em || task.atualizado_em) - new Date(task.criado_em)) / 86400000));
+    const cycleValues = completed.filter(task => task.criado_em && (task.concluida_em || task.atualizado_em)).map(task => {
+      const grossMs = new Date(task.concluida_em || task.atualizado_em) - new Date(task.criado_em);
+      const pausedMs = Math.max(0, Number(task.prazo_pausado_total_segundos || 0) * 1000);
+      return Math.max(0, (grossMs - pausedMs) / 86400000);
+    });
     const avgCycle = cycleValues.length ? cycleValues.reduce((a, b) => a + b, 0) / cycleValues.length : null;
     const transfersIn = state.transfers.filter(item => item.para_colaborador_id === person.id && new Date(item.criado_em) >= start && new Date(item.criado_em) < end);
     const transfersOut = state.transfers.filter(item => item.de_colaborador_id === person.id && new Date(item.criado_em) >= start && new Date(item.criado_em) < end);
@@ -5068,6 +5113,7 @@ function taskAssigneeShortNames(task) {
 function taskEffortShare(task, forcedCount = null) {
   const finalExecutors = task?.status === 'concluida' ? taskFinalExecutorIdsV372(task) : [];
   if (finalExecutors.length) return sizeWeight(task) / Math.max(1, finalExecutors.length);
+  if (isDeadlinePausedV375(task)) return 0;
   // Em "Primeiro a cumprir" ninguém recebe carga antes de assumir.
   // Depois do claim, a pessoa vencedora recebe a carga completa.
   if (taskIsFirstToCompleteV371(task)) {

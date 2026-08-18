@@ -3926,3 +3926,79 @@ body.ui-theme-dark .authorship-status-person{
     grid-template-columns:1fr;
   }
 }
+
+
+/* =========================================================
+   PMG CONNECT V3.7.5 — PRAZO PAUSADO EM REVISÃO
+   ========================================================= */
+.due.paused,
+.task-due.paused,
+[class*="due"].paused{
+  color:#715b20!important;
+  border-color:#ead18a!important;
+  background:#fff8df!important;
+}
+.review-deadline-pause{
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr) auto;
+  align-items:center;
+  gap:12px;
+  margin:13px 0;
+  padding:14px 15px;
+  border:1px solid #e5c56d;
+  border-radius:15px;
+  background:linear-gradient(135deg,#fff9e9,#fff5cf);
+}
+.review-deadline-pause-icon{
+  width:46px;height:46px;
+  display:grid;place-items:center;
+  border-radius:13px;
+  color:#835f08;
+  background:#ffe9a9;
+}
+.review-deadline-pause-icon svg{width:20px}
+.review-deadline-pause strong{
+  display:block;
+  margin-top:3px;
+  color:var(--ink);
+  font:800 10px/1.4 Sora,sans-serif;
+}
+.review-deadline-pause small{
+  display:block;
+  margin-top:4px;
+  color:#756334;
+  font-size:8px;
+  line-height:1.5;
+}
+.review-deadline-pause>b{
+  padding:6px 8px;
+  border-radius:999px;
+  background:#f4d673;
+  color:#6f5207;
+  font-size:7px;
+  letter-spacing:.6px;
+}
+body.ui-theme-dark .due.paused,
+body.ui-theme-dark .task-due.paused,
+body.ui-theme-dark [class*="due"].paused{
+  color:#f0cd77!important;
+  border-color:#665328!important;
+  background:#302817!important;
+}
+body.ui-theme-dark .review-deadline-pause{
+  border-color:#665329;
+  background:linear-gradient(135deg,#302817,#292113);
+}
+body.ui-theme-dark .review-deadline-pause-icon{
+  color:#f5cc6d;
+  background:#453618;
+}
+body.ui-theme-dark .review-deadline-pause small{color:#d4bd82}
+body.ui-theme-dark .review-deadline-pause>b{
+  color:#f8d984;
+  background:#4a3917;
+}
+@media(max-width:620px){
+  .review-deadline-pause{grid-template-columns:42px minmax(0,1fr)}
+  .review-deadline-pause>b{grid-column:1/-1;justify-self:start}
+}
