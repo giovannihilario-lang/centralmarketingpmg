@@ -1,5 +1,5 @@
 import {
-  getPool, montarCteBaseRegional, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
   responderCache, salvarCache, erroApi,
 } from '../src/lib/regional-dashboard.js';
 
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     const request = pool.request();
     const where = aplicarFiltrosRegionais(request, req.query);
     const query = `
-      ${montarCteBaseRegional(req.query)}
+      ${CTE_BASE_REGIONAL}
       SELECT
         COALESCE(SUM(vp.Valor), 0) AS total_valor,
         COALESCE(SUM(vp.[Qtde Kg]), 0) AS total_kg,

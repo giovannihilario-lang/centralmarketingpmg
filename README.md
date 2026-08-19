@@ -53,3 +53,13 @@ Para validar sintaxe do backend/front-end JavaScript:
 ```powershell
 node --check server.js
 ```
+
+## Central de Acompanhamento
+
+O módulo que unifica o Controle Marcos e o Controle Marketing / Fornecedores está documentado em:
+
+```text
+README-acompanhamento.md
+```
+
+Antes do primeiro acesso, execute `sql/06-CENTRAL-ACOMPANHAMENTO.sql` no Supabase.

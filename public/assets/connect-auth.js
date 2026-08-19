@@ -271,6 +271,7 @@
     buildBridgeUrl,
     clear:clearLocalSession,
     getSession:() => loadSession(),
+    getPublicConfig:() => ({ supabaseUrl:SUPABASE_URL, supabasePublishableKey:SUPABASE_PUBLISHABLE_KEY }),
     hasSession:() => Boolean(loadSession()?.access_token || loadSession()?.refresh_token),
     hasRefreshToken:() => Boolean(loadSession()?.refresh_token),
   });

@@ -10,7 +10,7 @@ const app = express();
 
 const authCache = new Map();
 const authInFlight = new Map();
-const AUTH_CACHE_MS = 5 * 60 * 1000;
+const AUTH_CACHE_MS = 60 * 1000;
 
 function getSupabaseAuthClient() {
   const url = process.env.SUPABASE_URL;
@@ -20,28 +20,6 @@ function getSupabaseAuthClient() {
 }
 
 const supabaseAuth = getSupabaseAuthClient();
-
-// O Dashboard Regional pode abrir muitas rotas SQL ao mesmo tempo. Em camadas
-// básicas do Azure isso reduz, em vez de aumentar, o throughput. Esta fila
-// mantém poucas consultas concorrentes e deixa o restante aguardar sem esmagar
-// o banco. Pode ser ajustada por PMG_LOCAL_API_CONCURRENCY.
-const LOCAL_API_CONCURRENCY = Math.max(1, Number(process.env.PMG_LOCAL_API_CONCURRENCY) || 3);
-let localApiActive = 0;
-const localApiQueue = [];
-
-async function withLocalApiSlot(operation) {
-  if (localApiActive >= LOCAL_API_CONCURRENCY) {
-    await new Promise((resolve) => localApiQueue.push(resolve));
-  }
-  localApiActive++;
-  try {
-    return await operation();
-  } finally {
-    localApiActive = Math.max(0, localApiActive - 1);
-    const next = localApiQueue.shift();
-    if (next) next();
-  }
-}
 
 async function exigirSessaoLocal(req) {
   if (String(process.env.PMG_LOCAL_API_REQUIRE_AUTH || 'true').toLowerCase() === 'false') return null;
@@ -188,7 +166,7 @@ async function registrarDiretorioApi(nomeDiretorio) {
         app.all(rota, async (req, res) => {
           try {
             req.pmgUser = await exigirSessaoLocal(req);
-            return withLocalApiSlot(() => handler(req, res));
+            return handler(req, res);
           } catch (error) {
             return res.status(error.status || 401).json({
               message: error.message || 'Não autorizado.',

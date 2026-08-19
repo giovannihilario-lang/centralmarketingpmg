@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_PATH = path.resolve(__dirname, '../data/campanhas-contexto-v5.json');
 const CACHE_VERSION = 5;
 const CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
-const PERFORMANCE_CACHE_TTL_MS = 10 * 60 * 1000;
+const PERFORMANCE_CACHE_TTL_MS = 2 * 60 * 1000;
 const BENEFIT_CACHE_TTL_MS = 2 * 60 * 1000;
 const performanceCache = new Map();
 const benefitCache = new Map();
@@ -634,15 +634,7 @@ async function queryPerformance(payload = {}) {
     -- Base comercial completa do escopo. O histórico não é cortado pelo
     -- status atual do representante. Vendas são reduzidas a uma linha por pedido
     -- e o escopo por fornecedor usa EXISTS, evitando multiplicação cadastral.
-    ;WITH PedidosPeriodo AS (
-      SELECT DISTINCT vFiltro.[ID Pedido de Venda]
-      FROM dbo.Vendas vFiltro
-      WHERE
-        (vFiltro.[Data] >= CONVERT(date, @currentStart, 23) AND vFiltro.[Data] < CONVERT(date, @currentEnd, 23))
-        OR
-        (vFiltro.[Data] >= CONVERT(date, @previousStart, 23) AND vFiltro.[Data] < CONVERT(date, @previousEnd, 23))
-    ),
-    VendasRank AS (
+    ;WITH VendasRank AS (
       SELECT
         v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
         ROW_NUMBER() OVER (
@@ -654,8 +646,6 @@ async function queryPerformance(payload = {}) {
             v.[ID Cliente] DESC
         ) AS rn
       FROM dbo.Vendas v
-      INNER JOIN PedidosPeriodo pp
-        ON pp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
     ),
     VendasUnicas AS (
       SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]

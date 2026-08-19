@@ -1,25 +1,5 @@
 {
-  "users": [
-    {
-      "username": "marketing",
-      "password": "@PMGMarketing@2026",
-      "role": "marketing",
-      "name": "Equipe de Marketing",
-      "dashboard": "central.html"
-    },
-    {
-      "username": "compras",
-      "password": "@PGMCompras@2026",
-      "role": "compras",
-      "name": "Setor de Compras",
-      "dashboard": "fornecedores.html"
-    },
-    {
-      "username": "contas_pagar",
-      "password": "@PGMContasPagar@2026",
-      "role": "contas_pagar",
-      "name": "Contas a Pagar",
-      "dashboard": "dashboard.html"
-    }
-  ]
+  "deprecated": true,
+  "message": "A autenticação foi migrada para o Supabase Auth. Nenhuma credencial deve ser armazenada neste arquivo.",
+  "users": []
 }

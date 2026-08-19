@@ -1,5 +1,5 @@
 import {
-  getPool, sql, montarCteBaseRegional, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  getPool, sql, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
   responderCache, salvarCache, erroApi,
 } from '../src/lib/regional-dashboard.js';
 
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     const where = aplicarFiltrosRegionais(request, req.query);
 
     const query = `
-      ${montarCteBaseRegional(req.query)},
+      ${CTE_BASE_REGIONAL},
       Agregado AS (
         SELECT ${dimCol} AS chave, SUM(${metCol}) AS total
         ${FROM_BASE_REGIONAL}
