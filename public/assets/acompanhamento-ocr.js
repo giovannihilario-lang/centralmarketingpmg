@@ -1,4 +1,4 @@
-/* PMG Connect - OCR local de documentos V1.2.2 */
+/* PMG Connect - OCR local de documentos V1.2.5 */
 (() => {
   'use strict';
 
@@ -6,9 +6,8 @@
   const PDF_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   const MAX_OCR_PAGES = 30;
   const TYPE_LABELS = {
-    cadastro_pagamento:'Cadastro de pagamento',
-    pedido_compra:'Pedido de compra',
-    danfe:'Nota fiscal / DANFE',
+    desconto_nota:'Desconto em nota',
+    deposito:'Depósito',
     extrato_bancario:'Extrato bancário',
     nao_identificado:'Documento não identificado',
   };
@@ -126,21 +125,20 @@
   function classify(text) {
     const normalized = fold(text);
     const scores = {
-      cadastro_pagamento:0,
-      pedido_compra:0,
-      danfe:0,
+      desconto_nota:0,
+      deposito:0,
       extrato_bancario:0,
     };
     const add = (type, points, terms) => {
       for (const term of terms) if (normalized.includes(term)) scores[type] += points;
     };
-    add('cadastro_pagamento', 8, ['cadastro de pagamento', 'cadastro pagamento']);
-    add('cadastro_pagamento', 2, ['valor bruto', 'valor liquido', 'forma de pagamento', 'data de pagamento', 'favorecido']);
-    add('pedido_compra', 8, ['pedido de compra', 'ordem de compra']);
-    add('pedido_compra', 3, ['sobras marketing', 'sobra marketing', 'total do pedido', 'condicao de pagamento']);
-    add('danfe', 9, ['danfe']);
-    add('danfe', 4, ['chave de acesso', 'nota fiscal eletronica', 'natureza da operacao', 'valor total da nota']);
-    add('danfe', 2, ['nfe', 'nf-e', 'remessa em bonif']);
+    // Cadastro de pagamento e pedido de compra agora representam a mesma operação: desconto em nota.
+    add('desconto_nota', 8, ['cadastro de pagamento', 'cadastro pagamento', 'pedido de compra', 'ordem de compra']);
+    add('desconto_nota', 3, ['valor bruto', 'valor liquido', 'desc ', 'desconto', 'sobras marketing', 'sobra marketing', 'total do pedido', 'condicao de pagamento']);
+    // Nota fiscal / DANFE passa a ser tratada pela Central como depósito.
+    add('deposito', 9, ['danfe']);
+    add('deposito', 4, ['chave de acesso', 'nota fiscal eletronica', 'natureza da operacao', 'valor total da nota']);
+    add('deposito', 2, ['nfe', 'nf-e', 'remessa em bonif']);
     add('extrato_bancario', 8, ['extrato bancario', 'extrato de conta']);
     add('extrato_bancario', 3, ['saldo anterior', 'saldo do dia', 'agencia e conta', 'lancamentos']);
     add('extrato_bancario', 2, ['ted', 'pix', 'transferencia', 'credito em conta']);
@@ -154,38 +152,41 @@
     const classification = classify(text);
     const type = classification.type;
     const bonus = /bonif|doacao|brinde/.test(normalized);
-    let marketingAmount = amountNear(lines, ['marketing', 'mkt', 'acordo mkt', 'sobra marketing', 'sobras marketing', 'verba marketing']);
-    if (marketingAmount === null && type === 'pedido_compra') marketingAmount = amountNear(lines, ['observacoes', 'observag', 'sobra']);
-    if (marketingAmount === null && type === 'pedido_compra') marketingAmount = amountNear(lines, ['ankt']);
+    const purchaseLike = /pedido de compra|ordem de compra|sobras? marketing|total do pedido/.test(normalized);
+    const paymentRegistrationLike = /cadastro de pagamento|cadastro pagamento|valor liquido|valor bruto/.test(normalized);
+    const invoiceLike = /danfe|nota fiscal eletronica|chave de acesso|valor total da nota|\bnf-e?\b/.test(normalized);
+    let marketingAmount = amountNear(lines, ['marketing', 'mkt', 'acordo mkt', 'sobra marketing', 'sobras marketing', 'verba marketing', 'desconto marketing', 'desc']);
+    if (marketingAmount === null && type === 'desconto_nota' && purchaseLike) marketingAmount = amountNear(lines, ['observacoes', 'observag', 'sobra']);
+    if (marketingAmount === null && type === 'desconto_nota' && purchaseLike) marketingAmount = amountNear(lines, ['ankt']);
     const positiveCreditLine = type === 'extrato_bancario' ? lines.find(line => /\+\s*(?:R\$\s*)?\d/.test(line)) : '';
     const positiveCredit = moneyValues(positiveCreditLine)[0] ?? null;
     const transferAmount = positiveCredit ?? amountNear(lines, type === 'extrato_bancario'
       ? ['ted', 'pix', 'transferencia', 'credito em conta', 'valor recebido', 'remet', 'recebimento fornecedor']
       : ['ted', 'pix', 'transferencia', 'credito em conta', 'valor recebido'], type === 'extrato_bancario');
-    const totalKeywords = type === 'danfe'
+    const totalKeywords = type === 'deposito' || invoiceLike
       ? ['valor total da nota', 'total da nota', 'valor total datota', 'valor tolal']
-      : type === 'pedido_compra'
+      : type === 'desconto_nota' && purchaseLike
         ? ['valor total do pedido', 'total do pedido', 'total geral']
-        : type === 'cadastro_pagamento'
+        : type === 'desconto_nota' && paymentRegistrationLike
           ? ['valor liquido', 'valor bruto', 'valor do pagamento']
           : ['valor total', 'saldo do dia'];
     let totalAmount = largestAmountNear(lines, totalKeywords);
     if (type === 'extrato_bancario' && transferAmount !== null) totalAmount = transferAmount;
-    if (totalAmount === null && !['cadastro_pagamento', 'extrato_bancario'].includes(type)) {
+    if (totalAmount === null && !['desconto_nota', 'extrato_bancario'].includes(type)) {
       const allAmounts = moneyValues(text).filter(value => value > 0);
       totalAmount = allAmounts.length ? Math.max(...allAmounts) : null;
     }
     if (bonus && marketingAmount === null) marketingAmount = totalAmount;
     const launchAmount = marketingAmount ?? (type === 'extrato_bancario' ? transferAmount : null);
     const cnpj = extractCnpj(text);
-    const receivedSupplier = type === 'danfe' ? String(text || '').match(/rec\w{0,3}bemos\s+de\s+(.+?)(?:,\s*os\s+produtos|,\s*os\s+produto|\s+CNPJ)/i)?.[1]?.trim() : null;
+    const receivedSupplier = invoiceLike ? String(text || '').match(/rec\w{0,3}bemos\s+de\s+(.+?)(?:,\s*os\s+produtos|,\s*os\s+produto|\s+CNPJ)/i)?.[1]?.trim() : null;
     const supplier = receivedSupplier || extractAfterLabel(lines, type === 'extrato_bancario'
       ? ['remetente', 'remet', 'fornecedor', 'favorecido']
       : ['fornecedor', 'razao social', 'favorecido', 'remetente', 'emitente']);
     const orderNumber = identifierNear(lines, [/(?:PEDIDO(?:\s+DE\s+COMPRA)?|ORDEM\s+DE\s+COMPRA)\s*(?:N[º°O.®]*)?\s*[:\-]?\s*([A-Z0-9.\/-]{3,})/i]);
     const invoiceNumber = identifierNear(lines, [/(?:NF[\s-]?E|NOTA\s+FISCAL)\s*(?:N[º°O.]*)?\s*[:\-]?\s*([0-9.\/-]{3,})/i, /N[º°]\s*([0-9.]{4,})/i]);
     const paymentNumber = identifierNear(lines, [/(?:DOCUMENTO|COMPROVANTE|PAGAMENTO)\s*(?:N[º°O.]*)?\s*[:\-]?\s*([A-Z0-9.\/-]{3,})/i]);
-    const documentNumber = type === 'pedido_compra' ? orderNumber : type === 'danfe' ? invoiceNumber : paymentNumber || invoiceNumber || orderNumber;
+    const documentNumber = type === 'desconto_nota' && purchaseLike ? orderNumber : type === 'deposito' && invoiceLike ? invoiceNumber : paymentNumber || invoiceNumber || orderNumber;
     const emissionDate = dateNear(lines, ['data de emissao', 'emissao', 'emitido em']);
     const dueDate = dateNear(lines, ['vencimento', 'data de vencimento', 'vencto']);
     const paidDate = dateNear(lines, ['data de pagamento', 'pago em', 'pagamento efetuado', 'data movimento', 'lancamento']);

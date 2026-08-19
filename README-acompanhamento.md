@@ -79,11 +79,10 @@ O importador grava o nome do arquivo, a linha original e os dados brutos. Se o m
 
 ## Caixa de Entrada de documentos
 
-A Caixa de Entrada recebe PDFs escaneados, separa as páginas e prepara a conferência dos quatro tipos usados atualmente pela PMG:
+A Caixa de Entrada recebe PDFs escaneados, separa as páginas e prepara a conferência dos três tipos operacionais usados atualmente pela PMG:
 
-- cadastro ou comprovante de pagamento;
-- pedido de compra;
-- nota fiscal / DANFE;
+- desconto em nota, incluindo cadastro de pagamento e pedido de compra;
+- depósito, incluindo nota fiscal / DANFE;
 - extrato ou comprovante bancário.
 
 O leitor sugere fornecedor, datas, números, categoria e valores. Ele mantém três valores separados para evitar lançamentos indevidos: valor total do documento, valor relacionado ao Marketing e valor efetivamente aprovado para lançamento.

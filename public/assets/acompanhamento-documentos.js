@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.3 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.5 */
 (() => {
   'use strict';
 
@@ -8,12 +8,13 @@
   const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
   const TYPES = {
-    cadastro_pagamento:{ label:'Cadastro de pagamento', icon:'badge-dollar-sign', tone:'emerald' },
-    pedido_compra:{ label:'Pedido de compra', icon:'shopping-cart', tone:'gold' },
-    danfe:{ label:'Nota fiscal / DANFE', icon:'receipt-text', tone:'violet' },
+    desconto_nota:{ label:'Desconto em nota', icon:'badge-percent', tone:'emerald' },
+    deposito:{ label:'Depósito', icon:'landmark', tone:'violet' },
     extrato_bancario:{ label:'Extrato bancário', icon:'landmark', tone:'forest' },
     nao_identificado:{ label:'Não identificado', icon:'file-question', tone:'slate' },
   };
+  const LEGACY_TYPES = Object.freeze({ cadastro_pagamento:'desconto_nota', pedido_compra:'desconto_nota', danfe:'deposito' });
+  const normalizeType = value => LEGACY_TYPES[value] || value || 'nao_identificado';
   const STATUS = {
     recebido:{ label:'Recebido', icon:'inbox', tone:'neutral' },
     analisando:{ label:'Lendo documento', icon:'scan-search', tone:'reading' },
@@ -67,7 +68,7 @@
 
   function DemoSheet({ item }) {
     const data = item?.dados_extraidos || {};
-    const meta = TYPES[item?.tipo] || TYPES.nao_identificado;
+    const meta = TYPES[normalizeType(item?.tipo)] || TYPES.nao_identificado;
     useLucide([item?.id]);
     return html`<div className="demo-document-sheet"><div className="demo-sheet-bar"><span><${Icon} name=${meta.icon}/></span><div><small>Prévia demonstrativa</small><strong>${meta.label}</strong></div></div><div className="demo-sheet-title"><small>Página ${(item?.paginas || [1]).join(', ')}</small><h3>${data.titulo_sugerido || 'Documento para conferência'}</h3></div><div className="demo-sheet-grid"><span><small>Fornecedor</small><b>${data.fornecedor || 'Não identificado'}</b></span><span><small>Documento</small><b>${data.numero_documento || data.numero_nota || '—'}</b></span><span><small>Valor do documento</small><b>${money(data.valor_total_documento)}</b></span><span className="highlight"><small>Valor sugerido para Marketing</small><b>${money(data.valor_lancamento_sugerido)}</b></span></div><div className="demo-sheet-lines"><i></i><i></i><i></i><i></i><i></i></div>${(data.evidencias || []).length ? html`<div className="demo-sheet-note"><${Icon} name="highlighter"/><span>${data.evidencias[0]}</span></div>` : null}<div className="demo-sheet-stamp">CONFERÊNCIA<br/>OBRIGATÓRIA</div></div>`;
   }
@@ -178,7 +179,7 @@
     ].map(([key, label, detail, icon]) => html`<label className=${action === key ? 'active' : ''}><input type="radio" name="acao" value=${key} checked=${action === key} onChange=${() => setAction(key)}/><span><${Icon} name=${icon}/></span><div><strong>${label}</strong><small>${detail}</small></div><i></i></label>`)}</div>${action !== 'novo' ? html`<div className="doc-record-picker"><label><${Icon} name="search"/><input value=${recordSearch} onInput=${event => setRecordSearch(event.target.value)} placeholder="Filtrar pelo fornecedor, código ou projeto..."/></label><select name="registro_id" required><option value="">Selecione o acompanhamento relacionado</option>${records.map(record => html`<option value=${record.id}>#${record.codigo || '—'} · ${record.fornecedor || record.titulo} — ${record.titulo}</option>`)}</select></div>` : null}</section>
 
       <section className="doc-review-section"><div className="doc-review-heading"><span>02</span><div><small>Classificação</small><h3>Confira a leitura do documento</h3></div><b className=${`doc-confidence ${item.confianca >= .9 ? 'high' : item.confianca >= .7 ? 'medium' : 'low'}`}>${Math.round(Number(item.confianca || 0) * 100)}% de confiança</b></div><div className="doc-form-grid">
-        <${Field} label="Tipo de documento"><select name="tipo_documento" defaultValue=${item.tipo}>${Object.entries(TYPES).map(([key, meta]) => html`<option value=${key}>${meta.label}</option>`)}</select></${Field}>
+        <${Field} label="Tipo de documento"><select name="tipo_documento" defaultValue=${normalizeType(item.tipo)}>${Object.entries(TYPES).map(([key, meta]) => html`<option value=${key}>${meta.label}</option>`)}</select></${Field}>
         <${Field} label="Controle"><select name="controle" defaultValue="marketing"><option value="marketing">Marketing / Fornecedores</option><option value="marcos">Marcos / Presidência</option></select></${Field}>
         <${Field} label="Fornecedor"><input name="fornecedor" defaultValue=${extracted.fornecedor || ''} placeholder="Fornecedor ou parceiro"/></${Field}>
         <${Field} label="Código do fornecedor"><input name="fornecedor_codigo" defaultValue=${extracted.fornecedor_codigo || ''} placeholder="Opcional"/></${Field}>
@@ -204,16 +205,16 @@
   }
 
   function ReviewWorkspace({ entry, items, activeItem, setActiveItemId, context, previewUrl, previewLoading, openOriginal, onCompleted }) {
-    const meta = TYPES[activeItem?.tipo] || TYPES.nao_identificado;
+    const meta = TYPES[normalizeType(activeItem?.tipo)] || TYPES.nao_identificado;
     useLucide([entry?.id, activeItem?.id, items.length]);
     if (!entry || !activeItem) return html`<div className="doc-no-selection"><span><${Icon} name="mouse-pointer-click"/></span><h3>Escolha um documento da fila</h3><p>A prévia e os campos reconhecidos aparecerão aqui.</p></div>`;
-    return html`<div className="doc-workspace"><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[item.tipo] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>Nenhum campo será lançado antes da sua aprovação.</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
+    return html`<div className="doc-workspace"><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[normalizeType(item.tipo)] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>Nenhum campo será lançado antes da sua aprovação.</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
   }
 
   function QueueCard({ entry, items, selected, select }) {
     const meta = STATUS[entry.status] || STATUS.recebido;
     const pending = items.filter(item => item.status === 'aguardando_conferencia').length;
-    const typeIcons = [...new Set(items.map(item => item.tipo))].slice(0, 4);
+    const typeIcons = [...new Set(items.map(item => normalizeType(item.tipo)))].slice(0, 4);
     useLucide([entry.id, entry.status, pending, selected]);
     return html`<button className=${`doc-queue-card ${selected ? 'active' : ''}`} onClick=${select}><span className=${`doc-file-icon ${meta.tone}`}><${Icon} name=${entry.status === 'analisando' ? 'loader-circle' : 'file-text'}/></span><div className="doc-queue-copy"><strong>${entry.nome_arquivo}</strong><small>${entry.total_paginas || '—'} página(s) · ${dateTime(entry.criado_em)}</small><div><span className=${`doc-status ${meta.tone}`}><i></i>${meta.label}</span>${pending ? html`<b>${pending} pendente${pending === 1 ? '' : 's'}</b>` : null}</div></div><span className="doc-type-stack">${typeIcons.map(type => html`<i title=${TYPES[type]?.label || type}><${Icon} name=${TYPES[type]?.icon || 'file-question'}/></i>`)}</span><${Icon} name="chevron-right"/></button>`;
   }

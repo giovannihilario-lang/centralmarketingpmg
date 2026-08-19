@@ -4,7 +4,8 @@ import { bearerToken, requireSupabaseUser, sendAuthError } from '../src/lib/supa
 const MAX_REQUESTS_PER_MINUTE = 6;
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const recentRequests = new Map();
-const DOCUMENT_TYPES = new Set(['cadastro_pagamento', 'pedido_compra', 'danfe', 'extrato_bancario', 'nao_identificado']);
+const DOCUMENT_TYPES = new Set(['desconto_nota', 'deposito', 'extrato_bancario', 'nao_identificado']);
+const LEGACY_DOCUMENT_TYPES = Object.freeze({ cadastro_pagamento:'desconto_nota', pedido_compra:'desconto_nota', danfe:'deposito' });
 const NATURES = new Set(['receita', 'despesa', 'neutro']);
 const CATEGORIES = new Set(['cota_anual', 'campanha_incentivo', 'feira', 'evento', 'acao_trade', 'midia', 'material', 'bonificacao', 'parceria', 'social', 'equipe', 'pendencia', 'outro']);
 
@@ -64,24 +65,23 @@ Voce e o leitor de documentos financeiros da Central de Acompanhamento da PMG.
 Analise visualmente o PDF inteiro, inclusive paginas escaneadas, tabelas, marca-texto, carimbos e anotacoes.
 
 Classifique cada documento ou grupo de paginas em exatamente um destes tipos:
-- cadastro_pagamento: tela, ficha ou cadastro interno de pagamento;
-- pedido_compra: pedido de compra emitido pelo sistema;
-- danfe: nota fiscal ou DANFE;
+- desconto_nota: desconto em nota. Inclui tanto cadastro/ficha interna de pagamento quanto pedido/ordem de compra quando o documento representa desconto, sobra ou verba de Marketing;
+- deposito: deposito. Inclui nota fiscal ou DANFE, conforme a classificacao operacional usada pela PMG;
 - extrato_bancario: extrato ou comprovante bancario;
-- nao_identificado: quando nao houver evidencia suficiente para os quatro modelos conhecidos.
+- nao_identificado: quando nao houver evidencia suficiente para os tres modelos conhecidos.
 
 Regras obrigatorias:
 1. Um PDF pode conter varias paginas do mesmo documento ou documentos diferentes. Agrupe paginas relacionadas e separe documentos distintos.
 2. Nunca confunda o total da compra, nota ou pagamento com o valor efetivamente relacionado ao Marketing.
 3. Procure MKT, marketing, acordo, sobra, desconto, verba, bonificacao, doacao, brinde, transferencia recebida e destaques visuais.
-4. No cadastro de pagamento, sugira o valor explicitamente ligado ao Marketing quando existir. Preserve bruto, descontos e liquido na descricao.
-5. No pedido de compra, separe total do pedido, sobra de compras e sobra de Marketing. O valor de Marketing tem prioridade no lancamento sugerido.
-6. Em DANFE de remessa em bonificacao, doacao ou brinde, sugira categoria bonificacao e natureza receita, mas crie um alerta para validacao humana.
+4. Em desconto_nota, reconheca tanto cadastro de pagamento quanto pedido de compra. Sugira o valor explicitamente ligado ao Marketing, desconto, acordo ou sobra. Preserve bruto, total do pedido, descontos, sobra de Compras e liquido na descricao quando existirem.
+5. Em desconto_nota originado de pedido de compra, o valor de Marketing tem prioridade sobre o total do pedido.
+6. Em deposito originado de nota fiscal/DANFE de remessa em bonificacao, doacao ou brinde, sugira categoria bonificacao e natureza receita, mas crie um alerta para validacao humana.
 7. Em extrato bancario, extraia apenas a movimentacao destacada ou claramente ligada ao fornecedor/Marketing. Nao transforme cada linha em um documento.
 8. Datas devem usar AAAA-MM-DD. Valores devem ser numeros em reais. Quando nao houver certeza, use null e liste o campo em campos_duvidosos.
 9. Nao invente fornecedor, numero, data, forma de pagamento ou valor. Cite evidencias curtas retiradas do proprio documento.
 10. Todo resultado e apenas uma proposta e precisa de conferencia humana. Inclua um alerta de conferencia em cada item.
-11. Se surgir um layout diferente dos quatro modelos, use nao_identificado e prepare os campos que conseguir reconhecer sem inventar.
+11. Se surgir um layout diferente dos tres modelos, use nao_identificado e prepare os campos que conseguir reconhecer sem inventar.
 `.trim();
 
 function textValue(value, max = 2000) {
@@ -111,7 +111,7 @@ export function validateAnalysis(value) {
     return {
       ordem:index + 1,
       paginas:pages.length ? pages : [index + 1],
-      tipo:DOCUMENT_TYPES.has(document.tipo) ? document.tipo : 'nao_identificado',
+      tipo:DOCUMENT_TYPES.has(document.tipo) ? document.tipo : (LEGACY_DOCUMENT_TYPES[document.tipo] || 'nao_identificado'),
       confianca:Math.max(0, Math.min(1, Number(document.confianca) || 0)),
       fornecedor:textValue(document.fornecedor, 300),
       cnpj:textValue(document.cnpj, 30),

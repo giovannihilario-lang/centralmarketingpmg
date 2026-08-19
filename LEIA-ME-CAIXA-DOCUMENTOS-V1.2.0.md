@@ -12,7 +12,7 @@ Complemento da Central de Acompanhamento para receber PDFs escaneados, reconhece
 ## Fluxo protegido
 
 - O PDF entra no bucket privado `acompanhamento`.
-- A leitura separa cadastro/comprovante de pagamento, pedido de compra, nota fiscal/DANFE e extrato/comprovante bancário.
+- A leitura separa desconto em nota, depósito e extrato/comprovante bancário. Cadastros de pagamento e pedidos de compra são consolidados como “Desconto em nota”; nota fiscal/DANFE é classificada como “Depósito”.
 - Um modelo diferente é marcado como `Não identificado`.
 - A proposta fica em `Aguardando conferência`.
 - Somente depois da confirmação humana o sistema cria, vincula, anexa ou ignora o item.

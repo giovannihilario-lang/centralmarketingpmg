@@ -56,7 +56,7 @@ create table if not exists public.acompanhamento_documentos_itens (
   constraint documentos_itens_ordem_valida check (ordem > 0),
   constraint documentos_itens_confianca_valida check (confianca between 0 and 1),
   constraint documentos_itens_tipo_valido check (
-    tipo in ('cadastro_pagamento', 'pedido_compra', 'danfe', 'extrato_bancario', 'nao_identificado')
+    tipo in ('desconto_nota', 'deposito', 'extrato_bancario', 'nao_identificado')
   ),
   constraint documentos_itens_status_valido check (
     status in ('aguardando_conferencia', 'aprovado', 'ignorado')
@@ -225,8 +225,11 @@ begin
       array(select greatest(value::integer, 1) from jsonb_array_elements_text(coalesce(item -> 'paginas', '[1]'::jsonb))),
       '{1}'::integer[]
     ),
-    case when item ->> 'tipo' in ('cadastro_pagamento', 'pedido_compra', 'danfe', 'extrato_bancario', 'nao_identificado')
-      then item ->> 'tipo' else 'nao_identificado' end,
+    case
+      when item ->> 'tipo' in ('desconto_nota', 'deposito', 'extrato_bancario', 'nao_identificado') then item ->> 'tipo'
+      when item ->> 'tipo' in ('cadastro_pagamento', 'pedido_compra') then 'desconto_nota'
+      when item ->> 'tipo' = 'danfe' then 'deposito'
+      else 'nao_identificado' end,
     least(greatest(coalesce((item ->> 'confianca')::numeric, 0), 0), 1),
     'aguardando_conferencia',
     item
