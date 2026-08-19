@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import '../public/assets/acompanhamento-ocr.js';
+import { DOCUMENT_SCHEMA, validateAnalysis } from '../api/analisar-documento.js';
 
 const { classify, parsePage, parseBrazilianMoney } = globalThis.PMGDocumentOCR;
 
@@ -56,17 +57,31 @@ const html = fs.readFileSync(new URL('../public/acompanhamento.html', import.met
 assert.match(html, /pdfjs-dist@3\.11\.174/);
 assert.match(html, /tesseract\.js@5\.1\.1/);
 assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.2/);
-assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.2/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.2/);
+assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.3/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.3/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');
 assert.match(documentModule, /PMGDocumentOCR\.analyzePdf/);
-assert.doesNotMatch(documentModule, /\/api\/analisar-documento/);
+assert.match(documentModule, /\/api\/analisar-documento/);
+assert.match(documentModule, /Gemini 3\.7 Flash/);
 assert.match(documentModule, /return \(\) => cancelAnimationFrame\(frame\)/, 'O efeito dos icones precisa devolver uma funcao de limpeza.');
 
 const envExample = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 assert.doesNotMatch(envExample, /OPENAI_API_KEY/);
+assert.match(envExample, /GEMINI_DOCUMENT_MODEL=gemini-3\.7-flash/);
+
+assert.deepEqual(DOCUMENT_SCHEMA.properties.documentos.items.properties.tipo.enum.sort(), [
+  'cadastro_pagamento', 'danfe', 'extrato_bancario', 'nao_identificado', 'pedido_compra'
+]);
+const validated = validateAnalysis({
+  total_paginas:1,
+  resumo:'Leitura de teste',
+  documentos:[{ tipo:'danfe', paginas:[1], confianca:.91, valor_total_documento:10064.6 }],
+});
+assert.equal(validated.documentos[0].tipo, 'danfe');
+assert.equal(validated.documentos[0].valor_total_documento, 10064.6);
+assert.ok(validated.documentos[0].alertas.some(alert => /Confira o PDF original/i.test(alert)));
 
 const sql = fs.readFileSync(new URL('../sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql', import.meta.url), 'utf8');
 assert.match(sql, /conferencia_confirmada/);
@@ -74,4 +89,4 @@ assert.match(sql, /status = 'aprovado'/);
 assert.match(sql, /grant select on public\.acompanhamento_documentos_entrada to authenticated/);
 assert.doesNotMatch(sql, /grant (insert|update|delete) on public\.acompanhamento_documentos_/i);
 
-console.log(JSON.stringify({ status:'ok', ocr:'local', templates:samples.length, paid_api:false }));
+console.log(JSON.stringify({ status:'ok', reader:'gemini-free+local-fallback', templates:samples.length, paid_api:false, human_review:true }));

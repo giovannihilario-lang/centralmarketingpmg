@@ -19,6 +19,8 @@ create table if not exists public.acompanhamento_registros (
   ano_referencia integer not null default extract(year from current_date)::integer,
   fornecedor text,
   fornecedor_codigo text,
+  natureza text not null default 'neutro',
+  impacta_totais boolean not null default true,
   categoria text not null default 'outro',
   titulo text not null,
   descricao text,
@@ -49,12 +51,19 @@ create table if not exists public.acompanhamento_registros (
   constraint acompanhamento_ano_valido check (ano_referencia between 2000 and 2200),
   constraint acompanhamento_titulo_valido check (length(trim(titulo)) > 0),
   constraint acompanhamento_valor_valido check (valor_acordado >= 0),
+  constraint acompanhamento_natureza_valida check (natureza in ('receita', 'despesa', 'indicador', 'neutro')),
   constraint acompanhamento_status_valido check (
     status in ('rascunho', 'negociacao', 'aprovado', 'em_andamento', 'concluido', 'cancelado')
   ),
   constraint acompanhamento_prioridade_valida check (prioridade in ('baixa', 'normal', 'alta', 'urgente')),
   constraint acompanhamento_periodo_valido check (data_fim is null or data_inicio is null or data_fim >= data_inicio)
 );
+
+-- Compatibilidade com instalações que executaram uma versão anterior.
+alter table public.acompanhamento_registros
+  add column if not exists natureza text not null default 'neutro';
+alter table public.acompanhamento_registros
+  add column if not exists impacta_totais boolean not null default true;
 
 create unique index if not exists idx_acompanhamento_codigo
   on public.acompanhamento_registros(codigo);
@@ -202,9 +211,9 @@ with (security_invoker = true)
 as
 select
   r.*,
-  coalesce(p.total_previsto, 0)::numeric(14,2) as total_previsto,
+  coalesce(nullif(p.total_previsto, 0), r.valor_acordado, 0)::numeric(14,2) as total_previsto,
   coalesce(p.total_pago, 0)::numeric(14,2) as total_pago,
-  greatest(coalesce(p.total_previsto, r.valor_acordado) - coalesce(p.total_pago, 0), 0)::numeric(14,2) as saldo_aberto,
+  greatest(coalesce(nullif(p.total_previsto, 0), r.valor_acordado, 0) - coalesce(p.total_pago, 0), 0)::numeric(14,2) as saldo_aberto,
   coalesce(p.quantidade_pagamentos, 0)::integer as quantidade_pagamentos,
   coalesce(p.pagamentos_pagos, 0)::integer as pagamentos_pagos,
   p.proximo_vencimento,
@@ -257,7 +266,8 @@ begin
 
   if v_id is null then
     insert into public.acompanhamento_registros (
-      controle, ano_referencia, fornecedor, fornecedor_codigo, categoria, titulo,
+      controle, ano_referencia, fornecedor, fornecedor_codigo, natureza, impacta_totais,
+      categoria, titulo,
       descricao, referencia, responsavel_id, contato_nome, contato_email,
       contato_telefone, status, prioridade, data_inicio, data_fim, valor_acordado,
       centro_custo, numero_documento, tags, observacoes, origem_importacao,
@@ -267,6 +277,8 @@ begin
       coalesce((p_dados ->> 'ano_referencia')::integer, extract(year from current_date)::integer),
       nullif(trim(p_dados ->> 'fornecedor'), ''),
       nullif(trim(p_dados ->> 'fornecedor_codigo'), ''),
+      coalesce(nullif(trim(p_dados ->> 'natureza'), ''), 'neutro'),
+      coalesce((p_dados ->> 'impacta_totais')::boolean, true),
       coalesce(nullif(trim(p_dados ->> 'categoria'), ''), 'outro'),
       v_titulo,
       nullif(trim(p_dados ->> 'descricao'), ''),
@@ -304,6 +316,8 @@ begin
       ano_referencia = coalesce((p_dados ->> 'ano_referencia')::integer, ano_referencia),
       fornecedor = nullif(trim(p_dados ->> 'fornecedor'), ''),
       fornecedor_codigo = nullif(trim(p_dados ->> 'fornecedor_codigo'), ''),
+      natureza = coalesce(nullif(trim(p_dados ->> 'natureza'), ''), natureza),
+      impacta_totais = coalesce((p_dados ->> 'impacta_totais')::boolean, impacta_totais),
       categoria = coalesce(nullif(trim(p_dados ->> 'categoria'), ''), 'outro'),
       titulo = v_titulo,
       descricao = nullif(trim(p_dados ->> 'descricao'), ''),
@@ -321,6 +335,10 @@ begin
       numero_documento = nullif(trim(p_dados ->> 'numero_documento'), ''),
       tags = coalesce(array(select jsonb_array_elements_text(coalesce(p_dados -> 'tags', '[]'::jsonb))), '{}'::text[]),
       observacoes = nullif(trim(p_dados ->> 'observacoes'), ''),
+      origem_importacao = coalesce(nullif(trim(p_dados ->> 'origem_importacao'), ''), origem_importacao),
+      linha_origem = coalesce(nullif(p_dados ->> 'linha_origem', '')::integer, linha_origem),
+      fingerprint = coalesce(nullif(trim(p_dados ->> 'fingerprint'), ''), fingerprint),
+      dados_originais = coalesce(p_dados -> 'dados_originais', dados_originais),
       atualizado_por = v_ator
     where id = v_id;
 
@@ -501,7 +519,7 @@ begin
           'controle', p_controle,
           'ano_referencia', coalesce((v_item -> 'registro' ->> 'ano_referencia')::integer, p_ano),
           'origem_importacao', p_nome_arquivo,
-          'linha_origem', v_indice + 1
+          'linha_origem', coalesce((v_item -> 'registro' ->> 'linha_origem')::integer, v_indice + 1)
         );
 
       if trim(coalesce(v_registro ->> 'titulo', '')) = '' then
@@ -525,6 +543,18 @@ begin
         loop
           perform public.salvar_pagamento_acompanhamento_v1(null, v_id, v_pagamento);
         end loop;
+
+        -- Remove somente movimentos gerados por importacao que desapareceram
+        -- da nova versao da mesma linha. Pagamentos manuais, sem fingerprint,
+        -- permanecem preservados.
+        delete from public.acompanhamento_pagamentos ap
+        where ap.registro_id = v_id
+          and ap.fingerprint like 'pmg-%'
+          and not exists (
+            select 1
+            from jsonb_array_elements(v_item -> 'pagamentos') pagamento_atual
+            where pagamento_atual ->> 'fingerprint' = ap.fingerprint
+          );
       end if;
     exception when others then
       v_ignoradas := v_ignoradas + 1;
@@ -546,6 +576,48 @@ begin
     'ignoradas', v_ignoradas,
     'erros', v_erros
   );
+end;
+$$;
+
+-- Concilia o arquivo oficial completo depois que todos os lotes terminarem.
+-- Registros manuais ou de outros modelos nao sao afetados.
+create or replace function public.conciliar_origem_acompanhamentos_v1(
+  p_controle text,
+  p_ano integer,
+  p_modelo text,
+  p_fingerprints text[]
+)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ator uuid := public.meu_colaborador_id();
+  v_arquivadas integer := 0;
+begin
+  if v_ator is null then raise exception 'Colaborador nao encontrado ou inativo'; end if;
+  if p_controle not in ('marcos', 'marketing') then raise exception 'Controle invalido'; end if;
+  if coalesce(trim(p_modelo), '') = '' then raise exception 'Modelo de origem invalido'; end if;
+
+  with arquivadas as (
+    update public.acompanhamento_registros r
+    set arquivado_em = now(), atualizado_por = v_ator
+    where r.controle = p_controle
+      and r.ano_referencia = p_ano
+      and r.arquivado_em is null
+      and r.dados_originais ->> 'arquivo' = p_modelo
+      and r.fingerprint is not null
+      and not (r.fingerprint = any(coalesce(p_fingerprints, '{}'::text[])))
+    returning r.id
+  )
+  insert into public.acompanhamento_atividades(registro_id, ator_id, tipo, resumo, detalhes)
+  select id, v_ator, 'arquivado', 'arquivou item ausente na nova versao da planilha',
+         jsonb_build_object('modelo', p_modelo)
+  from arquivadas;
+
+  get diagnostics v_arquivadas = row_count;
+  return v_arquivadas;
 end;
 $$;
 
@@ -662,6 +734,7 @@ grant execute on function public.salvar_pagamento_acompanhamento_v1(uuid, uuid, 
 grant execute on function public.arquivar_acompanhamento_v1(uuid) to authenticated;
 grant execute on function public.excluir_pagamento_acompanhamento_v1(uuid) to authenticated;
 grant execute on function public.importar_acompanhamentos_v1(text, integer, text, jsonb) to authenticated;
+grant execute on function public.conciliar_origem_acompanhamentos_v1(text, integer, text, text[]) to authenticated;
 grant execute on function public.registrar_anexo_acompanhamento_v1(uuid, uuid, text, text, text, bigint, text) to authenticated;
 
 -- Realtime para atualizacao simultanea entre Marcos e Marketing.

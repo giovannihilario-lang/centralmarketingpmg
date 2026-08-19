@@ -1,6 +1,6 @@
-# PMG Connect — Central de Acompanhamento V1.2.2
+# PMG Connect — Central de Acompanhamento V1.2.3
 
-> Interface `1.2.2`: cockpit executivo PMG com Caixa de Entrada, OCR local gratuito e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
+> Interface `1.2.3`: cockpit executivo PMG com Caixa de Entrada, leitura visual pelo Gemini, contingência OCR local e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
 
 Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Marketing / Fornecedores** em uma única base editável.
 
@@ -48,6 +48,8 @@ O arquivo integral `sql/07-CARGA-HISTORICA-ACOMPANHAMENTO.sql` permanece dispon�
 sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql
 ```
 
+No ambiente da Vercel, mantenha `GEMINI_API_KEY` com uma chave gratuita do Google AI Studio e, opcionalmente, `GEMINI_DOCUMENT_MODEL=gemini-3.7-flash`. Não é necessário ativar faturamento. Se a chave não existir ou a cota gratuita estiver indisponível, a interface usa automaticamente o OCR local.
+
 5. Reinicie o servidor local:
 
 ```powershell
@@ -88,9 +90,13 @@ O leitor sugere fornecedor, datas, números, categoria e valores. Ele mantém tr
 
 Nenhum documento é lançado automaticamente. Cada item permanece em **Aguardando conferência** até uma pessoa revisar os campos, escolher se deseja criar, vincular, somente anexar ou ignorar, marcar a confirmação obrigatória e aprovar. A decisão, o colaborador e a data ficam no histórico.
 
-A leitura usa PDF.js e Tesseract.js diretamente no navegador. Não exige chave, assinatura, créditos ou contratação de API. PDFs com texto nativo são lidos diretamente; páginas escaneadas são renderizadas e processadas por OCR local em português. O arquivo original continua no bucket privado do Supabase e a conferência manual permanece disponível.
+A leitura principal usa o Gemini 3.7 Flash para compreender o PDF visualmente e devolver campos estruturados. A cota gratuita não exige contratação nem ativa cobrança automática. O servidor valida a sessão do PMG Connect, busca o PDF no bucket privado e mantém a chave fora do navegador.
 
-Como o OCR local prioriza custo zero e privacidade, caracteres de scans ruins podem exigir correção. Por isso, nenhum valor é lançado sem a confirmação humana já exigida pelo módulo.
+Se o Gemini não estiver configurado, exceder a cota ou não responder, PDF.js e Tesseract.js assumem localmente no navegador. A conferência manual também permanece disponível. Em qualquer caminho, nenhum valor é lançado sem a confirmação humana já exigida pelo módulo.
+
+### Privacidade do modo gratuito
+
+Quando o Gemini está ativo, o conteúdo do PDF é enviado temporariamente à API do Google para interpretação. A política do free tier informa que esse conteúdo pode ser usado para melhorar os produtos. Se isso não for aceitável para os documentos da PMG, remova `GEMINI_API_KEY`: o módulo continuará funcionando com OCR local e conferência manual, sem enviar o PDF ao Gemini.
 
 ## Arquivos principais
 
@@ -100,10 +106,11 @@ Como o OCR local prioriza custo zero e privacidade, caracteres de scans ruins po
 - `public/assets/acompanhamento-documentos.js`
 - `public/assets/acompanhamento-documentos.css`
 - `public/assets/acompanhamento-ocr.js`
+- `api/analisar-documento.js`
 - `sql/06-CENTRAL-ACOMPANHAMENTO.sql`
 - `sql/07-CARGA-HISTORICA-ACOMPANHAMENTO.sql`
 - `sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql`
-- `public/data/acompanhamento-carga-inicial.json`
+- `data/acompanhamento-carga-inicial.json` (fora de `public/` para não expor a consolidação por URL)
 - `scripts/gerar-carga-acompanhamento.js`
 - `scripts/testar-acompanhamento.js`
 - `RELATORIO-CONSOLIDACAO-PLANILHAS.md`
@@ -117,6 +124,7 @@ Como o OCR local prioriza custo zero e privacidade, caracteres de scans ruins po
 - Todo documento exige confirmação humana explícita antes de gerar ou vincular um lançamento.
 - Escritas são realizadas por funções protegidas no Supabase.
 - Os anexos ficam em bucket privado e são abertos por link temporário.
+- A rota Gemini valida a sessão Supabase, limita requisições e nunca envia a chave ao navegador.
 - O `.env` e a chave `service_role` não são enviados ao navegador.
 
 ## Demonstração visual

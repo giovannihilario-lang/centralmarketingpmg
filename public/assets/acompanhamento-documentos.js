@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.2 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.3 */
 (() => {
   'use strict';
 
@@ -270,35 +270,69 @@
       return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
     }
 
+    async function analyzeWithGemini(entryId) {
+      let token = await window.PMGConnectAuth?.ensureAccessToken?.();
+      if (!token) {
+        const { data } = await context.client.auth.getSession();
+        token = data?.session?.access_token || '';
+      }
+      if (!token) throw new Error('A sessão segura não está disponível para o leitor Gemini.');
+      setOcrProgress({ progress:.28, label:'Gemini lendo o PDF visualmente...' });
+      const response = await fetch('/api/analisar-documento', {
+        method:'POST',
+        headers:{ Authorization:`Bearer ${token}`, 'Content-Type':'application/json' },
+        body:JSON.stringify({ entrada_id:entryId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.analise) {
+        const error = new Error(payload?.erro || `O Gemini não concluiu a leitura (${response.status}).`);
+        error.fallbackLocal = payload?.fallback_local !== false;
+        throw error;
+      }
+      setOcrProgress({ progress:.84, label:'Organizando a conferência...' });
+      return payload.analise;
+    }
+
     async function analyzeEntry(entryOrId, sourceFile = null) {
       const entryId = typeof entryOrId === 'string' ? entryOrId : entryOrId?.id;
       const entry = typeof entryOrId === 'string' ? entries.find(item => item.id === entryId) : entryOrId;
       if (!entryId) return context.notify('Documento não encontrado para leitura.', 'error');
-      if (DEMO_MODE) { context.notify('Modo demonstração: a leitura local foi simulada.', 'info'); return; }
+      if (DEMO_MODE) { context.notify('Modo demonstração: a leitura inteligente foi simulada.', 'info'); return; }
       setBusyEntryId(entryId);
-      setOcrProgress({ progress:0, label:'Preparando o leitor local...' });
+      setOcrProgress({ progress:.05, label:'Preparando a IA Gemini...' });
       try {
         const { error:startError } = await context.client.rpc('iniciar_analise_documento_v1', { p_entrada_id:entryId });
         if (startError) throw startError;
         await context.reload(true);
-        let pdfFile = sourceFile;
-        if (!pdfFile) {
-          if (!entry?.caminho) throw new Error('O arquivo original não foi localizado.');
-          const { data:downloaded, error:downloadError } = await context.client.storage.from('acompanhamento').download(entry.caminho);
-          if (downloadError || !downloaded) throw downloadError || new Error('Não foi possível baixar o PDF privado para leitura.');
-          pdfFile = downloaded;
+        let analysis;
+        let reader = 'Gemini 3.7 Flash';
+        try {
+          analysis = await analyzeWithGemini(entryId);
+        } catch (geminiError) {
+          console.warn('[PMG Documentos] Gemini indisponível; usando OCR local:', geminiError?.message || geminiError);
+          context.notify(`${geminiError?.message || 'Gemini indisponível'} Continuando com a contingência local.`, 'info');
+          setOcrProgress({ progress:.02, label:'Ativando a contingência local...' });
+          let pdfFile = sourceFile;
+          if (!pdfFile) {
+            if (!entry?.caminho) throw new Error('O arquivo original não foi localizado.');
+            const { data:downloaded, error:downloadError } = await context.client.storage.from('acompanhamento').download(entry.caminho);
+            if (downloadError || !downloaded) throw downloadError || new Error('Não foi possível baixar o PDF privado para leitura.');
+            pdfFile = downloaded;
+          }
+          if (!window.PMGDocumentOCR?.analyzePdf) throw new Error('Nem o Gemini nem o leitor local estão disponíveis. Atualize a página e tente novamente.');
+          analysis = await window.PMGDocumentOCR.analyzePdf(pdfFile, { onProgress:setOcrProgress });
+          reader = 'OCR local de contingência';
         }
-        if (!window.PMGDocumentOCR?.analyzePdf) throw new Error('O leitor OCR local não carregou. Atualize a página e tente novamente.');
-        const analysis = await window.PMGDocumentOCR.analyzePdf(pdfFile, { onProgress:setOcrProgress });
+        setOcrProgress({ progress:.92, label:'Salvando a proposta para conferência...' });
         const { error:saveError } = await context.client.rpc('registrar_analise_documento_v1', {
           p_entrada_id:entryId,
           p_resultado:analysis
         });
         if (saveError) throw saveError;
-        await context.reload(true); setSelectedEntryId(entryId); context.notify('Leitura local concluída. O documento aguarda sua conferência.');
+        await context.reload(true); setSelectedEntryId(entryId); context.notify(`${reader} concluiu a proposta. O documento aguarda sua conferência.`);
       } catch (error) {
-        await context.client.rpc('registrar_erro_documento_v1', { p_entrada_id:entryId, p_erro:error.message || 'Falha na leitura local.' });
-        await context.reload(true); context.notify(error.message || 'Falha na leitura local.', 'error');
+        await context.client.rpc('registrar_erro_documento_v1', { p_entrada_id:entryId, p_erro:error.message || 'Falha na leitura do documento.' });
+        await context.reload(true); context.notify(error.message || 'Falha na leitura do documento.', 'error');
       } finally { setBusyEntryId(null); setOcrProgress(null); }
     }
 
@@ -333,7 +367,7 @@
         if (createError) throw createError;
         const { data:created } = await context.client.from('acompanhamento_documentos_entrada').select('id,caminho').eq('id', entryId).single();
         if (created?.caminho !== uploadedPath) await context.client.storage.from('acompanhamento').remove([uploadedPath]);
-        await context.reload(true); setSelectedEntryId(entryId); context.notify('PDF recebido. Iniciando a leitura OCR gratuita...', 'info');
+        await context.reload(true); setSelectedEntryId(entryId); context.notify('PDF recebido. Iniciando a leitura inteligente gratuita...', 'info');
         await analyzeEntry(entryId, file);
       } catch (error) {
         if (uploadedPath) await context.client.storage.from('acompanhamento').remove([uploadedPath]);
@@ -358,12 +392,12 @@
     }
 
     if (context.documentsSetupMissing) return html`<${SetupDocuments}/>`;
-    return html`<section className="documents-inbox"><header className="documents-hero"><div className="documents-hero-grid"></div><div><span className="documents-live"><i></i>OCR local · sem custo</span><p className="hero-kicker">Leitura documental</p><h2>Do PDF ao lançamento, com você no controle.</h2><p>O seu navegador reconhece os campos e organiza a proposta. Nada entra na Central sem conferência humana.</p><div className="document-models">${Object.entries(TYPES).filter(([key]) => key !== 'nao_identificado').map(([, meta]) => html`<span><${Icon} name=${meta.icon}/>${meta.label}</span>`)}</div></div><div className="document-metrics"><span><small>Aguardando você</small><strong>${pendingCount}</strong><b>documentos</b></span><span><small>Em processamento</small><strong>${analyzingCount}</strong><b>arquivos</b></span><span><small>Conferidos</small><strong>${reviewedCount}</strong><b>lançamentos</b></span></div><button className="documents-upload-orbit" onClick=${() => fileInput.current?.click()} disabled=${uploading || Boolean(busyEntryId)}><i></i><span><${Icon} name=${uploading || busyEntryId ? 'loader-circle' : 'file-up'} size=${25}/></span><strong>${ocrProgress?.label || (uploading ? 'Recebendo...' : 'Enviar PDF')}</strong><small>${ocrProgress ? `${Math.round(Number(ocrProgress.progress || 0) * 100)}% concluído` : 'até 15 MB'}</small>${ocrProgress ? html`<b className="ocr-orbit-progress" style=${{ '--ocr-progress':`${Math.round(Number(ocrProgress.progress || 0) * 100)}%` }}></b>` : null}</button></header>
+    return html`<section className="documents-inbox"><header className="documents-hero"><div className="documents-hero-grid"></div><div><span className="documents-live"><i></i>Gemini 3.7 · cota gratuita</span><p className="hero-kicker">Leitura documental inteligente</p><h2>Do PDF à conferência, com contexto visual.</h2><p>A IA interpreta texto, tabelas e destaques do documento; se estiver indisponível, o leitor local assume. Nada entra na Central sem conferência humana.</p><div className="document-models">${Object.entries(TYPES).filter(([key]) => key !== 'nao_identificado').map(([, meta]) => html`<span><${Icon} name=${meta.icon}/>${meta.label}</span>`)}</div></div><div className="document-metrics"><span><small>Aguardando você</small><strong>${pendingCount}</strong><b>documentos</b></span><span><small>Em processamento</small><strong>${analyzingCount}</strong><b>arquivos</b></span><span><small>Conferidos</small><strong>${reviewedCount}</strong><b>lançamentos</b></span></div><button className="documents-upload-orbit" onClick=${() => fileInput.current?.click()} disabled=${uploading || Boolean(busyEntryId)}><i></i><span><${Icon} name=${uploading || busyEntryId ? 'loader-circle' : 'file-up'} size=${25}/></span><strong>${ocrProgress?.label || (uploading ? 'Recebendo...' : 'Enviar PDF')}</strong><small>${ocrProgress ? `${Math.round(Number(ocrProgress.progress || 0) * 100)}% concluído` : 'até 15 MB'}</small>${ocrProgress ? html`<b className="ocr-orbit-progress" style=${{ '--ocr-progress':`${Math.round(Number(ocrProgress.progress || 0) * 100)}%` }}></b>` : null}</button></header>
 
       <input ref=${fileInput} type="file" accept="application/pdf,.pdf" hidden onChange=${event => processFile(event.target.files?.[0])}/>
       <div className="documents-toolbar"><div className="doc-queue-tabs">${[['pendentes','Para conferir'],['conferidos','Conferidos'],['todos','Todos']].map(([key, label]) => html`<button className=${queueFilter === key ? 'active' : ''} onClick=${() => setQueueFilter(key)}>${label}${key === 'pendentes' && pendingCount ? html`<b>${pendingCount}</b>` : null}</button>`)}</div><div className="documents-safety"><${Icon} name="shield-check"/><span>Conferência obrigatória ativa</span></div></div>
 
-      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar OCR local' : 'Tentar leitura local'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
+      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar com Gemini' : 'Tentar com Gemini'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
     </section>`;
   }
 
