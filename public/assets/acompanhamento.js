@@ -297,6 +297,7 @@
   function App() {
     const [view, setView] = useState('dashboard');
     const [mobileNav, setMobileNav] = useState(false);
+    const [commandOpen, setCommandOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [setupMissing, setSetupMissing] = useState(false);
@@ -353,6 +354,17 @@
     useEffect(() => { if (client) void reload(); }, [client, reload]);
 
     useEffect(() => {
+      const shortcut = event => {
+        if ((event.metaKey || event.ctrlKey) && String(event.key).toLowerCase() === 'k') {
+          event.preventDefault(); setCommandOpen(current => !current);
+        }
+        if (event.key === 'Escape') setCommandOpen(false);
+      };
+      document.addEventListener('keydown', shortcut);
+      return () => document.removeEventListener('keydown', shortcut);
+    }, []);
+
+    useEffect(() => {
       if (!client || DEMO_MODE) return undefined;
       subscriptionRef.current?.unsubscribe?.();
       subscriptionRef.current = client.channel('central-acompanhamento-live')
@@ -374,11 +386,11 @@
     }, [data.records, control, year, search]);
 
     const selected = useMemo(() => data.records.find(item => item.id === selectedId) || null, [data.records, selectedId]);
-    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, client, me, reload, notify, saving, setSaving,
+    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, client, me, reload, notify, saving, setSaving,
       openRecord:record => setSelectedId(record.id), editRecord:record => setRecordModal(record), newRecord:() => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year }),
       newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), setView };
 
-    useLucide([view, mobileNav, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);
+    useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);
 
     async function saveRecord(payload, id) {
       if (DEMO_MODE) { notify('Modo demonstração: cadastro validado.', 'info'); setRecordModal(null); return; }
@@ -412,7 +424,7 @@
         <div className="ambient ambient-one"></div><div className="ambient ambient-two"></div>
         <${Sidebar} view=${view} setView=${setView} open=${mobileNav} setOpen=${setMobileNav} me=${me} records=${data.records}/>
         <div className="ac-main">
-          <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context}/>
+          <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context} openCommand=${() => setCommandOpen(true)}/>
           <main className="ac-content">
             <${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>
             ${setupMissing ? html`<${SetupState}/>` : html`
@@ -428,6 +440,7 @@
         ${recordModal && html`<${RecordModal} record=${recordModal} collaborators=${data.collaborators} onClose=${() => setRecordModal(null)} onSave=${saveRecord} saving=${saving}/>`}
         ${paymentModal && html`<${PaymentModal} payment=${paymentModal} records=${data.records} onClose=${() => setPaymentModal(null)} onSave=${savePayment} saving=${saving}/>`}
         ${selected && html`<${RecordDrawer} record=${selected} context=${context} onClose=${() => setSelectedId(null)}/>`}
+        ${commandOpen && html`<${CommandPalette} context=${context} onClose=${() => setCommandOpen(false)}/>`}
         ${toast && html`<${Toast} toast=${toast}/>`}
       </div>`;
   }
@@ -471,10 +484,39 @@
       </div>`;
   }
 
-  function Topbar({ view, search, setSearch, setMobileNav, me, context }) {
+  function Topbar({ view, search, setSearch, setMobileNav, me, context, openCommand }) {
     const meta = VIEWS[view];
     useLucide([view]);
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><label className="global-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Buscar fornecedor, ação, código..."/><kbd>⌘ K</kbd></label><button className="button secondary import-shortcut" onClick=${() => context.setView('importar')}><${Icon} name="sheet"/>Importar</button><button className="button primary" onClick=${context.newRecord}><${Icon} name="plus"/>Novo acompanhamento</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Fornecedor, ação ou comando</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView('importar')}><${Icon} name="sheet"/>Importar</button><button className="button primary topbar-create" onClick=${context.newRecord}><${Icon} name="plus"/>Novo</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+  }
+
+  function CommandPalette({ context, onClose }) {
+    const [query, setQuery] = useState('');
+    const [activeIndex, setActiveIndex] = useState(0);
+    const input = useRef(null);
+    const needle = normalize(query);
+    const results = needle ? context.allRecords.filter(record => normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, ...(record.tags || [])].join(' ')).includes(needle)).slice(0, 7) : [];
+    const commands = [
+      { label:'Abrir visão geral', detail:'Resumo executivo', icon:'layout-dashboard', action:() => context.setView('dashboard') },
+      { label:'Novo acompanhamento', detail:'Cadastrar ação ou projeto', icon:'plus-circle', action:context.newRecord },
+      { label:'Importar planilha', detail:'Atualizar os controles oficiais', icon:'file-up', action:() => context.setView('importar') },
+      { label:'Ver agenda financeira', detail:'Pagamentos e previsões', icon:'wallet-cards', action:() => context.setView('financeiro') },
+    ];
+    useEffect(() => { input.current?.focus(); document.body.classList.add('command-open'); return () => document.body.classList.remove('command-open'); }, []);
+    useEffect(() => setActiveIndex(0), [query]);
+    useLucide([query, results.length]);
+    const run = action => { action?.(); onClose(); };
+    const totalItems = needle ? results.length : commands.length;
+    const activate = index => {
+      if (needle) return results[index] && run(() => context.openRecord(results[index]));
+      return commands[index] && run(commands[index].action);
+    };
+    const handleKeys = event => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); setActiveIndex(current => totalItems ? (current + 1) % totalItems : 0); }
+      if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex(current => totalItems ? (current - 1 + totalItems) % totalItems : 0); }
+      if (event.key === 'Enter' && totalItems) { event.preventDefault(); activate(activeIndex); }
+    };
+    return html`<div className="command-overlay" onMouseDown=${event => event.target === event.currentTarget && onClose()}><section className="command-palette" role="dialog" aria-modal="true" aria-label="Busca inteligente"><div className="command-input"><span><${Icon} name="sparkles"/></span><input ref=${input} value=${query} onInput=${event => setQuery(event.target.value)} onKeyDown=${handleKeys} placeholder="Digite um fornecedor, ação ou comando..."/><kbd>ESC</kbd></div><div className="command-body">${needle ? html`<div className="command-group"><span className="command-label">Resultados</span>${results.length ? results.map((record, index) => html`<button className=${index === activeIndex ? 'active' : ''} onMouseEnter=${() => setActiveIndex(index)} onClick=${() => run(() => context.openRecord(record))}><span className=${`command-result-icon ${record.controle}`}><${Icon} name=${category(record.categoria).icon}/></span><div><strong>${record.fornecedor || record.titulo}</strong><small>#${record.codigo || '—'} · ${record.titulo}</small></div><em>${money(record.valor_acordado)}</em><${Icon} name="chevron-right"/></button>`) : html`<div className="command-empty"><${Icon} name="search-x"/><span>Nenhum acompanhamento encontrado.</span></div>`}</div>` : html`<div className="command-group"><span className="command-label">Ações rápidas</span>${commands.map((command, index) => html`<button className=${index === activeIndex ? 'active' : ''} onMouseEnter=${() => setActiveIndex(index)} onClick=${() => run(command.action)}><span className="command-result-icon"><${Icon} name=${command.icon}/></span><div><strong>${command.label}</strong><small>${command.detail}</small></div><span></span><${Icon} name="arrow-up-right"/></button>`)}</div>`}</div><footer><span><b>↑↓</b> navegar</span><span><b>Enter</b> abrir</span><span>PMG Command Center</span></footer></section></div>`;
   }
 
   function FilterBand({ control, setControl, year, setYear, years, count }) {
@@ -494,6 +536,11 @@
     return html`<article className=${`metric-card ${tone || ''} ${pulse ? 'pulse-card' : ''}`}><div className="metric-card-head"><span className="metric-icon"><${Icon} name=${icon}/></span><span className="metric-trend">${hint}</span></div><strong>${display}</strong><p>${label}</p><div className="metric-sheen"></div></article>`;
   }
 
+  function InsightTile({ icon, value, label, detail, tone = 'forest', action }) {
+    useLucide([value, tone]);
+    return html`<button className=${`insight-tile ${tone}`} onClick=${action}><span className="insight-icon"><${Icon} name=${icon}/></span><div><strong>${value}</strong><b>${label}</b><small>${detail}</small></div><span className="insight-arrow"><${Icon} name="arrow-up-right"/></span></button>`;
+  }
+
   function Dashboard({ context }) {
     const { records, payments, activities, collaborators, openRecord, newRecord } = context;
     const activeRecords = records.filter(item => !['cancelado'].includes(item.status));
@@ -509,38 +556,67 @@
     const forecastExpenses = Number(indicator('investimento')) || marcosExpenses || fallbackExpenses;
     const forecastBalance = Number(indicator('saldo')) || Math.max(0, forecastRevenue - forecastExpenses);
     const realized = marketingRealized || sum(impactRecords.filter(item => item.natureza === 'receita'), item => item.total_pago || 0);
-    const overduePayments = payments.filter(payment => isOverdue(payment) && records.some(record => record.id === payment.registro_id));
+    const visibleIds = new Set(records.map(record => record.id));
+    const overduePayments = payments.filter(payment => isOverdue(payment) && visibleIds.has(payment.registro_id));
     const upcoming = payments.filter(payment => !isOverdue(payment) && !['pago', 'cancelado'].includes(payment.status) && payment.vencimento)
       .sort((a, b) => String(a.vencimento).localeCompare(String(b.vencimento))).slice(0, 6);
-    const recent = activities.filter(activity => records.some(record => record.id === activity.registro_id)).slice(0, 7);
+    const recent = activities.filter(activity => visibleIds.has(activity.registro_id)).slice(0, 7);
     const collaboratorMap = Object.fromEntries(collaborators.map(item => [item.id, item]));
     const recordMap = Object.fromEntries(context.allRecords.map(item => [item.id, item]));
+    const openProjects = activeRecords.filter(item => !['concluido', 'cancelado'].includes(item.status));
+    const finishedProjects = activeRecords.filter(item => item.status === 'concluido').length;
+    const completion = activeRecords.length ? Math.round((finishedProjects / activeRecords.length) * 100) : 0;
+    const urgent = activeRecords.filter(item => item.prioridade === 'urgente' || item.categoria === 'pendencia').length;
+    const health = Math.max(8, Math.min(100, 100 - overduePayments.length * 5 - urgent * 2));
+    const firstName = String(context.me?.nome || 'equipe').split(/\s+/)[0];
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+    const today = new Intl.DateTimeFormat('pt-BR', { weekday:'long', day:'2-digit', month:'long' }).format(new Date());
+    const focusTitle = overduePayments.length ? `${overduePayments.length} movimento${overduePayments.length === 1 ? '' : 's'} precisa${overduePayments.length === 1 ? '' : 'm'} de atenção` : urgent ? `${urgent} prioridade${urgent === 1 ? '' : 's'} em acompanhamento` : 'Operação financeira sob controle';
+    const focusText = overduePayments.length ? 'Os vencimentos críticos já estão organizados no radar ao lado.' : 'Os controles Marcos e Marketing estão conciliados e sem atraso visível.';
+    const attention = (overduePayments.length ? overduePayments : upcoming).slice(0, 5);
     useLucide([records.length, payments.length]);
     return html`
-      <section className="dashboard-grid">
-        <div className="metric-grid">
+      <section className="dashboard-cockpit">
+        <article className="cockpit-hero">
+          <div className="hero-grid-lines"></div><span className="hero-orb hero-orb-one"></span><span className="hero-orb hero-orb-two"></span>
+          <div className="hero-copy"><div className="hero-live"><i></i><span>Central sincronizada</span><b>${today}</b></div><p className="hero-kicker">${greeting}, ${firstName}</p><h2>${focusTitle}</h2><p>${focusText}</p><div className="hero-actions"><button className="button hero-primary" onClick=${newRecord}><${Icon} name="plus"/>Novo acompanhamento</button><button className="button hero-secondary" onClick=${() => context.setView('importar')}><${Icon} name="file-up"/>Atualizar planilhas</button></div></div>
+          <div className="hero-health-wrap"><div className="hero-health" style=${{ '--health':`${health * 3.6}deg` }}><div><span>Índice operacional</span><strong>${health}</strong><small>/100</small></div></div><p>${health >= 85 ? 'Fluxo saudável' : health >= 65 ? 'Atenção moderada' : 'Revisão recomendada'}</p></div>
+          <div className="hero-controls"><button className="hero-control-card marcos" onClick=${() => context.setControl('marcos')}><span><i></i>Controle Marcos</span><strong>${compactMoney(forecastRevenue)}</strong><small>Receita prevista <${Icon} name="arrow-up-right"/></small></button><button className="hero-control-card marketing" onClick=${() => context.setControl('marketing')}><span><i></i>Controle Marketing</span><strong>${compactMoney(realized)}</strong><small>Realizado com fornecedores <${Icon} name="arrow-up-right"/></small></button></div>
+        </article>
+
+        <div className="signal-grid">
+          <${InsightTile} icon="triangle-alert" value=${int(overduePayments.length)} label="Vencimentos críticos" detail=${overduePayments.length ? 'Priorize estes movimentos' : 'Nenhum atraso visível'} tone=${overduePayments.length ? 'danger' : 'forest'} action=${() => context.setView('financeiro')}/>
+          <${InsightTile} icon="orbit" value=${int(openProjects.length)} label="Ações em movimento" detail="Projetos ainda não concluídos" tone="violet" action=${() => context.setView('registros')}/>
+          <${InsightTile} icon="calendar-clock" value=${int(upcoming.length)} label="Próximos compromissos" detail="Agenda financeira visível" tone="gold" action=${() => context.setView('financeiro')}/>
+          <${InsightTile} icon="activity" value=${`${completion}%`} label="Índice de conclusão" detail=${`${finishedProjects} projetos concluídos`} tone="forest" action=${() => context.setView('registros')}/>
+        </div>
+
+        <div className="metric-grid financial-metrics">
           <${MetricCard} label="Receita prevista" value=${forecastRevenue} icon="trending-up" tone="emerald" hint="Controle Marcos"/>
           <${MetricCard} label="Realizado com fornecedores" value=${realized} icon="badge-check" tone="gold" hint="Controle Marketing"/>
           <${MetricCard} label="Investimento previsto" value=${forecastExpenses} icon="trending-down" tone="violet" hint="Planejamento anual"/>
           <${MetricCard} label="Saldo projetado" value=${forecastBalance} icon="landmark" tone=${overduePayments.length ? 'danger' : 'emerald'} hint=${overduePayments.length ? `${overduePayments.length} pendência(s) vencida(s)` : 'Receita menos investimento'} pulse=${overduePayments.length > 0}/>
         </div>
 
-        <article className="panel chart-panel cashflow-panel"><div className="panel-heading"><div><span className="eyebrow">Fluxo financeiro</span><h2>Previsto x realizado</h2><p>Distribuição mensal dos compromissos visíveis.</p></div><span className="live-chip"><i></i>Atualização em tempo real</span></div><${CashflowChart} payments=${payments} records=${records}/></article>
-        <article className="panel chart-panel category-panel"><div className="panel-heading compact"><div><span className="eyebrow">Composição</span><h2>Por tipo de ação</h2></div></div><${CategoryChart} records=${records}/></article>
+        <div className="dashboard-bento">
+          <article className="panel chart-panel cashflow-panel bento-flow"><div className="panel-heading"><div><span className="eyebrow">Pulso financeiro</span><h2>Marcos x Marketing ao longo do ano</h2><p>Movimento mensal dos controles dentro da visão atual.</p></div><span className="live-chip"><i></i>Dados vivos</span></div><${CashflowChart} payments=${payments} records=${records}/></article>
 
-        <article className="panel upcoming-panel"><div className="panel-heading compact"><div><span className="eyebrow">Agenda financeira</span><h2>Próximos pagamentos</h2></div><button className="text-button" onClick=${() => context.setView('financeiro')}>Ver todos <${Icon} name="arrow-up-right"/></button></div>
-          <div className="upcoming-list">${upcoming.length ? upcoming.map(payment => {
-            const record = recordMap[payment.registro_id];
-            return html`<button key=${payment.id} className="upcoming-row" onClick=${() => record && openRecord(record)}><span className="date-tile"><b>${String(payment.vencimento).slice(8, 10)}</b><small>${monthLabel(new Date(`${payment.vencimento}T12:00:00`))}</small></span><span className="upcoming-copy"><strong>${record?.fornecedor || record?.titulo || 'Acompanhamento'}</strong><small>${payment.descricao || `Parcela ${payment.parcela}`}</small></span><span className="upcoming-value"><b>${money(payment.valor_previsto)}</b><small>${payment.forma_pagamento || 'Forma não informada'}</small></span></button>`;
-          }) : html`<${MiniEmpty} icon="calendar-check" title="Nenhum pagamento próximo" text="Cadastre parcelas para montar a agenda financeira." action=${newRecord}/>`}</div>
-        </article>
+          <article className="attention-radar"><div className="radar-head"><div><span className="eyebrow light">Radar de atenção</span><h2>${overduePayments.length ? 'O que não pode esperar' : 'Próximos movimentos'}</h2></div><div className=${`radar-beacon ${overduePayments.length ? 'alert' : ''}`}><i></i><span></span><b>${attention.length}</b></div></div><div className="radar-list">${attention.length ? attention.map((payment, index) => {
+            const record = recordMap[payment.registro_id]; const overdue = isOverdue(payment);
+            return html`<button key=${payment.id} onClick=${() => record && openRecord(record)}><span className=${`radar-index ${overdue ? 'late' : ''}`}>${String(index + 1).padStart(2, '0')}</span><div><strong>${record?.fornecedor || record?.titulo || 'Acompanhamento'}</strong><small>${overdue ? 'Vencido' : 'Previsto'} · ${payment.vencimento ? date(payment.vencimento) : 'Sem data'}</small></div><em>${money(payment.valor_previsto)}</em><${Icon} name="chevron-right"/></button>`;
+          }) : html`<div className="radar-clear"><${Icon} name="shield-check"/><strong>Nenhum movimento crítico</strong><small>A agenda está limpa nesta visão.</small></div>`}</div><button className="radar-footer" onClick=${() => context.setView('financeiro')}>Abrir agenda completa <${Icon} name="arrow-right"/></button></article>
 
-        <article className="panel status-panel"><div className="panel-heading compact"><div><span className="eyebrow">Operação</span><h2>Andamento dos projetos</h2></div></div><${StatusBreakdown} records=${records}/></article>
+          <article className="panel chart-panel category-panel bento-category"><div className="panel-heading compact"><div><span className="eyebrow">Mapa de investimento</span><h2>Composição por iniciativa</h2></div></div><${CategoryChart} records=${records}/></article>
 
-        <article className="panel activity-panel"><div className="panel-heading compact"><div><span className="eyebrow">Trilha de auditoria</span><h2>Atividade recente</h2></div></div><div className="activity-list">${recent.length ? recent.map(activity => {
+          <article className="panel status-panel bento-status"><div className="panel-heading compact"><div><span className="eyebrow">Ritmo operacional</span><h2>Andamento dos projetos</h2></div><span className="completion-chip">${completion}% concluído</span></div><${StatusBreakdown} records=${records}/></article>
+
+          <article className="panel activity-panel bento-activity"><div className="panel-heading compact"><div><span className="eyebrow">Trilha ao vivo</span><h2>Movimentações recentes</h2></div></div><div className="activity-list">${recent.length ? recent.map(activity => {
           const record = recordMap[activity.registro_id]; const actor = collaboratorMap[activity.ator_id];
-          return html`<button key=${activity.id} className="activity-row" onClick=${() => record && openRecord(record)}><span className=${`activity-icon ${activity.tipo.includes('pagamento') ? 'money' : ''}`}><${Icon} name=${activity.tipo.includes('pagamento') ? 'receipt-text' : activity.tipo === 'criado' ? 'sparkles' : 'pencil-line'}/></span><span><strong>${actor?.nome || 'Equipe PMG'}</strong><p>${activity.resumo} <b>${record?.fornecedor || record?.titulo || ''}</b></p><small>${dateTime(activity.criado_em)}</small></span></button>`;
+          const activityType = String(activity.tipo || '');
+          return html`<button key=${activity.id} className="activity-row" onClick=${() => record && openRecord(record)}><span className=${`activity-icon ${activityType.includes('pagamento') ? 'money' : ''}`}><${Icon} name=${activityType.includes('pagamento') ? 'receipt-text' : activityType === 'criado' ? 'sparkles' : 'pencil-line'}/></span><span><strong>${actor?.nome || 'Equipe PMG'}</strong><p>${activity.resumo || 'atualizou a Central'} <b>${record?.fornecedor || record?.titulo || ''}</b></p><small>${dateTime(activity.criado_em)}</small></span></button>`;
         }) : html`<${MiniEmpty} icon="history" title="Histórico limpo" text="As alterações feitas na Central aparecerão aqui."/>`}</div></article>
+        </div>
       </section>`;
   }
 
