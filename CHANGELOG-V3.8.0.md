@@ -28,6 +28,7 @@
 - Extração assistida de fornecedor, datas, identificadores e valores, mantendo separados total do documento, parcela do Marketing e valor aprovado.
 - Conferência humana obrigatória antes de qualquer criação, vínculo, anexo ou baixa; decisão e responsável ficam auditados.
 - Tratamento seguro de modelos desconhecidos como `Não identificado`, sem lançamento automático.
+- Hotfix `1.2.1`: corrige a tela branca causada pela limpeza incorreta do efeito de ícones e reutiliza a sessão Supabase hospedada no endpoint de leitura, eliminando o `401` após o upload.
 
 ## Integração
 

@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.1 */
 (() => {
   'use strict';
 
@@ -43,7 +43,12 @@
     const parsed = Number(raw.replace(/[^0-9.-]/g, ''));
     return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
   };
-  const refreshIcons = () => requestAnimationFrame(() => { try { window.lucide?.createIcons({ attrs:{ 'stroke-width':1.9 } }); } catch (_) {} });
+  const refreshIcons = () => {
+    const frame = requestAnimationFrame(() => {
+      try { window.lucide?.createIcons({ attrs:{ 'stroke-width':1.9 } }); } catch (_) {}
+    });
+    return () => cancelAnimationFrame(frame);
+  };
   const useLucide = deps => useEffect(refreshIcons, deps);
 
   function Field({ label, hint, wide = false, children }) {

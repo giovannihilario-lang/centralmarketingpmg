@@ -236,6 +236,19 @@
   }
 
   async function ensureAccessToken() {
+    if (accessTokenStillValid(hostState.session)) return hostState.session.access_token;
+
+    if (hostState.client) {
+      try {
+        const { data, error } = await hostState.client.auth.getSession();
+        if (error) throw error;
+        hostState.session = data?.session || null;
+        if (accessTokenStillValid(hostState.session, 0)) return hostState.session.access_token;
+      } catch (error) {
+        console.warn('[PMG Connect Auth] sessão hospedada indisponível:', error?.message || error);
+      }
+    }
+
     let session = loadSession();
     if (accessTokenStillValid(session)) return session.access_token;
 
@@ -270,10 +283,10 @@
     isLocalApiUrl,
     buildBridgeUrl,
     clear:clearLocalSession,
-    getSession:() => loadSession(),
+    getSession:() => hostState.session || loadSession(),
     getPublicConfig:() => ({ supabaseUrl:SUPABASE_URL, supabasePublishableKey:SUPABASE_PUBLISHABLE_KEY }),
-    hasSession:() => Boolean(loadSession()?.access_token || loadSession()?.refresh_token),
-    hasRefreshToken:() => Boolean(loadSession()?.refresh_token),
+    hasSession:() => Boolean(hostState.session?.access_token || hostState.session?.refresh_token || loadSession()?.access_token || loadSession()?.refresh_token),
+    hasRefreshToken:() => Boolean(hostState.session?.refresh_token || loadSession()?.refresh_token),
   });
 
   // Primeiro consome a credencial quando a página já está no Node local.

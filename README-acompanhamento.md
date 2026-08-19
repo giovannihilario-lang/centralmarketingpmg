@@ -1,6 +1,6 @@
-# PMG Connect — Central de Acompanhamento V1.2
+# PMG Connect — Central de Acompanhamento V1.2.1
 
-> Interface `1.2.0`: cockpit executivo PMG com Caixa de Entrada inteligente para PDFs. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
+> Interface `1.2.1`: cockpit executivo PMG com Caixa de Entrada inteligente para PDFs e correções de autenticação/renderização. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
 
 Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Marketing / Fornecedores** em uma única base editável.
 

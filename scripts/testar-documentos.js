@@ -38,7 +38,14 @@ assert.equal(invalid.documentos[0].categoria_sugerida, 'outro');
 
 const html = fs.readFileSync(new URL('../public/acompanhamento.html', import.meta.url), 'utf8');
 assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.0/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.0/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.1/);
+assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
+
+const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');
+assert.match(documentModule, /return \(\) => cancelAnimationFrame\(frame\)/, 'O efeito dos icones precisa devolver uma funcao de limpeza.');
+
+const connectAuth = fs.readFileSync(new URL('../public/assets/connect-auth.js', import.meta.url), 'utf8');
+assert.match(connectAuth, /accessTokenStillValid\(hostState\.session\)/, 'A API hospedada precisa reutilizar a sessao Supabase ativa.');
 
 const sql = fs.readFileSync(new URL('../sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql', import.meta.url), 'utf8');
 assert.match(sql, /conferencia_confirmada/);
