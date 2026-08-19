@@ -2,8 +2,8 @@ import { getPool, sql } from './db.js';
 
 export { getPool, sql };
 
-export const CACHE_TTL_MS = 180000; // 3 min
-export const CACHE_TTL_CATALOGO_MS = 600000; // 10 min
+export const CACHE_TTL_MS = 600000; // 10 min — evita recalcular gráficos ao revisitar filtros
+export const CACHE_TTL_CATALOGO_MS = 1800000; // 30 min — cadastros mudam pouco durante uma sessão
 
 export function querRefresh(req) {
   const v = String(req?.query?.p_refresh ?? '').trim().toLowerCase();
@@ -40,15 +40,36 @@ export function salvarCache(req, res, cache, data) {
 // exatamente os mesmos JOINs e nunca multipliquem valores por cadastros duplicados.
 // ROW_NUMBER escolhe uma linha cadastral coerente por ID e evita misturar campos de registros diferentes.
 // Os fatos (VendasProdutos) permanecem intactos.
-export const CTE_BASE_REGIONAL = `
-WITH VendasRank AS (
+export function montarCteBaseRegional(query = {}) {
+  const vendasFiltros = [];
+  if (primeiroDiaMes(query?.p_de)) vendasFiltros.push('vFiltro.[Data] >= @de');
+  if (primeiroDiaMes(query?.p_ate)) vendasFiltros.push('vFiltro.[Data] < @ate');
+
+  // Quando há período, primeiro reduzimos a lista de pedidos candidatos pelo
+  // índice de Data. Depois o ROW_NUMBER ainda enxerga TODAS as linhas desses
+  // pedidos, preservando exatamente a regra de escolher a linha canônica antes
+  // de aplicar o filtro final de data.
+  const pedidosPeriodo = vendasFiltros.length ? `
+PedidosPeriodo AS (
+  SELECT DISTINCT vFiltro.[ID Pedido de Venda]
+  FROM dbo.Vendas vFiltro
+  WHERE ${vendasFiltros.join(' AND ')}
+),` : '';
+  const joinPeriodo = vendasFiltros.length
+    ? 'JOIN PedidosPeriodo pp ON pp.[ID Pedido de Venda] = v.[ID Pedido de Venda]'
+    : '';
+
+  return `
+WITH${pedidosPeriodo}
+VendasRank AS (
   SELECT
-    [ID Pedido de Venda], [Data], [ID Cliente],
+    v.[ID Pedido de Venda], v.[Data], v.[ID Cliente],
     ROW_NUMBER() OVER (
-      PARTITION BY [ID Pedido de Venda]
-      ORDER BY CASE WHEN [Data] IS NULL THEN 1 ELSE 0 END, [Data] DESC, [ID Cliente] DESC
+      PARTITION BY v.[ID Pedido de Venda]
+      ORDER BY CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END, v.[Data] DESC, v.[ID Cliente] DESC
     ) AS rn
-  FROM dbo.Vendas
+  FROM dbo.Vendas v
+  ${joinPeriodo}
 ),
 VendasUnicas AS (
   SELECT [ID Pedido de Venda], [Data], [ID Cliente]
@@ -102,6 +123,9 @@ ProdutosUnicos AS (
   WHERE rn = 1
 )
 `;
+}
+
+export const CTE_BASE_REGIONAL = montarCteBaseRegional();
 
 export const FROM_BASE_REGIONAL = `
 FROM dbo.VendasProdutos vp

@@ -2362,6 +2362,9 @@
       const data = await api(`${SQL_ENDPOINT}?recurso=apuracao`, {
         method:'POST',
         force,
+        // A primeira apuração pode aquecer o cache SQL. Não abortamos no navegador
+        // antes do limite do próprio backend, evitando o falso erro de 20 segundos.
+        timeout:135000,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,

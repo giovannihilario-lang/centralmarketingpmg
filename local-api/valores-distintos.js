@@ -1,5 +1,5 @@
 import {
-  getPool, sql, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  getPool, sql, CTE_BASE_REGIONAL, montarCteBaseRegional, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
   responderCache, salvarCache, erroApi, CACHE_TTL_CATALOGO_MS,
 } from '../src/lib/regional-dashboard.js';
 
@@ -29,16 +29,84 @@ export default async function handler(req, res) {
 
     const pool = await getPool();
     const request = pool.request();
-    const where = aplicarFiltrosRegionais(request, req.query, { ignorar: [item.param] });
     const busca = String(req.query.p_busca || '').trim();
     const limite = Math.min(Math.max(Number.parseInt(req.query.p_limit || (req.query.p_coluna === 'Produto' ? '120' : '5000'), 10) || 120, 1), 5000);
     request.input('limite', sql.Int, limite);
     if (busca && item.search) request.input('busca', sql.NVarChar(220), `%${busca}%`);
 
+    // Primeira carga: precisamos das opções, não de uma contagem de pedidos para
+    // cada uma. Buscar direto em Clientes/Produtos evita sete varreduras pesadas
+    // em VendasProdutos antes de o usuário sequer enxergar o dashboard.
+    const fast = String(req.query.p_fast || '').toLowerCase();
+    if (fast === '1' || fast === 'true') {
+      const coluna = String(req.query.p_coluna || '');
+      const clienteExpr = {
+        Cidade: "CONCAT(Cidade, ' / ', UF)",
+        Regiao: 'Zona',
+        UF: 'UF',
+        Segmento: 'Segmento',
+      }[coluna];
+      const produtoExpr = {
+        Grupo: 'Grupo',
+        Fornecedor: 'Fornecedor',
+        SubGrupo: '[Sub-grupo]',
+      }[coluna];
+
+      let fastQuery = '';
+      if (clienteExpr) {
+        fastQuery = `
+          ${CTE_BASE_REGIONAL}
+          SELECT TOP (@limite)
+            CAST(${clienteExpr} AS NVARCHAR(220)) AS valor,
+            CAST(${clienteExpr} AS NVARCHAR(220)) AS rotulo,
+            CAST(NULL AS bigint) AS qtd,
+            CAST(NULL AS bigint) AS total_pedidos
+          FROM ClientesUnicos
+          WHERE ${clienteExpr} IS NOT NULL AND ${clienteExpr} <> ''
+          GROUP BY ${clienteExpr}
+          ORDER BY ${clienteExpr}
+        `;
+      } else if (produtoExpr) {
+        fastQuery = `
+          ${CTE_BASE_REGIONAL}
+          SELECT TOP (@limite)
+            CAST(${produtoExpr} AS NVARCHAR(220)) AS valor,
+            CAST(${produtoExpr} AS NVARCHAR(220)) AS rotulo,
+            CAST(NULL AS bigint) AS qtd,
+            CAST(NULL AS bigint) AS total_pedidos
+          FROM ProdutosUnicos
+          WHERE ${produtoExpr} IS NOT NULL AND ${produtoExpr} <> ''
+          GROUP BY ${produtoExpr}
+          ORDER BY ${produtoExpr}
+        `;
+      } else if (coluna === 'Produto') {
+        fastQuery = `
+          ${CTE_BASE_REGIONAL}
+          SELECT TOP (@limite)
+            CAST([ID Produto] AS NVARCHAR(30)) AS valor,
+            CONCAT(CAST([ID Produto] AS NVARCHAR(30)), ' — ', COALESCE([Produto], 'Produto sem descrição')) AS rotulo,
+            CAST(NULL AS bigint) AS qtd,
+            CAST(NULL AS bigint) AS total_pedidos
+          FROM ProdutosUnicos
+          WHERE [ID Produto] IS NOT NULL
+            ${busca ? "AND CONCAT(CAST([ID Produto] AS NVARCHAR(30)), ' ', COALESCE([Produto], '')) LIKE @busca" : ''}
+          ORDER BY COALESCE([Produto], ''), [ID Produto]
+        `;
+      }
+
+      if (fastQuery) {
+        const fastResult = await request.query(fastQuery);
+        const fastData = fastResult.recordset;
+        salvarCache(req, res, cache, fastData);
+        return res.status(200).json(fastData);
+      }
+    }
+
+    const where = aplicarFiltrosRegionais(request, req.query, { ignorar: [item.param] });
     const labelCol = item.label || item.col;
     const searchWhere = busca && item.search ? 'WHERE busca_texto LIKE @busca' : '';
     const query = `
-      ${CTE_BASE_REGIONAL},
+      ${montarCteBaseRegional(req.query)},
       BaseFiltrada AS (
         SELECT
           ${item.col} AS valor,

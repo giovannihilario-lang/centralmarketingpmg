@@ -1,5 +1,5 @@
 import {
-  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
+  getPool, montarCteBaseRegional, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
   responderCache, salvarCache, erroApi,
 } from '../src/lib/regional-dashboard.js';
 
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     const request = pool.request();
     const where = aplicarFiltrosRegionais(request, req.query);
     const query = `
-      ${CTE_BASE_REGIONAL}
+      ${montarCteBaseRegional(req.query)}
       SELECT
         YEAR(v.Data) AS ano,
         MONTH(v.Data) AS mes,

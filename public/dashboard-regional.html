@@ -756,7 +756,7 @@ function escapeHtml(str) {
 // Cache simples em memória: evita refazer uma chamada idêntica (mesmo path + params)
 // em um curto intervalo — por exemplo, ao alternar entre dois filtros já visitados,
 // ou quando duas partes do dashboard pedem os mesmos dados quase ao mesmo tempo.
-const API_CACHE_TTL_MS = 30_000; // 30s: dados locais mudam pouco durante uma sessão de análise
+const API_CACHE_TTL_MS = 5 * 60_000; // 5 min: alternar filtros já visitados deve ser instantâneo
 const _apiCache = new Map();   // chave -> { ts, result }
 const _apiInFlight = new Map(); // chave -> Promise (dedup de chamadas simultâneas idênticas)
 
@@ -1117,7 +1117,7 @@ function removerFiltroChip(containerId) {
   aplicarFiltros();
 }
 
-async function buildChipsRPC(containerId, coluna, { busca = '' } = {}) {
+async function buildChipsRPC(containerId, coluna, { busca = '', fast = false } = {}) {
   const container = document.getElementById(containerId);
   const chipSelecionadoAntes = container?.querySelector('.chip.active');
   const selecionadoAntes = chipSelecionadoAntes?.dataset.val || '';
@@ -1135,6 +1135,7 @@ async function buildChipsRPC(containerId, coluna, { busca = '' } = {}) {
     ? new URLSearchParams(window.location.search).get('produto') || ''
     : '';
   const produtoAlvo = coluna === 'Produto' ? (selecionadoAntes || produtoDaUrl) : '';
+  if (fast) params.p_fast = 1;
   if (coluna === 'Produto') {
     params.p_limit = 120;
     if (String(busca || '').trim()) params.p_busca = String(busca).trim();
@@ -1157,9 +1158,10 @@ async function buildChipsRPC(containerId, coluna, { busca = '' } = {}) {
     const rowExata = (exact.data || []).find(row => String(row.valor) === String(produtoAlvo));
     if (rowExata) rows = [...rows, rowExata];
   }
-  const totalPedidos = Number(rows[0]?.total_pedidos) || 0;
+  const possuiContagem = rows.length > 0 && rows[0]?.total_pedidos !== null && rows[0]?.total_pedidos !== undefined;
+  const totalPedidos = possuiContagem ? (Number(rows[0]?.total_pedidos) || 0) : null;
   const labelTodos = coluna === 'Cidade' ? 'Todas as cidades' : coluna === 'Produto' ? 'Todos os produtos' : 'Todos';
-  container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="Pedidos distintos nos filtros atuais">${labelTodos} <span class="badge">${fmtNum(totalPedidos)}</span></div>`;
+  container.innerHTML = `<div class="chip" data-val="" tabindex="0" role="button" aria-pressed="false" title="${possuiContagem ? 'Pedidos distintos nos filtros atuais' : 'Opções carregadas em modo rápido'}">${labelTodos}${possuiContagem ? ` <span class="badge">${fmtNum(totalPedidos)}</span>` : ''}</div>`;
 
   rows.forEach(row => {
     const v = String(row.valor ?? '');
@@ -1167,8 +1169,9 @@ async function buildChipsRPC(containerId, coluna, { busca = '' } = {}) {
     const div = document.createElement('div');
     div.className = 'chip'; div.dataset.val = v; div.dataset.label = rotulo;
     div.tabIndex = 0; div.setAttribute('role', 'button'); div.setAttribute('aria-pressed', 'false');
-    div.title = `${fmtNum(Number(row.qtd) || 0)} pedidos distintos nos filtros atuais`;
-    div.innerHTML = `<span>${escapeHtml(rotulo)}</span><span class="badge">${fmtNum(Number(row.qtd) || 0)}</span>`;
+    const temQtd = row.qtd !== null && row.qtd !== undefined;
+    div.title = temQtd ? `${fmtNum(Number(row.qtd) || 0)} pedidos distintos nos filtros atuais` : 'Opção carregada em modo rápido';
+    div.innerHTML = `<span>${escapeHtml(rotulo)}</span>${temQtd ? `<span class="badge">${fmtNum(Number(row.qtd) || 0)}</span>` : ''}`;
     div.onclick = () => selecionarChip(container, div);
     container.appendChild(div);
   });
@@ -1205,16 +1208,29 @@ function buscarProdutosCatalogo(termo) {
   }, 260);
 }
 
+async function executarComLimite(tarefas, limite = 3) {
+  const fila = [...tarefas];
+  const workers = Array.from({ length: Math.min(limite, fila.length) }, async () => {
+    while (fila.length) {
+      const tarefa = fila.shift();
+      if (tarefa) await tarefa();
+    }
+  });
+  await Promise.all(workers);
+}
+
 async function atualizarFiltrosContextuais() {
-  await Promise.all([
-    buildChipsRPC('cidadeChips', 'Cidade'),
-    buildChipsRPC('regiaoChips', 'Regiao'),
-    buildChipsRPC('ufChips', 'UF'),
-    buildChipsRPC('segmentoChips', 'Segmento'),
-    buildChipsRPC('grupoChips', 'Grupo'),
-    buildChipsRPC('fornecedorChips', 'Fornecedor'),
-    buildChipsRPC('produtoChips', 'Produto', { busca: document.getElementById('produtoSearch')?.value || '' }),
-  ]);
+  // Estas consultas são pesadas porque calculam contagem de pedidos. Duas por vez
+  // preservam responsividade do Azure em vez de sete varreduras concorrentes.
+  await executarComLimite([
+    () => buildChipsRPC('cidadeChips', 'Cidade'),
+    () => buildChipsRPC('regiaoChips', 'Regiao'),
+    () => buildChipsRPC('ufChips', 'UF'),
+    () => buildChipsRPC('segmentoChips', 'Segmento'),
+    () => buildChipsRPC('grupoChips', 'Grupo'),
+    () => buildChipsRPC('fornecedorChips', 'Fornecedor'),
+    () => buildChipsRPC('produtoChips', 'Produto', { busca: document.getElementById('produtoSearch')?.value || '' }),
+  ], 2);
 }
 
 function selecionarChip(container, chipSelecionado) {
@@ -1476,7 +1492,12 @@ async function aplicarFiltros() {
     document.getElementById('hdrPeriodoTxt').textContent = document.getElementById('periodoAtual').textContent;
     updateFiltrosAplicadosMini();
     atualizarUrlComFiltros();
-    await Promise.all([renderDashboard(), atualizarFiltrosContextuais()]);
+    await renderDashboard();
+    // As opções contextuais são secundárias. Atualizam depois sem prender o usuário
+    // atrás do overlay enquanto sete contagens de pedidos são recalculadas.
+    setTimeout(() => {
+      atualizarFiltrosContextuais().catch((erro) => console.error('[regional] filtros contextuais:', erro));
+    }, 120);
   } finally {
     hideDashboardLoading();
     _aplicandoFiltros = false;
@@ -2432,20 +2453,21 @@ async function renderDashboard({ primeiraCarga = false } = {}) {
     mainEl?.classList.add('is-loading');
   }
   try {
-    await fetchCidades();
+    // Primeiro entregamos o que o usuário percebe como "dashboard pronto": mapa,
+    // ranking e KPIs. Depois os gráficos entram em lotes pequenos.
+    await Promise.all([fetchCidades(), renderKPIs()]);
     renderMapa();
     renderRanking();
-    await Promise.all([
-      renderKPIs(),
-      renderEvolucao(),
-      renderBarSimples('chartRegiao', 'Regiao', 'Valor', '#1a4d2e'),
-      renderBarSimples('chartSegmento', 'Segmento', 'Valor', '#f59e0b'),
-      renderFornecedor(),
-      renderConcentracaoCidades(),
-      renderGrupoKg(),
-      renderHeatmap(),
-      renderAltasQuedas()
-    ]);
+    await executarComLimite([
+      () => renderEvolucao(),
+      () => renderBarSimples('chartRegiao', 'Regiao', 'Valor', '#1a4d2e'),
+      () => renderBarSimples('chartSegmento', 'Segmento', 'Valor', '#f59e0b'),
+      () => renderFornecedor(),
+      () => renderConcentracaoCidades(),
+      () => renderGrupoKg(),
+      () => renderHeatmap(),
+      () => renderAltasQuedas()
+    ], 3);
   } finally {
     mainEl?.classList.remove('is-loading');
   }
@@ -2528,23 +2550,24 @@ async function inicializar() {
   // em vez de esperar carregarCidadesCanonicas() terminar antes de começar o resto.
   await Promise.all([
     carregarCidadesCanonicas(),
-    buildChipsRPC('cidadeChips', 'Cidade'),
-    buildChipsRPC('regiaoChips', 'Regiao'),
-    buildChipsRPC('ufChips', 'UF'),
-    buildChipsRPC('segmentoChips', 'Segmento'),
-    buildChipsRPC('grupoChips', 'Grupo'),
-    buildChipsRPC('fornecedorChips', 'Fornecedor'),
-    buildChipsRPC('produtoChips', 'Produto'),
+    buildChipsRPC('cidadeChips', 'Cidade', { fast:true }),
+    buildChipsRPC('regiaoChips', 'Regiao', { fast:true }),
+    buildChipsRPC('ufChips', 'UF', { fast:true }),
+    buildChipsRPC('segmentoChips', 'Segmento', { fast:true }),
+    buildChipsRPC('grupoChips', 'Grupo', { fast:true }),
+    buildChipsRPC('fornecedorChips', 'Fornecedor', { fast:true }),
+    buildChipsRPC('produtoChips', 'Produto', { fast:true }),
     buildPeriodoOptionsRPC()
   ]);
   restaurarFiltrosDaURL(); // aplica filtros vindos de um link compartilhado, se houver
   setDashboardLoadingStage(2, 'Calculando indicadores', 'Consolidando faturamento, pedidos, volume e cidades atendidas.');
-  await Promise.all([
-    renderDashboard({ primeiraCarga: true }),
-    atualizarFiltrosContextuais()
-  ]);
+  await renderDashboard({ primeiraCarga: true });
   setDashboardLoadingStage(3, 'Finalizando mapa e gráficos', 'Organizando ranking, concentração e evolução regional.');
   hideDashboardLoading();
+  // Contagens dos chips são refinadas depois que o dashboard já está utilizável.
+  setTimeout(() => {
+    atualizarFiltrosContextuais().catch((erro) => console.error('[regional] filtros contextuais iniciais:', erro));
+  }, 250);
 }
 
 function staggerEntrance() {

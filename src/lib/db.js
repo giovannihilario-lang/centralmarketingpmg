@@ -35,7 +35,14 @@ const common = {
   requestTimeout:Number(env('SQL_REQUEST_TIMEOUT')) || 120000,
   // Uma conexão mínima permanece aquecida. Esta é a diferença que evita pagar
   // o custo de conexão ao Azure em cada busca de fornecedor/produto.
-  pool:{ max:6, min:1, idleTimeoutMillis:600000 },
+  pool:{
+    // Azure SQL em camada básica sofre quando o dashboard dispara muitas consultas
+    // pesadas ao mesmo tempo. O limite menor mantém throughput estável e evita
+    // várias consultas competindo até todas expirarem juntas.
+    max:Number(env('SQL_POOL_MAX')) || 4,
+    min:1,
+    idleTimeoutMillis:600000
+  },
 };
 
 const config = trusted ? {
