@@ -4,7 +4,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "diagnostico:regional": "node scripts/diagnosticar-dashboard-regional.js"
+    "diagnostico:regional": "node scripts/diagnosticar-dashboard-regional.js",
+    "acompanhamento:gerar-carga": "node scripts/gerar-carga-acompanhamento.js",
+    "acompanhamento:testar": "node scripts/testar-acompanhamento.js",
+    "documentos:testar": "node scripts/testar-documentos.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

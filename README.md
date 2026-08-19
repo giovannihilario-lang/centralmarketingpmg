@@ -62,4 +62,4 @@ O módulo que unifica o Controle Marcos e o Controle Marketing / Fornecedores es
 README-acompanhamento.md
 ```
 
-Antes do primeiro acesso, execute `sql/06-CENTRAL-ACOMPANHAMENTO.sql` no Supabase.
+Antes do primeiro acesso, execute `sql/06-CENTRAL-ACOMPANHAMENTO.sql`, carregue os lotes descritos em `sql/carga-acompanhamento-sql-editor/00-LEIA-ME.md` e finalize com `sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql`. A Caixa de Entrada exige conferência humana antes de qualquer lançamento originado por PDF.

@@ -11,6 +11,7 @@
     registros: { label: 'Acompanhamentos', eyebrow: 'Operação completa', icon: 'rows-3' },
     financeiro: { label: 'Financeiro', eyebrow: 'Previsão e pagamentos', icon: 'wallet-cards' },
     fornecedores: { label: 'Parceiros', eyebrow: 'Mapa de fornecedores', icon: 'building-2' },
+    documentos: { label: 'Caixa de documentos', eyebrow: 'Leitura e conferência', icon: 'scan-line' },
     importar: { label: 'Importar planilhas', eyebrow: 'Migração inteligente', icon: 'file-spreadsheet' },
   };
 
@@ -265,9 +266,21 @@
           status:paid ? 'pago' : (record.situacao_financeira === 'atrasado' && p === 0 ? 'aprovado' : 'previsto'), forma_pagamento:p % 2 ? 'PIX' : 'Boleto' };
       });
     });
+    const documents = [{
+      id:'doc-demo-1', nome_arquivo:'19-08-2026.pdf', caminho:'', mime_type:'application/pdf', tamanho_bytes:2566469,
+      total_paginas:4, status:'aguardando_conferencia', resumo_analise:'Quatro modelos recorrentes encontrados e preparados para conferência.',
+      criado_em:new Date(Date.now() - 42 * 60_000).toISOString(), atualizado_em:new Date(Date.now() - 35 * 60_000).toISOString(),
+    }];
+    const documentItems = [
+      { id:'doc-item-1', entrada_id:'doc-demo-1', ordem:1, paginas:[1], tipo:'cadastro_pagamento', confianca:.96, status:'aguardando_conferencia', dados_extraidos:{ fornecedor:'Gordura e Óleo Coamo - Principal', fornecedor_codigo:'2928', numero_documento:'1909243', data_emissao:'2026-07-30', vencimento:'2026-08-07', data_pagamento:'2026-08-07', valor_total_documento:205867.05, valor_marketing:7147.99, valor_lancamento_sugerido:7147.99, natureza_sugerida:'receita', categoria_sugerida:'parceria', forma_pagamento:'Débito', titulo_sugerido:'Acordo de Marketing - Coamo', descricao:'Cadastro de pagamento referente ao pedido PC332397 e à NF 1909243.', observacoes:'O documento informa bruto, desconto e líquido. Confirmar que o desconto destacado corresponde ao acordo de Marketing.', evidencias:['DESC R$ 7.147,99 REF. ACORDO MKT'], alertas:['Não usar automaticamente o valor líquido total.'], campos_duvidosos:[] } },
+      { id:'doc-item-2', entrada_id:'doc-demo-1', ordem:2, paginas:[2], tipo:'pedido_compra', confianca:.98, status:'aguardando_conferencia', dados_extraidos:{ fornecedor:'Batatas Lamb Weston', fornecedor_codigo:'19555', numero_documento:'333428', numero_pedido:'333428', data_emissao:'2026-08-05', vencimento:'2026-09-02', valor_total_documento:215255.04, valor_marketing:2069.76, valor_lancamento_sugerido:2069.76, natureza_sugerida:'receita', categoria_sugerida:'parceria', forma_pagamento:'28 dias', titulo_sugerido:'Sobras de Marketing - Lamb Weston', descricao:'Pedido de compra com separação entre sobras de Compras e sobras de Marketing.', observacoes:'Confirmar o valor destacado de Marketing antes do lançamento.', evidencias:['SOBRAS MARKETING R$ 2.069,76'], alertas:['O total do pedido não é o valor de Marketing.'], campos_duvidosos:[] } },
+      { id:'doc-item-3', entrada_id:'doc-demo-1', ordem:3, paginas:[3], tipo:'danfe', confianca:.99, status:'aguardando_conferencia', dados_extraidos:{ fornecedor:'Tondo S.A. Un. São Paulo SP (Jaguaré)', cnpj:'88.618.285/0015-75', numero_documento:'000.056.354', numero_nota:'000.056.354', data_emissao:'2026-08-12', valor_total_documento:10064.60, valor_marketing:10064.60, valor_lancamento_sugerido:10064.60, natureza_sugerida:'receita', categoria_sugerida:'bonificacao', forma_pagamento:null, titulo_sugerido:'Bonificação Tondo - NF 56.354', descricao:'DANFE de remessa em bonificação, doação ou brinde.', observacoes:'Confirmar o tratamento financeiro da bonificação.', evidencias:['REMESSA EM BONIF. DOACAO OU BRINDE', 'VALOR TOTAL DA NOTA 10.064,60'], alertas:['A natureza financeira depende da conferência humana.'], campos_duvidosos:['forma_pagamento'] } },
+      { id:'doc-item-4', entrada_id:'doc-demo-1', ordem:4, paginas:[4], tipo:'extrato_bancario', confianca:.94, status:'aguardando_conferencia', dados_extraidos:{ fornecedor:'Cargill Agrícola S.A.', numero_documento:'5477797', data_pagamento:'2026-08-14', valor_total_documento:10000, valor_marketing:10000, valor_lancamento_sugerido:10000, natureza_sugerida:'receita', categoria_sugerida:'parceria', forma_pagamento:'TED', titulo_sugerido:'Transferência recebida - Cargill', descricao:'Crédito destacado no extrato bancário.', observacoes:'Validar o vínculo com o acompanhamento correto da Cargill.', evidencias:['TED-TRANSF ELET DISPON - REMET. CARGILL AGRICOLA S A - R$ 10.000,00'], alertas:[], campos_duvidosos:['acompanhamento_relacionado'] } },
+    ].map(item => ({ ...item, entrada:documents[0], criado_em:documents[0].criado_em }));
     return {
       records, payments, collaborators:[{ id:'c1', nome:'Giovanni', role:'colaborador' }, { id:'c2', nome:'Edilson', role:'gestor' }],
-      attachments:[], imports:[], activities:records.slice(0, 6).map((record, i) => ({ id:i + 1, registro_id:record.id, ator_id:i % 2 ? 'c2' : 'c1', tipo:i % 3 === 0 ? 'pagamento_editado' : 'editado', resumo:i % 3 === 0 ? 'atualizou uma previsão de pagamento' : 'atualizou o acompanhamento', criado_em:record.atualizado_em }))
+      attachments:[], imports:[], documents, documentItems, documentsSetupMissing:false,
+      activities:records.slice(0, 6).map((record, i) => ({ id:i + 1, registro_id:record.id, ator_id:i % 2 ? 'c2' : 'c1', tipo:i % 3 === 0 ? 'pagamento_editado' : 'editado', resumo:i % 3 === 0 ? 'atualizou uma previsão de pagamento' : 'atualizou o acompanhamento', criado_em:record.atualizado_em }))
     };
   }
 
@@ -282,10 +295,25 @@
     ]);
     const failed = queries.find(result => result.error);
     if (failed) throw failed.error;
+    const documentQueries = await Promise.all([
+      db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).limit(500),
+      db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).limit(2000),
+    ]);
+    const documentFailure = documentQueries.find(result => result.error);
+    const documentsSetupMissing = Boolean(documentFailure && isMissingDocumentSetupError(documentFailure.error));
+    if (documentFailure && !documentsSetupMissing) throw documentFailure.error;
     return {
       records:queries[0].data || [], payments:queries[1].data || [], collaborators:queries[2].data || [],
-      attachments:queries[3].data || [], activities:queries[4].data || [], imports:queries[5].data || []
+      attachments:queries[3].data || [], activities:queries[4].data || [], imports:queries[5].data || [],
+      documents:documentsSetupMissing ? [] : (documentQueries[0].data || []),
+      documentItems:documentsSetupMissing ? [] : (documentQueries[1].data || []), documentsSetupMissing
     };
+  }
+
+  function isMissingDocumentSetupError(fetchError) {
+    const details = [fetchError?.message, fetchError?.details, fetchError?.hint, fetchError?.code, fetchError?.status]
+      .filter(Boolean).join(' ');
+    return /acompanhamento_documentos_|schema cache|PGRST205|42P01|404|does not exist|could not find/i.test(details);
   }
 
   function isMissingSetupError(fetchError) {
@@ -303,7 +331,7 @@
     const [setupMissing, setSetupMissing] = useState(false);
     const [client, setClient] = useState(null);
     const [me, setMe] = useState(null);
-    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[] });
+    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], documents:[], documentItems:[], documentsSetupMissing:false });
     const [control, setControl] = useState('todos');
     const [year, setYear] = useState(new Date().getFullYear());
     const [search, setSearch] = useState('');
@@ -327,7 +355,7 @@
         setError(null); setSetupMissing(false);
       } catch (fetchError) {
         const missing = isMissingSetupError(fetchError);
-        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[] });
+        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], documents:[], documentItems:[], documentsSetupMissing:true });
         setSetupMissing(missing);
         setError(fetchError);
       } finally { if (!quiet) setLoading(false); }
@@ -367,12 +395,17 @@
     useEffect(() => {
       if (!client || DEMO_MODE) return undefined;
       subscriptionRef.current?.unsubscribe?.();
-      subscriptionRef.current = client.channel('central-acompanhamento-live')
+      let channel = client.channel('central-acompanhamento-live')
         .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_registros' }, () => void reload(true))
-        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_pagamentos' }, () => void reload(true))
-        .subscribe();
+        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_pagamentos' }, () => void reload(true));
+      if (!data.documentsSetupMissing) {
+        channel = channel
+          .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_entrada' }, () => void reload(true))
+          .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_itens' }, () => void reload(true));
+      }
+      subscriptionRef.current = channel.subscribe();
       return () => subscriptionRef.current?.unsubscribe?.();
-    }, [client, reload]);
+    }, [client, reload, data.documentsSetupMissing]);
 
     const years = useMemo(() => uniq(data.records.map(item => item.ano_referencia)).sort((a, b) => b - a), [data.records]);
     const filteredRecords = useMemo(() => {
@@ -422,17 +455,19 @@
     return html`
       <div className="ac-app">
         <div className="ambient ambient-one"></div><div className="ambient ambient-two"></div>
-        <${Sidebar} view=${view} setView=${setView} open=${mobileNav} setOpen=${setMobileNav} me=${me} records=${data.records}/>
+        <${Sidebar} view=${view} setView=${setView} open=${mobileNav} setOpen=${setMobileNav} me=${me} records=${data.records} documentItems=${data.documentItems}/>
         <div className="ac-main">
           <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context} openCommand=${() => setCommandOpen(true)}/>
           <main className="ac-content">
-            <${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>
+            ${view !== 'documentos' && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
             ${setupMissing ? html`<${SetupState}/>` : html`
               <div className="view-stage" key=${view}>
                 ${view === 'dashboard' && html`<${Dashboard} context=${context}/>`}
                 ${view === 'registros' && html`<${RecordsView} context=${context}/>`}
                 ${view === 'financeiro' && html`<${FinanceView} context=${context}/>`}
                 ${view === 'fornecedores' && html`<${SuppliersView} context=${context}/>`}
+                ${view === 'documentos' && window.PMGDocumentModule?.DocumentInbox && html`<${window.PMGDocumentModule.DocumentInbox} context=${context}/>`}
+                ${view === 'documentos' && !window.PMGDocumentModule?.DocumentInbox && html`<${MiniEmpty} icon="scan-line" title="Módulo de documentos indisponível" text="Atualize a página para carregar a Caixa de Entrada."/>`}
                 ${view === 'importar' && html`<${ImportView} context=${context} defaultControl=${control} defaultYear=${year}/>`}
               </div>`}
           </main>
@@ -460,8 +495,9 @@
     return html`<section className="setup-state"><div className="setup-orbit"><span></span><span></span><i><${Icon} name="database-zap" size=${32}/></i></div><div><p className="eyebrow">Uma etapa para ativar</p><h2>A interface está pronta. Falta criar a estrutura no banco.</h2><p>Execute <code>sql/06-CENTRAL-ACOMPANHAMENTO.sql</code> no SQL Editor do Supabase. Depois, carregue os dados pelos arquivos numerados da pasta <code>sql/carga-acompanhamento-sql-editor</code> ou pela tela Importar planilhas. A carga integral foi dividida para respeitar o limite do editor.</p><div className="setup-steps"><span><b>1</b>Executar o SQL 06</span><span><b>2</b>Carregar os lotes 07</span><span><b>3</b>Atualizar esta página</span></div><button className="button primary" onClick=${() => location.reload()}><${Icon} name="refresh-cw"/>Já executei, verificar agora</button></div></section>`;
   }
 
-  function Sidebar({ view, setView, open, setOpen, me, records }) {
+  function Sidebar({ view, setView, open, setOpen, me, records, documentItems = [] }) {
     const overdue = records.filter(record => record.situacao_financeira === 'atrasado').length;
+    const pendingDocuments = documentItems.filter(item => item.status === 'aguardando_conferencia').length;
     const openCount = records.filter(record => !['concluido', 'cancelado'].includes(record.status)).length;
     const navigate = next => { setView(next); setOpen(false); window.scrollTo({ top:0, behavior:'smooth' }); };
     useLucide([view, open, records.length]);
@@ -473,7 +509,7 @@
           <div className="side-spotlight"><span className="live-pulse"></span><div><small>Operação conectada</small><strong>${int(openCount)} acompanhamentos ativos</strong></div></div>
           <nav className="side-nav">
             <span className="side-label">Central</span>
-            ${Object.entries(VIEWS).map(([key, item]) => html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b>${key === 'financeiro' && overdue > 0 ? html`<em>${overdue}</em>` : null}</button>`)}
+            ${Object.entries(VIEWS).map(([key, item]) => html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b>${key === 'financeiro' && overdue > 0 ? html`<em>${overdue}</em>` : key === 'documentos' && pendingDocuments > 0 ? html`<em>${pendingDocuments}</em>` : null}</button>`)}
             <span className="side-label">PMG Connect</span>
             <a className="side-link" href="/central.html"><span><${Icon} name="house"/></span><b>Início</b></a>
             <a className="side-link" href="/demandas.html"><span><${Icon} name="clipboard-check"/></span><b>Demandas</b></a>
@@ -487,7 +523,8 @@
   function Topbar({ view, search, setSearch, setMobileNav, me, context, openCommand }) {
     const meta = VIEWS[view];
     useLucide([view]);
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Fornecedor, ação ou comando</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView('importar')}><${Icon} name="sheet"/>Importar</button><button className="button primary topbar-create" onClick=${context.newRecord}><${Icon} name="plus"/>Novo</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    const documentView = view === 'documentos';
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Fornecedor, ação ou comando</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button><button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
   }
 
   function CommandPalette({ context, onClose }) {
@@ -500,6 +537,7 @@
       { label:'Abrir visão geral', detail:'Resumo executivo', icon:'layout-dashboard', action:() => context.setView('dashboard') },
       { label:'Novo acompanhamento', detail:'Cadastrar ação ou projeto', icon:'plus-circle', action:context.newRecord },
       { label:'Importar planilha', detail:'Atualizar os controles oficiais', icon:'file-up', action:() => context.setView('importar') },
+      { label:'Conferir documentos', detail:'Abrir a caixa de entrada', icon:'scan-line', action:() => context.setView('documentos') },
       { label:'Ver agenda financeira', detail:'Pagamentos e previsões', icon:'wallet-cards', action:() => context.setView('financeiro') },
     ];
     useEffect(() => { input.current?.focus(); document.body.classList.add('command-open'); return () => document.body.classList.remove('command-open'); }, []);
@@ -816,6 +854,7 @@
     const [tab, setTab] = useState('resumo'); const [uploading, setUploading] = useState(false); const fileRef = useRef(null);
     const payments = context.payments.filter(item => item.registro_id === record.id).sort((a, b) => (a.parcela || 0) - (b.parcela || 0));
     const attachments = context.attachments.filter(item => item.registro_id === record.id);
+    const linkedDocuments = (context.documentItems || []).filter(item => item.registro_id === record.id && item.status === 'aprovado');
     const activities = context.activities.filter(item => item.registro_id === record.id);
     const collaboratorMap = Object.fromEntries(context.collaborators.map(item => [item.id, item]));
     const meta = category(record.categoria); const nature = NATURES[record.natureza] || NATURES.neutro; const progress = record.valor_acordado ? Math.min(100, Number(record.total_pago) / Number(record.valor_acordado) * 100) : 0;
@@ -863,12 +902,21 @@
       window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
     }
 
+    async function openInboxDocument(item) {
+      if (DEMO_MODE) return context.notify('Documento disponível no ambiente real.', 'info');
+      const path = item.entrada?.caminho;
+      if (!path) return context.notify('Arquivo original não localizado.', 'error');
+      const { data, error } = await context.client.storage.from('acompanhamento').createSignedUrl(path, 120);
+      if (error) return context.notify(error.message, 'error');
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    }
+
     return html`<div className="drawer-shell"><button className="drawer-backdrop" onClick=${onClose} aria-label="Fechar detalhes"></button><aside className="record-drawer"><header className="drawer-head"><div className="drawer-head-actions"><span className=${`control-pill ${record.controle}`}><i></i>${record.controle === 'marcos' ? 'Controle Marcos' : 'Controle Marketing'}</span><button className="icon-button" onClick=${onClose}><${Icon} name="x"/></button></div><div className="drawer-identity"><span className=${`category-mark large ${meta.tone}`}><${Icon} name=${meta.icon} size=${24}/></span><div><small>#${record.codigo || '—'} · ${record.ano_referencia} · ${meta.label}</small><h2>${record.fornecedor || record.titulo}</h2><p>${record.fornecedor ? record.titulo : record.referencia || ''}</p></div></div><div className="drawer-status-row"><span className=${`status-pill ${record.status}`}><i></i>${RECORD_STATUS[record.status]?.label || record.status}</span><span className=${`nature-pill ${nature.tone}`}><${Icon} name=${nature.icon}/>${nature.label}</span><span className=${`finance-label ${record.situacao_financeira}`}>${FINANCE_STATUS[record.situacao_financeira] || record.situacao_financeira}</span>${record.impacta_totais === false && html`<span className="detail-pill"><${Icon} name="layers-2"/>Detalhamento</span>`}${record.prioridade === 'urgente' && html`<span className="priority-urgent"><${Icon} name="siren"/>Urgente</span>`}</div></header>
-      <nav className="drawer-tabs">${[['resumo','Visão geral'],['pagamentos','Pagamentos'],['documentos','Documentos'],['historico','Histórico']].map(([key, label]) => html`<button className=${tab === key ? 'active' : ''} onClick=${() => setTab(key)}>${label}${key === 'pagamentos' && html`<b>${payments.length}</b>`}${key === 'documentos' && attachments.length ? html`<b>${attachments.length}</b>` : null}</button>`)}</nav>
+      <nav className="drawer-tabs">${[['resumo','Visão geral'],['pagamentos','Pagamentos'],['documentos','Documentos'],['historico','Histórico']].map(([key, label]) => html`<button className=${tab === key ? 'active' : ''} onClick=${() => setTab(key)}>${label}${key === 'pagamentos' && html`<b>${payments.length}</b>`}${key === 'documentos' && (attachments.length + linkedDocuments.length) ? html`<b>${attachments.length + linkedDocuments.length}</b>` : null}</button>`)}</nav>
       <div className="drawer-content">
         ${tab === 'resumo' && html`<div className="drawer-section-stack"><section className="drawer-money-card"><div><small>Valor acompanhado</small><strong>${money(record.valor_acordado)}</strong></div><div className="drawer-money-split"><span><small>Realizado</small><b>${money(record.total_pago)}</b></span><span><small>Saldo futuro</small><b>${money(record.saldo_aberto)}</b></span></div><div className="drawer-progress-label"><span>Execução financeira</span><b>${Math.round(progress)}%</b></div><div className="drawer-progress"><i style=${{ width:`${progress}%` }}></i></div></section><section className="drawer-info-grid"><div><span><${Icon} name="calendar-range"/>Período</span><strong>${record.data_inicio ? date(record.data_inicio) : 'Não definido'} → ${record.data_fim ? date(record.data_fim) : 'aberto'}</strong></div><div><span><${Icon} name="user-round"/>Responsável</span><strong>${collaboratorMap[record.responsavel_id]?.nome || 'Não atribuído'}</strong></div><div><span><${Icon} name="crosshair"/>Referência</span><strong>${record.referencia || 'Não informada'}</strong></div><div><span><${Icon} name="file-text"/>Documento</span><strong>${record.numero_documento || 'Não informado'}</strong></div></section>${record.descricao && html`<section className="drawer-text"><span className="eyebrow">Descrição</span><p>${record.descricao}</p></section>`}${record.observacoes && html`<section className="drawer-note"><${Icon} name="sticky-note"/><div><strong>Observações internas</strong><p>${record.observacoes}</p></div></section>`}<div className="drawer-actions"><button className="button primary" onClick=${() => context.editRecord(record)}><${Icon} name="pencil"/>Editar acompanhamento</button><button className="button secondary" onClick=${() => context.newPayment(record)}><${Icon} name="receipt-text"/>Adicionar parcela</button><button className="button danger-ghost" onClick=${archiveRecord}><${Icon} name="archive"/>Arquivar</button></div></div>`}
         ${tab === 'pagamentos' && html`<div className="drawer-section-stack"><div className="drawer-section-heading"><div><span className="eyebrow">Cronograma financeiro</span><h3>${payments.length ? `${payments.length} lançamento(s)` : 'Sem parcelas'}</h3></div><button className="button primary small" onClick=${() => context.newPayment(record)}><${Icon} name="plus"/>Adicionar</button></div>${payments.length ? payments.map(payment => html`<article className=${`drawer-payment ${isOverdue(payment) ? 'overdue' : ''}`}><span className=${`payment-check ${payment.status}`}><${Icon} name=${payment.status === 'pago' ? 'check' : isOverdue(payment) ? 'triangle-alert' : 'clock-3'}/></span><div><strong>${payment.descricao || `Parcela ${payment.parcela}`}</strong><p>${payment.vencimento ? `Vence ${date(payment.vencimento)}` : 'Sem vencimento'} · ${payment.forma_pagamento || 'Forma a definir'}</p></div><span><strong>${money(payment.valor_previsto)}</strong><small>${isOverdue(payment) ? 'Atrasado' : PAYMENT_STATUS[payment.status]?.label}</small></span><div className="drawer-payment-actions">${payment.status !== 'pago' && html`<button title="Marcar como pago" onClick=${() => quickPaid(payment)}><${Icon} name="check"/></button>`}<button title="Editar" onClick=${() => context.editPayment(payment)}><${Icon} name="pencil"/></button></div></article>`) : html`<${MiniEmpty} icon="receipt-text" title="Nenhum pagamento cadastrado" text="Crie parcelas, datas e formas de pagamento para controlar o fluxo futuro." action=${() => context.newPayment(record)}/>`}</div>`}
-        ${tab === 'documentos' && html`<div className="drawer-section-stack"><div className="dropzone" onClick=${() => fileRef.current?.click()}><input ref=${fileRef} type="file" multiple hidden onChange=${uploadFiles}/><span><${Icon} name=${uploading ? 'loader-circle' : 'cloud-upload'} size=${28}/></span><h3>${uploading ? 'Enviando arquivos...' : 'Anexar documentos'}</h3><p>Contratos, notas fiscais, boletos, propostas ou comprovantes · até 15 MB</p><button className="button secondary small" type="button">Selecionar arquivos</button></div><div className="attachment-list">${attachments.map(item => html`<button className="attachment-row" onClick=${() => openAttachment(item)}><span><${Icon} name=${item.mime_type?.includes('pdf') ? 'file-text' : item.mime_type?.includes('image') ? 'image' : 'paperclip'}/></span><div><strong>${item.nome}</strong><small>${item.tipo?.replace('_', ' ')} · ${item.tamanho_bytes ? `${Math.round(item.tamanho_bytes / 1024)} KB` : ''}</small></div><${Icon} name="external-link"/></button>`)}</div></div>`}
+        ${tab === 'documentos' && html`<div className="drawer-section-stack"><div className="dropzone" onClick=${() => fileRef.current?.click()}><input ref=${fileRef} type="file" multiple hidden onChange=${uploadFiles}/><span><${Icon} name=${uploading ? 'loader-circle' : 'cloud-upload'} size=${28}/></span><h3>${uploading ? 'Enviando arquivos...' : 'Anexar documentos'}</h3><p>Contratos, notas fiscais, boletos, propostas ou comprovantes · até 15 MB</p><button className="button secondary small" type="button">Selecionar arquivos</button></div>${linkedDocuments.length ? html`<div className="linked-documents"><span className="eyebrow">Conferidos pela Caixa de Entrada</span>${linkedDocuments.map(item => html`<button className="attachment-row reviewed" onClick=${() => openInboxDocument(item)}><span><${Icon} name="scan-line"/></span><div><strong>${item.entrada?.nome_arquivo || 'Documento conferido'}</strong><small>${String(item.tipo || 'documento').replaceAll('_', ' ')} · página ${(item.paginas || []).join(', ')}</small></div><${Icon} name="badge-check"/></button>`)}</div>` : null}<div className="attachment-list">${attachments.map(item => html`<button className="attachment-row" onClick=${() => openAttachment(item)}><span><${Icon} name=${item.mime_type?.includes('pdf') ? 'file-text' : item.mime_type?.includes('image') ? 'image' : 'paperclip'}/></span><div><strong>${item.nome}</strong><small>${item.tipo?.replace('_', ' ')} · ${item.tamanho_bytes ? `${Math.round(item.tamanho_bytes / 1024)} KB` : ''}</small></div><${Icon} name="external-link"/></button>`)}</div></div>`}
         ${tab === 'historico' && html`<div className="drawer-section-stack"><div className="history-timeline">${activities.length ? activities.map(activity => html`<div className="history-row"><span><${Icon} name=${activity.tipo.includes('pagamento') ? 'receipt-text' : activity.tipo === 'criado' ? 'sparkles' : activity.tipo === 'anexo' ? 'paperclip' : 'pencil-line'}/></span><div><strong>${collaboratorMap[activity.ator_id]?.nome || 'Equipe PMG'} ${activity.resumo}</strong><small>${dateTime(activity.criado_em)}</small></div></div>`) : html`<${MiniEmpty} icon="history" title="Ainda sem movimentações" text="Cada alteração será registrada automaticamente."/>`}</div></div>`}
       </div></aside></div>`;
   }
