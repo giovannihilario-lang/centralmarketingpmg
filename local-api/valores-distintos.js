@@ -1,23 +1,19 @@
-import {
-  getPool, sql, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
-  responderCache, salvarCache, erroApi, CACHE_TTL_CATALOGO_MS,
-} from '../src/lib/regional-dashboard.js';
-
-const cache = new Map();
+import { forEachRegionalFact } from '../src/lib/daily-commercial-snapshot.js';
+import { erroApi } from '../src/lib/regional-dashboard.js';
 
 const COLUNAS = {
-  Cidade: { col: "CONCAT(c.Cidade, ' / ', c.UF)", param: 'p_cidade' },
-  Regiao: { col: 'c.Zona', param: 'p_regiao' },
-  UF: { col: 'c.UF', param: 'p_uf' },
-  Segmento: { col: 'c.Segmento', param: 'p_segmento' },
-  Grupo: { col: 'p.Grupo', param: 'p_grupo' },
-  Fornecedor: { col: 'p.Fornecedor', param: 'p_fornecedor' },
-  SubGrupo: { col: 'p.[Sub-grupo]', param: 'p_subgrupo' },
+  Cidade: { param: 'p_cidade', value: ({ client }) => client.ci && client.uf ? `${client.ci} / ${client.uf}` : '', label: ({ client }) => client.ci && client.uf ? `${client.ci} / ${client.uf}` : '' },
+  Regiao: { param: 'p_regiao', value: ({ client }) => client.z },
+  UF: { param: 'p_uf', value: ({ client }) => client.uf },
+  Segmento: { param: 'p_segmento', value: ({ client }) => client.se },
+  Grupo: { param: 'p_grupo', value: ({ product }) => product.g },
+  Fornecedor: { param: 'p_fornecedor', value: ({ product }) => product.sn },
+  SubGrupo: { param: 'p_subgrupo', value: ({ product }) => product.sg },
   Produto: {
-    col: 'CAST(p.[ID Produto] AS NVARCHAR(30))',
-    label: "CONCAT(CAST(p.[ID Produto] AS NVARCHAR(30)), ' — ', COALESCE(p.[Produto], 'Produto sem descrição'))",
-    search: "CONCAT(CAST(p.[ID Produto] AS NVARCHAR(30)), ' ', COALESCE(p.[Produto], ''))",
     param: 'p_produto',
+    value: ({ product }) => String(product.p),
+    label: ({ product }) => `${product.p} — ${product.n || 'Produto sem descrição'}`,
+    search: ({ product }) => `${product.p} ${product.n || ''}`,
   },
 };
 
@@ -25,48 +21,29 @@ export default async function handler(req, res) {
   try {
     const item = COLUNAS[req.query.p_coluna];
     if (!item) return res.status(400).json({ message: `Coluna inválida: ${req.query.p_coluna}` });
-    if (responderCache(req, res, cache, CACHE_TTL_CATALOGO_MS)) return;
-
-    const pool = await getPool();
-    const request = pool.request();
-    const where = aplicarFiltrosRegionais(request, req.query, { ignorar: [item.param] });
-    const busca = String(req.query.p_busca || '').trim();
+    const busca = String(req.query.p_busca || '').trim().toLocaleLowerCase('pt-BR');
     const limite = Math.min(Math.max(Number.parseInt(req.query.p_limit || (req.query.p_coluna === 'Produto' ? '120' : '5000'), 10) || 120, 1), 5000);
-    request.input('limite', sql.Int, limite);
-    if (busca && item.search) request.input('busca', sql.NVarChar(220), `%${busca}%`);
+    const baseOrders = new Set();
+    const groups = new Map();
 
-    const labelCol = item.label || item.col;
-    const searchWhere = busca && item.search ? 'WHERE busca_texto LIKE @busca' : '';
-    const query = `
-      ${CTE_BASE_REGIONAL},
-      BaseFiltrada AS (
-        SELECT
-          ${item.col} AS valor,
-          ${labelCol} AS rotulo,
-          ${item.search || item.col} AS busca_texto,
-          vp.[ID Pedido de Venda] AS pedido_id
-        ${FROM_BASE_REGIONAL}
-        WHERE ${where} AND ${item.col} IS NOT NULL AND ${item.col} <> ''
-      ),
-      BasePesquisada AS (
-        SELECT valor, rotulo, pedido_id
-        FROM BaseFiltrada
-        ${searchWhere}
-      )
-      SELECT TOP (@limite)
-        valor,
-        MAX(rotulo) AS rotulo,
-        COUNT(DISTINCT pedido_id) AS qtd,
-        (SELECT COUNT(DISTINCT pedido_id) FROM BaseFiltrada) AS total_pedidos
-      FROM BasePesquisada
-      GROUP BY valor
-      ORDER BY qtd DESC, rotulo ASC
-    `;
-    const result = await request.query(query);
-    const data = result.recordset;
-    salvarCache(req, res, cache, data);
+    await forEachRegionalFact(req.query, (fact) => {
+      baseOrders.add(String(fact.line.o));
+      const valor = String(item.value(fact) ?? '').trim();
+      if (!valor) return;
+      const rotulo = String((item.label || item.value)(fact) ?? valor).trim();
+      if (busca && item.search && !String(item.search(fact)).toLocaleLowerCase('pt-BR').includes(busca)) return;
+      if (!groups.has(valor)) groups.set(valor, { valor, rotulo, pedidos: new Set() });
+      const row = groups.get(valor);
+      if (rotulo.localeCompare(row.rotulo, 'pt-BR') > 0) row.rotulo = rotulo;
+      row.pedidos.add(String(fact.line.o));
+    }, { ignore: [item.param] });
+
+    const totalPedidos = baseOrders.size;
+    const data = [...groups.values()]
+      .map((row) => ({ valor: row.valor, rotulo: row.rotulo, qtd: row.pedidos.size, total_pedidos: totalPedidos }))
+      .sort((a, b) => b.qtd - a.qtd || a.rotulo.localeCompare(b.rotulo, 'pt-BR'))
+      .slice(0, limite);
+    res.setHeader('X-PMG-Data-Source', 'DAILY-SNAPSHOT');
     return res.status(200).json(data);
-  } catch (err) {
-    return erroApi(res, err);
-  }
+  } catch (err) { return erroApi(res, err); }
 }

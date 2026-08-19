@@ -1,33 +1,24 @@
-import {
-  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
-  responderCache, salvarCache, erroApi,
-} from '../src/lib/regional-dashboard.js';
-
-const cache = new Map();
+import { forEachRegionalFact, orderDateMs } from '../src/lib/daily-commercial-snapshot.js';
+import { erroApi } from '../src/lib/regional-dashboard.js';
 
 export default async function handler(req, res) {
   try {
-    if (responderCache(req, res, cache)) return;
-    const pool = await getPool();
-    const request = pool.request();
-    const where = aplicarFiltrosRegionais(request, req.query);
-    const query = `
-      ${CTE_BASE_REGIONAL}
-      SELECT
-        UPPER(LTRIM(RTRIM(c.UF))) AS uf,
-        YEAR(v.Data) AS ano,
-        MONTH(v.Data) AS mes,
-        SUM(vp.Valor) AS valor
-      ${FROM_BASE_REGIONAL}
-      WHERE ${where} AND c.UF IS NOT NULL AND v.Data IS NOT NULL
-      GROUP BY UPPER(LTRIM(RTRIM(c.UF))), YEAR(v.Data), MONTH(v.Data)
-      ORDER BY uf, ano, mes
-    `;
-    const result = await request.query(query);
-    const data = result.recordset;
-    salvarCache(req, res, cache, data);
+    const map = new Map();
+    await forEachRegionalFact(req.query, ({ line, order, client }) => {
+      if (!client.uf) return;
+      const ms = orderDateMs(order);
+      if (!Number.isFinite(ms)) return;
+      const d = new Date(ms);
+      const ano = d.getUTCFullYear();
+      const mes = d.getUTCMonth() + 1;
+      const uf = String(client.uf).trim().toLocaleUpperCase('pt-BR');
+      const key = `${uf}|${ano}|${mes}`;
+      const current = map.get(key) || { uf, ano, mes, valor: 0 };
+      current.valor += Number(line.v) || 0;
+      map.set(key, current);
+    });
+    const data = [...map.values()].sort((a, b) => a.uf.localeCompare(b.uf, 'pt-BR') || a.ano - b.ano || a.mes - b.mes);
+    res.setHeader('X-PMG-Data-Source', 'DAILY-SNAPSHOT');
     return res.status(200).json(data);
-  } catch (err) {
-    return erroApi(res, err);
-  }
+  } catch (err) { return erroApi(res, err); }
 }

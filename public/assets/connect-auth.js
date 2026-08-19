@@ -391,6 +391,31 @@
     bindLocalLinks();
   }
 
+  async function triggerDailyCommercialSnapshot() {
+    const token = hostState.session?.access_token || '';
+    if (!token || isLoopbackPage) return null;
+    try {
+      const response = await originalFetch('http://localhost:3001/api/dados-diarios?acao=garantir', {
+        method:'GET',
+        headers:{ Authorization:`Bearer ${token}` },
+        cache:'no-store',
+      });
+      const raw = await response.text();
+      let data = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch {}
+      if (!response.ok) throw new Error(data?.message || `HTTP ${response.status}`);
+      window.PMGDailySnapshot = data;
+      document.dispatchEvent(new CustomEvent('pmg:daily-snapshot', { detail:data }));
+      return data;
+    } catch (error) {
+      // Não bloqueia o login: se o navegador impedir HTTPS -> localhost ou o
+      // Node estiver fechado, o primeiro Dashboard Regional/Campanhas tentará
+      // novamente ao acessar sua própria API local.
+      console.info('[PMG Connect] snapshot diário será preparado no primeiro acesso local:', error?.message || error);
+      return null;
+    }
+  }
+
   function definePMGConnect() {
     const api = {
       state:hostState,
@@ -474,6 +499,8 @@
       root.classList.remove('pmg-auth-pending');
       root.classList.add('pmg-auth-ready');
       document.dispatchEvent(new CustomEvent('pmg:auth-ready', { detail:hostState }));
+
+      if (hostState.session) void triggerDailyCommercialSnapshot();
 
       if (localTarget && hostState.session) {
         const target = `http://localhost:3001${localTarget}${location.search}${location.hash}`;

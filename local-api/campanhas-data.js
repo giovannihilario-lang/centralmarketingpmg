@@ -11,7 +11,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getPool, resetPool, sql, diagnosticoConfiguracaoSql } from '../src/lib/db.js';
+import { getPool, resetPool, diagnosticoConfiguracaoSql } from '../src/lib/db.js';
+import {
+  campaignContextFromSnapshot,
+  performanceRecordsets,
+  consistencyRecordsets,
+  firstPurchaseBenefitRecordsets,
+  sellerAuditRecordsets,
+} from '../src/campanhas/daily-campaign-engine.js';
+import { ensureDailySnapshot, getDailySnapshotStatus } from '../src/lib/daily-commercial-snapshot.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_PATH = path.resolve(__dirname, '../data/campanhas-contexto-v5.json');
@@ -88,7 +96,8 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.16.2',
+    version: '5.17.0',
+    dailySnapshot: getDailySnapshotStatus(),
   };
 }
 
@@ -225,75 +234,24 @@ function sanitizeContext(context = {}) {
 }
 
 async function queryContext() {
-  const pool = await getPool();
-  const result = await pool.request().query(`
-    WITH ProdutosRank AS (
-      SELECT
-        p.*,
-        ROW_NUMBER() OVER (
-          PARTITION BY p.[ID Produto]
-          ORDER BY
-            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
-            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
-            CASE WHEN p.[ID Fornecedor] IS NOT NULL THEN 0 ELSE 1 END,
-            LTRIM(RTRIM(ISNULL(p.[Fornecedor], ''))),
-            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
-        ) AS rn
-      FROM dbo.Produtos p
-      WHERE p.[ID Produto] IS NOT NULL
-    )
-    SELECT
-      p.[ID Produto] AS id,
-      p.[Produto] AS name,
-      p.[Unidade] AS unit,
-      p.[Fator Unidade] AS factor,
-      p.[Master] AS master,
-      p.[Grupo] AS groupName,
-      p.[Sub-grupo] AS subgroupName,
-      p.[ID Fornecedor] AS supplierId,
-      LTRIM(RTRIM(p.[Fornecedor])) AS supplierName,
-      p.[Fabricante] AS manufacturer,
-      p.[Status] AS status
-    FROM ProdutosRank p
-    WHERE p.rn = 1
-      AND (
-        NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') IS NULL
-        OR UPPER(LTRIM(RTRIM(p.[Status]))) LIKE 'ATIV%'
-      );
+  const { products: rawProducts, representatives: rawRepresentatives } = await campaignContextFromSnapshot();
 
-    SELECT
-      LTRIM(RTRIM(c.[Vendedor])) AS name,
-      COUNT(DISTINCT c.[ID Cliente]) AS portfolioClients,
-      COUNT(DISTINCT CASE
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-        THEN c.[ID Cliente]
-      END) AS activeClients,
-      MAX(c.[Data Último Pedido]) AS lastOrderDate
-    FROM dbo.Clientes c
-    WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-    GROUP BY LTRIM(RTRIM(c.[Vendedor]))
-    HAVING COUNT(DISTINCT CASE
-      WHEN UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-      THEN c.[ID Cliente]
-    END) > 0
-    ORDER BY LTRIM(RTRIM(c.[Vendedor]));
-  `);
-
-  const products = (result.recordsets?.[0] || [])
+  const products = rawProducts
     .map(mapProduct)
     .filter((item) => Number.isFinite(item.id))
     .sort((a, b) => Number(a.supplierId || 0) - Number(b.supplierId || 0)
       || a.group.localeCompare(b.group, 'pt-BR')
       || a.subgroup.localeCompare(b.subgroup, 'pt-BR')
       || a.name.localeCompare(b.name, 'pt-BR'));
-  const representatives = (result.recordsets?.[1] || []).map((row) => ({
-    id: `sql:${text(row.name)}`,
+
+  const representatives = rawRepresentatives.map((row) => ({
+    id: `snapshot:${text(row.name)}`,
     name: text(row.name),
     active: true,
     activeClients: Number(row.activeClients) || 0,
     portfolioClients: Number(row.portfolioClients) || 0,
     lastOrderDate: row.lastOrderDate || null,
-    source: 'dbo.Clientes',
+    source: 'snapshot diário local',
   })).filter((item) => item.name);
 
   return {
@@ -305,7 +263,11 @@ async function queryContext() {
 
 async function prepareContext({ force = false } = {}) {
   await loadDiskCache();
-  const fresh = state.context && state.updatedAt && Date.now() - new Date(state.updatedAt).getTime() < CONTEXT_TTL_MS;
+  await ensureDailySnapshot();
+  const dailyStatus = getDailySnapshotStatus();
+  const contextTime = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
+  const snapshotTime = dailyStatus.updatedAt ? new Date(dailyStatus.updatedAt).getTime() : 0;
+  const fresh = Boolean(state.context && contextTime && snapshotTime && contextTime >= snapshotTime);
   if (!force && fresh) return state.context;
   if (warmupPromise) return warmupPromise;
 
@@ -506,22 +468,6 @@ function uniqueTexts(values, max = 1000) {
   return [...new Set((Array.isArray(values) ? values : []).map(text).filter(Boolean))].slice(0, max);
 }
 
-function addIntParams(request, prefix, values) {
-  return values.map((value, index) => {
-    const name = `${prefix}${index}`;
-    request.input(name, sql.Int, value);
-    return `@${name}`;
-  }).join(',');
-}
-
-function addTextParams(request, prefix, values) {
-  return values.map((value, index) => {
-    const name = `${prefix}${index}`;
-    request.input(name, sql.NVarChar(200), value);
-    return `@${name}`;
-  }).join(',');
-}
-
 async function queryPerformance(payload = {}) {
   const startedAt = Date.now();
   const campaignPeriods = payload.campaignStart ? resolveCampaignPeriods(payload) : null;
@@ -563,241 +509,19 @@ async function queryPerformance(payload = {}) {
     }
   }
 
-  const pool = await getPool();
-  const request = pool.request();
-  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
-  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
-  request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
-  request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
-  request.input('previousEquivalentEnd', sql.VarChar(10), isoDate(campaignPeriods?.previousEquivalentEnd || previousEnd));
-
-  const scopeFilters = [];
-
-  if (productIds.length) {
-    scopeFilters.push(`vp.[ID Produto] IN (${productIds.join(',')})`);
-  } else {
-    // EXISTS evita multiplicar VendasProdutos se dbo.Produtos tiver mais de uma
-    // linha cadastral para o mesmo ID Produto.
-    scopeFilters.push(`EXISTS (
-      SELECT 1
-      FROM dbo.Produtos pScope
-      WHERE pScope.[ID Produto] = vp.[ID Produto]
-        AND pScope.[ID Fornecedor] IN (${supplierIds.join(',')})
-    )`);
-  }
-
-  const explicitSellerParams = sellers.length
-    ? addTextParams(request, 'seller', sellers)
-    : '';
-
-  const result = await request.query(`
-    SET NOCOUNT ON;
-
-    ;WITH ActiveSellerRaw AS (
-      SELECT DISTINCT
-        s.rawSeller AS seller,
-        s.sellerCode,
-        s.sellerNameKey
-      FROM dbo.Clientes c
-      CROSS APPLY (
-        SELECT
-          LTRIM(RTRIM(c.[Vendedor])) AS rawSeller,
-          CHARINDEX('-', REVERSE(LTRIM(RTRIM(c.[Vendedor])))) AS dashPos
-      ) s0
-      CROSS APPLY (
-        SELECT TRY_CONVERT(int, CASE WHEN s0.dashPos > 1 THEN RIGHT(s0.rawSeller, s0.dashPos - 1) END) AS sellerCode
-      ) sc
-      CROSS APPLY (
-        SELECT
-          s0.rawSeller,
-          sc.sellerCode,
-          UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
-            WHEN sc.sellerCode IS NOT NULL THEN LEFT(s0.rawSeller, LEN(s0.rawSeller) - s0.dashPos)
-            ELSE s0.rawSeller
-          END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
-      ) s
-      WHERE NULLIF(s.rawSeller, '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    ),
-    ActiveSellerRank AS (
-      SELECT *, ROW_NUMBER() OVER (
-        PARTITION BY COALESCE(CONVERT(varchar(20), sellerCode), CONCAT('NAME:', sellerNameKey))
-        ORDER BY CASE WHEN sellerCode IS NULL THEN 1 ELSE 0 END, seller
-      ) AS rn
-      FROM ActiveSellerRaw
-    )
-    SELECT seller, sellerCode, sellerNameKey
-    INTO #ActiveSellers
-    FROM ActiveSellerRank
-    WHERE rn = 1;
-
-    -- Base comercial completa do escopo. O histórico não é cortado pelo
-    -- status atual do representante. Vendas são reduzidas a uma linha por pedido
-    -- e o escopo por fornecedor usa EXISTS, evitando multiplicação cadastral.
-    ;WITH VendasRank AS (
-      SELECT
-        v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
-        ROW_NUMBER() OVER (
-          PARTITION BY v.[ID Pedido de Venda]
-          ORDER BY
-            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
-            v.[Data] DESC,
-            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
-            v.[ID Cliente] DESC
-        ) AS rn
-      FROM dbo.Vendas v
-    ),
-    VendasUnicas AS (
-      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]
-      FROM VendasRank
-      WHERE rn = 1
-    )
-    SELECT
-      CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
-      sellerKey.rawSeller AS seller,
-      sellerKey.sellerCode,
-      sellerKey.sellerNameKey,
-      v.[ID Cliente] AS clientId,
-      v.[ID Pedido de Venda] AS orderId,
-      v.[Data] AS orderDate,
-      vp.[ID Produto] AS productId,
-      ISNULL(vp.[Qtde PC], 0) AS pieces,
-      ISNULL(vp.[Qtde Kg], 0) AS kg,
-      ISNULL(vp.[Valor], 0) AS revenue
-    INTO #ScopeBase
-    FROM VendasUnicas v
-    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    CROSS APPLY (
-      SELECT
-        LTRIM(RTRIM(v.[Vendedor])) AS rawSeller,
-        CHARINDEX('-', REVERSE(LTRIM(RTRIM(v.[Vendedor])))) AS dashPos
-    ) sellerRaw
-    CROSS APPLY (
-      SELECT TRY_CONVERT(int, CASE WHEN sellerRaw.dashPos > 1 THEN RIGHT(sellerRaw.rawSeller, sellerRaw.dashPos - 1) END) AS sellerCode
-    ) sellerCodePart
-    CROSS APPLY (
-      SELECT
-        sellerRaw.rawSeller,
-        sellerCodePart.sellerCode,
-        UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
-          WHEN sellerCodePart.sellerCode IS NOT NULL THEN LEFT(sellerRaw.rawSeller, LEN(sellerRaw.rawSeller) - sellerRaw.dashPos)
-          ELSE sellerRaw.rawSeller
-        END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
-    ) sellerKey
-    WHERE NULLIF(sellerKey.rawSeller, '') IS NOT NULL
-      AND (
-        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
-        OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
-      )
-      AND ${scopeFilters.join(' AND ')};
-
-    -- Base individual do ranking. O representante histórico é conciliado
-    -- pelo ID final (quando existe) e, como fallback, pelo nome normalizado sem o sufixo.
-    SELECT
-      b.period,
-      matchedSeller.seller AS seller,
-      b.seller AS sellerAlias,
-      b.clientId,
-      b.orderId,
-      b.orderDate,
-      b.productId,
-      b.pieces,
-      b.kg,
-      b.revenue
-    INTO #CampaignBase
-    FROM #ScopeBase b
-    CROSS APPLY (
-      SELECT TOP (1) a.seller
-      FROM #ActiveSellers a
-      WHERE
-        (b.sellerCode IS NOT NULL AND a.sellerCode = b.sellerCode)
-        OR (
-          NULLIF(b.sellerNameKey, '') IS NOT NULL
-          AND a.sellerNameKey COLLATE Latin1_General_100_CI_AI = b.sellerNameKey COLLATE Latin1_General_100_CI_AI
-        )
-      ORDER BY
-        CASE WHEN b.sellerCode IS NOT NULL AND a.sellerCode = b.sellerCode THEN 0 ELSE 1 END,
-        CASE WHEN a.sellerNameKey COLLATE Latin1_General_100_CI_AI = b.sellerNameKey COLLATE Latin1_General_100_CI_AI THEN 0 ELSE 1 END,
-        a.seller
-    ) matchedSeller
-    ${sellers.length ? `WHERE matchedSeller.seller IN (${explicitSellerParams})` : ''};
-
-    SELECT
-      period,
-      seller,
-      clientId,
-      productId,
-      COUNT(DISTINCT orderId) AS orders,
-      SUM(pieces) AS pieces,
-      SUM(kg) AS kg,
-      SUM(revenue) AS revenue
-    FROM #CampaignBase
-    GROUP BY period, seller, clientId, productId;
-
-    SELECT
-      period,
-      seller,
-      COUNT(DISTINCT orderId) AS orders
-    FROM #CampaignBase
-    GROUP BY period, seller;
-
-    -- KPIs e metas coletivas:
-    -- campanha aberta = escopo comercial total;
-    -- campanha específica = apenas os representantes escolhidos.
-    SELECT
-      period,
-      SUM(revenue) AS revenue,
-      SUM(kg) AS kg,
-      SUM(pieces) AS pieces,
-      COUNT(DISTINCT clientId) AS customers,
-      COUNT(DISTINCT orderId) AS orders,
-      COUNT(DISTINCT productId) AS products,
-      COUNT(DISTINCT seller) AS sellers
-    FROM ${sellers.length ? '#CampaignBase' : '#ScopeBase'}
-    GROUP BY period;
-
-    -- Ritmo equivalente: mesma quantidade de dias já decorridos, mas dentro
-    -- do período anterior. Não altera metas/ranking; serve para leitura parcial.
-    SELECT
-      SUM(revenue) AS revenue,
-      SUM(kg) AS kg,
-      SUM(pieces) AS pieces,
-      COUNT(DISTINCT clientId) AS customers,
-      COUNT(DISTINCT orderId) AS orders,
-      COUNT(DISTINCT productId) AS products
-    FROM ${sellers.length ? '#CampaignBase' : '#ScopeBase'}
-    WHERE period = 'previous'
-      AND orderDate < CONVERT(date, @previousEquivalentEnd, 23);
-
-    ${activationProductIds.length ? `
-    SELECT
-      period,
-      seller,
-      clientId,
-      orderId,
-      MIN(orderDate) AS orderDate,
-      productId,
-      SUM(pieces) AS pieces,
-      SUM(kg) AS kg,
-      SUM(revenue) AS revenue
-    FROM #CampaignBase
-    WHERE productId IN (${activationProductIds.join(',')})
-    GROUP BY period, seller, clientId, orderId, productId;
-    ` : ''}
-
-    ${activationFirstPurchaseMode === 'historical_trigger' && activationTriggerProductIds.length ? `
-    SELECT DISTINCT v.[ID Cliente] AS clientId
-    FROM dbo.VendasProdutos vp
-    INNER JOIN dbo.Vendas v ON v.[ID Pedido de Venda] = vp.[ID Pedido de Venda]
-    WHERE vp.[ID Produto] IN (${activationTriggerProductIds.join(',')})
-      AND v.[ID Cliente] IS NOT NULL
-      AND v.[Data] < CONVERT(date, @currentStart, 23);
-    ` : ''}
-
-    DROP TABLE #CampaignBase;
-    DROP TABLE #ScopeBase;
-    DROP TABLE #ActiveSellers;
-  `);
+  const result = await performanceRecordsets({
+    currentStart,
+    currentEnd,
+    previousStart,
+    previousEnd,
+    previousEquivalentEnd: campaignPeriods?.previousEquivalentEnd || previousEnd,
+    productIds,
+    supplierIds,
+    sellers,
+    activationProductIds,
+    activationTriggerProductIds,
+    activationFirstPurchaseMode,
+  });
 
   const lines = (result.recordsets?.[0] || []).map((row) => ({
     period: row.period,
@@ -859,7 +583,7 @@ async function queryPerformance(payload = {}) {
   const provenance = {
     endpoint: '/api/campanhas-data?recurso=apuracao',
     handler: 'local-api/campanhas-data.js → queryPerformance()',
-    source: 'SQL Server',
+    source: 'Snapshot diário local (origem: SQL Server)',
     database: 'powerbi',
     dateReference: 'dbo.Vendas.[Data]',
     dateBoundaryMode: 'YYYY-MM-DD convertido para DATE no SQL',
@@ -909,7 +633,7 @@ async function queryPerformance(payload = {}) {
 
   const response = {
     ok: true,
-    source: 'SQL Server · Power BI',
+    source: 'Snapshot diário local · Power BI',
     dateReference: 'dbo.Vendas.[Data]',
     rankingActiveSellersOnly: sellers.length === 0,
     collectiveScope: sellers.length ? 'REPRESENTANTES_ESPECIFICOS' : 'ESCOPO_COMERCIAL_TOTAL',
@@ -982,188 +706,15 @@ async function queryConsistencyDiagnostic(payload = {}) {
     throw error;
   }
 
-  const pool = await getPool();
-  const request = pool.request();
-  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
-  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
-  request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
-  request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
-
-  const specificSellerFilter = sellers.length
-    ? `AND LTRIM(RTRIM(b.seller)) IN (${addTextParams(request, 'diagSeller', sellers)})`
-    : '';
-
-  const selectedProductFilter = productIds.length
-    ? `AND b.productId IN (${productIds.join(',')})`
-    : '';
-
-  const result = await request.query(`
-    SET NOCOUNT ON;
-
-    WITH ActiveSellers AS (
-      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
-      FROM dbo.Clientes c
-      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    ),
-    Base AS (
-      SELECT
-        CASE
-          WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
-           AND v.[Data] < CONVERT(date, @currentEnd, 23)
-          THEN 'current' ELSE 'previous'
-        END AS period,
-        LTRIM(RTRIM(v.[Vendedor])) AS seller,
-        CASE WHEN a.seller IS NULL THEN 0 ELSE 1 END AS activeSeller,
-        v.[ID Cliente] AS clientId,
-        v.[ID Pedido de Venda] AS orderId,
-        NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), '') AS saleType,
-        NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), '') AS saleForm,
-        vp.[ID Produto] AS productId,
-        p.[ID Fornecedor] AS supplierId,
-        NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') AS productStatus,
-        ISNULL(vp.[Qtde Kg], 0) AS kg,
-        ISNULL(vp.[Qtde PC], 0) AS pieces,
-        ISNULL(vp.[Valor], 0) AS revenue
-      FROM dbo.Vendas v
-      INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-      INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
-      LEFT JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
-      WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
-        AND (
-          (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
-          OR
-          (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
-        )
-    ),
-    Modes AS (
-      SELECT 'FORNECEDOR_BRUTO' AS mode, * FROM Base
-
-      UNION ALL
-      SELECT 'FORNECEDOR_VENDEDORES_ATIVOS' AS mode, *
-      FROM Base b WHERE b.activeSeller = 1
-
-      UNION ALL
-      SELECT 'PRODUTOS_ATIVOS_VENDEDORES_ATIVOS' AS mode, *
-      FROM Base b
-      WHERE b.activeSeller = 1
-        AND (
-          b.productStatus IS NULL
-          OR UPPER(LTRIM(RTRIM(b.productStatus))) LIKE 'ATIV%'
-        )
-
-      UNION ALL
-      SELECT 'ESCOPO_EFETIVO_CAMPANHA' AS mode, *
-      FROM Base b
-      WHERE b.activeSeller = 1
-        ${selectedProductFilter}
-        ${specificSellerFilter}
-    )
-    SELECT
-      mode,
-      period,
-      SUM(kg) AS kg,
-      SUM(pieces) AS pieces,
-      SUM(revenue) AS revenue,
-      COUNT(DISTINCT clientId) AS customers,
-      COUNT(DISTINCT orderId) AS orders,
-      COUNT(DISTINCT productId) AS products,
-      COUNT(DISTINCT seller) AS sellers
-    FROM Modes
-    GROUP BY mode, period
-    ORDER BY mode, period;
-
-    SELECT
-      p.[ID Fornecedor] AS supplierId,
-      MAX(LTRIM(RTRIM(p.[Fornecedor]))) AS supplierName,
-      COUNT(DISTINCT p.[ID Produto]) AS totalProducts,
-      COUNT(DISTINCT CASE
-        WHEN NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') IS NULL
-          OR UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%'
-        THEN p.[ID Produto]
-      END) AS activeProducts,
-      COUNT(DISTINCT CASE
-        WHEN NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), '') IS NOT NULL
-          AND UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) NOT LIKE 'ATIV%'
-        THEN p.[ID Produto]
-      END) AS inactiveProducts
-    FROM dbo.Produtos p
-    WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
-    GROUP BY p.[ID Fornecedor]
-    ORDER BY p.[ID Fornecedor];
-
-    WITH ActiveSellers AS (
-      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
-      FROM dbo.Clientes c
-      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    )
-    SELECT
-      CASE
-        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
-         AND v.[Data] < CONVERT(date, @currentEnd, 23)
-        THEN 'current' ELSE 'previous'
-      END AS period,
-      COALESCE(NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), ''), '(vazio)') AS productStatus,
-      COUNT(DISTINCT vp.[ID Produto]) AS products,
-      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
-      SUM(ISNULL(vp.[Valor], 0)) AS revenue
-    FROM dbo.Vendas v
-    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
-    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
-    WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
-      AND (
-        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
-        OR
-        (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
-      )
-    GROUP BY
-      CASE
-        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
-         AND v.[Data] < CONVERT(date, @currentEnd, 23)
-        THEN 'current' ELSE 'previous'
-      END,
-      COALESCE(NULLIF(LTRIM(RTRIM(ISNULL(p.[Status], ''))), ''), '(vazio)')
-    ORDER BY period, kg DESC;
-
-    WITH ActiveSellers AS (
-      SELECT DISTINCT LTRIM(RTRIM(c.[Vendedor])) AS seller
-      FROM dbo.Clientes c
-      WHERE NULLIF(LTRIM(RTRIM(c.[Vendedor])), '') IS NOT NULL
-        AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-    )
-    SELECT TOP (60)
-      CASE
-        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
-         AND v.[Data] < CONVERT(date, @currentEnd, 23)
-        THEN 'current' ELSE 'previous'
-      END AS period,
-      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), ''), '(vazio)') AS saleType,
-      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), ''), '(vazio)') AS saleForm,
-      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
-      SUM(ISNULL(vp.[Valor], 0)) AS revenue,
-      COUNT(DISTINCT v.[ID Pedido de Venda]) AS orders
-    FROM dbo.Vendas v
-    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN dbo.Produtos p ON p.[ID Produto] = vp.[ID Produto]
-    INNER JOIN ActiveSellers a ON a.seller = LTRIM(RTRIM(v.[Vendedor]))
-    WHERE p.[ID Fornecedor] IN (${supplierIds.join(',')})
-      AND (
-        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
-        OR
-        (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
-      )
-    GROUP BY
-      CASE
-        WHEN v.[Data] >= CONVERT(date, @currentStart, 23)
-         AND v.[Data] < CONVERT(date, @currentEnd, 23)
-        THEN 'current' ELSE 'previous'
-      END,
-      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), ''), '(vazio)'),
-      COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), ''), '(vazio)')
-    ORDER BY period, kg DESC;
-  `);
+  const result = await consistencyRecordsets({
+    currentStart,
+    currentEnd,
+    previousStart,
+    previousEnd,
+    supplierIds,
+    productIds,
+    sellers,
+  });
 
   const totals = (result.recordsets?.[0] || []).map((row) => ({
     mode:text(row.mode),
@@ -1261,7 +812,7 @@ async function queryConsistencyDiagnostic(payload = {}) {
 
   return {
     ok:true,
-    source:'SQL Server · Power BI',
+    source:'Snapshot diário local · Power BI',
     endpoint:'/api/campanhas-data?recurso=diagnostico-consistencia',
     handler:'local-api/campanhas-data.js → queryConsistencyDiagnostic()',
     supplierIds,
@@ -1362,143 +913,14 @@ async function queryFirstPurchaseBenefit(payload = {}) {
     if (!entry || Date.now() - entry.createdAt > BENEFIT_CACHE_TTL_MS) benefitCache.delete(key);
   }
 
-  const pool = await getPool();
-  const request = pool.request();
-  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
-  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
-
-  const clientSellerFilter = sellers.length
-    ? `AND LTRIM(RTRIM(c.[Vendedor])) IN (${addTextParams(request, 'benefitClientSeller', sellers)})`
-    : '';
-  const result = await request.query(`
-    SET NOCOUNT ON;
-
-    SELECT
-      c.[ID Cliente] AS clientId,
-      LTRIM(RTRIM(ISNULL(c.[Cliente], ''))) AS clientName,
-      LTRIM(RTRIM(ISNULL(c.[Nome Fantasia], ''))) AS tradeName,
-      LTRIM(RTRIM(ISNULL(c.[CNPJ/CPF], ''))) AS document,
-      LTRIM(RTRIM(ISNULL(c.[Vendedor], ''))) AS seller,
-      LTRIM(RTRIM(ISNULL(c.[Cidade], ''))) AS city,
-      LTRIM(RTRIM(ISNULL(c.[UF], ''))) AS uf,
-      LTRIM(RTRIM(ISNULL(c.[Status], ''))) AS status
-    FROM dbo.Clientes c
-    WHERE c.[ID Cliente] IS NOT NULL
-      AND UPPER(LTRIM(RTRIM(ISNULL(c.[Status], '')))) LIKE 'ATIV%'
-      ${clientSellerFilter};
-
-    WITH VendasRank AS (
-      SELECT
-        v.[ID Pedido de Venda],
-        v.[Data],
-        v.[ID Cliente],
-        v.[Vendedor],
-        ROW_NUMBER() OVER (
-          PARTITION BY v.[ID Pedido de Venda]
-          ORDER BY
-            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
-            v.[Data] DESC,
-            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
-            v.[ID Cliente] DESC
-        ) AS rn
-      FROM dbo.Vendas v
-      WHERE v.[Data] >= CONVERT(date, @currentStart, 23)
-        AND v.[Data] < CONVERT(date, @currentEnd, 23)
-    ),
-    VendasUnicas AS (
-      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]
-      FROM VendasRank
-      WHERE rn = 1
-    ),
-    ProdutosRank AS (
-      SELECT
-        p.[ID Produto], p.[Produto],
-        ROW_NUMBER() OVER (
-          PARTITION BY p.[ID Produto]
-          ORDER BY
-            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
-            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
-            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
-        ) AS rn
-      FROM dbo.Produtos p
-      WHERE p.[ID Produto] IN (${allProductIds.join(',')})
-    ),
-    ProdutosUnicos AS (
-      SELECT [ID Produto], [Produto]
-      FROM ProdutosRank
-      WHERE rn = 1
-    )
-    SELECT
-      v.[ID Cliente] AS clientId,
-      v.[ID Pedido de Venda] AS orderId,
-      v.[Data] AS orderDate,
-      LTRIM(RTRIM(v.[Vendedor])) AS seller,
-      vp.[ID Produto] AS productId,
-      p.[Produto] AS productName,
-      SUM(ISNULL(vp.[Qtde PC], 0)) AS pieces,
-      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
-      SUM(ISNULL(vp.[Valor], 0)) AS revenue
-    FROM VendasUnicas v
-    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN ProdutosUnicos p ON p.[ID Produto] = vp.[ID Produto]
-    WHERE v.[ID Cliente] IS NOT NULL
-      AND vp.[ID Produto] IN (${allProductIds.join(',')})
-    GROUP BY
-      v.[ID Cliente], v.[ID Pedido de Venda], v.[Data], LTRIM(RTRIM(v.[Vendedor])),
-      vp.[ID Produto], p.[Produto]
-    ORDER BY v.[ID Cliente], v.[Data], v.[ID Pedido de Venda], vp.[ID Produto];
-
-    ${firstPurchaseMode === 'historical_trigger' ? `
-    WITH TriggerOrders AS (
-      SELECT DISTINCT vp.[ID Pedido de Venda] AS orderId
-      FROM dbo.VendasProdutos vp
-      WHERE vp.[ID Produto] IN (${triggerProductIds.join(',')})
-    ),
-    PriorVendasRank AS (
-      SELECT
-        v.[ID Pedido de Venda],
-        v.[Data],
-        v.[ID Cliente],
-        ROW_NUMBER() OVER (
-          PARTITION BY v.[ID Pedido de Venda]
-          ORDER BY
-            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
-            v.[Data] DESC,
-            v.[ID Cliente] DESC
-        ) AS rn
-      FROM TriggerOrders t
-      INNER JOIN dbo.Vendas v ON v.[ID Pedido de Venda] = t.orderId
-      WHERE v.[Data] < CONVERT(date, @currentStart, 23)
-    )
-    SELECT
-      v.[ID Cliente] AS clientId,
-      MIN(v.[Data]) AS firstPriorDate
-    FROM PriorVendasRank v
-    WHERE v.rn = 1
-      AND v.[ID Cliente] IS NOT NULL
-    GROUP BY v.[ID Cliente];
-    ` : `
-    SELECT CAST(NULL AS int) AS clientId, CAST(NULL AS datetime2) AS firstPriorDate WHERE 1 = 0;
-    `}
-
-    WITH ProdutosRank AS (
-      SELECT
-        p.[ID Produto], p.[Produto],
-        ROW_NUMBER() OVER (
-          PARTITION BY p.[ID Produto]
-          ORDER BY
-            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
-            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
-            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
-        ) AS rn
-      FROM dbo.Produtos p
-      WHERE p.[ID Produto] IN (${allProductIds.join(',')})
-    )
-    SELECT [ID Produto] AS productId, LTRIM(RTRIM(ISNULL([Produto], ''))) AS productName
-    FROM ProdutosRank
-    WHERE rn = 1
-    ORDER BY [ID Produto];
-  `);
+  const result = await firstPurchaseBenefitRecordsets({
+    currentStart,
+    currentEnd,
+    sellers,
+    triggerProductIds,
+    benefitProductIds,
+    historicalTrigger: firstPurchaseMode === 'historical_trigger',
+  });
 
   const clientMap = new Map();
   for (const row of result.recordsets?.[0] || []) {
@@ -1652,7 +1074,7 @@ async function queryFirstPurchaseBenefit(payload = {}) {
 
   const response = {
     ok:true,
-    source:'SQL Server · Power BI',
+    source:'Snapshot diário local · Power BI',
     endpoint:'/api/campanhas-data?recurso=beneficio-primeira-compra',
     handler:'local-api/campanhas-data.js → queryFirstPurchaseBenefit()',
     dateReference:'dbo.Vendas.[Data]',
@@ -1711,196 +1133,15 @@ async function querySellerAudit(payload = {}) {
     throw error;
   }
 
-  const pool = await getPool();
-  const request = pool.request();
-  request.input('sellerAudit', sql.NVarChar(200), seller);
-  request.input('currentStart', sql.VarChar(10), isoDate(currentStart));
-  request.input('currentEnd', sql.VarChar(10), isoDate(currentEnd));
-  request.input('previousStart', sql.VarChar(10), isoDate(previousStart));
-  request.input('previousEnd', sql.VarChar(10), isoDate(previousEnd));
-
-  const scopeFilter = productIds.length
-    ? `vp.[ID Produto] IN (${productIds.join(',')})`
-    : `EXISTS (
-        SELECT 1
-        FROM dbo.Produtos pScope
-        WHERE pScope.[ID Produto] = vp.[ID Produto]
-          AND pScope.[ID Fornecedor] IN (${supplierIds.join(',')})
-      )`;
-
-  const result = await request.query(`
-    SET NOCOUNT ON;
-
-    DECLARE @sellerAuditTrim nvarchar(200) = LTRIM(RTRIM(@sellerAudit));
-    DECLARE @sellerAuditDash int = CHARINDEX('-', REVERSE(@sellerAuditTrim));
-    DECLARE @sellerAuditCode int = TRY_CONVERT(int, CASE WHEN @sellerAuditDash > 1 THEN RIGHT(@sellerAuditTrim, @sellerAuditDash - 1) END);
-    DECLARE @sellerAuditNameKey nvarchar(200) = UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
-      WHEN @sellerAuditCode IS NOT NULL THEN LEFT(@sellerAuditTrim, LEN(@sellerAuditTrim) - @sellerAuditDash)
-      ELSE @sellerAuditTrim
-    END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI;
-
-    WITH VendasRank AS (
-      SELECT
-        v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
-        v.[Tipo], v.[Forma de Venda], v.[Valor Total],
-        ROW_NUMBER() OVER (
-          PARTITION BY v.[ID Pedido de Venda]
-          ORDER BY
-            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
-            v.[Data] DESC,
-            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
-            v.[ID Cliente] DESC
-        ) AS rn
-      FROM dbo.Vendas v
-    ),
-    VendasUnicas AS (
-      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor], [Tipo], [Forma de Venda], [Valor Total]
-      FROM VendasRank
-      WHERE rn = 1
-    ),
-    ProdutosRank AS (
-      SELECT
-        p.[ID Produto], p.[Produto], p.[ID Fornecedor], p.[Fornecedor], p.[Status],
-        ROW_NUMBER() OVER (
-          PARTITION BY p.[ID Produto]
-          ORDER BY
-            CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(p.[Status], '')))) LIKE 'ATIV%' THEN 0 ELSE 1 END,
-            CASE WHEN NULLIF(LTRIM(RTRIM(p.[Produto])), '') IS NOT NULL THEN 0 ELSE 1 END,
-            CASE WHEN p.[ID Fornecedor] IS NOT NULL THEN 0 ELSE 1 END,
-            LTRIM(RTRIM(ISNULL(p.[Fornecedor], ''))),
-            LTRIM(RTRIM(ISNULL(p.[Produto], '')))
-        ) AS rn
-      FROM dbo.Produtos p
-    ),
-    ProdutosUnicos AS (
-      SELECT [ID Produto], [Produto], [ID Fornecedor], [Fornecedor]
-      FROM ProdutosRank
-      WHERE rn = 1
-    )
-    SELECT TOP (1500)
-      CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
-      LTRIM(RTRIM(v.[Vendedor])) AS seller,
-      v.[ID Pedido de Venda] AS orderId,
-      v.[Data] AS orderDate,
-      v.[ID Cliente] AS clientId,
-      NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), '') AS saleType,
-      NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), '') AS saleForm,
-      ISNULL(v.[Valor Total], 0) AS wholeOrderValue,
-      vp.[ID Produto] AS productId,
-      p.[Produto] AS productName,
-      p.[ID Fornecedor] AS supplierId,
-      p.[Fornecedor] AS supplierName,
-      SUM(ISNULL(vp.[Qtde PC], 0)) AS pieces,
-      SUM(ISNULL(vp.[Qtde Kg], 0)) AS kg,
-      SUM(ISNULL(vp.[Valor], 0)) AS revenue
-    FROM VendasUnicas v
-    INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-    INNER JOIN ProdutosUnicos p ON p.[ID Produto] = vp.[ID Produto]
-    CROSS APPLY (
-      SELECT
-        LTRIM(RTRIM(v.[Vendedor])) AS rawSeller,
-        CHARINDEX('-', REVERSE(LTRIM(RTRIM(v.[Vendedor])))) AS dashPos
-    ) sellerRaw
-    CROSS APPLY (
-      SELECT TRY_CONVERT(int, CASE WHEN sellerRaw.dashPos > 1 THEN RIGHT(sellerRaw.rawSeller, sellerRaw.dashPos - 1) END) AS sellerCode
-    ) sellerCodePart
-    CROSS APPLY (
-      SELECT UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
-        WHEN sellerCodePart.sellerCode IS NOT NULL THEN LEFT(sellerRaw.rawSeller, LEN(sellerRaw.rawSeller) - sellerRaw.dashPos)
-        ELSE sellerRaw.rawSeller
-      END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
-    ) sellerNamePart
-    WHERE (
-        (@sellerAuditCode IS NOT NULL AND sellerCodePart.sellerCode = @sellerAuditCode)
-        OR (
-          NULLIF(sellerNamePart.sellerNameKey, '') IS NOT NULL
-          AND sellerNamePart.sellerNameKey COLLATE Latin1_General_100_CI_AI = @sellerAuditNameKey COLLATE Latin1_General_100_CI_AI
-        )
-      )
-      AND (
-        (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
-        OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
-      )
-      AND ${scopeFilter}
-    GROUP BY
-      CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END,
-      LTRIM(RTRIM(v.[Vendedor])),
-      v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Tipo], v.[Forma de Venda], v.[Valor Total],
-      vp.[ID Produto], p.[Produto], p.[ID Fornecedor], p.[Fornecedor]
-    ORDER BY period DESC, v.[Data] DESC, v.[ID Pedido de Venda] DESC, vp.[ID Produto];
-
-    -- Paridade vendedor × escopo da campanha.
-    WITH VendasRankParity AS (
-      SELECT
-        v.[ID Pedido de Venda], v.[Data], v.[ID Cliente], v.[Vendedor],
-        ROW_NUMBER() OVER (
-          PARTITION BY v.[ID Pedido de Venda]
-          ORDER BY
-            CASE WHEN v.[Data] IS NULL THEN 1 ELSE 0 END,
-            v.[Data] DESC,
-            CASE WHEN NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') IS NULL THEN 1 ELSE 0 END,
-            v.[ID Cliente] DESC
-        ) AS rn
-      FROM dbo.Vendas v
-    ),
-    VendasUnicasParity AS (
-      SELECT [ID Pedido de Venda], [Data], [ID Cliente], [Vendedor]
-      FROM VendasRankParity
-      WHERE rn = 1
-    ),
-    SellerLines AS (
-      SELECT
-        CASE WHEN v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23) THEN 'current' ELSE 'previous' END AS period,
-        v.[ID Pedido de Venda] AS orderId,
-        v.[ID Cliente] AS clientId,
-        ISNULL(vp.[Qtde PC], 0) AS pieces,
-        ISNULL(vp.[Qtde Kg], 0) AS kg,
-        ISNULL(vp.[Valor], 0) AS revenue,
-        CASE WHEN ${scopeFilter} THEN 1 ELSE 0 END AS inCampaignScope
-      FROM VendasUnicasParity v
-      INNER JOIN dbo.VendasProdutos vp ON vp.[ID Pedido de Venda] = v.[ID Pedido de Venda]
-      CROSS APPLY (
-        SELECT
-          LTRIM(RTRIM(v.[Vendedor])) AS rawSeller,
-          CHARINDEX('-', REVERSE(LTRIM(RTRIM(v.[Vendedor])))) AS dashPos
-      ) sr
-      CROSS APPLY (
-        SELECT TRY_CONVERT(int, CASE WHEN sr.dashPos > 1 THEN RIGHT(sr.rawSeller, sr.dashPos - 1) END) AS sellerCode
-      ) sc
-      CROSS APPLY (
-        SELECT UPPER(REPLACE(REPLACE(LTRIM(RTRIM(CASE
-          WHEN sc.sellerCode IS NOT NULL THEN LEFT(sr.rawSeller, LEN(sr.rawSeller) - sr.dashPos)
-          ELSE sr.rawSeller
-        END)), '(TLMK)', ''), ' ', '')) COLLATE Latin1_General_100_CI_AI AS sellerNameKey
-      ) sn
-      WHERE (
-          (@sellerAuditCode IS NOT NULL AND sc.sellerCode = @sellerAuditCode)
-          OR (
-            NULLIF(sn.sellerNameKey, '') IS NOT NULL
-            AND sn.sellerNameKey COLLATE Latin1_General_100_CI_AI = @sellerAuditNameKey COLLATE Latin1_General_100_CI_AI
-          )
-        )
-        AND (
-          (v.[Data] >= CONVERT(date, @currentStart, 23) AND v.[Data] < CONVERT(date, @currentEnd, 23))
-          OR (v.[Data] >= CONVERT(date, @previousStart, 23) AND v.[Data] < CONVERT(date, @previousEnd, 23))
-        )
-    )
-    SELECT
-      period,
-      SUM(revenue) AS sellerRevenueAllProducts,
-      SUM(kg) AS sellerKgAllProducts,
-      SUM(pieces) AS sellerPiecesAllProducts,
-      COUNT(DISTINCT orderId) AS sellerOrdersAllProducts,
-      COUNT(DISTINCT clientId) AS sellerCustomersAllProducts,
-      SUM(CASE WHEN inCampaignScope = 1 THEN revenue ELSE 0 END) AS campaignRevenue,
-      SUM(CASE WHEN inCampaignScope = 1 THEN kg ELSE 0 END) AS campaignKg,
-      SUM(CASE WHEN inCampaignScope = 1 THEN pieces ELSE 0 END) AS campaignPieces,
-      COUNT(DISTINCT CASE WHEN inCampaignScope = 1 THEN orderId END) AS campaignOrders,
-      COUNT(DISTINCT CASE WHEN inCampaignScope = 1 THEN clientId END) AS campaignCustomers
-    FROM SellerLines
-    GROUP BY period
-    ORDER BY period;
-  `);
+  const result = await sellerAuditRecordsets({
+    seller,
+    currentStart,
+    currentEnd,
+    previousStart,
+    previousEnd,
+    productIds,
+    supplierIds,
+  });
 
   const rows = (result.recordsets?.[0] || result.recordset || []).map((row) => ({
     period:row.period,
@@ -1951,7 +1192,7 @@ async function querySellerAudit(payload = {}) {
 
   return {
     ok:true,
-    source:'SQL Server · Power BI',
+    source:'Snapshot diário local · Power BI',
     endpoint:'/api/campanhas-data?recurso=auditoria-vendedor',
     handler:'local-api/campanhas-data.js → querySellerAudit()',
     seller,
@@ -2059,7 +1300,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.16.2',
+    versao: '5.17.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
     recuperacaoSqlTentada:Boolean(error?.sqlRecoveryAttempted),
   };
@@ -2096,7 +1337,7 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({
         ok: true,
-        version: '5.16.2',
+        version: '5.17.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
@@ -2131,12 +1372,8 @@ export default async function handler(req, res) {
   }
 }
 
+// No boot, apenas reaproveita o contexto salvo. A atualização comercial do dia
+// é disparada pelo primeiro acesso autenticado, não pela inicialização do Node.
 setTimeout(() => {
-  void loadDiskCache().then(() => {
-    if (state.context) {
-      void withSqlSessionRecovery('warmup-contexto', () => prepareContext({ force: state.stale })).catch(() => {});
-    } else {
-      void withSqlSessionRecovery('warmup-contexto', () => prepareContext()).catch(() => {});
-    }
-  });
+  void loadDiskCache().catch(() => {});
 }, 100);

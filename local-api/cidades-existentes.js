@@ -1,24 +1,20 @@
-import {
-  getPool, CTE_BASE_REGIONAL, responderCache, salvarCache, erroApi, CACHE_TTL_CATALOGO_MS,
-} from '../src/lib/regional-dashboard.js';
-
-const cache = new Map();
+import { ensureDailySnapshot } from '../src/lib/daily-commercial-snapshot.js';
+import { erroApi } from '../src/lib/regional-dashboard.js';
 
 export default async function handler(req, res) {
   try {
-    if (responderCache(req, res, cache, CACHE_TTL_CATALOGO_MS)) return;
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      ${CTE_BASE_REGIONAL}
-      SELECT DISTINCT Cidade AS cidade, UF AS uf
-      FROM ClientesUnicos
-      WHERE Cidade IS NOT NULL AND UF IS NOT NULL AND Cidade <> '' AND UF <> ''
-      ORDER BY UF, Cidade
-    `);
-    const data = result.recordset;
-    salvarCache(req, res, cache, data);
+    const snapshot = await ensureDailySnapshot();
+    const seen = new Set();
+    const data = [];
+    for (const client of snapshot.regionalClients || []) {
+      if (!client.ci || !client.uf) continue;
+      const key = `${client.ci}|${client.uf}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      data.push({ cidade: client.ci, uf: client.uf });
+    }
+    data.sort((a, b) => a.uf.localeCompare(b.uf, 'pt-BR') || a.cidade.localeCompare(b.cidade, 'pt-BR'));
+    res.setHeader('X-PMG-Data-Source', 'DAILY-SNAPSHOT');
     return res.status(200).json(data);
-  } catch (err) {
-    return erroApi(res, err);
-  }
+  } catch (err) { return erroApi(res, err); }
 }

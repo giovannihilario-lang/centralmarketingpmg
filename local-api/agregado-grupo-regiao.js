@@ -1,29 +1,18 @@
-import {
-  getPool, CTE_BASE_REGIONAL, FROM_BASE_REGIONAL, aplicarFiltrosRegionais,
-  responderCache, salvarCache, erroApi,
-} from '../src/lib/regional-dashboard.js';
-
-const cache = new Map();
+import { forEachRegionalFact } from '../src/lib/daily-commercial-snapshot.js';
+import { erroApi } from '../src/lib/regional-dashboard.js';
 
 export default async function handler(req, res) {
   try {
-    if (responderCache(req, res, cache)) return;
-    const pool = await getPool();
-    const request = pool.request();
-    const where = aplicarFiltrosRegionais(request, req.query);
-    const query = `
-      ${CTE_BASE_REGIONAL}
-      SELECT p.Grupo AS grupo, c.Zona AS regiao, SUM(vp.Valor) AS valor
-      ${FROM_BASE_REGIONAL}
-      WHERE ${where} AND p.Grupo IS NOT NULL AND c.Zona IS NOT NULL
-      GROUP BY p.Grupo, c.Zona
-      ORDER BY valor DESC
-    `;
-    const result = await request.query(query);
-    const data = result.recordset;
-    salvarCache(req, res, cache, data);
+    const map = new Map();
+    await forEachRegionalFact(req.query, ({ line, client, product }) => {
+      if (!product.g || !client.z) return;
+      const key = `${product.g}\u0000${client.z}`;
+      const current = map.get(key) || { grupo: product.g, regiao: client.z, valor: 0 };
+      current.valor += Number(line.v) || 0;
+      map.set(key, current);
+    });
+    const data = [...map.values()].sort((a, b) => b.valor - a.valor);
+    res.setHeader('X-PMG-Data-Source', 'DAILY-SNAPSHOT');
     return res.status(200).json(data);
-  } catch (err) {
-    return erroApi(res, err);
-  }
+  } catch (err) { return erroApi(res, err); }
 }
