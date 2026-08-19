@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.1 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.2 */
 (() => {
   'use strict';
 
@@ -226,6 +226,7 @@
     const [dragging, setDragging] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [busyEntryId, setBusyEntryId] = useState(null);
+    const [ocrProgress, setOcrProgress] = useState(null);
     const [previewUrl, setPreviewUrl] = useState('');
     const [previewLoading, setPreviewLoading] = useState(false);
     const entries = context.documents || [];
@@ -262,34 +263,43 @@
       return () => { active = false; };
     }, [selectedEntry?.id, selectedEntry?.caminho, context.client]);
 
-    useLucide([entries.length, pendingCount, analyzingCount, reviewedCount, queueFilter, uploading, dragging, selectedEntry?.id, activeItem?.id]);
+    useLucide([entries.length, pendingCount, analyzingCount, reviewedCount, queueFilter, uploading, dragging, selectedEntry?.id, activeItem?.id, ocrProgress?.progress]);
 
     async function sha256(file) {
       const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
       return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
     }
 
-    async function analyzeEntry(entryId) {
-      if (DEMO_MODE) { context.notify('Modo demonstração: a leitura automática foi simulada.', 'info'); return; }
+    async function analyzeEntry(entryOrId, sourceFile = null) {
+      const entryId = typeof entryOrId === 'string' ? entryOrId : entryOrId?.id;
+      const entry = typeof entryOrId === 'string' ? entries.find(item => item.id === entryId) : entryOrId;
+      if (!entryId) return context.notify('Documento não encontrado para leitura.', 'error');
+      if (DEMO_MODE) { context.notify('Modo demonstração: a leitura local foi simulada.', 'info'); return; }
       setBusyEntryId(entryId);
+      setOcrProgress({ progress:0, label:'Preparando o leitor local...' });
       try {
         const { error:startError } = await context.client.rpc('iniciar_analise_documento_v1', { p_entrada_id:entryId });
         if (startError) throw startError;
         await context.reload(true);
-        const headers = await window.PMGConnectAuth.authorizationHeaders({ 'Content-Type':'application/json' });
-        const response = await fetch('/api/analisar-documento', { method:'POST', headers, body:JSON.stringify({ entrada_id:entryId }) });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.erro || 'Não foi possível ler o PDF.');
+        let pdfFile = sourceFile;
+        if (!pdfFile) {
+          if (!entry?.caminho) throw new Error('O arquivo original não foi localizado.');
+          const { data:downloaded, error:downloadError } = await context.client.storage.from('acompanhamento').download(entry.caminho);
+          if (downloadError || !downloaded) throw downloadError || new Error('Não foi possível baixar o PDF privado para leitura.');
+          pdfFile = downloaded;
+        }
+        if (!window.PMGDocumentOCR?.analyzePdf) throw new Error('O leitor OCR local não carregou. Atualize a página e tente novamente.');
+        const analysis = await window.PMGDocumentOCR.analyzePdf(pdfFile, { onProgress:setOcrProgress });
         const { error:saveError } = await context.client.rpc('registrar_analise_documento_v1', {
           p_entrada_id:entryId,
-          p_resultado:{ ...payload.analise, modelo_leitura:payload.modelo || null }
+          p_resultado:analysis
         });
         if (saveError) throw saveError;
-        await context.reload(true); setSelectedEntryId(entryId); context.notify('Leitura concluída. O documento aguarda sua conferência.');
+        await context.reload(true); setSelectedEntryId(entryId); context.notify('Leitura local concluída. O documento aguarda sua conferência.');
       } catch (error) {
-        await context.client.rpc('registrar_erro_documento_v1', { p_entrada_id:entryId, p_erro:error.message || 'Falha na leitura automática.' });
-        await context.reload(true); context.notify(error.message || 'Falha na leitura automática.', 'error');
-      } finally { setBusyEntryId(null); }
+        await context.client.rpc('registrar_erro_documento_v1', { p_entrada_id:entryId, p_erro:error.message || 'Falha na leitura local.' });
+        await context.reload(true); context.notify(error.message || 'Falha na leitura local.', 'error');
+      } finally { setBusyEntryId(null); setOcrProgress(null); }
     }
 
     async function manualReview(entry) {
@@ -323,8 +333,8 @@
         if (createError) throw createError;
         const { data:created } = await context.client.from('acompanhamento_documentos_entrada').select('id,caminho').eq('id', entryId).single();
         if (created?.caminho !== uploadedPath) await context.client.storage.from('acompanhamento').remove([uploadedPath]);
-        await context.reload(true); setSelectedEntryId(entryId); context.notify('PDF recebido. Iniciando a leitura automática...', 'info');
-        await analyzeEntry(entryId);
+        await context.reload(true); setSelectedEntryId(entryId); context.notify('PDF recebido. Iniciando a leitura OCR gratuita...', 'info');
+        await analyzeEntry(entryId, file);
       } catch (error) {
         if (uploadedPath) await context.client.storage.from('acompanhamento').remove([uploadedPath]);
         context.notify(error.message || 'Não foi possível receber o PDF.', 'error');
@@ -333,7 +343,7 @@
 
     function chooseEntry(entry) {
       setSelectedEntryId(entry.id); setActiveItemId(null);
-      if (entry.status === 'recebido') void analyzeEntry(entry.id);
+      if (entry.status === 'recebido') void analyzeEntry(entry);
     }
 
     function onCompleted(itemId) {
@@ -348,12 +358,12 @@
     }
 
     if (context.documentsSetupMissing) return html`<${SetupDocuments}/>`;
-    return html`<section className="documents-inbox"><header className="documents-hero"><div className="documents-hero-grid"></div><div><span className="documents-live"><i></i>Entrada monitorada</span><p className="hero-kicker">Leitura documental</p><h2>Do PDF ao lançamento, com você no controle.</h2><p>O sistema reconhece os campos e organiza a proposta. Nada entra na Central sem conferência humana.</p><div className="document-models">${Object.entries(TYPES).filter(([key]) => key !== 'nao_identificado').map(([, meta]) => html`<span><${Icon} name=${meta.icon}/>${meta.label}</span>`)}</div></div><div className="document-metrics"><span><small>Aguardando você</small><strong>${pendingCount}</strong><b>documentos</b></span><span><small>Em processamento</small><strong>${analyzingCount}</strong><b>arquivos</b></span><span><small>Conferidos</small><strong>${reviewedCount}</strong><b>lançamentos</b></span></div><button className="documents-upload-orbit" onClick=${() => fileInput.current?.click()} disabled=${uploading}><i></i><span><${Icon} name=${uploading ? 'loader-circle' : 'file-up'} size=${25}/></span><strong>${uploading ? 'Recebendo...' : 'Enviar PDF'}</strong><small>até 15 MB</small></button></header>
+    return html`<section className="documents-inbox"><header className="documents-hero"><div className="documents-hero-grid"></div><div><span className="documents-live"><i></i>OCR local · sem custo</span><p className="hero-kicker">Leitura documental</p><h2>Do PDF ao lançamento, com você no controle.</h2><p>O seu navegador reconhece os campos e organiza a proposta. Nada entra na Central sem conferência humana.</p><div className="document-models">${Object.entries(TYPES).filter(([key]) => key !== 'nao_identificado').map(([, meta]) => html`<span><${Icon} name=${meta.icon}/>${meta.label}</span>`)}</div></div><div className="document-metrics"><span><small>Aguardando você</small><strong>${pendingCount}</strong><b>documentos</b></span><span><small>Em processamento</small><strong>${analyzingCount}</strong><b>arquivos</b></span><span><small>Conferidos</small><strong>${reviewedCount}</strong><b>lançamentos</b></span></div><button className="documents-upload-orbit" onClick=${() => fileInput.current?.click()} disabled=${uploading || Boolean(busyEntryId)}><i></i><span><${Icon} name=${uploading || busyEntryId ? 'loader-circle' : 'file-up'} size=${25}/></span><strong>${ocrProgress?.label || (uploading ? 'Recebendo...' : 'Enviar PDF')}</strong><small>${ocrProgress ? `${Math.round(Number(ocrProgress.progress || 0) * 100)}% concluído` : 'até 15 MB'}</small>${ocrProgress ? html`<b className="ocr-orbit-progress" style=${{ '--ocr-progress':`${Math.round(Number(ocrProgress.progress || 0) * 100)}%` }}></b>` : null}</button></header>
 
       <input ref=${fileInput} type="file" accept="application/pdf,.pdf" hidden onChange=${event => processFile(event.target.files?.[0])}/>
       <div className="documents-toolbar"><div className="doc-queue-tabs">${[['pendentes','Para conferir'],['conferidos','Conferidos'],['todos','Todos']].map(([key, label]) => html`<button className=${queueFilter === key ? 'active' : ''} onClick=${() => setQueueFilter(key)}>${label}${key === 'pendentes' && pendingCount ? html`<b>${pendingCount}</b>` : null}</button>`)}</div><div className="documents-safety"><${Icon} name="shield-check"/><span>Conferência obrigatória ativa</span></div></div>
 
-      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry.id)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar leitura' : 'Tentar leitura novamente'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
+      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar OCR local' : 'Tentar leitura local'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
     </section>`;
   }
 

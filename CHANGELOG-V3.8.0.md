@@ -29,6 +29,7 @@
 - Conferência humana obrigatória antes de qualquer criação, vínculo, anexo ou baixa; decisão e responsável ficam auditados.
 - Tratamento seguro de modelos desconhecidos como `Não identificado`, sem lançamento automático.
 - Hotfix `1.2.1`: corrige a tela branca causada pela limpeza incorreta do efeito de ícones e reutiliza a sessão Supabase hospedada no endpoint de leitura, eliminando o `401` após o upload.
+- Versão `1.2.2`: substitui a leitura por API paga por OCR local gratuito com PDF.js + Tesseract.js, remove a função serverless e elimina qualquer necessidade de chave, crédito ou contratação.
 
 ## Integração
 
@@ -38,7 +39,7 @@
 - Migração idempotente em `sql/06-CENTRAL-ACOMPANHAMENTO.sql`.
 - Carga idempotente em `sql/07-CARGA-HISTORICA-ACOMPANHAMENTO.sql`.
 - Caixa de documentos e fluxo de aprovação em `sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql`.
-- Leitura protegida em `api/analisar-documento.js`, com chave e arquivo fora do navegador.
+- Leitura local em `public/assets/acompanhamento-ocr.js`, sem chave e sem custo de API.
 
 ## Segurança
 

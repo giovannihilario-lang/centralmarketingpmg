@@ -1,6 +1,6 @@
-# PMG Connect — Central de Acompanhamento V1.2.1
+# PMG Connect — Central de Acompanhamento V1.2.2
 
-> Interface `1.2.1`: cockpit executivo PMG com Caixa de Entrada inteligente para PDFs e correções de autenticação/renderização. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
+> Interface `1.2.2`: cockpit executivo PMG com Caixa de Entrada, OCR local gratuito e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
 
 Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Marketing / Fornecedores** em uma única base editável.
 
@@ -88,14 +88,9 @@ O leitor sugere fornecedor, datas, números, categoria e valores. Ele mantém tr
 
 Nenhum documento é lançado automaticamente. Cada item permanece em **Aguardando conferência** até uma pessoa revisar os campos, escolher se deseja criar, vincular, somente anexar ou ignorar, marcar a confirmação obrigatória e aprovar. A decisão, o colaborador e a data ficam no histórico.
 
-Para habilitar a leitura automática na Vercel, configure somente no servidor:
+A leitura usa PDF.js e Tesseract.js diretamente no navegador. Não exige chave, assinatura, créditos ou contratação de API. PDFs com texto nativo são lidos diretamente; páginas escaneadas são renderizadas e processadas por OCR local em português. O arquivo original continua no bucket privado do Supabase e a conferência manual permanece disponível.
 
-```text
-OPENAI_API_KEY=...
-OPENAI_DOCUMENT_MODEL=gpt-5.6
-```
-
-Sem a chave, o upload e a conferência manual continuam disponíveis. Durante a leitura automática, o backend gera um link temporário do arquivo privado e solicita a análise com retenção desativada (`store: false`). A chave nunca é enviada ao navegador.
+Como o OCR local prioriza custo zero e privacidade, caracteres de scans ruins podem exigir correção. Por isso, nenhum valor é lançado sem a confirmação humana já exigida pelo módulo.
 
 ## Arquivos principais
 
@@ -104,7 +99,7 @@ Sem a chave, o upload e a conferência manual continuam disponíveis. Durante a 
 - `public/assets/acompanhamento.js`
 - `public/assets/acompanhamento-documentos.js`
 - `public/assets/acompanhamento-documentos.css`
-- `api/analisar-documento.js`
+- `public/assets/acompanhamento-ocr.js`
 - `sql/06-CENTRAL-ACOMPANHAMENTO.sql`
 - `sql/07-CARGA-HISTORICA-ACOMPANHAMENTO.sql`
 - `sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql`
