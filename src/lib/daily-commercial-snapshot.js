@@ -1,16 +1,20 @@
 import fs from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzip, gunzip } from 'node:zlib';
+import { createGzip, createGunzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
+import { once } from 'node:events';
+import readline from 'node:readline';
+import { pipeline } from 'node:stream/promises';
 import { Worker, isMainThread } from 'node:worker_threads';
 import { getPool, resetPool } from './db.js';
 
-const gzipAsync = promisify(gzip);
 const gunzipAsync = promisify(gunzip);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SNAPSHOT_PATH = path.resolve(__dirname, '../../data/pmg-comercial-diario-v1.json.gz');
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_PATH = path.resolve(__dirname, '../../data/pmg-comercial-diario-v2.ndjson.gz');
+const LEGACY_SNAPSHOT_PATH = path.resolve(__dirname, '../../data/pmg-comercial-diario-v1.json.gz');
+const SNAPSHOT_VERSION = 2;
 const SNAPSHOT_TIMEZONE = String(process.env.PMG_SNAPSHOT_TIMEZONE || 'America/Sao_Paulo').trim();
 const SNAPSHOT_NOT_BEFORE = String(process.env.PMG_SNAPSHOT_NOT_BEFORE || '').trim();
 const SNAPSHOT_SQL_TIMEOUT_MS = Math.max(120000, Number(process.env.PMG_SNAPSHOT_SQL_TIMEOUT_MS) || 10 * 60 * 1000);
@@ -163,7 +167,7 @@ function buildIndexes(snapshot) {
 }
 
 function normalizeLoaded(parsed) {
-  if (!parsed || parsed.version !== SNAPSHOT_VERSION || !parsed.data) return null;
+  if (!parsed || ![1, SNAPSHOT_VERSION].includes(Number(parsed.version)) || !parsed.data) return null;
   const snapshot = buildIndexes(parsed.data);
   state.snapshot = snapshot;
   state.day = parsed.day || null;
@@ -177,17 +181,84 @@ function normalizeLoaded(parsed) {
   return snapshot;
 }
 
+const SNAPSHOT_SECTIONS = [
+  ['o', 'orders'],
+  ['r', 'regionalOrders'],
+  ['l', 'lines'],
+  ['p', 'products'],
+  ['q', 'regionalProducts'],
+  ['c', 'regionalClients'],
+  ['a', 'activeClients'],
+  ['s', 'activeSellers'],
+  ['f', 'productSuppliers'],
+];
+const SNAPSHOT_SECTION_BY_CODE = new Map(SNAPSHOT_SECTIONS);
+
+function emptySnapshotData() {
+  return Object.fromEntries(SNAPSHOT_SECTIONS.map(([, key]) => [key, []]));
+}
+
+async function readStreamSnapshot(filePath) {
+  // Evita erro de stream não tratado quando ainda não existe snapshot v2.
+  // O ENOENT fica no fluxo normal de fallback para o snapshot legado.
+  await fs.access(filePath);
+  const source = createReadStream(filePath).pipe(createGunzip());
+  const lines = readline.createInterface({ input: source, crlfDelay: Infinity });
+  const data = emptySnapshotData();
+  let meta = null;
+
+  for await (const line of lines) {
+    if (!line) continue;
+    const tab = line.indexOf('\t');
+    if (tab < 1) continue;
+    const code = line.slice(0, tab);
+    const json = line.slice(tab + 1);
+    if (code === 'M') {
+      meta = JSON.parse(json);
+      continue;
+    }
+    const key = SNAPSHOT_SECTION_BY_CODE.get(code);
+    if (!key) continue;
+    data[key].push(JSON.parse(json));
+  }
+
+  if (!meta) {
+    const error = new Error('Snapshot local sem metadados.');
+    error.code = 'PMG_DAILY_SNAPSHOT_INVALID_FORMAT';
+    throw error;
+  }
+  return normalizeLoaded({ ...meta, data });
+}
+
+async function readLegacySnapshot(filePath) {
+  const compressed = await fs.readFile(filePath);
+  const raw = await gunzipAsync(compressed);
+  return normalizeLoaded(JSON.parse(raw.toString('utf8')));
+}
+
 async function loadDiskSnapshot({ forceReload = false } = {}) {
   if (diskLoaded && !forceReload) return state.snapshot;
   diskLoaded = true;
+
   try {
-    const compressed = await fs.readFile(SNAPSHOT_PATH);
-    const raw = await gunzipAsync(compressed);
-    return normalizeLoaded(JSON.parse(raw.toString('utf8')));
+    const current = await readStreamSnapshot(SNAPSHOT_PATH);
+    if (current) return current;
   } catch (error) {
-    if (error?.code !== 'ENOENT') console.warn('[snapshot-diario] falha ao ler cache:', error?.message || error);
-    return null;
+    if (error?.code !== 'ENOENT') console.warn('[snapshot-diario] falha ao ler snapshot v2:', error?.message || error);
   }
+
+  // Compatibilidade: usa o último snapshot v1 apenas como fallback. O próximo
+  // sincronismo bem-sucedido já grava no formato v2 em streaming.
+  try {
+    const legacy = await readLegacySnapshot(LEGACY_SNAPSHOT_PATH);
+    if (legacy) {
+      state.source = 'disk-legacy';
+      return legacy;
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') console.warn('[snapshot-diario] falha ao ler snapshot legado:', error?.message || error);
+  }
+  return null;
 }
 
 function computeCounts(snapshot) {
@@ -204,19 +275,47 @@ function computeCounts(snapshot) {
   };
 }
 
+async function writeChunk(stream, value) {
+  if (stream.write(value)) return;
+  await once(stream, 'drain');
+}
+
 async function writeSnapshot(snapshot, day, updatedAt) {
-  const payload = {
+  const meta = {
     version: SNAPSHOT_VERSION,
     day,
     updatedAt,
     timezone: SNAPSHOT_TIMEZONE,
     counts: computeCounts(snapshot),
-    data: snapshot,
   };
+
   await fs.mkdir(path.dirname(SNAPSHOT_PATH), { recursive: true });
   const tmp = `${SNAPSHOT_PATH}.tmp`;
-  const compressed = await gzipAsync(Buffer.from(JSON.stringify(payload), 'utf8'), { level: 6 });
-  await fs.writeFile(tmp, compressed);
+  await fs.rm(tmp, { force: true });
+
+  const gzipStream = createGzip({ level: 6 });
+  const output = createWriteStream(tmp);
+  const pipeDone = pipeline(gzipStream, output);
+
+  try {
+    // Nunca serializamos o snapshot inteiro. Cada registro vira uma linha curta
+    // e segue direto para o gzip, evitando o limite de string do V8.
+    await writeChunk(gzipStream, `M\t${JSON.stringify(meta)}\n`);
+    for (const [code, key] of SNAPSHOT_SECTIONS) {
+      for (const row of snapshot[key] || []) {
+        await writeChunk(gzipStream, `${code}\t${JSON.stringify(row)}\n`);
+      }
+    }
+    gzipStream.end();
+    await pipeDone;
+  } catch (error) {
+    gzipStream.destroy();
+    output.destroy();
+    try { await pipeDone; } catch {}
+    await fs.rm(tmp, { force: true });
+    throw error;
+  }
+
   try {
     await fs.rename(tmp, SNAPSHOT_PATH);
   } catch (error) {

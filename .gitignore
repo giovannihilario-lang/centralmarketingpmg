@@ -2,5 +2,6 @@
 .env
 node_modules
 data/pmg-comercial-diario-v1.json.gz
+data/pmg-comercial-diario-v2.ndjson.gz
 data/campanhas-contexto-v5.json
 data/campanhas-sql-cache.json
