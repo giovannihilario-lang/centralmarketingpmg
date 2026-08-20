@@ -97,7 +97,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.19.0',
+    version: '5.20.0',
     dailySnapshot: getDailySnapshotStatus(),
   };
 }
@@ -1364,6 +1364,16 @@ async function runHeavyResource(resource, payload = {}) {
   if (!bypass && cached && Date.now() - cached.at <= HEAVY_WORKER_CACHE_MS) {
     return { ...cached.value, cache:cached.value?.cache ? { ...cached.value.cache, hit:true, ageMs:Date.now() - cached.at } : cached.value?.cache };
   }
+
+  // O worker de cálculo é deliberadamente somente leitura: ele nunca consulta
+  // o Azure. Portanto o processo principal PRECISA garantir que o snapshot
+  // exista em disco antes de criar o worker. Sem esta barreira, uma tela que
+  // reaproveitou contexto antigo podia disparar Performance antes da primeira
+  // sincronização do dia e o worker morria com PMG_DAILY_SNAPSHOT_NOT_READY.
+  // ensureDailySnapshot() é seguro aqui: a consulta/compactação pesada já roda
+  // em uma Worker Thread própria e syncPromise impede sincronizações duplicadas.
+  await ensureDailySnapshot();
+
   const value = await runHeavyResourceInWorker(resource, payload);
   heavyWorkerCache.set(key, { at:Date.now(), value });
   return value;
@@ -1385,12 +1395,14 @@ function publicError(error) {
     BENEFICIO_PRODUTOS_AUSENTES: 'Configure a categoria Fortunata/ativadora e os produtos que recebem desconto.',
     SQL_SESSION_EXPIRED: 'A API tentou recriar a conexão com o SQL automaticamente. Se persistir, confira o terminal do npm start e teste /api/campanhas-data?recurso=diagnostico.',
     PMG_CAMPAIGN_WORKER_TIMEOUT: 'A apuração local excedeu 7 minutos. O servidor continuou responsivo, mas o volume precisa ser diagnosticado no terminal.',
+    PMG_DAILY_SNAPSHOT_NOT_READY: 'O snapshot diário ainda não existe. A API agora tenta prepará-lo automaticamente antes da apuração.',
+    PMG_DAILY_SNAPSHOT_ALREADY_ATTEMPTED: 'A sincronização comercial de hoje já falhou. Use Atualizar contexto para tentar novamente e confira o terminal.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.19.0',
+    versao: '5.20.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
     recuperacaoSqlTentada:Boolean(error?.sqlRecoveryAttempted),
   };
@@ -1427,7 +1439,7 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({
         ok: true,
-        version: '5.19.0',
+        version: '5.20.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),

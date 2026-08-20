@@ -446,7 +446,7 @@
   const CONTEXT_PREPARE_MAX_MS = 12 * 60 * 1000;
   const CONTEXT_STATUS_TIMEOUT_MS = 90 * 1000;
   const CONTEXT_PAYLOAD_TIMEOUT_MS = 120 * 1000;
-  const HEAVY_CALC_TIMEOUT_MS = 8 * 60 * 1000;
+  const HEAVY_CALC_TIMEOUT_MS = 18 * 60 * 1000;
 
   async function pollContext({ force = false, blocking = true } = {}) {
     if (app.contextPromise) return app.contextPromise;
@@ -596,8 +596,17 @@
 
       renderView();
 
-      // Não atualiza SQL automaticamente ao entrar.
-      // Atualização fica explícita no botão "Atualizar contexto".
+      // O contexto salvo deixa a interface abrir imediatamente, mas não pode
+      // impedir a regra de "primeiro acesso do dia". Disparamos a preparação
+      // em segundo plano mesmo com cache local. O backend garante uma única
+      // sincronização diária e mantém o último snapshot válido em caso de falha.
+      void api(`${SQL_ENDPOINT}?recurso=contexto-preparar&force=false&_=${Date.now()}`, {
+        method:'GET',
+        force:true,
+        timeout:CONTEXT_STATUS_TIMEOUT_MS,
+      }).catch((error) => {
+        console.warn('[Campanhas] não foi possível iniciar a atualização diária em segundo plano:', error?.message || error);
+      });
       return;
     }
 
@@ -2488,7 +2497,7 @@
             ? 'A página possui refresh token, mas a renovação automática da sessão falhou. Reabra Campanhas pelo PMG Connect para receber uma sessão nova.'
             : 'Esta aba não possui refresh token. Depois de instalar esta versão, abra Campanhas uma vez pelo PMG Connect autenticado para registrar a sessão completa.'
         }</span>` : ''}
-        ${error.code === 'LOCAL_API_TIMEOUT' ? `<br><span class="context-error-hint">A apuração roda fora da thread da API. Se o limite de 8 minutos for atingido, confira o terminal para identificar a etapa excessiva.</span>` : ''}
+        ${error.code === 'LOCAL_API_TIMEOUT' ? `<br><span class="context-error-hint">A apuração roda fora da thread da API. No primeiro acesso ela também pode aguardar a sincronização diária; se o limite de 18 minutos for atingido, confira o terminal para identificar a etapa excessiva.</span>` : ''}
         ${error.code === 'LOCAL_API_SAME_ORIGIN' ? `<br><span class="context-error-hint">A página já está no localhost:3001 e agora tenta <code>/api/campanhas-data</code> diretamente, sem CORS/PNA. Se ainda falhar, a mensagem “Navegador:” abaixo identifica o erro real do fetch.</span>` : ''}
         ${error.hint ? `<br><span class="context-error-hint">${esc(error.hint)}</span>` : ''}
         ${error.code ? `<small class="context-error-code">Código: ${esc(error.code)}</small>` : ''}
