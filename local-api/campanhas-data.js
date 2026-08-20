@@ -11,6 +11,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Worker, isMainThread } from 'node:worker_threads';
 import { getPool, resetPool, diagnosticoConfiguracaoSql } from '../src/lib/db.js';
 import {
   campaignContextFromSnapshot,
@@ -96,7 +97,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.18.0',
+    version: '5.19.0',
     dailySnapshot: getDailySnapshotStatus(),
   };
 }
@@ -478,7 +479,7 @@ function uniqueTexts(values, max = 1000) {
   return [...new Set((Array.isArray(values) ? values : []).map(text).filter(Boolean))].slice(0, max);
 }
 
-async function queryPerformance(payload = {}) {
+export async function queryPerformance(payload = {}) {
   const startedAt = Date.now();
   const campaignPeriods = payload.campaignStart ? resolveCampaignPeriods(payload) : null;
   const currentStart = campaignPeriods?.currentStart || parseDate(payload.currentStart, 'currentStart');
@@ -695,7 +696,7 @@ async function queryPerformance(payload = {}) {
 
 
 
-async function queryConsistencyDiagnostic(payload = {}) {
+export async function queryConsistencyDiagnostic(payload = {}) {
   const startedAt = Date.now();
   const periods = payload.campaignStart
     ? resolveCampaignPeriods(payload)
@@ -869,7 +870,7 @@ function benefitDiscount({ discountType, discountValue, benefitRevenue, benefitP
   return 0;
 }
 
-async function queryFirstPurchaseBenefit(payload = {}) {
+export async function queryFirstPurchaseBenefit(payload = {}) {
   const startedAt = Date.now();
   const periods = resolveCampaignPeriods(payload);
   const currentStart = periods.currentStart;
@@ -1118,7 +1119,7 @@ async function queryFirstPurchaseBenefit(payload = {}) {
   return response;
 }
 
-async function querySellerAudit(payload = {}) {
+export async function querySellerAudit(payload = {}) {
   const startedAt = Date.now();
   const seller = text(payload.seller);
   if (!seller) {
@@ -1290,6 +1291,84 @@ async function withSqlSessionRecovery(label, operation) {
   }
 }
 
+const HEAVY_WORKER_TIMEOUT_MS = Math.max(120000, Number(process.env.PMG_CAMPAIGN_WORKER_TIMEOUT_MS) || 7 * 60 * 1000);
+const heavyWorkerCache = new Map();
+const HEAVY_WORKER_CACHE_MS = 2 * 60 * 1000;
+
+function heavyCacheKey(resource, payload = {}) {
+  return `${resource}:${JSON.stringify(payload || {})}`;
+}
+
+function pruneHeavyWorkerCache() {
+  const now = Date.now();
+  for (const [key, entry] of heavyWorkerCache.entries()) {
+    if (!entry || now - entry.at > HEAVY_WORKER_CACHE_MS) heavyWorkerCache.delete(key);
+  }
+}
+
+function runHeavyResourceInWorker(resource, payload = {}) {
+  if (!isMainThread) {
+    const error = new Error('O worker de campanhas não pode criar outro worker de cálculo.');
+    error.code = 'PMG_CAMPAIGN_NESTED_WORKER';
+    return Promise.reject(error);
+  }
+
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('../src/campanhas/campaign-calculation-worker.js', import.meta.url), {
+      workerData: { resource, payload },
+    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      void worker.terminate();
+      const error = new Error('A apuração local excedeu o tempo máximo de processamento.');
+      error.code = 'PMG_CAMPAIGN_WORKER_TIMEOUT';
+      reject(error);
+    }, HEAVY_WORKER_TIMEOUT_MS);
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+      void worker.terminate();
+    };
+
+    worker.on('message', (message = {}) => {
+      if (message.type === 'done') return finish(resolve, message.result);
+      if (message.type === 'error') {
+        const error = new Error(message.error?.message || 'Falha na apuração local.');
+        error.code = message.error?.code || 'PMG_CAMPAIGN_WORKER_ERROR';
+        error.hint = message.error?.hint || '';
+        error.stack = message.error?.stack || error.stack;
+        return finish(reject, error);
+      }
+    });
+    worker.on('error', (error) => finish(reject, error));
+    worker.on('exit', (code) => {
+      if (!settled) {
+        const error = new Error(`O worker de campanhas encerrou antes de concluir (código ${code}).`);
+        error.code = 'PMG_CAMPAIGN_WORKER_EXIT';
+        finish(reject, error);
+      }
+    });
+  });
+}
+
+async function runHeavyResource(resource, payload = {}) {
+  pruneHeavyWorkerCache();
+  const bypass = Boolean(payload?.forceRefresh);
+  const key = heavyCacheKey(resource, { ...payload, forceRefresh:false });
+  const cached = heavyWorkerCache.get(key);
+  if (!bypass && cached && Date.now() - cached.at <= HEAVY_WORKER_CACHE_MS) {
+    return { ...cached.value, cache:cached.value?.cache ? { ...cached.value.cache, hit:true, ageMs:Date.now() - cached.at } : cached.value?.cache };
+  }
+  const value = await runHeavyResourceInWorker(resource, payload);
+  heavyWorkerCache.set(key, { at:Date.now(), value });
+  return value;
+}
+
 function publicError(error) {
   const rawCode = error?.code || error?.originalError?.code || 'CAMPANHAS_LOCAL_ERROR';
   const code = isRecoverableSqlSessionError(error) || error?.sqlRecoveryAttempted
@@ -1305,12 +1384,13 @@ function publicError(error) {
     FORNECEDOR_AUSENTE: 'Selecione ao menos um fornecedor para executar o diagnóstico de consistência.',
     BENEFICIO_PRODUTOS_AUSENTES: 'Configure a categoria Fortunata/ativadora e os produtos que recebem desconto.',
     SQL_SESSION_EXPIRED: 'A API tentou recriar a conexão com o SQL automaticamente. Se persistir, confira o terminal do npm start e teste /api/campanhas-data?recurso=diagnostico.',
+    PMG_CAMPAIGN_WORKER_TIMEOUT: 'A apuração local excedeu 7 minutos. O servidor continuou responsivo, mas o volume precisa ser diagnosticado no terminal.',
   };
   return {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.18.0',
+    versao: '5.19.0',
     dica: hints[code] || 'Confira o terminal do servidor local.',
     recuperacaoSqlTentada:Boolean(error?.sqlRecoveryAttempted),
   };
@@ -1347,7 +1427,7 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({
         ok: true,
-        version: '5.18.0',
+        version: '5.19.0',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
@@ -1356,22 +1436,22 @@ export default async function handler(req, res) {
 
     if (resource === 'apuracao') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para apuração.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await withSqlSessionRecovery('apuracao', () => queryPerformance(req.body || {})));
+      return res.status(200).json(await runHeavyResource('apuracao', req.body || {}));
     }
 
     if (resource === 'auditoria-vendedor') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para auditoria do vendedor.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await withSqlSessionRecovery('auditoria-vendedor', () => querySellerAudit(req.body || {})));
+      return res.status(200).json(await runHeavyResource('auditoria-vendedor', req.body || {}));
     }
 
     if (resource === 'beneficio-primeira-compra') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para o relatório de benefícios.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await withSqlSessionRecovery('beneficio-primeira-compra', () => queryFirstPurchaseBenefit(req.body || {})));
+      return res.status(200).json(await runHeavyResource('beneficio-primeira-compra', req.body || {}));
     }
 
     if (resource === 'diagnostico-consistencia') {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST para diagnóstico.', codigo: 'METODO_INVALIDO' });
-      return res.status(200).json(await withSqlSessionRecovery('diagnostico-consistencia', () => queryConsistencyDiagnostic(req.body || {})));
+      return res.status(200).json(await runHeavyResource('diagnostico-consistencia', req.body || {}));
     }
 
     return res.status(404).json({ erro: `Recurso desconhecido: ${resource}`, codigo: 'RECURSO_DESCONHECIDO' });

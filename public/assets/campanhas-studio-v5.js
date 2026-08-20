@@ -446,6 +446,7 @@
   const CONTEXT_PREPARE_MAX_MS = 12 * 60 * 1000;
   const CONTEXT_STATUS_TIMEOUT_MS = 90 * 1000;
   const CONTEXT_PAYLOAD_TIMEOUT_MS = 120 * 1000;
+  const HEAVY_CALC_TIMEOUT_MS = 8 * 60 * 1000;
 
   async function pollContext({ force = false, blocking = true } = {}) {
     if (app.contextPromise) return app.contextPromise;
@@ -2405,6 +2406,7 @@
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=apuracao`, {
         method:'POST',
+        timeout:HEAVY_CALC_TIMEOUT_MS,
         force,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
@@ -2476,7 +2478,9 @@
             ? 'A sessão do PMG Connect não chegou até a API local.'
             : sessionExpired
               ? 'A conexão com o SQL expirou e não conseguiu se recuperar.'
-              : 'Não foi possível consultar o SQL Server.'
+              : error.code === 'LOCAL_API_TIMEOUT'
+                ? 'A apuração local ainda não terminou.'
+                : 'Não foi possível calcular a campanha.'
         }</strong>
         <br>${esc(error.message)}
         ${authRequired ? `<br><span class="context-error-hint">${
@@ -2484,6 +2488,7 @@
             ? 'A página possui refresh token, mas a renovação automática da sessão falhou. Reabra Campanhas pelo PMG Connect para receber uma sessão nova.'
             : 'Esta aba não possui refresh token. Depois de instalar esta versão, abra Campanhas uma vez pelo PMG Connect autenticado para registrar a sessão completa.'
         }</span>` : ''}
+        ${error.code === 'LOCAL_API_TIMEOUT' ? `<br><span class="context-error-hint">A apuração roda fora da thread da API. Se o limite de 8 minutos for atingido, confira o terminal para identificar a etapa excessiva.</span>` : ''}
         ${error.code === 'LOCAL_API_SAME_ORIGIN' ? `<br><span class="context-error-hint">A página já está no localhost:3001 e agora tenta <code>/api/campanhas-data</code> diretamente, sem CORS/PNA. Se ainda falhar, a mensagem “Navegador:” abaixo identifica o erro real do fetch.</span>` : ''}
         ${error.hint ? `<br><span class="context-error-hint">${esc(error.hint)}</span>` : ''}
         ${error.code ? `<small class="context-error-code">Código: ${esc(error.code)}</small>` : ''}
@@ -2776,13 +2781,13 @@
     const periods = calculatePeriods(campaign);
     const scope = effectiveSalesScope(campaign);
 
-    slot.innerHTML = `<div class="diagnostic-loading"><span class="mini-spinner"></span><span><strong>Comparando diretamente no SQL…</strong><small>Fornecedor bruto × vendedores ativos × produtos ativos × escopo efetivo.</small></span></div>`;
+    slot.innerHTML = `<div class="diagnostic-loading"><span class="mini-spinner"></span><span><strong>Comparando no snapshot comercial local…</strong><small>Fornecedor bruto × vendedores ativos × produtos ativos × escopo efetivo.</small></span></div>`;
 
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=diagnostico-consistencia`, {
         method:'POST',
+        timeout:HEAVY_CALC_TIMEOUT_MS,
         force:true,
-        timeout:120000,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,
@@ -2907,7 +2912,7 @@
     if (!campaign?.id) return;
 
     backdrop.hidden = false;
-    body.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Auditando ${esc(sellerIdentity(seller).name || seller)}</h3><p>Buscando pedidos e produtos diretamente no SQL para conferir a origem dos números.</p></div></div>`;
+    body.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Auditando ${esc(sellerIdentity(seller).name || seller)}</h3><p>Auditando pedidos e produtos no snapshot comercial diário para conferir a origem dos números.</p></div></div>`;
     $('#sellerAuditTitle').textContent = `Origem dos números · ${sellerIdentity(seller).name || seller}`;
     icons(backdrop);
 
@@ -2918,7 +2923,8 @@
 
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=auditoria-vendedor`, {
-        method:'POST', force:true, timeout:60000,
+        method:'POST',
+        timeout:HEAVY_CALC_TIMEOUT_MS, force:true,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,
@@ -3130,7 +3136,7 @@
 
     const target = $(targetSelector);
     if (target) {
-      target.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Montando lista de benefícios</h3><p>Conferindo clientes, primeira compra do ativador e produtos beneficiados diretamente no SQL.</p></div></div>`;
+      target.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Montando lista de benefícios</h3><p>Conferindo clientes, primeira compra do ativador e produtos beneficiados no snapshot comercial diário.</p></div></div>`;
     }
 
     const rule = campaign.orderActivationRule;
@@ -3139,8 +3145,8 @@
     try {
       const data = await api(`${SQL_ENDPOINT}?recurso=beneficio-primeira-compra`, {
         method:'POST',
+        timeout:HEAVY_CALC_TIMEOUT_MS,
         force,
-        timeout:120000,
         body:JSON.stringify({
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,

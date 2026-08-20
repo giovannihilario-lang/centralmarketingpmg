@@ -14,6 +14,7 @@ const SNAPSHOT_VERSION = 1;
 const SNAPSHOT_TIMEZONE = String(process.env.PMG_SNAPSHOT_TIMEZONE || 'America/Sao_Paulo').trim();
 const SNAPSHOT_NOT_BEFORE = String(process.env.PMG_SNAPSHOT_NOT_BEFORE || '').trim();
 const SNAPSHOT_SQL_TIMEOUT_MS = Math.max(120000, Number(process.env.PMG_SNAPSHOT_SQL_TIMEOUT_MS) || 10 * 60 * 1000);
+const SNAPSHOT_READ_ONLY = String(process.env.PMG_SNAPSHOT_READ_ONLY || '').toLowerCase() === 'true';
 
 const state = {
   status: 'idle',
@@ -644,6 +645,16 @@ async function synchronize() {
 export async function ensureDailySnapshot({ force = false } = {}) {
   await loadDiskSnapshot();
   const today = snapshotDay();
+
+  // Workers de cálculo nunca iniciam uma segunda sincronização no Azure.
+  // Eles usam somente o último snapshot persistido pelo processo principal.
+  if (SNAPSHOT_READ_ONLY) {
+    if (state.snapshot) return state.snapshot;
+    const error = new Error('Nenhum snapshot comercial local está disponível para a apuração.');
+    error.code = 'PMG_DAILY_SNAPSHOT_NOT_READY';
+    throw error;
+  }
+
   if (!force && state.snapshot && state.day === today) return state.snapshot;
   if (syncPromise) return syncPromise;
 
