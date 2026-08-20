@@ -17,8 +17,11 @@ Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
 | Marcos | 2026 | despesa | 23 | R$ 2.610.377,68 |
 | Marcos | 2026 | indicador | 3 | R$ 0,00 |
 | Marcos | 2026 | receita | 50 | R$ 6.835.200,89 |
+| Marketing | 2024 | despesa | 29 | R$ 0,00 |
 | Marketing | 2024 | receita | 401 | R$ 5.197.089,34 |
+| Marketing | 2025 | despesa | 100 | R$ 62.756,30 |
 | Marketing | 2025 | receita | 424 | R$ 6.562.385,94 |
+| Marketing | 2026 | despesa | 24 | R$ 89.162,70 |
 | Marketing | 2026 | receita | 247 | R$ 3.975.734,02 |
 
 Os registros marcados como detalhamento preservam linhas de eventos, cartões e patrocínios, mas não duplicam os totais do planejamento.

@@ -1,6 +1,6 @@
-# PMG Connect — Central de Acompanhamento V1.2.3
+# PMG Connect — Central de Acompanhamento V1.3.1
 
-> Interface `1.2.3`: cockpit executivo PMG com Caixa de Entrada, leitura visual pelo Gemini, contingência OCR local e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
+> Interface `1.3.1`: cockpit executivo PMG com Planejamento PMG, Receita, Fechamento Mensal, Caixa de Entrada, leitura visual pelo Gemini, contingência OCR local e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
 
 Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Marketing / Fornecedores** em uma única base editável.
 
@@ -17,6 +17,10 @@ Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Market
 - Contratos, boletos, notas fiscais, propostas e comprovantes.
 - Importações de Excel com identificação de reimportações.
 - Separação financeira entre receitas, despesas, indicadores e detalhamentos.
+- Planejamento PMG 2026 com previsto x realizado sem baixa automática pelo simples vencimento do mês.
+- Receita com previsão, recebido, a receber, investimento e saldo.
+- Fechamento mensal Marketing → Marcos com de-para alfabético e assinatura de conferência.
+- Centro de custo obrigatório nos lançamentos manuais; MTRIX/Emitrix é tratado como investimento adicional fora da VERBA, enquanto demais aberturas ficam dentro da VERBA.
 
 ## Dados já consolidados
 
@@ -27,7 +31,7 @@ A entrega inclui a carga real das quatro fontes recebidas:
 - `Fornecedores 2026.xlsx`
 - `MKTG 2026.xlsx`
 
-Foram normalizados **1.182 acompanhamentos** e **1.554 movimentos financeiros**. Os arquivos originais permanecem em `fontes/acompanhamento/`, e as regras de transformação ficam em `scripts/gerar-carga-acompanhamento.js`.
+Foram normalizados **1.335 acompanhamentos** e **1.707 movimentos financeiros**. O Planejamento 2026 contém **15 frentes estratégicas**, **104 parcelas planejadas** e **0 baixas automáticas**. Os arquivos originais permanecem em `fontes/acompanhamento/`, e as regras de transformação ficam em `scripts/gerar-carga-acompanhamento.js`.
 
 ## Instalação
 
@@ -38,26 +42,34 @@ Foram normalizados **1.182 acompanhamentos** e **1.554 movimentos financeiros**.
 sql/06-CENTRAL-ACOMPANHAMENTO.sql
 ```
 
-3. Para carregar os dados pelo SQL Editor, abra `sql/carga-acompanhamento-sql-editor/00-LEIA-ME.md` e execute os lotes `07-01` até `07-16`, terminando com `07-99-CONFERENCIA-FINAL.sql`. Todos podem ser executados novamente com segurança.
+3. Para carregar os dados pelo SQL Editor, abra `sql/carga-acompanhamento-sql-editor/00-LEIA-ME.md` e execute os lotes `07-01` até `07-18`, terminando com `07-99-CONFERENCIA-FINAL.sql`. Todos podem ser executados novamente com segurança.
 
 O arquivo integral `sql/07-CARGA-HISTORICA-ACOMPANHAMENTO.sql` permanece disponível para terminal/CLI, mas ultrapassa o limite de tamanho do editor web do Supabase.
 
-4. Para ativar a Caixa de Entrada de documentos, execute também:
+4. Para ativar a Caixa de Entrada de documentos e a taxonomia atual, execute também:
 
 ```text
 sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql
+sql/09-EXCLUIR-DOCUMENTOS-PENDENTES.sql
+sql/10-TAXONOMIA-DOCUMENTOS-V1.2.5.sql
+```
+
+5. Para ativar Planejamento / Receita / Fechamento e a assinatura mensal, execute:
+
+```text
+sql/11-GESTAO-MKT-V1.3.0.sql
 ```
 
 No ambiente da Vercel, mantenha `GEMINI_API_KEY` com uma chave gratuita do Google AI Studio e, opcionalmente, `GEMINI_DOCUMENT_MODEL=gemini-3.7-flash`. Não é necessário ativar faturamento. Se a chave não existir ou a cota gratuita estiver indisponível, a interface usa automaticamente o OCR local.
 
-5. Reinicie o servidor local:
+6. Reinicie o servidor local:
 
 ```powershell
 npm install
 npm start
 ```
 
-6. Acesse pela Central ou diretamente:
+7. Acesse pela Central ou diretamente:
 
 ```text
 http://localhost:3001/acompanhamento.html
@@ -109,6 +121,9 @@ Quando o Gemini está ativo, o conteúdo do PDF é enviado temporariamente à AP
 - `sql/06-CENTRAL-ACOMPANHAMENTO.sql`
 - `sql/07-CARGA-HISTORICA-ACOMPANHAMENTO.sql`
 - `sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql`
+- `sql/09-EXCLUIR-DOCUMENTOS-PENDENTES.sql`
+- `sql/10-TAXONOMIA-DOCUMENTOS-V1.2.5.sql`
+- `sql/11-GESTAO-MKT-V1.3.0.sql`
 - `data/acompanhamento-carga-inicial.json` (fora de `public/` para não expor a consolidação por URL)
 - `scripts/gerar-carga-acompanhamento.js`
 - `scripts/testar-acompanhamento.js`

@@ -145,6 +145,27 @@ function rawTags(value) {
   return checks.filter(([, regex]) => regex.test(text)).map(([tag]) => tag);
 }
 
+function costCenterFromCampaign(value) {
+  const text = normalized(value);
+  if (/MTRIX|EMITRIX/.test(text)) return 'MTRIX / Emitrix';
+  if (/INCENTIVO|CAMPANHA|PROMOCAO/.test(text)) return 'Campanha de incentivo';
+  if (/PODCAST/.test(text)) return 'Podcast';
+  if (/CONVENCAO/.test(text)) return 'Convenção';
+  if (/COPA/.test(text)) return 'Copa';
+  if (/30 ANOS/.test(text)) return 'Evento 30 anos';
+  if (/FEIRA|FIPAN|FISPAL|ANUGA/.test(text)) return 'Feiras / eventos';
+  if (/CATALOGO|FOLD|FOLDER/.test(text)) return 'Catálogo / material';
+  if (/COTA/.test(text)) return 'Cota';
+  return String(value || 'Outros').replace(/\s+/g, ' ').trim();
+}
+
+function specificCostValue(row) {
+  // A regra oficial da planilha usa exclusivamente a coluna E (VALOR).
+  // Células auxiliares mais à direita não são centros de custo e não entram na importação.
+  const direct = parseMoney(row?.[4]);
+  return { value: direct > 0 ? direct : 0, columnIndex: 4, legacy: false };
+}
+
 function addItem(registro, pagamentos = []) {
   const recordFingerprint = registro.fingerprint || fingerprint(
     registro.controle, registro.ano_referencia, registro.titulo, registro.fornecedor,
@@ -210,7 +231,8 @@ function parseSupplierWorkbook(fileName, year) {
         const rawCategory = String(row[0] ?? '').trim() || 'COTA';
         const supplier = supplierName(row[1]);
         const document = String(row[3] ?? '').trim();
-        const highlightedValue = parseMoney(row[4]);
+        const specific = specificCostValue(row);
+        const highlightedValue = specific.value;
         const recordFingerprint = fingerprint('marketing', 'fornecedores', year, sheetName, line, supplier, rawCategory);
         const extraDescription = highlightedValue > 0
           ? ` A fonte destaca ${formatBRL(highlightedValue)} para a ação específica indicada na coluna VALOR.` : '';
@@ -242,6 +264,30 @@ function parseSupplierWorkbook(fileName, year) {
           observacoes: 'A fonte informa apenas a competência mensal; a data exata do movimento não foi registrada.',
           fingerprint: fingerprint(recordFingerprint, 'competencia', year, monthIndex + 1),
         }]);
+        if (highlightedValue > 0) {
+          const center = costCenterFromCampaign(rawCategory);
+          const outsideVerba = /MTRIX|EMITRIX/.test(normalized(rawCategory));
+          const legacyOutsideColumn = specific.legacy;
+          const detailFingerprint = fingerprint('marketing', 'centro-custo', year, sheetName, line, supplier, rawCategory, center, specific.columnIndex);
+          addItem({
+            controle: 'marketing', ano_referencia: year, fornecedor: supplier, natureza: 'despesa',
+            impacta_totais: outsideVerba && !legacyOutsideColumn, categoria: inferCategory(rawCategory),
+            titulo: `Centro de custo — ${center} — ${supplier} — ${label} ${year}`,
+            descricao: outsideVerba ? 'Investimento MTRIX / Emitrix adicional, fora da VERBA recebida do fornecedor.' : 'Abertura do centro de custo já contida na VERBA recebida; não deve ser somada novamente à receita.',
+            referencia: rawCategory, status: 'concluido', prioridade: 'normal',
+            data_inicio: isoDate(year, monthIndex, 1), data_fim: monthEnd(year, monthIndex),
+            valor_acordado: highlightedValue, centro_custo: center, numero_documento: document,
+            tags: ['marketing', 'centro-custo', String(year), label.toLocaleLowerCase('pt-BR'), outsideVerba ? 'adicional-investimento' : 'dentro-verba', ...(legacyOutsideColumn ? ['legado-fora-coluna-valor'] : []), ...rawTags(rawCategory)],
+            observacoes: legacyOutsideColumn ? `Valor legado encontrado na coluna ${XLSX.utils.encode_col(specific.columnIndex)}; preservado para auditoria e excluído dos KPIs automáticos.` : (outsideVerba ? 'MTRIX / Emitrix fica fora da VERBA e entra como investimento adicional.' : 'Valor já incluído na VERBA. O registro serve para de-para e centro de custo.'),
+            origem_importacao: fileName, linha_origem: line, fingerprint: detailFingerprint,
+            dados_originais: { arquivo:fileName, aba:sheetName, linha: line, campanha:rawCategory, fornecedor_original:String(row[1] ?? '').trim(), verba_recebida:value, valor_centro_custo:highlightedValue, incluido_na_verba:!outsideVerba, coluna_valor:XLSX.utils.encode_col(specific.columnIndex), legado_fora_coluna_valor:legacyOutsideColumn },
+          }, [{
+            parcela:1, descricao:`Centro de custo — ${label} ${year}`, valor_previsto:highlightedValue, valor_pago:highlightedValue,
+            vencimento:monthEnd(year, monthIndex), pago_em:monthEnd(year, monthIndex), status:'pago', forma_pagamento:inferMethod(document),
+            favorecido:supplier, numero_documento:document, observacoes:outsideVerba ? 'Investimento adicional fora da verba.' : 'Detalhamento já incluído na verba recebida.',
+            fingerprint:fingerprint(detailFingerprint, 'centro-custo', year, monthIndex + 1),
+          }]);
+        }
         monthItems.push(value);
         return;
       }
@@ -376,18 +422,12 @@ function parseMarcosWorkbook(fileName) {
       valor_acordado: total, centro_custo: 'Marketing', tags: ['marcos', 'planejamento', 'despesa', '2026', normalized(originalHeader).toLocaleLowerCase('pt-BR')],
       origem_importacao: fileName, linha_origem: 2, fingerprint: recordFingerprint,
       dados_originais: { arquivo: fileName, aba: 'Planejamento', coluna: XLSX.utils.encode_col(columnIndex), categoria_original: originalHeader, valores_mensais: monthly },
-    }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(({ value }) => value > 0).map(({ value, monthIndex }, index) => {
-      const isPast = new Date(2026, monthIndex + 1, 0) < currentDate;
-      return {
-        parcela: index + 1, descricao: `${originalHeader} — ${MONTHS[monthIndex][1]} 2026`,
-        valor_previsto: value, valor_pago: isPast ? value : 0, vencimento: monthEnd(2026, monthIndex),
-        pago_em: isPast ? monthEnd(2026, monthIndex) : '', status: isPast ? 'pago' : 'previsto',
-        forma_pagamento: 'Não informado', observacoes: isPast
-          ? 'Competência anterior à carga; tratada como realizada para composição do planejamento.'
-          : 'Competência futura prevista no planejamento.',
-        fingerprint: fingerprint(recordFingerprint, 'planejamento', monthIndex + 1),
-      };
-    }));
+    }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(({ value }) => value > 0).map(({ value, monthIndex }, index) => ({
+      parcela: index + 1, descricao: `${originalHeader} — ${MONTHS[monthIndex][1]} 2026`,
+      valor_previsto: value, valor_pago: 0, vencimento: monthEnd(2026, monthIndex), pago_em: '', status: 'previsto',
+      forma_pagamento: 'Não informado', observacoes: 'Valor planejado. A passagem do mês não realiza a despesa; a baixa depende de gasto real vinculado ou conferência.',
+      fingerprint: fingerprint(recordFingerprint, 'planejamento', monthIndex + 1),
+    })));
     importedRows += 1;
   }
 

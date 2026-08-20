@@ -23,7 +23,9 @@ O arquivo integral ultrapassa o limite de tamanho do editor. Use estes lotes men
 - `07-14-CARGA.sql`
 - `07-15-CARGA.sql`
 - `07-16-CARGA.sql`
+- `07-17-CARGA.sql`
+- `07-18-CARGA.sql`
 
 3. Execute `07-99-CONFERENCIA-FINAL.sql`.
 
-Todos os lotes são idempotentes: se um deles falhar por conexão, ele pode ser executado novamente. O maior lote possui 199.4 KB.
+Todos os lotes são idempotentes: se um deles falhar por conexão, ele pode ser executado novamente. O maior lote possui 215.0 KB.

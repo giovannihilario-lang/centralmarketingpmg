@@ -46,6 +46,12 @@ const fingerprints = new Set(snapshot.items.map(item => item.registro.fingerprin
 const paymentFingerprints = new Set(snapshot.items.flatMap(item => item.pagamentos.map(payment => `${item.registro.fingerprint}|${payment.fingerprint}`)));
 const cases = ['Fornecedores 2024.xlsx', 'Fornecedores 2025.xlsx', 'Fornecedores 2026.xlsx', 'MKTG 2026.xlsx'];
 const results = [];
+const expectedCounts = {
+  'Fornecedores 2024.xlsx': { records:430, payments:426 },
+  'Fornecedores 2025.xlsx': { records:524, payments:523 },
+  'Fornecedores 2026.xlsx': { records:271, payments:270 },
+  'MKTG 2026.xlsx': { records:110, payments:488 },
+};
 
 for (const fileName of cases) {
   const workbook = XLSX.readFile(path.join(sourceDir, fileName), { cellFormula:true, cellDates:true });
@@ -65,7 +71,45 @@ for (const fileName of cases) {
   if (omitted.length) throw new Error(`${fileName}: ${omitted.length} registros da carga inicial não são atualizados pela reimportação`);
   if (missingPayments.length) throw new Error(`${fileName}: ${missingPayments.length} pagamentos não conciliam com a carga inicial`);
   if (omittedPayments.length) throw new Error(`${fileName}: ${omittedPayments.length} pagamentos da carga inicial não são atualizados pela reimportação`);
-  results.push({ file:fileName, records:parsed.items.length, payments:parsed.items.reduce((sum, item) => sum + item.pagamentos.length, 0), warnings:parsed.warnings.length });
+  const records = parsed.items.length;
+  const payments = parsed.items.reduce((sum, item) => sum + item.pagamentos.length, 0);
+  const expectedCount = expectedCounts[fileName];
+  if (records !== expectedCount.records || payments !== expectedCount.payments) {
+    throw new Error(`${fileName}: contagem divergente (obtido ${records}/${payments}; esperado ${expectedCount.records}/${expectedCount.payments})`);
+  }
+  if (parsed.warnings.length) throw new Error(`${fileName}: ${parsed.warnings.length} aviso(s) de reconciliação`);
+  results.push({ file:fileName, records, payments, warnings:parsed.warnings.length });
 }
 
-console.log(JSON.stringify({ status:'ok', results }));
+
+if (snapshot.items.length !== 1335) throw new Error(`Carga consolidada: ${snapshot.items.length} registros; esperado 1335`);
+const allPayments = snapshot.items.flatMap(item => item.pagamentos || []);
+if (allPayments.length !== 1707) throw new Error(`Carga consolidada: ${allPayments.length} movimentos; esperado 1707`);
+
+const planning = snapshot.items.filter(item => {
+  const record = item.registro || {};
+  return record.controle === 'marcos' && record.ano_referencia === 2026 && record.natureza === 'despesa' && (record.tags || []).includes('planejamento');
+});
+const planningPayments = planning.flatMap(item => item.pagamentos || []);
+const planningPaid = planningPayments.filter(payment => payment.status === 'pago' || Number(payment.valor_pago || 0) > 0);
+if (planning.length !== 15 || planningPayments.length !== 104 || planningPaid.length !== 0) {
+  throw new Error(`Planejamento 2026 divergente: ${planning.length} frentes / ${planningPayments.length} parcelas / ${planningPaid.length} baixas automáticas`);
+}
+
+const centerCosts = snapshot.items.filter(item => (item.registro?.tags || []).includes('centro-custo'));
+const alfamaJuly = centerCosts.find(item => {
+  const record = item.registro || {};
+  return /ALFAMA/i.test(record.fornecedor || '') && record.ano_referencia === 2026 && /Julho 2026/i.test(record.titulo || '') && /MTRIX/i.test(record.titulo || '');
+});
+if (!alfamaJuly || Number(alfamaJuly.registro.valor_acordado) !== 11946.2 || alfamaJuly.registro.impacta_totais !== true || alfamaJuly.registro.dados_originais?.incluido_na_verba !== false) {
+  throw new Error('Regra ALFAMA/MTRIX julho 2026 não foi preservada');
+}
+const ajinomotoMay = centerCosts.find(item => {
+  const record = item.registro || {};
+  return /AJINOMOTO/i.test(record.fornecedor || '') && record.ano_referencia === 2026 && /Maio 2026/i.test(record.titulo || '') && /incentivo/i.test(record.titulo || '');
+});
+if (!ajinomotoMay || Number(ajinomotoMay.registro.valor_acordado) !== 10000 || ajinomotoMay.registro.impacta_totais !== false || ajinomotoMay.registro.dados_originais?.incluido_na_verba !== true) {
+  throw new Error('Regra AJINOMOTO/incentivo maio 2026 não foi preservada');
+}
+
+console.log(JSON.stringify({ status:'ok', summary:{ records:snapshot.items.length, payments:allPayments.length, planning:{ fronts:planning.length, installments:planningPayments.length, autoPaid:planningPaid.length }, centerCostRules:{ alfamaMtrix:true, ajinomotoIncentivo:true } }, results }));

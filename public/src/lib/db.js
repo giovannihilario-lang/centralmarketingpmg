@@ -1,84 +1,110 @@
 import sql from 'mssql';
 import 'dotenv/config';
 
-function env(...names) {
-  for (const name of names) {
-    const value = process.env[name];
-    if (value !== undefined && String(value).trim() !== '') return String(value).trim();
+function env(...nomes) {
+  for (const nome of nomes) {
+    const valor = process.env[nome];
+    if (valor !== undefined && String(valor).trim() !== '') return String(valor).trim();
   }
   return '';
 }
-function bool(value, fallback = false) {
-  if (value === undefined || value === null || value === '') return fallback;
-  return String(value).toLowerCase() === 'true';
+
+function booleano(valor, padrao = false) {
+  if (valor === undefined || valor === null || valor === '') return padrao;
+  return String(valor).toLowerCase() === 'true';
 }
 
-const server = env('SQL_SERVER','AZURE_SQL_SERVER');
-const database = env('SQL_DATABASE','AZURE_SQL_DATABASE');
-const user = env('SQL_USER','AZURE_SQL_USER');
-const password = env('SQL_PASSWORD','AZURE_SQL_PASSWORD');
-const trusted = bool(env('SQL_TRUSTED_CONNECTION'),false);
+const server = env('SQL_SERVER', 'AZURE_SQL_SERVER');
+const database = env('SQL_DATABASE', 'AZURE_SQL_DATABASE');
+const user = env('SQL_USER', 'AZURE_SQL_USER');
+const password = env('SQL_PASSWORD', 'AZURE_SQL_PASSWORD');
+const usaWindowsAuth = booleano(env('SQL_TRUSTED_CONNECTION'), false);
 
-function validate() {
-  const missing=[];
-  if(!server)missing.push('SQL_SERVER/AZURE_SQL_SERVER');
-  if(!database)missing.push('SQL_DATABASE/AZURE_SQL_DATABASE');
-  if(!trusted&&!user)missing.push('SQL_USER/AZURE_SQL_USER');
-  if(!trusted&&!password)missing.push('SQL_PASSWORD/AZURE_SQL_PASSWORD');
-  if(missing.length){const error=new Error(`Configuração SQL incompleta: ${missing.join(', ')}`);error.code='SQL_ENV_MISSING';throw error;}
+function validarConfiguracao() {
+  const faltando = [];
+  if (!server) faltando.push('SQL_SERVER/AZURE_SQL_SERVER');
+  if (!database) faltando.push('SQL_DATABASE/AZURE_SQL_DATABASE');
+  if (!usaWindowsAuth && !user) faltando.push('SQL_USER/AZURE_SQL_USER');
+  if (!usaWindowsAuth && !password) faltando.push('SQL_PASSWORD/AZURE_SQL_PASSWORD');
+  if (faltando.length) {
+    const erro = new Error(`Configuração SQL incompleta: ${faltando.join(', ')}`);
+    erro.code = 'SQL_ENV_MISSING';
+    throw erro;
+  }
 }
 
-const common = {
-  server,
-  database,
-  connectionTimeout:Number(env('SQL_CONNECTION_TIMEOUT')) || 45000,
-  requestTimeout:Number(env('SQL_REQUEST_TIMEOUT')) || 120000,
-  // Uma conexão mínima permanece aquecida. Esta é a diferença que evita pagar
-  // o custo de conexão ao Azure em cada busca de fornecedor/produto.
-  pool:{ max:6, min:1, idleTimeoutMillis:600000 },
-};
+const config = usaWindowsAuth
+  ? {
+      server,
+      database,
+      driver: 'msnodesqlv8',
+      connectionTimeout: Number(env('SQL_CONNECTION_TIMEOUT')) || 30000,
+      requestTimeout: Number(env('SQL_REQUEST_TIMEOUT')) || 50000,
+      pool: { max: 5, min: 0, idleTimeoutMillis: 20000 },
+      options: {
+        trustedConnection: true,
+        trustServerCertificate: true,
+        enableArithAbort: true,
+      },
+    }
+  : {
+      server,
+      database,
+      user,
+      password,
+      port: Number(env('SQL_PORT')) || 1433,
+      connectionTimeout: Number(env('SQL_CONNECTION_TIMEOUT')) || 30000,
+      requestTimeout: Number(env('SQL_REQUEST_TIMEOUT')) || 50000,
+      pool: { max: 5, min: 0, idleTimeoutMillis: 20000 },
+      options: {
+        encrypt: booleano(env('SQL_ENCRYPT'), true),
+        trustServerCertificate: booleano(env('SQL_TRUST_SERVER_CERTIFICATE'), false),
+        enableArithAbort: true,
+        appName: 'PMG Connect - Campanhas',
+      },
+    };
 
-const config = trusted ? {
-  ...common,
-  driver:'msnodesqlv8',
-  options:{ trustedConnection:true, trustServerCertificate:true, enableArithAbort:true, appName:'PMG Connect Local' },
-} : {
-  ...common,
-  user,
-  password,
-  port:Number(env('SQL_PORT')) || 1433,
-  options:{ encrypt:bool(env('SQL_ENCRYPT'),true), trustServerCertificate:bool(env('SQL_TRUST_SERVER_CERTIFICATE'),false), enableArithAbort:true, appName:'PMG Connect Local' },
-};
+let poolPromise = null;
 
-let poolPromise=null;
-let poolInstance=null;
-
-export function getPool(){
-  validate();
-  if(!poolPromise){
-    poolInstance=new sql.ConnectionPool(config);
-    poolInstance.on('error',(error)=>{
-      console.error('[sql-pool]',error?.message||error);
-      poolPromise=null;
-      poolInstance=null;
-    });
-    poolPromise=poolInstance.connect().catch((error)=>{
-      poolPromise=null;
-      poolInstance=null;
-      throw error;
-    });
+export function getPool() {
+  validarConfiguracao();
+  if (!poolPromise) {
+    poolPromise = new sql.ConnectionPool(config)
+      .connect()
+      .catch((erro) => {
+        poolPromise = null;
+        throw erro;
+      });
   }
   return poolPromise;
 }
 
-export async function resetPool(){
-  const current=poolInstance;
-  poolPromise=null;poolInstance=null;
-  if(current){try{await current.close();}catch(_){}}
+export async function resetPool() {
+  if (!poolPromise) return;
+  try {
+    const pool = await poolPromise;
+    await pool.close();
+  } catch (_) {
+    // A próxima chamada recria o pool.
+  } finally {
+    poolPromise = null;
+  }
 }
 
-export function diagnosticoConfiguracaoSql(){
-  return {serverConfigurado:Boolean(server),databaseConfigurado:Boolean(database),userConfigurado:trusted||Boolean(user),passwordConfigurado:trusted||Boolean(password),autenticacao:trusted?'windows':'sql-login',server,database,port:config.port||null,encrypt:Boolean(config.options?.encrypt),connectionTimeout:config.connectionTimeout,requestTimeout:config.requestTimeout,pool:config.pool};
+export function diagnosticoConfiguracaoSql() {
+  return {
+    serverConfigurado: Boolean(server),
+    databaseConfigurado: Boolean(database),
+    userConfigurado: usaWindowsAuth || Boolean(user),
+    passwordConfigurado: usaWindowsAuth || Boolean(password),
+    autenticacao: usaWindowsAuth ? 'windows' : 'sql-login',
+    server,
+    database,
+    port: config.port || null,
+    encrypt: Boolean(config.options?.encrypt),
+    connectionTimeout: config.connectionTimeout,
+    requestTimeout: config.requestTimeout,
+  };
 }
 
 export { sql };

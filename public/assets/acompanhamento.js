@@ -8,6 +8,9 @@
 
   const VIEWS = {
     dashboard: { label: 'Visão geral', eyebrow: 'Central de Acompanhamento', icon: 'layout-dashboard' },
+    planejamento: { label: 'Planejamento PMG', eyebrow: 'Estratégia e execução 2026', icon: 'target' },
+    receita: { label: 'Receita', eyebrow: 'Recebíveis, investimento e saldo', icon: 'landmark' },
+    fechamento: { label: 'Fechamento mensal', eyebrow: 'Marketing → Marcos', icon: 'badge-check' },
     registros: { label: 'Acompanhamentos', eyebrow: 'Operação completa', icon: 'rows-3' },
     financeiro: { label: 'Financeiro', eyebrow: 'Previsão e pagamentos', icon: 'wallet-cards' },
     fornecedores: { label: 'Parceiros', eyebrow: 'Mapa de fornecedores', icon: 'building-2' },
@@ -111,6 +114,56 @@
   const category = value => CATEGORIES[value] || { label: value || 'Outro', icon: 'shapes', tone: 'slate' };
   const uniq = values => [...new Set(values.filter(Boolean))];
   const sum = (rows, getter) => rows.reduce((total, item) => total + Number(getter(item) || 0), 0);
+  const hasTag = (record, tag) => (record?.tags || []).some(item => normalize(item) === normalize(tag));
+  const paymentValue = payment => Number(payment?.valor_pago || (payment?.status === 'pago' ? payment?.valor_previsto : 0) || 0);
+  const paymentMonthKey = payment => String(payment?.pago_em || payment?.vencimento || '').slice(0, 7);
+  const recordPayments = (payments, recordId) => payments.filter(item => item.registro_id === recordId);
+  const realizedPayments = (payments, recordId) => recordPayments(payments, recordId).filter(item => item.status === 'pago');
+  const recordRealized = (payments, record) => sum(realizedPayments(payments, record.id), paymentValue);
+  const monthKeyToDate = key => key ? `${key}-01` : '';
+  const monthLong = key => key ? new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric' }).format(new Date(`${key}-01T12:00:00`)) : 'Sem competência';
+  const supplierKey = value => normalize(value).replace(/\s+/g, ' ');
+
+  function costCenterFromCampaign(value) {
+    const text = normalize(value);
+    if (text.includes('mtrix') || text.includes('emitrix')) return 'MTRIX / Emitrix';
+    if (text.includes('incentivo') || text.includes('campanha') || text.includes('promocao')) return 'Campanha de incentivo';
+    if (text.includes('podcast')) return 'Podcast';
+    if (text.includes('convencao')) return 'Convenção';
+    if (text.includes('copa')) return 'Copa';
+    if (text.includes('30 anos')) return 'Evento 30 anos';
+    if (text.includes('feira') || text.includes('fipan') || text.includes('fispal') || text.includes('anuga')) return 'Feiras / eventos';
+    if (text.includes('catalogo') || text.includes('fold') || text.includes('folder')) return 'Catálogo / material';
+    if (text.includes('cota')) return 'Cota';
+    return String(value || 'Outros').replace(/\s+/g, ' ').trim();
+  }
+
+  function planningMatchKey(value) {
+    const text = normalize(value);
+    if (/incentivo|campanha|promocao/.test(text)) return 'promocoes';
+    if (/catalogo|fold|folder|material/.test(text)) return 'catalogo fold';
+    if (/podcast/.test(text)) return 'podcast';
+    if (/funcionario|equipe|pessoa/.test(text)) return 'funcionario mes';
+    if (/boletim/.test(text)) return 'boletim';
+    if (/feira|evento|copa|30 anos|dia do motorista/.test(text)) return 'feiras eventos';
+    if (/google/.test(text)) return 'google';
+    if (/edm/.test(text)) return 'edm2';
+    if (/video/.test(text)) return 'videos pmg';
+    if (/brinde/.test(text)) return 'brindes';
+    if (/graac|aacd/.test(text)) return 'graac aacd';
+    if (/ifb/.test(text)) return 'ifb';
+    if (/abad/.test(text)) return 'abad';
+    if (/convencao/.test(text)) return 'convencao';
+    if (/diverso|outro/.test(text)) return 'diversos';
+    return '';
+  }
+
+  function specificCostValue(row) {
+    // A regra oficial da planilha usa exclusivamente a coluna E (VALOR).
+    // Células auxiliares mais à direita não são centros de custo e não entram na importação.
+    const direct = officialMoney(row?.[4]);
+    return { value: direct > 0 ? direct : 0, columnIndex: 4, legacy: false };
+  }
 
   function parseMoney(value) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -285,7 +338,7 @@
     ].map(item => ({ ...item, entrada:documents[0], criado_em:documents[0].criado_em }));
     return {
       records, payments, collaborators:[{ id:'c1', nome:'Giovanni', role:'colaborador' }, { id:'c2', nome:'Edilson', role:'gestor' }],
-      attachments:[], imports:[], documents, documentItems, documentsSetupMissing:false,
+      attachments:[], imports:[], conferences:[], conferencesSetupMissing:false, documents, documentItems, documentsSetupMissing:false,
       activities:records.slice(0, 6).map((record, i) => ({ id:i + 1, registro_id:record.id, ator_id:i % 2 ? 'c2' : 'c1', tipo:i % 3 === 0 ? 'pagamento_editado' : 'editado', resumo:i % 3 === 0 ? 'atualizou uma previsão de pagamento' : 'atualizou o acompanhamento', criado_em:record.atualizado_em }))
     };
   }
@@ -308,12 +361,22 @@
     const documentFailure = documentQueries.find(result => result.error);
     const documentsSetupMissing = Boolean(documentFailure && isMissingDocumentSetupError(documentFailure.error));
     if (documentFailure && !documentsSetupMissing) throw documentFailure.error;
+    const conferenceQuery = await db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).limit(5000);
+    const conferencesSetupMissing = Boolean(conferenceQuery.error && isMissingConferenceSetupError(conferenceQuery.error));
+    if (conferenceQuery.error && !conferencesSetupMissing) throw conferenceQuery.error;
     return {
       records:queries[0].data || [], payments:queries[1].data || [], collaborators:queries[2].data || [],
       attachments:queries[3].data || [], activities:queries[4].data || [], imports:queries[5].data || [],
+      conferences:conferencesSetupMissing ? [] : (conferenceQuery.data || []), conferencesSetupMissing,
       documents:documentsSetupMissing ? [] : (documentQueries[0].data || []),
       documentItems:documentsSetupMissing ? [] : (documentQueries[1].data || []), documentsSetupMissing
     };
+  }
+
+  function isMissingConferenceSetupError(fetchError) {
+    const details = [fetchError?.message, fetchError?.details, fetchError?.hint, fetchError?.code, fetchError?.status]
+      .filter(Boolean).join(' ');
+    return /acompanhamento_conferencias|schema cache|PGRST205|42P01|404|does not exist|could not find/i.test(details);
   }
 
   function isMissingDocumentSetupError(fetchError) {
@@ -337,7 +400,7 @@
     const [setupMissing, setSetupMissing] = useState(false);
     const [client, setClient] = useState(null);
     const [me, setMe] = useState(null);
-    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], documents:[], documentItems:[], documentsSetupMissing:false });
+    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:false, documents:[], documentItems:[], documentsSetupMissing:false });
     const [control, setControl] = useState('todos');
     const [year, setYear] = useState(new Date().getFullYear());
     const [search, setSearch] = useState('');
@@ -361,7 +424,7 @@
         setError(null); setSetupMissing(false);
       } catch (fetchError) {
         const missing = isMissingSetupError(fetchError);
-        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], documents:[], documentItems:[], documentsSetupMissing:true });
+        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:true, documents:[], documentItems:[], documentsSetupMissing:true });
         setSetupMissing(missing);
         setError(fetchError);
       } finally { if (!quiet) setLoading(false); }
@@ -404,6 +467,9 @@
       let channel = client.channel('central-acompanhamento-live')
         .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_registros' }, () => void reload(true))
         .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_pagamentos' }, () => void reload(true));
+      if (!data.conferencesSetupMissing) {
+        channel = channel.on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_conferencias' }, () => void reload(true));
+      }
       if (!data.documentsSetupMissing) {
         channel = channel
           .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_entrada' }, () => void reload(true))
@@ -411,7 +477,7 @@
       }
       subscriptionRef.current = channel.subscribe();
       return () => subscriptionRef.current?.unsubscribe?.();
-    }, [client, reload, data.documentsSetupMissing]);
+    }, [client, reload, data.documentsSetupMissing, data.conferencesSetupMissing]);
 
     const years = useMemo(() => uniq(data.records.map(item => item.ano_referencia)).sort((a, b) => b - a), [data.records]);
     const filteredRecords = useMemo(() => {
@@ -427,7 +493,7 @@
     const selected = useMemo(() => data.records.find(item => item.id === selectedId) || null, [data.records, selectedId]);
     const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, client, me, reload, notify, saving, setSaving,
       openRecord:record => setSelectedId(record.id), editRecord:record => setRecordModal(record), newRecord:() => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year }),
-      newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), setView };
+      newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), saveConference, setView };
 
     useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);
 
@@ -454,6 +520,22 @@
       finally { setSaving(false); }
     }
 
+    async function saveConference({ competencia, fornecedor, status = 'conferido', valor = 0, observacoes = '' }) {
+      if (DEMO_MODE) { notify(status === 'conferido' ? 'Conferência assinada no modo demonstração.' : 'Divergência registrada no modo demonstração.', 'info'); return true; }
+      if (data.conferencesSetupMissing) { notify('Execute o SQL 11 — Gestão MKT V1.3.0 no Supabase para liberar as conferências.', 'error'); return false; }
+      setSaving(true);
+      try {
+        const { error:conferenceError } = await client.rpc('salvar_conferencia_acompanhamento_v1', {
+          p_competencia:competencia, p_fornecedor:fornecedor, p_status:status, p_valor_snapshot:Number(valor) || 0, p_observacoes:observacoes || ''
+        });
+        if (conferenceError) throw conferenceError;
+        await reload(true);
+        notify(status === 'conferido' ? 'Conferência assinada.' : 'Divergência registrada.', status === 'conferido' ? 'success' : 'info');
+        return true;
+      } catch (conferenceError) { notify(conferenceError.message || 'Não foi possível salvar a conferência.', 'error'); return false; }
+      finally { setSaving(false); }
+    }
+
     if (loading) return html`<${BootScreen}/>`;
     if (setupMissing && !DEMO_MODE) return html`<div className="setup-screen"><${SetupState}/></div>`;
     if (error && !setupMissing && !DEMO_MODE) return html`<${FatalState} error=${error}/>`;
@@ -465,10 +547,13 @@
         <div className="ac-main">
           <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context} openCommand=${() => setCommandOpen(true)}/>
           <main className="ac-content">
-            ${view !== 'documentos' && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
+            ${!['documentos','planejamento','receita','fechamento'].includes(view) && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
             ${setupMissing ? html`<${SetupState}/>` : html`
               <div className="view-stage" key=${view}>
                 ${view === 'dashboard' && html`<${Dashboard} context=${context}/>`}
+                ${view === 'planejamento' && html`<${PlanningView} context=${context}/>`}
+                ${view === 'receita' && html`<${RevenueView} context=${context}/>`}
+                ${view === 'fechamento' && html`<${ClosingView} context=${context}/>`}
                 ${view === 'registros' && html`<${RecordsView} context=${context}/>`}
                 ${view === 'financeiro' && html`<${FinanceView} context=${context}/>`}
                 ${view === 'fornecedores' && html`<${SuppliersView} context=${context}/>`}
@@ -541,6 +626,9 @@
     const results = needle ? context.allRecords.filter(record => normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, ...(record.tags || [])].join(' ')).includes(needle)).slice(0, 7) : [];
     const commands = [
       { label:'Abrir visão geral', detail:'Resumo executivo', icon:'layout-dashboard', action:() => context.setView('dashboard') },
+      { label:'Abrir Planejamento PMG', detail:'Previsto x realizado de 2026', icon:'target', action:() => context.setView('planejamento') },
+      { label:'Abrir Receita', detail:'Recebíveis, investimento e saldo', icon:'landmark', action:() => context.setView('receita') },
+      { label:'Fechamento mensal', detail:'Conferência Marketing → Marcos', icon:'badge-check', action:() => context.setView('fechamento') },
       { label:'Novo acompanhamento', detail:'Cadastrar ação ou projeto', icon:'plus-circle', action:context.newRecord },
       { label:'Importar planilha', detail:'Atualizar os controles oficiais', icon:'file-up', action:() => context.setView('importar') },
       { label:'Conferir documentos', detail:'Abrir a caixa de entrada', icon:'scan-line', action:() => context.setView('documentos') },
@@ -727,6 +815,133 @@
     return html`<div className="mini-empty"><span><${Icon} name=${icon}/></span><div><strong>${title}</strong><p>${text}</p></div>${action && html`<button onClick=${action}><${Icon} name="plus"/>Adicionar</button>`}</div>`;
   }
 
+
+  function actualInvestmentRows(context) {
+    return context.allRecords.filter(record => {
+      if (Number(record.ano_referencia) !== 2026 || record.natureza !== 'despesa' || record.status === 'cancelado') return false;
+      if (hasTag(record, 'planejamento') || hasTag(record, 'legado-fora-coluna-valor')) return false;
+      return recordRealized(context.payments, record) > 0;
+    }).map(record => ({ record, value:recordRealized(context.payments, record) }));
+  }
+
+  function PlanningView({ context }) {
+    const planning = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marcos' && record.natureza === 'despesa' && hasTag(record, 'planejamento') && record.status !== 'cancelado');
+    const actualRows = actualInvestmentRows(context);
+    const planningKeys = new Set(planning.map(record => normalize(record.referencia || record.titulo.replace(/^Planejamento 2026\s*—\s*/i, ''))));
+    const actualByKey = new Map();
+    const matchedIds = new Set();
+    actualRows.forEach(({ record, value }) => {
+      const key = planningMatchKey([record.centro_custo, record.referencia, record.titulo, category(record.categoria).label].join(' '));
+      if (key && planningKeys.has(key)) { actualByKey.set(key, (actualByKey.get(key) || 0) + value); matchedIds.add(record.id); }
+    });
+    const fronts = planning.map(record => {
+      const key = normalize(record.referencia || record.titulo.replace(/^Planejamento 2026\s*—\s*/i, ''));
+      const planned = Number(record.valor_acordado || 0); const realized = Number(actualByKey.get(key) || 0);
+      return { record, key, planned, realized, balance:planned - realized, progress:planned ? Math.min(999, realized / planned * 100) : 0 };
+    }).sort((a, b) => b.planned - a.planned);
+    const plannedTotal = sum(fronts, item => item.planned);
+    const realizedTotal = sum(actualRows, item => item.value);
+    const unlinked = actualRows.filter(item => !matchedIds.has(item.record.id));
+    const monthlyPlan = Array.from({ length:12 }, (_, monthIndex) => {
+      const key = `2026-${String(monthIndex + 1).padStart(2, '0')}`;
+      return sum(context.payments.filter(payment => planning.some(record => record.id === payment.registro_id) && String(payment.vencimento || '').startsWith(key)), payment => payment.valor_previsto);
+    });
+    const monthlyActual = Array.from({ length:12 }, (_, monthIndex) => {
+      const key = `2026-${String(monthIndex + 1).padStart(2, '0')}`;
+      return sum(actualRows, item => sum(realizedPayments(context.payments, item.record.id).filter(payment => paymentMonthKey(payment) === key), paymentValue));
+    });
+    useLucide([fronts.length, actualRows.length]);
+    return html`<section className="management-section planning-view">
+      <div className="management-hero planning-hero"><div><span className="eyebrow light">Planejamento estratégico PMG · 2026</span><h2>Planejar é uma coisa.<br/>Realizar é outra.</h2><p>O previsto continua previsto até existir gasto real. Virar o mês não baixa parcela, porque calendário não é comprovante.</p></div><div className="management-hero-badge"><${Icon} name="target" size=${34}/><span><b>${fronts.length}</b> frentes estratégicas</span></div></div>
+      <div className="management-kpis"><${MetricCard} label="Investimento planejado" value=${plannedTotal} icon="target" tone="violet" hint="Plano 2026"/><${MetricCard} label="Investimento realizado" value=${realizedTotal} icon="badge-dollar-sign" tone="emerald" hint="Somente gasto real"/><${MetricCard} label="Saldo do planejamento" value=${plannedTotal - realizedTotal} icon="scale" tone="gold" hint="Previsto menos realizado"/><${MetricCard} label="Execução" value=${plannedTotal ? realizedTotal / plannedTotal * 100 : 0} format="percent" icon="gauge" tone="slate" hint="Inclui gastos sem vínculo"/></div>
+      <div className="management-grid planning-grid"><article className="management-panel wide"><div className="panel-heading compact"><div><span className="eyebrow">Frentes estratégicas</span><h2>Previsto x realizado</h2></div><span className="management-chip">${fronts.length} frentes</span></div>
+        <div className="planning-fronts">${fronts.length ? fronts.map(item => html`<button className="planning-front" onClick=${() => context.openRecord(item.record)}><div className="planning-front-head"><div><strong>${item.record.referencia || item.record.titulo}</strong><small>${category(item.record.categoria).label}</small></div><span>${Math.round(item.progress)}%</span></div><div className="planning-front-values"><span><small>Previsto</small><b>${money(item.planned)}</b></span><span><small>Realizado</small><b>${money(item.realized)}</b></span><span><small>Saldo</small><b className=${item.balance < 0 ? 'negative' : ''}>${money(item.balance)}</b></span></div><div className="planning-bar"><i style=${{ width:`${Math.min(100, item.progress)}%` }}></i></div></button>`) : html`<${MiniEmpty} icon="target" title="Planejamento ainda não importado" text="Reimporte MKTG 2026 para carregar as 15 frentes estratégicas."/>`}</div>
+      </article><article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">Ritmo mensal</span><h2>2026 mês a mês</h2></div></div><div className="monthly-plan-list">${OFFICIAL_MONTHS.map(([, label], index) => { const planned = monthlyPlan[index]; const actual = monthlyActual[index]; const pct = planned ? Math.min(100, actual / planned * 100) : 0; return html`<div className="monthly-plan-row"><span>${label.slice(0,3)}</span><div><i style=${{ width:`${pct}%` }}></i></div><b>${compactMoney(actual)}</b><small>${compactMoney(planned)}</small></div>`; })}</div></article></div>
+      <article className="management-panel unlinked-panel"><div className="panel-heading compact"><div><span className="eyebrow">Controle de exceção</span><h2>Gastos realizados sem vínculo direto com o Planejamento</h2><p>Itens reais que ainda não casaram com uma das frentes estratégicas.</p></div><span className=${`management-chip ${unlinked.length ? 'warning' : 'ok'}`}>${unlinked.length ? `${unlinked.length} para revisar` : 'Tudo conciliado'}</span></div>${unlinked.length ? html`<div className="unlinked-list">${unlinked.slice(0, 40).map(item => html`<button onClick=${() => context.openRecord(item.record)}><span><${Icon} name="unlink"/></span><div><strong>${item.record.fornecedor || item.record.titulo}</strong><small>${item.record.centro_custo || item.record.referencia || category(item.record.categoria).label}</small></div><b>${money(item.value)}</b><${Icon} name="chevron-right"/></button>`)}</div>` : html`<${MiniEmpty} icon="circle-check-big" title="Nenhum gasto solto" text="Os gastos realizados estão vinculados às frentes reconhecidas."/>`}</article>
+    </section>`;
+  }
+
+  function RevenueComparisonChart({ context }) {
+    const canvas = useRef(null); const chartRef = useRef(null);
+    const series = useMemo(() => {
+      const values = { 2025:Array(12).fill(0), 2026:Array(12).fill(0) };
+      const records = context.allRecords.filter(record => record.controle === 'marketing' && record.natureza === 'receita' && record.impacta_totais !== false && hasTag(record, 'fornecedores') && [2025, 2026].includes(Number(record.ano_referencia)));
+      const map = new Map(records.map(record => [record.id, record]));
+      context.payments.forEach(payment => {
+        if (payment.status !== 'pago') return; const record = map.get(payment.registro_id); if (!record) return;
+        const key = paymentMonthKey(payment); if (!/^20(25|26)-\d{2}$/.test(key)) return;
+        const monthIndex = Number(key.slice(5, 7)) - 1; values[Number(record.ano_referencia)][monthIndex] += paymentValue(payment);
+      });
+      return values;
+    }, [context.allRecords, context.payments]);
+    useEffect(() => {
+      if (!canvas.current || !window.Chart) return undefined;
+      chartRef.current?.destroy();
+      chartRef.current = new Chart(canvas.current, { type:'line', data:{ labels:OFFICIAL_MONTHS.map(([, label]) => label.slice(0,3)), datasets:[
+        { label:'2025', data:series[2025], borderColor:'#9ca9a0', backgroundColor:'rgba(156,169,160,.08)', tension:.32, fill:false, pointRadius:3, borderWidth:2 },
+        { label:'2026', data:series[2026], borderColor:'#2a7e4e', backgroundColor:'rgba(42,126,78,.10)', tension:.32, fill:true, pointRadius:3, borderWidth:2.5 },
+      ]}, options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false }, plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:7, font:{ family:'Inter', size:10 } } }, tooltip:{ callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } }, scales:{ x:{ grid:{ display:false }, border:{ display:false } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.06)' }, ticks:{ callback:value => compactMoney(value) } } } } });
+      return () => chartRef.current?.destroy();
+    }, [series]);
+    return html`<div className="revenue-chart"><canvas ref=${canvas}></canvas></div>`;
+  }
+
+  function RevenueView({ context }) {
+    const records2026 = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.status !== 'cancelado');
+    const indicators = records2026.filter(record => record.natureza === 'indicador');
+    const indicator = tag => Number(indicators.find(record => hasTag(record, tag))?.valor_acordado || 0);
+    const marcosForecast = records2026.filter(record => record.controle === 'marcos' && record.natureza === 'receita' && record.impacta_totais !== false && record.categoria !== 'pendencia' && !hasTag(record, 'detalhamento'));
+    const marketingReceipts = records2026.filter(record => record.controle === 'marketing' && record.natureza === 'receita' && record.impacta_totais !== false && record.categoria !== 'pendencia' && hasTag(record, 'fornecedores'));
+    const planning = records2026.filter(record => record.controle === 'marcos' && record.natureza === 'despesa' && hasTag(record, 'planejamento'));
+    const actualExpenses = actualInvestmentRows(context);
+    const forecastRevenue = indicator('receita') || sum(marcosForecast, record => record.valor_acordado);
+    const received = sum(marketingReceipts, record => recordRealized(context.payments, record));
+    const forecastInvestment = indicator('investimento') || sum(planning, record => record.valor_acordado);
+    const actualInvestment = sum(actualExpenses, item => item.value);
+    const projectedBalance = indicator('saldo') || (forecastRevenue - forecastInvestment);
+    const realizedBalance = received - actualInvestment;
+    const supplierMap = new Map();
+    marcosForecast.forEach(record => { if (!record.fornecedor) return; const key=supplierKey(record.fornecedor); const row=supplierMap.get(key)||{name:record.fornecedor,forecast:0,received:0}; row.forecast += Number(record.valor_acordado||0); supplierMap.set(key,row); });
+    marketingReceipts.forEach(record => { if (!record.fornecedor) return; const key=supplierKey(record.fornecedor); const row=supplierMap.get(key)||{name:record.fornecedor,forecast:0,received:0}; row.received += recordRealized(context.payments, record); supplierMap.set(key,row); });
+    const suppliers = [...supplierMap.values()].sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+    useLucide([suppliers.length]);
+    return html`<section className="management-section revenue-view"><div className="management-hero revenue-hero"><div><span className="eyebrow light">Receita · 2026</span><h2>Receber, investir<br/>e saber o que sobra.</h2><p>A previsão vem do controle do Marcos. O realizado vem do fechamento do Marketing. Uma conta só, finalmente.</p></div><div className="balance-orbit"><span><small>Saldo realizado</small><strong>${money(realizedBalance)}</strong></span><i></i><i></i></div></div>
+      <div className="management-kpis six"><${MetricCard} label="Receita prevista" value=${forecastRevenue} icon="chart-no-axes-combined" tone="emerald" hint="Previsão anual"/><${MetricCard} label="Receita recebida" value=${received} icon="circle-dollar-sign" tone="emerald" hint="Fechamento Marketing"/><${MetricCard} label="A receber" value=${Math.max(0, forecastRevenue - received)} icon="clock-3" tone="gold" hint="Previsão menos recebido"/><${MetricCard} label="Investimento previsto" value=${forecastInvestment} icon="target" tone="violet" hint="Planejamento"/><${MetricCard} label="Investimento realizado" value=${actualInvestment} icon="receipt-text" tone="violet" hint="Gastos reais"/><${MetricCard} label="Saldo projetado" value=${projectedBalance} icon="scale" tone="slate" hint="Receita − investimento"/></div>
+      <div className="management-grid revenue-grid"><article className="management-panel wide"><div className="panel-heading compact"><div><span className="eyebrow">Recebimentos mensais</span><h2>2026 x 2025</h2><p>Comparação dos fechamentos efetivamente lançados pelo Marketing.</p></div></div><${RevenueComparisonChart} context=${context}/></article><article className="management-panel balance-card"><span className="eyebrow">Leitura do ano</span><div className="balance-equation"><span><small>Recebido</small><b>${money(received)}</b></span><em>−</em><span><small>Investido</small><b>${money(actualInvestment)}</b></span><em>=</em><span className=${realizedBalance < 0 ? 'negative' : 'positive'}><small>Saldo</small><b>${money(realizedBalance)}</b></span></div><div className="balance-progress"><div><span>Receita realizada</span><b>${forecastRevenue ? Math.round(received/forecastRevenue*100) : 0}%</b></div><i><em style=${{width:`${Math.min(100, forecastRevenue ? received/forecastRevenue*100 : 0)}%`}}></em></i></div></article></div>
+      <article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">De-para por fornecedor</span><h2>Previsão e recebido</h2><p>Ordem alfabética para a conferência bater com as planilhas oficiais.</p></div><span className="management-chip">${suppliers.length} fornecedores</span></div><div className="supplier-revenue-table"><table><thead><tr><th>Fornecedor</th><th>Previsão</th><th>Recebido</th><th>A receber</th><th>Realização</th></tr></thead><tbody>${suppliers.map(row => { const remaining=Math.max(0,row.forecast-row.received); const pct=row.forecast ? row.received/row.forecast*100 : (row.received>0?100:0); return html`<tr><td><strong>${row.name}</strong></td><td>${money(row.forecast)}</td><td><b className="positive-text">${money(row.received)}</b></td><td>${money(remaining)}</td><td><div className="table-progress"><i><em style=${{width:`${Math.min(100,pct)}%`}}></em></i><span>${Math.round(pct)}%</span></div></td></tr>`; })}</tbody></table></div></article>
+    </section>`;
+  }
+
+  function ClosingView({ context }) {
+    const marketingRecords = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marketing' && record.natureza === 'receita' && record.impacta_totais !== false && hasTag(record, 'fornecedores') && record.status !== 'cancelado');
+    const marketingIds = new Set(marketingRecords.map(record => record.id));
+    const availableMonths = useMemo(() => uniq(context.payments.filter(payment => payment.status === 'pago' && marketingIds.has(payment.registro_id)).map(paymentMonthKey)).filter(Boolean).sort(), [context.payments, marketingRecords.length]);
+    const [chosenMonth, setChosenMonth] = useState('');
+    const month = chosenMonth || availableMonths.at(-1) || '2026-01';
+    const marketingBySupplier = new Map();
+    marketingRecords.forEach(record => {
+      const value = sum(realizedPayments(context.payments, record.id).filter(payment => paymentMonthKey(payment) === month), paymentValue);
+      if (value <= 0 || !record.fornecedor) return; const key=supplierKey(record.fornecedor); const row=marketingBySupplier.get(key)||{name:record.fornecedor,value:0,records:[]}; row.value += value; row.records.push(record); marketingBySupplier.set(key,row);
+    });
+    const marcosRecords = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marcos' && record.natureza === 'receita' && record.impacta_totais !== false && hasTag(record, 'previsão') && record.status !== 'cancelado');
+    const marcosBySupplier = new Map();
+    marcosRecords.forEach(record => { const value=sum(realizedPayments(context.payments, record.id).filter(payment => paymentMonthKey(payment) === month), paymentValue); if (value>0 && record.fornecedor) marcosBySupplier.set(supplierKey(record.fornecedor),(marcosBySupplier.get(supplierKey(record.fornecedor))||0)+value); });
+    const detailRecords = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marketing' && hasTag(record,'centro-custo') && !hasTag(record,'legado-fora-coluna-valor') && String(record.data_inicio || '').startsWith(month));
+    const detailBySupplier = new Map();
+    detailRecords.forEach(record => { const key=supplierKey(record.fornecedor); const rows=detailBySupplier.get(key)||[]; rows.push(record); detailBySupplier.set(key,rows); });
+    const competence = monthKeyToDate(month);
+    const conferenceBySupplier = new Map((context.conferences || []).filter(item => String(item.competencia || '').slice(0,7) === month).map(item => [supplierKey(item.fornecedor), item]));
+    const rows = [...marketingBySupplier.entries()].map(([key,row]) => ({ ...row, key, marcos:Number(marcosBySupplier.get(key)||0), conference:conferenceBySupplier.get(key), details:detailBySupplier.get(key)||[] })).sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+    const total = sum(rows,row=>row.value); const referenceTotal=sum(rows,row=>row.marcos); const signed=rows.filter(row=>row.conference?.status==='conferido').length; const divergent=rows.filter(row=>row.conference?.status==='divergente').length;
+    useLucide([month, rows.length, signed, divergent]);
+    const save = (row,status) => context.saveConference({ competencia:competence, fornecedor:row.name, status, valor:row.value, observacoes:status === 'divergente' ? `Divergência com referência MKTG: ${money(row.marcos)}. Marketing: ${money(row.value)}.` : `Conferido contra fechamento do Marketing em ${monthLong(month)}.` });
+    return html`<section className="management-section closing-view"><div className="management-hero closing-hero"><div><span className="eyebrow light">Fechamento mensal</span><h2>Marketing lança.<br/>Marcos confere.</h2><p>O valor realizado nasce uma vez no Marketing. Aqui ele aparece em ordem alfabética, com o de-para da planilha do Marcos e assinatura de conferência.</p></div><label className="closing-month"><span>Competência</span><select value=${month} onChange=${event=>setChosenMonth(event.target.value)}>${availableMonths.length ? availableMonths.map(key=>html`<option value=${key}>${monthLong(key)}</option>`) : html`<option value=${month}>${monthLong(month)}</option>`}</select></label></div>
+      ${context.conferencesSetupMissing && html`<div className="management-setup-warning"><${Icon} name="database-zap"/><div><strong>Conferência ainda não ativada no Supabase</strong><p>Execute <code>sql/11-GESTAO-MKT-V1.3.0.sql</code>. A leitura funciona sem ele; a assinatura fica bloqueada.</p></div></div>`}
+      <div className="closing-kpis"><span><small>Fechamento Marketing</small><strong>${money(total)}</strong></span><span><small>Referência MKTG</small><strong>${money(referenceTotal)}</strong></span><span><small>Conferidos</small><strong>${signed}/${rows.length}</strong></span><span className=${divergent ? 'danger' : ''}><small>Divergências</small><strong>${divergent}</strong></span></div>
+      <article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">De-para mensal</span><h2>${monthLong(month)}</h2><p>Fornecedor por fornecedor, exatamente na ordem em que a conferência precisa acontecer.</p></div><span className="management-chip">${rows.length} fornecedores</span></div>${rows.length ? html`<div className="closing-table-wrap"><table className="closing-table"><thead><tr><th>Fornecedor</th><th>Centros de custo</th><th>Marketing</th><th>Referência Marcos</th><th>Diferença</th><th>Conferência</th></tr></thead><tbody>${rows.map(row=>{ const diff=row.value-row.marcos; const status=row.conference?.status||'pendente'; return html`<tr className=${status}><td><strong>${row.name}</strong><small>${row.records.length} lançamento(s)</small></td><td><div className="cost-chips">${row.details.length ? row.details.map(detail=>html`<span className=${hasTag(detail,'adicional-investimento')?'extra':''}>${detail.centro_custo || category(detail.categoria).label}<b>${money(detail.valor_acordado)}</b></span>`) : html`<em>Sem abertura</em>`}</div></td><td><strong>${money(row.value)}</strong></td><td>${row.marcos ? money(row.marcos) : html`<span className="muted-value">Sem valor</span>`}</td><td><span className=${Math.abs(diff)>.01?'diff danger':'diff ok'}>${money(diff)}</span></td><td>${status==='conferido' ? html`<span className="signed-pill"><${Icon} name="badge-check"/>Assinado<small>${row.conference?.conferido_em ? dateTime(row.conference.conferido_em) : ''}</small></span>` : html`<div className="conference-actions"><button className="button primary small" disabled=${context.saving || context.conferencesSetupMissing} onClick=${()=>save(row,'conferido')}><${Icon} name="signature"/>Assinar</button><button className=${`icon-button ${status==='divergente'?'divergent':''}`} title="Marcar divergência" disabled=${context.saving || context.conferencesSetupMissing} onClick=${()=>save(row,'divergente')}><${Icon} name="triangle-alert"/></button></div>`}</td></tr>`;})}</tbody></table></div>` : html`<${MiniEmpty} icon="calendar-x" title="Nenhum fechamento nesta competência" text="Importe a planilha de fornecedores ou escolha outro mês."/>`}</article>
+    </section>`;
+  }
+
   function RecordsView({ context }) {
     const { records, payments, openRecord, editRecord, newRecord } = context;
     const [status, setStatus] = useState('todos'); const [categoryFilter, setCategoryFilter] = useState('todos'); const [layout, setLayout] = useState('table');
@@ -821,7 +1036,7 @@
       <${Field} label="Data inicial"><input name="data_inicio" type="date" defaultValue=${record.data_inicio || ''}/></${Field}>
       <${Field} label="Data final"><input name="data_fim" type="date" defaultValue=${record.data_fim || ''}/></${Field}>
       <${Field} label="Valor acordado"><div className="money-input"><span>R$</span><input name="valor_acordado" inputMode="decimal" defaultValue=${record.valor_acordado || ''} placeholder="0,00"/></div></${Field}>
-      <${Field} label="Centro de custo"><input name="centro_custo" defaultValue=${record.centro_custo || ''} placeholder="Opcional"/></${Field}>
+      <${Field} label="Centro de custo *"><input name="centro_custo" defaultValue=${record.centro_custo || ''} placeholder="Ex.: Cota, Incentivo, MTRIX, Evento..." required/></${Field}>
       <${Field} label="Documento / pedido"><input name="numero_documento" defaultValue=${record.numero_documento || ''} placeholder="NF, pedido, contrato..."/></${Field}>
       <${Field} label="Tags" hint="separe por vírgula"><input name="tags" defaultValue=${(record.tags || []).join(', ')} placeholder="diretoria, cota, 2026"/></${Field}>
       </div></div><div className="form-section"><div className="form-section-title"><span>03</span><div><strong>Contato e observações</strong><small>Informações para ninguém depender de mensagem antiga</small></div></div><div className="form-grid">
@@ -1003,16 +1218,16 @@
           return;
         }
         const value = officialMoney(row[2]); if (value <= 0) return;
-        const supplier = officialSupplierName(supplierRaw); const document = String(row[3] ?? '').trim(); const highlighted = officialMoney(row[4]);
+        const supplier = officialSupplierName(supplierRaw); const document = String(row[3] ?? '').trim(); const specific = specificCostValue(row); const highlighted = specific.value;
         const recordFingerprint = fingerprint(['marketing', 'fornecedores', year, sheetName, line, supplier, categoryRaw]);
         calculated += value;
         items.push(officialItem({
           controle:'marketing', ano_referencia:year, fornecedor:supplier, natureza:'receita', impacta_totais:true,
           categoria:inferCategory(categoryRaw), titulo:`${categoryRaw.replace(/\s+/g, ' ').trim()} — ${supplier} — ${monthLabel} ${year}`,
-          descricao:`Verba mensal de fornecedor registrada pelo Marketing.${highlighted > 0 ? ` A fonte destaca ${money(highlighted)} para a ação específica indicada na coluna VALOR.` : ''}`,
+          descricao:`Verba mensal de fornecedor registrada pelo Marketing.${highlighted > 0 ? ` A fonte destaca ${money(highlighted)} para abertura de centro de custo.` : ''}`,
           referencia:categoryRaw, status:'concluido', data_inicio:officialMonthStart(year, monthIndex), data_fim:officialMonthEnd(year, monthIndex),
           valor_acordado:value, numero_documento:document, tags:['marketing', 'fornecedores', String(year), monthLabel.toLocaleLowerCase('pt-BR'), ...officialTags(categoryRaw)],
-          observacoes:highlighted > 0 ? `Valor específico destacado na planilha: ${money(highlighted)}.` : '', origem_importacao:canonicalFile, linha_origem:line,
+          observacoes:highlighted > 0 ? `Centro de custo destacado: ${money(highlighted)}.` : '', origem_importacao:canonicalFile, linha_origem:line,
           fingerprint:recordFingerprint, dados_originais:{ arquivo:canonicalFile, aba:sheetName, linha:line, campanha:categoryRaw, fornecedor_original:supplierRaw, verba:value, nf:document, valor_especifico:highlighted || null },
         }, [{
           parcela:1, descricao:`Competência ${monthLabel} ${year}`, valor_previsto:value, valor_pago:value,
@@ -1020,6 +1235,26 @@
           favorecido:supplier, numero_documento:document, observacoes:'A fonte informa apenas a competência mensal; a data exata do movimento não foi registrada.',
           fingerprint:fingerprint([recordFingerprint, 'competencia', year, monthIndex + 1]),
         }]));
+        if (highlighted > 0) {
+          const center = costCenterFromCampaign(categoryRaw); const outsideVerba = /mtrix|emitrix/.test(normalize(categoryRaw));
+          const legacyOutsideColumn = specific.legacy;
+          const detailFingerprint = fingerprint(['marketing', 'centro-custo', year, sheetName, line, supplier, categoryRaw, center, specific.columnIndex]);
+          items.push(officialItem({
+            controle:'marketing', ano_referencia:year, fornecedor:supplier, natureza:'despesa',
+            impacta_totais:outsideVerba && !legacyOutsideColumn, categoria:inferCategory(categoryRaw),
+            titulo:`Centro de custo — ${center} — ${supplier} — ${monthLabel} ${year}`,
+            descricao:outsideVerba ? 'Investimento MTRIX / Emitrix adicional, fora da VERBA recebida do fornecedor.' : 'Abertura do centro de custo já contida na VERBA recebida; não deve ser somada novamente à receita.',
+            referencia:categoryRaw, status:'concluido', data_inicio:officialMonthStart(year, monthIndex), data_fim:officialMonthEnd(year, monthIndex),
+            valor_acordado:highlighted, centro_custo:center, numero_documento:document,
+            tags:['marketing','centro-custo',String(year),monthLabel.toLocaleLowerCase('pt-BR'), outsideVerba ? 'adicional-investimento' : 'dentro-verba', ...(legacyOutsideColumn ? ['legado-fora-coluna-valor'] : []), ...officialTags(categoryRaw)],
+            observacoes:legacyOutsideColumn ? `Valor legado encontrado na coluna ${XLSX.utils.encode_col(specific.columnIndex)}; preservado para auditoria e excluído dos KPIs automáticos.` : (outsideVerba ? 'MTRIX / Emitrix fica fora da VERBA e entra como investimento adicional.' : 'Valor já incluído na VERBA. O registro serve para de-para e centro de custo.'),
+            origem_importacao:canonicalFile, linha_origem:line, fingerprint:detailFingerprint,
+            dados_originais:{ arquivo:canonicalFile, aba:sheetName, linha:line, campanha:categoryRaw, fornecedor_original:supplierRaw, verba_recebida:value, valor_centro_custo:highlighted, incluido_na_verba:!outsideVerba, coluna_valor:XLSX.utils.encode_col(specific.columnIndex), legado_fora_coluna_valor:legacyOutsideColumn },
+          }, [{ parcela:1, descricao:`Centro de custo — ${monthLabel} ${year}`, valor_previsto:highlighted, valor_pago:highlighted,
+            vencimento:officialMonthEnd(year, monthIndex), pago_em:officialMonthEnd(year, monthIndex), status:'pago', forma_pagamento:officialMethod(document),
+            favorecido:supplier, numero_documento:document, observacoes:outsideVerba ? 'Investimento adicional fora da verba.' : 'Detalhamento já incluído na verba recebida.',
+            fingerprint:fingerprint([detailFingerprint, 'centro-custo', year, monthIndex + 1]) }]));
+        }
       });
       rows.slice(2).forEach((row, offset) => {
         const note = String(row[0] ?? '').trim(); if (!note || !/pendent|falta|ainda nao|faltou/.test(normalize(note))) return;
@@ -1214,13 +1449,12 @@
         data_inicio:'2026-01-01', data_fim:'2026-12-31', valor_acordado:total, centro_custo:'Marketing', tags:['marcos', 'planejamento', 'despesa', '2026', normalize(header)],
         origem_importacao:canonicalFile, linha_origem:2, fingerprint:recordFingerprint,
         dados_originais:{ arquivo:canonicalFile, aba:'Planejamento', coluna:XLSX.utils.encode_col(columnIndex), categoria_original:header, valores_mensais:monthly },
-      }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(item => item.value > 0).map(({ value, monthIndex }, index) => {
-        const past = new Date(2026, monthIndex + 1, 0) < new Date();
-        return { parcela:index + 1, descricao:`${header} — ${OFFICIAL_MONTHS[monthIndex][1]} 2026`, valor_previsto:value, valor_pago:past ? value : 0,
-          vencimento:officialMonthEnd(2026, monthIndex), pago_em:past ? officialMonthEnd(2026, monthIndex) : '', status:past ? 'pago' : 'previsto',
-          forma_pagamento:'Não informado', observacoes:past ? 'Competência anterior à carga; tratada como realizada para composição do planejamento.' : 'Competência futura prevista no planejamento.',
-          fingerprint:fingerprint([recordFingerprint, 'planejamento', monthIndex + 1]) };
-      })));
+      }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(item => item.value > 0).map(({ value, monthIndex }, index) => ({
+        parcela:index + 1, descricao:`${header} — ${OFFICIAL_MONTHS[monthIndex][1]} 2026`, valor_previsto:value, valor_pago:0,
+        vencimento:officialMonthEnd(2026, monthIndex), pago_em:'', status:'previsto', forma_pagamento:'Não informado',
+        observacoes:'Valor planejado. A passagem do mês não realiza a despesa; a baixa depende de gasto real vinculado ou conferência.',
+        fingerprint:fingerprint([recordFingerprint, 'planejamento', monthIndex + 1])
+      }))));
     }
     [['receita', workbook.Sheets.RECEITA.E58?.v], ['investimento', workbook.Sheets.RECEITA.E56?.v], ['saldo', workbook.Sheets.RECEITA.E60?.v]].forEach(([key, rawValue]) => {
       const value = officialMoney(rawValue); if (value <= 0) return; const titles = { receita:'Previsão de receita 2026', investimento:'Previsão de investimento 2026', saldo:'Previsão de saldo 2026' };

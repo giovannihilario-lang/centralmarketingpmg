@@ -279,7 +279,7 @@
           }
         }
       } catch (error) {
-        const aborted = error?.name === 'AbortError';
+        const aborted = controller.signal.aborted || error?.name === 'AbortError';
         let permissionState = '';
 
         if (!aborted && !PAGE_IS_LOOPBACK && navigator.permissions?.query) {
@@ -443,6 +443,10 @@
     return payload.context;
   }
 
+  const CONTEXT_PREPARE_MAX_MS = 12 * 60 * 1000;
+  const CONTEXT_STATUS_TIMEOUT_MS = 90 * 1000;
+  const CONTEXT_PAYLOAD_TIMEOUT_MS = 120 * 1000;
+
   async function pollContext({ force = false, blocking = true } = {}) {
     if (app.contextPromise) return app.contextPromise;
 
@@ -454,36 +458,70 @@
       }
       if (force) app.apiCache.clear();
 
-      try {
-        // Primeiro consulta o estado. Se o Node já carregou o cache em disco,
-        // não inicia uma preparação nova e não deixa a tela parada em 0%.
-        let status = await api(`${SQL_ENDPOINT}?recurso=contexto-status&_=${Date.now()}`, {
-          force: true,
-          timeout: 8000,
-        });
+      const deadline = Date.now() + CONTEXT_PREPARE_MAX_MS;
+      const waitingStatus = (message = 'Sincronizando os dados comerciais do dia…') => ({
+        status: 'loading',
+        phase: 'query',
+        progress: 12,
+        message,
+      });
 
+      const readStatus = async () => {
+        try {
+          return await api(`${SQL_ENDPOINT}?recurso=contexto-status&_=${Date.now()}`, {
+            force: true,
+            timeout: CONTEXT_STATUS_TIMEOUT_MS,
+          });
+        } catch (error) {
+          if (error?.code === 'LOCAL_API_TIMEOUT' && Date.now() < deadline) return null;
+          throw error;
+        }
+      };
+
+      try {
+        let status = await readStatus();
+        if (!status) status = waitingStatus('Servidor local processando a carga diária…');
         if (blocking) updateContextOverlay(status);
 
         if (status.ready) {
           const payload = await api(`${SQL_ENDPOINT}?recurso=contexto&_=${Date.now()}`, {
             force: true,
-            timeout: 20000,
+            timeout: CONTEXT_PAYLOAD_TIMEOUT_MS,
           });
           return useContextPayload(payload, { blocking });
         }
 
-        // A rota aceita GET. Isso mantém a chamada simples entre Vercel e localhost.
-        await api(`${SQL_ENDPOINT}?recurso=contexto-preparar&force=${force ? 'true' : 'false'}&_=${Date.now()}`, {
-          method: 'GET',
-          force: true,
-          timeout: 8000,
-        });
-
-        for (let attempts = 0; attempts < 300; attempts += 1) {
-          status = await api(`${SQL_ENDPOINT}?recurso=contexto-status&_=${Date.now()}`, {
+        try {
+          await api(`${SQL_ENDPOINT}?recurso=contexto-preparar&force=${force ? 'true' : 'false'}&_=${Date.now()}`, {
+            method: 'GET',
             force: true,
-            timeout: 8000,
+            timeout: CONTEXT_STATUS_TIMEOUT_MS,
           });
+        } catch (error) {
+          if (error?.code !== 'LOCAL_API_TIMEOUT') throw error;
+        }
+
+        while (Date.now() < deadline) {
+          status = await readStatus();
+
+          if (!status) {
+            const transient = waitingStatus('A carga diária ainda está sendo processada. A primeira abertura pode levar alguns minutos.');
+            if (blocking) updateContextOverlay(transient);
+            else setSideStatus('online', transient.message);
+            await sleep(1000);
+            continue;
+          }
+
+          const daily = status.dailySnapshot || {};
+          if (!status.ready && (daily.syncing || daily.status === 'loading')) {
+            status = {
+              ...status,
+              status: 'loading',
+              phase: 'query',
+              progress: Math.max(12, Number(status.progress) || 0),
+              message: 'Sincronizando o snapshot comercial diário com o Azure SQL…',
+            };
+          }
 
           if (blocking) updateContextOverlay(status);
           else setSideStatus(
@@ -494,7 +532,7 @@
           if (status.ready) {
             const payload = await api(`${SQL_ENDPOINT}?recurso=contexto&_=${Date.now()}`, {
               force: true,
-              timeout: 20000,
+              timeout: CONTEXT_PAYLOAD_TIMEOUT_MS,
             });
             return useContextPayload(payload, { blocking });
           }
@@ -506,10 +544,13 @@
             );
           }
 
-          await sleep(650);
+          await sleep(1000);
         }
 
-        throw new Error('A preparação do contexto excedeu o tempo esperado.');
+        throw Object.assign(
+          new Error('A primeira sincronização excedeu 12 minutos. Confira o terminal do npm start para ver em qual etapa o Azure SQL parou.'),
+          { code: 'DAILY_SNAPSHOT_MAX_WAIT' }
+        );
       } catch (error) {
         setSideStatus('error', error.message);
         if (blocking) {
@@ -518,10 +559,8 @@
             phase: 'error',
             progress: 0,
             message: error.message,
-            error: { message: error.message, code: error.code },
+            error: { message:error.message, code:error.code || '' },
           });
-        } else {
-          console.debug('[campanhas] atualização de contexto em segundo plano não concluída:', error.message);
         }
         throw error;
       } finally {

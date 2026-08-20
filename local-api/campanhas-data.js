@@ -96,7 +96,7 @@ function publicStatus() {
       representantes: state.context.representatives.length,
     } : { fornecedores: 0, produtos: 0, representantes: 0 },
     error: state.error,
-    version: '5.17.0',
+    version: '5.17.1',
     dailySnapshot: getDailySnapshotStatus(),
   };
 }
@@ -263,18 +263,28 @@ async function queryContext() {
 
 async function prepareContext({ force = false } = {}) {
   await loadDiskCache();
+
+  // A primeira carga diária pode levar alguns minutos. Marcamos o estado antes
+  // de aguardar o snapshot para que a UI mostre progresso em vez de concluir
+  // incorretamente que a API local caiu.
+  state.status = 'loading';
+  state.startedAt = nowIso();
+  state.error = null;
+  setProgress('query', 12, 'Sincronizando o snapshot comercial diário com o Azure SQL…');
+
   await ensureDailySnapshot();
   const dailyStatus = getDailySnapshotStatus();
   const contextTime = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
   const snapshotTime = dailyStatus.updatedAt ? new Date(dailyStatus.updatedAt).getTime() : 0;
   const fresh = Boolean(state.context && contextTime && snapshotTime && contextTime >= snapshotTime);
-  if (!force && fresh) return state.context;
+  if (!force && fresh) {
+    state.status = 'ready';
+    setProgress('ready', 100, 'Contexto comercial pronto.');
+    return state.context;
+  }
   if (warmupPromise) return warmupPromise;
 
-  state.status = 'loading';
-  state.startedAt = nowIso();
-  state.error = null;
-  setProgress('connect', 8, 'Conectando ao SQL Server da PMG…');
+  setProgress('organize', 18, 'Snapshot diário disponível. Preparando o contexto de Campanhas…');
 
   warmupPromise = (async () => {
     try {
@@ -1300,7 +1310,7 @@ function publicError(error) {
     erro: error?.message || 'Falha inesperada na API local de campanhas.',
     codigo: code,
     origem: 'local-api/campanhas-data',
-    versao: '5.17.0',
+    versao: '5.17.1',
     dica: hints[code] || 'Confira o terminal do servidor local.',
     recuperacaoSqlTentada:Boolean(error?.sqlRecoveryAttempted),
   };
@@ -1337,7 +1347,7 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({
         ok: true,
-        version: '5.17.0',
+        version: '5.17.1',
         sql: result.recordset?.[0] || null,
         context: publicStatus(),
         configuration: diagnosticoConfiguracaoSql(),
