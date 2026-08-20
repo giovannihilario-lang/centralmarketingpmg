@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#133d25">
+  <script>
+    (() => {
+      try {
+        const raw = localStorage.getItem('pmg-demandas-accessibilidade-v2') || localStorage.getItem('pmg-demandas-accessibilidade-v1') || '{}';
+        const saved = JSON.parse(raw);
+        const dark = saved && saved.theme === 'dark';
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#0a100d' : '#133d25');
+      } catch (_) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    })();
+  </script>
+  <title>Central de Demandas — PMG Connect</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=6">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png?v=6">
+  <link rel="apple-touch-icon" href="/favicon.png?v=6">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/demandas-v2.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loading-orbit"><span></span><span></span><span></span></div>
+    <strong>Organizando o dia...</strong>
+  </div>
+
+  <section id="authScreen" class="auth-screen hidden" aria-label="Login">
+    <div class="auth-visual">
+      <div class="auth-brand"><img src="/imagenssite/pmglogo.png" alt="PMG"><span>PMG Connect</span></div>
+      <div class="auth-copy">
+        <span class="eyebrow light">Central do Marketing</span>
+        <h1>Demandas, agenda e lembretes em um só lugar.</h1>
+        <p>Menos mensagem perdida, menos “era para hoje?”, mais clareza sobre o que precisa acontecer.</p>
+        <div class="auth-feature-list">
+          <div><i data-lucide="calendar-check-2"></i><span>Planejamento diário</span></div>
+          <div><i data-lucide="bell-ring"></i><span>Lembretes no Windows</span></div>
+          <div><i data-lucide="users-round"></i><span>Visão da carga da equipe</span></div>
+        </div>
+      </div>
+      <div class="auth-orb orb-one"></div><div class="auth-orb orb-two"></div>
+    </div>
+    <form id="authForm" class="auth-card">
+      <div class="auth-card-logo"><img src="/imagenssite/pmglogo.png" alt="PMG"></div>
+      <span class="eyebrow">Acesso individual</span>
+      <h2>Entre na Central</h2>
+      <p>Use sua conta do PMG Connect.</p>
+      <div id="authError" class="inline-alert error hidden"></div>
+      <label class="field"><span>E-mail</span><div class="input-shell"><i data-lucide="mail"></i><input id="authEmail" type="email" required autocomplete="email" placeholder="nome@pmg.com.br"></div></label>
+      <label class="field"><span>Senha</span><div class="input-shell"><i data-lucide="lock-keyhole"></i><input id="authPassword" type="password" required autocomplete="current-password" placeholder="Sua senha"></div></label>
+      <button class="btn primary wide" type="submit"><span>Entrar</span><i data-lucide="arrow-right"></i></button>
+      <small>O login individual identifica responsáveis, comentários e conclusões.</small>
+    </form>
+  </section>
+
+  <div id="app" class="app-shell hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="side-brand">
+        <div class="side-logo"><img src="/imagenssite/pmglogo.png" alt="PMG"></div>
+        <div><strong>PMG Connect</strong><span>Marketing</span></div>
+        <button id="closeSidebarBtn" class="icon-btn ghost mobile-only" aria-label="Fechar menu"><i data-lucide="x"></i></button>
+      </div>
+
+      <nav class="side-nav" aria-label="Navegação principal">
+        <span class="nav-group">Organização</span>
+        <button class="nav-item active" data-view="hoje"><i data-lucide="sun"></i><span>Hoje</span><b id="navTodayCount" class="nav-badge hidden">0</b></button>
+        <button class="nav-item" data-view="agenda"><i data-lucide="calendar-days"></i><span>Agenda</span></button>
+        <button class="nav-item" data-view="academia"><i data-lucide="presentation"></i><span>Academia PMG</span><b id="navAcademyPending" class="nav-badge hidden">0</b></button>
+        <button class="nav-item" data-view="demandas"><i data-lucide="layout-dashboard"></i><span>Demandas</span><b id="navTaskCount" class="nav-badge">0</b></button>
+        <button class="nav-item" data-view="projetos"><i data-lucide="folder-kanban"></i><span>Projetos</span><b id="navProjectCount" class="nav-badge hidden">0</b></button>
+        <button class="nav-item manager-only" data-view="automacoes"><i data-lucide="workflow"></i><span>Automações</span><b id="navAutomationCount" class="nav-badge hidden">0</b></button>
+        <button class="nav-item" data-view="equipe"><i data-lucide="users-round"></i><span>Equipe</span></button>
+
+        <span class="nav-group">PMG Connect</span>
+        <a class="nav-item" href="/central.html"><i data-lucide="house"></i><span>Início</span></a>
+        <a class="nav-item" href="/campanhas.html"><i data-lucide="megaphone"></i><span>Campanhas</span></a>
+        <a class="nav-item" href="/dashboard.html"><i data-lucide="chart-no-axes-combined"></i><span>Dashboard Geral</span></a>
+        <a class="nav-item" href="http://localhost:3001/dashboard-regional.html"><i data-lucide="map"></i><span>Dashboard Regional</span></a>
+      </nav>
+
+      <div class="side-status">
+        <div class="status-line"><span id="realtimeDot" class="live-dot"></span><div><strong id="realtimeLabel">Conectando</strong><small>Atualização em tempo real</small></div></div>
+        <button id="openNotificationSettings" class="mini-action"><i data-lucide="bell"></i><span id="pushStatusLabel">Configurar alertas</span></button>
+      </div>
+
+      <div class="side-user">
+        <div id="sideUserAvatar"></div>
+        <div class="side-user-copy"><strong id="sideUserName">Carregando...</strong><span id="sideUserRole">Colaborador</span></div>
+        <button id="profileBtn" class="icon-btn ghost-light" title="Editar perfil"><i data-lucide="settings-2"></i></button>
+      </div>
+    </aside>
+
+    <main class="main-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="openSidebarBtn" class="icon-btn subtle mobile-only" aria-label="Abrir menu"><i data-lucide="menu"></i></button>
+          <div><span id="pageEyebrow" class="page-eyebrow">Sua rotina</span><h1 id="pageTitle">Hoje</h1></div>
+        </div>
+        <div class="topbar-center">
+          <button id="globalSearchBtn" class="global-search"><i data-lucide="search"></i><span>Buscar tudo ou executar um comando</span><kbd>Ctrl K</kbd></button>
+        </div>
+        <div class="topbar-actions">
+          <button id="refreshBtn" class="icon-btn subtle" title="Atualizar dados"><i data-lucide="refresh-cw"></i></button>
+          <button id="notificationBtn" class="icon-btn subtle notification-trigger" title="Notificações"><i data-lucide="bell"></i><b id="notificationBadge" class="notification-badge hidden">0</b></button>
+          <button id="themeToggleBtn" class="theme-toggle" type="button" role="switch" aria-checked="false" title="Ativar modo escuro" aria-label="Alternar modo escuro">
+            <span class="theme-toggle-track" aria-hidden="true">
+              <i class="theme-toggle-sun" data-lucide="sun"></i>
+              <i class="theme-toggle-moon" data-lucide="moon"></i>
+              <span class="theme-toggle-thumb"></span>
+            </span>
+          </button>
+          <button id="accessibilityBtn" class="icon-btn subtle" title="Acessibilidade e tamanho da interface" aria-label="Acessibilidade"><i data-lucide="accessibility"></i></button>
+          <button id="quickAddBtn" class="btn primary"><i data-lucide="plus"></i><span>Adicionar</span></button>
+
+          <div id="userMenuWrapper" class="user-menu-wrapper">
+            <button
+              id="userMenuTrigger"
+              class="user-menu-trigger"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-controls="userDropdown"
+            >
+              <span id="headerUserAvatar" class="user-menu-avatar" aria-hidden="true"></span>
+              <span class="user-menu-info">
+                <strong id="headerUserName">Usuário</strong>
+                <small id="headerUserRole">Marketing</small>
+              </span>
+              <i class="user-menu-chevron" data-lucide="chevron-down"></i>
+            </button>
+
+            <div id="userDropdown" class="user-dropdown hidden" role="menu" aria-label="Menu do usuário">
+              <div class="user-dropdown-header">
+                <span id="dropdownUserAvatar" class="user-dropdown-avatar" aria-hidden="true"></span>
+                <div>
+                  <strong id="dropdownUserName">Usuário</strong>
+                  <small id="dropdownUserEmail">Conta do PMG Connect</small>
+                </div>
+              </div>
+
+              <div class="user-dropdown-divider"></div>
+
+              <button id="userMenuProfileBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="user-round"></i><span>Meu perfil</span>
+              </button>
+              <button id="userMenuTasksBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="list-checks"></i><span>Minhas demandas</span>
+              </button>
+              <button id="userMenuAgendaBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="calendar-days"></i><span>Minha agenda</span>
+              </button>
+              <button id="userMenuTutorialBtn" class="user-dropdown-item" type="button" role="menuitem">
+                <i data-lucide="circle-help"></i><span>Ver tutorial</span>
+              </button>
+
+              <div class="user-dropdown-divider"></div>
+
+              <button id="logoutBtn" class="user-dropdown-item user-dropdown-logout" type="button" role="menuitem">
+                <i data-lucide="log-out"></i><span>Sair</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div id="connectionBanner" class="connection-banner hidden"><i data-lucide="wifi-off"></i><span>Sem conexão em tempo real. Tentando reconectar...</span></div>
+
+      <div class="view-stack">
+        <section id="viewHoje" class="view active" data-page="hoje">
+          <div class="hero-grid">
+            <article class="today-hero">
+              <div class="today-hero-copy">
+                <span id="todayDateLabel" class="eyebrow light"></span>
+                <h2 id="greetingTitle">Bom dia.</h2>
+                <p id="dailySummary">Carregando sua rotina...</p>
+                <div class="hero-actions">
+                  <button class="btn light" data-quick-type="demanda"><i data-lucide="clipboard-plus"></i>Nova demanda</button>
+                  <button class="btn glass" data-quick-type="lembrete"><i data-lucide="bell-plus"></i>Novo lembrete</button>
+                </div>
+              </div>
+              <div class="hero-visual" aria-hidden="true">
+                <div class="hero-ring ring-a"></div><div class="hero-ring ring-b"></div>
+                <div class="hero-date-card"><span id="heroWeekday">QUA</span><strong id="heroDay">05</strong><small id="heroMonth">AGO</small></div>
+              </div>
+            </article>
+
+            <article class="quick-capture card">
+              <div class="card-heading"><div><span class="eyebrow">Captura rápida</span><h3>Não deixe escapar</h3></div><i data-lucide="sparkles"></i></div>
+              <form id="quickCaptureForm">
+                <textarea id="quickCaptureText" rows="3" placeholder="Ex.: lembrar de revisar a campanha amanhã às 9h"></textarea>
+                <div class="quick-capture-footer">
+                  <div class="segmented compact" id="quickCaptureType">
+                    <button type="button" class="active" data-type="lembrete">Lembrete</button>
+                    <button type="button" data-type="demanda">Demanda</button>
+                  </div>
+                  <button class="round-submit" type="submit" aria-label="Adicionar"><i data-lucide="arrow-up"></i></button>
+                </div>
+              </form>
+            </article>
+          </div>
+
+          <div class="metric-grid">
+            <button class="metric-card danger" data-smart-filter="atrasadas"><span class="metric-icon"><i data-lucide="triangle-alert"></i></span><span><strong id="metricOverdue">0</strong><small>Atrasadas</small></span><i data-lucide="chevron-right"></i></button>
+            <button class="metric-card amber" data-smart-filter="hoje"><span class="metric-icon"><i data-lucide="clock-3"></i></span><span><strong id="metricToday">0</strong><small>Para hoje</small></span><i data-lucide="chevron-right"></i></button>
+            <button class="metric-card green" data-smart-filter="semana"><span class="metric-icon"><i data-lucide="calendar-range"></i></span><span><strong id="metricWeek">0</strong><small>Próximos 7 dias</small></span><i data-lucide="chevron-right"></i></button>
+            <button class="metric-card blue" data-smart-filter="minhas"><span class="metric-icon"><i data-lucide="circle-user-round"></i></span><span><strong id="metricMine">0</strong><small>Minhas demandas</small></span><i data-lucide="chevron-right"></i></button>
+          </div>
+
+          <section class="smart-day card" aria-labelledby="smartDayTitle">
+            <div class="section-header smart-day-head">
+              <div><span class="eyebrow">Meu Dia inteligente</span><h3 id="smartDayTitle">O que merece atenção, na ordem certa</h3><p>O Connect separa automaticamente urgências, hoje, próximos dias e o que pode esperar.</p></div>
+              <span id="smartDayCount" class="soft-count">0 itens</span>
+            </div>
+            <div id="smartDayBoard" class="smart-day-board"></div>
+          </section>
+
+          <div class="today-layout">
+            <section class="card agenda-today-card">
+              <div class="section-header"><div><span class="eyebrow">Linha do tempo</span><h3>Minha agenda de hoje</h3></div><button class="text-action" data-goto="agenda">Abrir agenda <i data-lucide="arrow-up-right"></i></button></div>
+              <div id="todayTimeline" class="timeline-list"></div>
+            </section>
+
+            <section class="card focus-card">
+              <div class="section-header"><div><span class="eyebrow">Prioridade</span><h3>Próximas ações</h3></div><span id="focusCount" class="soft-count">0 itens</span></div>
+              <div id="focusList" class="focus-list"></div>
+            </section>
+
+            <section class="card activity-card">
+              <div class="section-header"><div><span class="eyebrow">Equipe</span><h3>Movimentações recentes</h3></div><button class="text-action" data-goto="equipe">Ver equipe</button></div>
+              <div id="activityFeed" class="activity-feed"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="viewAgenda" class="view" data-page="agenda">
+          <div class="page-toolbar agenda-toolbar unified-agenda-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Planejamento unificado</span><h2>Agenda</h2><p>Um único calendário para sua rotina e para o setor. Alterne a visão sem ficar pulando entre calendários diferentes.</p></div>
+            <div class="toolbar-actions agenda-scope-actions">
+              <div id="agendaScopeToggle" class="segmented agenda-scope-toggle" aria-label="Visão da agenda">
+                <button type="button" class="active" data-agenda-scope="mine"><i data-lucide="circle-user-round"></i><span>Minha agenda</span></button>
+                <button type="button" data-agenda-scope="team"><i data-lucide="users-round"></i><span>Equipe</span></button>
+              </div>
+              <select id="agendaPersonFilter" class="toolbar-select hidden" aria-label="Filtrar por colaborador"><option value="">Toda a equipe</option></select>
+              <button id="agendaTodayBtn" class="btn secondary">Hoje</button>
+              <button id="agendaNewEventBtn" class="btn primary"><i data-lucide="calendar-plus"></i><span>Novo compromisso</span></button>
+            </div>
+          </div>
+
+          <div id="agendaScopeSummary" class="sector-calendar-summary unified-agenda-summary"></div>
+
+          <div class="calendar-layout">
+            <section class="calendar-card card">
+              <div class="calendar-head">
+                <div class="calendar-nav"><button id="calendarPrev" class="icon-btn subtle"><i data-lucide="chevron-left"></i></button><button id="calendarNext" class="icon-btn subtle"><i data-lucide="chevron-right"></i></button></div>
+                <h3 id="calendarMonthLabel">Agosto de 2026</h3>
+                <div class="calendar-legend"><span><i class="legend-dot task"></i>Demanda</span><span><i class="legend-dot reminder"></i>Lembrete</span><span><i class="legend-dot meeting"></i>Compromisso</span></div>
+              </div>
+              <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+              <div id="calendarGrid" class="calendar-grid"></div>
+            </section>
+
+            <aside class="selected-day card">
+              <div class="selected-day-head"><span id="selectedDayWeekday">Quarta-feira</span><strong id="selectedDayNumber">05</strong><small id="selectedDayMonth">Agosto</small></div>
+              <button id="addOnSelectedDay" class="btn soft wide"><i data-lucide="plus"></i>Adicionar neste dia</button>
+              <div id="selectedDayItems" class="day-items"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="viewAcademia" class="view" data-page="academia">
+          <div class="page-toolbar academy-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Espaço compartilhado</span><h2>Academia PMG</h2><p>Consulte disponibilidade, cadastre treinamentos e aprove solicitações em um único lugar.</p></div>
+            <div class="toolbar-actions">
+              <button id="academyFormsBtn" class="btn secondary"><i data-lucide="external-link"></i><span>Abrir Forms</span></button>
+              <button id="academyCopyFormsBtn" class="btn secondary"><i data-lucide="copy"></i><span>Copiar link</span></button>
+              <button id="academyNewTrainingBtn" class="btn training academy-manager-only"><i data-lucide="presentation"></i><span>Novo treinamento</span></button>
+              <button id="academyNewBookingBtn" class="btn primary academy-manager-only"><i data-lucide="calendar-plus"></i><span>Nova reserva</span></button>
+            </div>
+          </div>
+
+          <div id="academySetupNotice" class="academy-setup-notice hidden"></div>
+          <div id="academySummary" class="academy-summary"></div>
+
+          <nav id="academySectionTabs" class="academy-section-tabs" aria-label="Seções da Academia PMG" role="tablist">
+            <button type="button" class="academy-section-tab active" data-academy-tab="calendar" role="tab" aria-selected="true"><i data-lucide="calendar-days"></i><span><strong>Calendário</strong><small>Disponibilidade e ocupações</small></span></button>
+            <button type="button" class="academy-section-tab" data-academy-tab="trainings" role="tab" aria-selected="false"><i data-lucide="presentation"></i><span><strong>Treinamentos</strong><small>Cadastrar e gerenciar</small></span><b id="academyTrainingTabCount" class="academy-tab-count">0</b></button>
+            <button type="button" class="academy-section-tab" data-academy-tab="requests" role="tab" aria-selected="false"><i data-lucide="inbox"></i><span><strong>Solicitações</strong><small>Pedidos do Forms</small></span><b id="academyRequestTabCount" class="academy-tab-count">0</b></button>
+          </nav>
+
+          <div id="academyPanelCalendar" class="academy-tab-panel">
+            <div class="academy-command-bar academy-manager-only">
+              <div class="academy-command-copy"><i data-lucide="calendar-sync"></i><span><strong>Agenda central da Academia</strong><small>Treinamentos e reservas aprovadas bloqueiam o período automaticamente.</small></span></div>
+              <div class="academy-command-actions"><button id="academyImportBtn" class="btn secondary"><i data-lucide="file-up"></i>Importar relatório</button><button id="academyConfigBtn" class="btn secondary"><i data-lucide="settings-2"></i>Configurar</button></div>
+            </div>
+
+            <div class="calendar-layout academy-calendar-layout">
+              <section class="calendar-card card">
+                <div class="calendar-head">
+                  <div class="calendar-nav"><button id="academyPrev" class="icon-btn subtle"><i data-lucide="chevron-left"></i></button><button id="academyNext" class="icon-btn subtle"><i data-lucide="chevron-right"></i></button></div>
+                  <h3 id="academyMonthLabel">Agosto de 2026</h3>
+                  <div class="calendar-legend"><span><i class="legend-dot academy-training"></i>Treinamento</span><span><i class="legend-dot academy-approved"></i>Reserva</span><span><i class="legend-dot academy-pending"></i>Solicitada</span><span><i class="legend-dot academy-free"></i>Livre</span></div>
+                </div>
+                <div class="calendar-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+                <div id="academyCalendarGrid" class="calendar-grid academy-calendar-grid"></div>
+              </section>
+              <aside class="selected-day card academy-selected-day">
+                <div class="selected-day-head academy-day-head"><span id="academySelectedWeekday">Qua</span><strong id="academySelectedNumber">05</strong><small id="academySelectedMonth">Agosto</small></div>
+                <div id="academyAvailability" class="academy-availability"></div>
+                <div class="academy-selected-actions academy-manager-only">
+                  <button id="academyAddTrainingSelectedDay" class="btn training wide"><i data-lucide="presentation"></i>Treinamento neste dia</button>
+                  <button id="academyAddSelectedDay" class="btn soft wide"><i data-lucide="plus"></i>Reservar neste dia</button>
+                </div>
+                <div id="academySelectedItems" class="academy-selected-items"></div>
+              </aside>
+            </div>
+          </div>
+
+          <div id="academyPanelTrainings" class="academy-tab-panel hidden">
+            <section class="academy-training-hub card">
+              <div class="academy-training-hub-copy">
+                <span class="eyebrow">Programação interna</span>
+                <h3>Treinamentos da Academia PMG</h3>
+                <p>Cadastre treinamentos futuros diretamente no Connect. Ao salvar, o período já fica bloqueado no calendário e entra na programação compartilhada.</p>
+                <div class="academy-training-rules">
+                  <span><i data-lucide="shield-check"></i> Bloqueio automático</span>
+                  <span><i data-lucide="repeat-2"></i> Editável depois</span>
+                  <span><i data-lucide="users-round"></i> Visível para a equipe</span>
+                </div>
+              </div>
+              <button id="academyTrainingCreateTabBtn" type="button" class="btn training academy-training-create academy-manager-only"><i data-lucide="plus"></i><span><strong>Cadastrar novo treinamento</strong><small>PMG Geral, MKT, Avulso ou Outro</small></span></button>
+            </section>
+
+            <section class="academy-training-manager card">
+              <div class="section-header"><div><span class="eyebrow">Agenda futura</span><h3>Treinamentos cadastrados</h3><p>Use o lápis para editar ou cancelar um treinamento já programado.</p></div><span id="academyTrainingCount" class="soft-count">0 programados</span></div>
+              <div id="academyTrainingList" class="academy-training-list academy-training-list-full"></div>
+            </section>
+          </div>
+
+          <div id="academyPanelRequests" class="academy-tab-panel hidden">
+            <section class="academy-request-hub card">
+              <div><span class="eyebrow">Google Forms</span><h3>Solicitações de outros setores</h3><p>As respostas novas entram aqui como pendentes. Você decide se aprova ou recusa sem transformar o Forms em uma reserva automática.</p></div>
+              <div class="academy-request-actions"><button type="button" class="btn secondary" data-academy-open-forms><i data-lucide="external-link"></i>Abrir Forms</button><button type="button" class="btn secondary" data-academy-copy-forms><i data-lucide="copy"></i>Copiar link</button></div>
+            </section>
+            <section class="academy-requests card">
+              <div class="section-header"><div><span class="eyebrow">Fila de análise</span><h3>Solicitações pendentes</h3></div><span id="academyPendingCount" class="soft-count">0 solicitações</span></div>
+              <div id="academyPendingList" class="academy-pending-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="viewDemandas" class="view" data-page="demandas">
+          <div class="page-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Fluxo de trabalho</span><h2>Demandas</h2><p>Acompanhe entregas, responsáveis e gargalos do setor.</p></div>
+            <div class="toolbar-actions"><button id="recurrenceManagerBtn" class="btn secondary manager-only hidden" type="button"><i data-lucide="repeat-2"></i>Recorrências</button><button id="newTaskPageBtn" class="btn primary manager-only hidden" data-quick-type="demanda"><i data-lucide="plus"></i>Nova demanda</button></div>
+          </div>
+
+          <section class="task-toolbar card">
+            <div class="search-input"><i data-lucide="search"></i><input id="taskSearch" placeholder="Buscar por título, descrição ou tag"></div>
+            <select id="taskAssigneeFilter"><option value="">Todos os responsáveis</option></select>
+            <select id="taskProjectFilter"><option value="">Todos os projetos</option></select>
+            <select id="taskPriorityFilter"><option value="">Todas as prioridades</option><option value="imediata">Imediata</option><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
+            <select id="taskArchiveFilter"><option value="ativas">Ativas</option><option value="arquivadas">Arquivadas</option><option value="todas">Todas</option></select>
+            <select id="taskRecurrenceFilter" aria-label="Filtrar recorrência"><option value="">Todas</option><option value="recorrentes">Recorrentes</option><option value="nao_recorrentes">Não recorrentes</option></select>
+            <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
+          </section>
+
+          <section class="avatar-filter-panel" aria-label="Filtrar demandas por responsável">
+            <div class="avatar-filter-copy">
+              <i data-lucide="users-round"></i>
+              <span><strong>Responsáveis</strong><small>Filtre a fila usando os avatares da equipe.</small></span>
+            </div>
+            <div id="taskAvatarFilters" class="task-avatar-filters"></div>
+          </section>
+
+          <div id="taskSmartFilterBar" class="smart-filter-bar hidden"><span id="smartFilterLabel"></span><button id="clearSmartFilter"><i data-lucide="x"></i>Limpar</button></div>
+
+          <section id="taskBoard" class="task-board">
+            <div class="kanban-column" data-status="nova"><div class="kanban-head"><span class="status-mark blue"></span><strong>Nova</strong><b>0</b></div><div class="kanban-list"></div></div>
+            <div class="kanban-column" data-status="andamento"><div class="kanban-head"><span class="status-mark amber"></span><strong>Em andamento</strong><b>0</b></div><div class="kanban-list"></div></div>
+            <div class="kanban-column" data-status="revisao"><div class="kanban-head"><span class="status-mark purple"></span><strong>Em revisão</strong><b>0</b></div><div class="kanban-list"></div></div>
+            <div class="kanban-column" data-status="concluida"><div class="kanban-head"><span class="status-mark green"></span><strong>Concluída</strong><b>0</b></div><div class="kanban-list"></div></div>
+          </section>
+
+          <section id="taskListView" class="task-list-view card hidden">
+            <div class="task-table-head"><span>Demanda</span><span>Responsáveis</span><span>Prazo</span><span>Status</span><span>Prioridade</span></div>
+            <div id="taskRows" class="task-rows"></div>
+          </section>
+        </section>
+
+        <section id="viewProjetos" class="view" data-page="projetos">
+          <div class="page-toolbar projects-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Planejamento conectado</span><h2>Projetos</h2><p>Agrupe demandas por objetivo, acompanhe progresso, horas, gargalos e dependências em uma visão só.</p></div>
+            <div class="toolbar-actions">
+              <button id="projectNewDemandBtn" class="btn secondary manager-only"><i data-lucide="clipboard-plus"></i><span>Nova demanda</span></button>
+              <button id="projectNewBtn" class="btn primary academy-manager-only"><i data-lucide="folder-plus"></i><span>Novo projeto</span></button>
+            </div>
+          </div>
+          <div id="projectSetupNotice" class="feature-setup-notice hidden"></div>
+          <div id="projectSummary" class="project-summary"></div>
+          <div class="projects-filter-row">
+            <div class="search-input projects-search"><i data-lucide="search"></i><input id="projectSearch" type="search" placeholder="Buscar projeto, objetivo ou responsável..."></div>
+            <select id="projectStatusFilter" class="toolbar-select" aria-label="Filtrar status"><option value="">Todos os status</option><option value="planejado">Planejado</option><option value="ativo">Ativo</option><option value="pausado">Pausado</option><option value="concluido">Concluído</option></select>
+          </div>
+          <div id="projectGrid" class="project-grid"></div>
+          <section id="projectDetail" class="project-detail card hidden"></section>
+        </section>
+
+        <section id="viewAutomacoes" class="view" data-page="automacoes">
+          <div class="page-toolbar automations-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Rotinas automáticas</span><h2>Automações</h2><p>Crie regras do tipo SE → ENTÃO para reduzir cobrança manual e avisar a pessoa certa no momento certo.</p></div>
+            <div class="toolbar-actions"><button id="automationNewBtn" class="btn primary academy-manager-only"><i data-lucide="workflow"></i><span>Nova automação</span></button></div>
+          </div>
+          <div id="automationSetupNotice" class="feature-setup-notice hidden"></div>
+          <div id="automationSummary" class="automation-summary"></div>
+          <section class="automation-examples card">
+            <div class="section-header"><div><span class="eyebrow">Exemplos úteis</span><h3>Regras que combinam com o fluxo da PMG</h3></div></div>
+            <div class="automation-example-grid">
+              <button type="button" data-automation-template="imediata"><i data-lucide="siren"></i><span><strong>Demanda imediata</strong><small>Ao criar prioridade IMEDIATA → alerta crítico para o responsável.</small></span></button>
+              <button type="button" data-automation-template="revisao"><i data-lucide="scan-eye"></i><span><strong>Chegou em revisão</strong><small>Ao entrar em revisão → alerta importante para quem criou a demanda.</small></span></button>
+              <button type="button" data-automation-template="prazo"><i data-lucide="clock-alert"></i><span><strong>Prazo em 24h</strong><small>Quando faltar um dia → avisar o responsável.</small></span></button>
+              <button type="button" data-automation-template="parada"><i data-lucide="hourglass"></i><span><strong>Sem movimentação</strong><small>3 dias sem atualizar → avisar quem criou a demanda.</small></span></button>
+            </div>
+          </section>
+          <div id="automationList" class="automation-list"></div>
+        </section>
+
+        <section id="viewEquipe" class="view" data-page="equipe">
+          <div class="page-toolbar team-page-toolbar">
+            <div class="toolbar-title">
+              <span id="teamPageEyebrow" class="eyebrow">Capacidade do setor</span>
+              <h2>Equipe</h2>
+              <p id="teamPageDescription">Acompanhe carga, prioridades, entregas e movimentações de cada pessoa.</p>
+            </div>
+            <div class="toolbar-actions manager-only">
+              <button id="teamMonthlyReportBtn" class="btn secondary"><i data-lucide="file-chart-column"></i><span>Relatório mensal</span></button>
+              <button id="teamNewDemandBtn" class="btn primary"><i data-lucide="clipboard-plus"></i><span>Nova demanda</span></button>
+            </div>
+          </div>
+
+          <div id="teamManagerBanner" class="team-manager-banner manager-only">
+            <div class="team-manager-banner-icon"><i data-lucide="scan-search"></i></div>
+            <div><span class="eyebrow light">Visão gerencial</span><strong>O setor inteiro, sem precisar caçar atualização em conversa.</strong><p>Os indicadores abaixo são calculados com base nas demandas, prazos, estimativas e atividades registradas no Connect.</p></div>
+            <span id="teamUpdatedAt" class="team-updated-at">Atualizado agora</span>
+          </div>
+
+          <div id="teamSummary" class="team-summary"></div>
+          <div id="teamAvatarStrip" class="team-avatar-strip"></div>
+          <div id="teamInsights" class="team-insights manager-only"></div>
+
+          <section class="team-capacity-forecast card manager-only">
+            <div class="section-header">
+              <div><span class="eyebrow">Previsão de capacidade</span><h3>Carga dos próximos 7, 14 e 30 dias</h3><p>Antes de delegar ou transferir, veja quanto trabalho já está concentrado em cada pessoa.</p></div>
+              <span class="capacity-reference"><i data-lucide="gauge"></i> Base semanal: 24h estimadas</span>
+            </div>
+            <div id="teamCapacityForecast" class="team-capacity-forecast-grid"></div>
+          </section>
+
+          <div class="team-controls manager-only">
+            <div class="team-search-field"><i data-lucide="search"></i><input id="teamSearch" type="search" placeholder="Buscar colaborador ou cargo..."></div>
+            <select id="teamSort" aria-label="Ordenar equipe">
+              <option value="risk">Maior atenção</option>
+              <option value="workload">Maior carga</option>
+              <option value="overdue">Mais atrasos</option>
+              <option value="completed">Mais conclusões</option>
+              <option value="name">Nome</option>
+            </select>
+            <button id="teamRiskOnly" class="team-filter-toggle" type="button" aria-pressed="false"><i data-lucide="triangle-alert"></i>Somente atenção</button>
+          </div>
+
+          <div id="teamGrid" class="team-grid"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="sidebarBackdrop" class="sidebar-backdrop hidden"></div>
+
+  <aside id="notificationDrawer" class="right-drawer hidden" aria-label="Notificações">
+    <div class="drawer-top"><div><span class="eyebrow">Central</span><h2>Notificações</h2></div><button class="icon-btn subtle" data-close-drawer="notificationDrawer"><i data-lucide="x"></i></button></div>
+    <div class="drawer-actions"><button id="markAllReadBtn" class="text-action">Marcar todas como lidas</button><button id="notificationSettingsBtn" class="text-action"><i data-lucide="settings-2"></i>Configurar</button></div>
+    <div id="notificationList" class="notification-list"></div>
+  </aside>
+
+  <aside id="personDrawer" class="right-drawer person-detail-drawer hidden" aria-label="Visão gerencial do colaborador">
+    <div class="drawer-top person-drawer-top"><div><span id="personDrawerKicker" class="eyebrow">Visão gerencial</span><h2 id="personDrawerTitle">Colaborador</h2></div><button class="icon-btn subtle" data-close-drawer="personDrawer"><i data-lucide="x"></i></button></div>
+    <div id="personDrawerContent" class="person-drawer-content"></div>
+  </aside>
+
+  <aside id="taskDrawer" class="right-drawer task-detail-drawer hidden" aria-label="Detalhes da demanda">
+    <div class="drawer-top"><div><span id="taskDrawerKicker" class="eyebrow">Demanda</span><h2 id="taskDrawerTitle">Título</h2></div><button class="icon-btn subtle" data-close-drawer="taskDrawer"><i data-lucide="x"></i></button></div>
+    <div id="taskDrawerContent" class="task-drawer-content"></div>
+  </aside>
+
+  <div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
+
+  <div id="quickAddModal" class="modal-layer hidden">
+    <div class="modal-card quick-add-modal">
+      <div class="modal-head"><div><span class="eyebrow">Adicionar</span><h2>Novo item</h2><p>Escolha o tipo e preencha só o necessário.</p></div><button class="icon-btn subtle" data-close-modal="quickAddModal"><i data-lucide="x"></i></button></div>
+      <form id="quickAddForm">
+        <div class="modal-body">
+          <div id="itemTypeSelector" class="type-selector">
+            <button type="button" class="active" data-item-type="demanda"><i data-lucide="clipboard-check"></i><span><strong>Demanda</strong><small>Entrega da equipe</small></span></button>
+            <button type="button" data-item-type="lembrete"><i data-lucide="bell-ring"></i><span><strong>Lembrete</strong><small>Algo para não esquecer</small></span></button>
+            <button type="button" data-item-type="compromisso"><i data-lucide="calendar-clock"></i><span><strong>Compromisso</strong><small>Evento com horário</small></span></button>
+          </div>
+
+          <section id="taskTemplateToolbar" class="task-template-toolbar manager-only">
+            <div class="task-template-copy"><span class="task-template-icon"><i data-lucide="copy-check"></i></span><div><strong>Começar por um modelo</strong><small>Preencha briefing, prazo-base, tamanho, tags, projeto e checklist sem repetir o mesmo trabalho todo mês.</small></div></div>
+            <div class="task-template-actions"><select id="taskTemplateSelect" aria-label="Modelo de demanda"><option value="">Sem modelo</option></select><button id="taskTemplateApplyBtn" class="btn secondary" type="button"><i data-lucide="wand-sparkles"></i>Aplicar</button><button id="taskTemplateSaveBtn" class="btn soft" type="button"><i data-lucide="save"></i>Salvar atual</button><button id="taskTemplateDeleteBtn" class="icon-btn subtle hidden" type="button" title="Excluir modelo"><i data-lucide="trash-2"></i></button></div>
+          </section>
+
+          <input id="itemType" type="hidden" value="demanda">
+          <label class="field"><span>Título</span><input id="itemTitle" required maxlength="160" placeholder="O que precisa acontecer?"></label>
+          <label class="field"><span>Descrição <em>opcional</em></span><textarea id="itemDescription" rows="3" placeholder="Contexto, briefing ou observações"></textarea></label>
+
+          <div id="demandFields">
+            <section class="task-config-section">
+              <div class="task-config-heading">
+                <div><span class="eyebrow">Organização</span><h3>Quem faz e como entra na fila</h3></div>
+                <p>Use informações de carga e prioridade para distribuir o trabalho com clareza.</p>
+              </div>
+
+              <div class="task-setup-grid">
+                <div class="visual-field assignee-visual-field">
+                  <span class="visual-field-label">Responsáveis</span>
+                  <select id="itemAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="">Sem responsável</option></select>
+                  <input id="itemAssigneesJson" type="hidden" value="[]">
+                  <button id="itemAssigneePickerBtn" class="assignee-selector-button" type="button">
+                    <span id="itemAssigneePreview" class="assignee-selector-preview"></span>
+                    <span class="assignee-selector-action"><span>Selecionar pessoas</span><i data-lucide="users-round"></i></span>
+                  </button>
+                </div>
+
+                <div class="visual-field responsibility-mode-field">
+                  <span class="visual-field-label">Modo de responsabilidade</span>
+                  <select id="itemResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="compartilhada" selected>Compartilhada</option>
+                    <option value="primeiro_cumprir">Primeiro a cumprir</option>
+                  </select>
+                  <div class="responsibility-mode-grid">
+                    <button type="button" class="responsibility-mode-choice shared" data-choice-target="itemResponsibilityMode" data-choice-value="compartilhada">
+                      <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
+                      <span><strong>Compartilhada</strong><small>Todos trabalham juntos. A carga estimada é dividida entre os responsáveis e cada um registra suas próprias horas.</small></span>
+                    </button>
+                    <button type="button" class="responsibility-mode-choice race" data-choice-target="itemResponsibilityMode" data-choice-value="primeiro_cumprir">
+                      <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
+                      <span><strong>Primeiro a cumprir</strong><small>Todos recebem a demanda, mas a primeira pessoa que clicar em Iniciar assume sozinha a tarefa e a carga completa.</small></span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="visual-field">
+                  <span class="visual-field-label">Prioridade</span>
+                  <select id="itemPriority" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="media" selected>Média</option><option value="baixa">Baixa</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option>
+                  </select>
+                  <div class="choice-card-grid priority-choice-grid" role="group" aria-label="Prioridade da demanda">
+                    <button type="button" class="choice-card priority-low" data-choice-target="itemPriority" data-choice-value="baixa"><i data-lucide="feather"></i><span><strong>Baixa</strong><small>Pode aguardar</small></span></button>
+                    <button type="button" class="choice-card priority-medium" data-choice-target="itemPriority" data-choice-value="media"><i data-lucide="circle-dot"></i><span><strong>Média</strong><small>Fluxo normal</small></span></button>
+                    <button type="button" class="choice-card priority-high" data-choice-target="itemPriority" data-choice-value="alta"><i data-lucide="arrow-up"></i><span><strong>Alta</strong><small>Precisa de atenção</small></span></button>
+                    <button type="button" class="choice-card priority-urgent" data-choice-target="itemPriority" data-choice-value="urgente"><i data-lucide="siren"></i><span><strong>Urgente</strong><small>Interrompe prioridades</small></span></button>
+                    <button type="button" class="choice-card priority-immediate" data-choice-target="itemPriority" data-choice-value="imediata"><i data-lucide="alarm-smoke"></i><span><strong>IMEDIATA</strong><small>Precisa começar neste instante</small></span></button>
+                  </div>
+                </div>
+
+                <div class="visual-field">
+                  <span class="visual-field-label">Tamanho</span>
+                  <select id="itemSize" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                    <option value="rapida">Rápida</option><option value="media" selected>Média</option><option value="grande">Grande</option>
+                  </select>
+                  <div class="choice-card-grid size-choice-grid" role="group" aria-label="Tamanho da demanda">
+                    <button type="button" class="choice-card" data-choice-target="itemSize" data-choice-value="rapida"><i data-lucide="zap"></i><span><strong>Rápida</strong><small>Até 1 hora</small></span></button>
+                    <button type="button" class="choice-card" data-choice-target="itemSize" data-choice-value="media"><i data-lucide="layers-2"></i><span><strong>Média</strong><small>Algumas horas</small></span></button>
+                    <button type="button" class="choice-card" data-choice-target="itemSize" data-choice-value="grande"><i data-lucide="mountain"></i><span><strong>Grande</strong><small>Mais de um período</small></span></button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="immediateAudienceSection" class="immediate-audience-section hidden">
+                <div class="immediate-audience-title"><span class="immediate-siren"><i data-lucide="siren"></i></span><div><strong>Quem deve receber o alerta imediato?</strong><small>Você pode manter um responsável definido ou deixar sem responsável no alerta coletivo; nesse caso, a primeira pessoa que iniciar assume a demanda.</small></div></div>
+                <input id="itemAlertAll" type="hidden" value="false">
+                <div class="immediate-audience-options">
+                  <button type="button" class="immediate-audience-option active" data-immediate-audience="responsavel"><i data-lucide="user-round"></i><span><strong>Somente o responsável</strong><small>O alerta invade a tela apenas da pessoa responsável.</small></span></button>
+                  <button type="button" class="immediate-audience-option team" data-immediate-audience="todos"><i data-lucide="users-round"></i><span><strong>Toda a equipe</strong><small>Todos recebem o alerta. Se não houver responsável definido, a primeira pessoa que iniciar assume a demanda.</small></span></button>
+                </div>
+              </div>
+            </section>
+
+            <section class="task-config-section compact-config-section">
+              <div class="task-config-heading"><div><span class="eyebrow">Prazo e contexto</span><h3>Quando precisa acontecer</h3></div></div>
+              <div class="form-grid three">
+                <label class="field"><span>Prazo</span><input id="itemDueDate" type="date"></label>
+                <label class="field"><span>Horário</span><input id="itemDueTime" type="time" value="17:00"></label>
+                <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="itemEstimate" type="number" min="0" step="0.5" placeholder="2"><span>horas</span></div></label>
+              </div>
+              <div class="form-grid three">
+                <label class="field"><span>Projeto <em>opcional</em></span><input id="itemProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
+                <label class="field"><span>Lembrar</span><select id="itemReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
+                <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
+              </div>
+              <datalist id="projectSuggestions"></datalist>
+              <div class="task-execution-grid">
+                <label class="field task-checklist-field"><span>Checklist <em>um item por linha</em></span><textarea id="itemChecklist" rows="5" placeholder="Ex.: Receber briefing&#10;Criar primeira versão&#10;Enviar para revisão&#10;Publicar"></textarea></label>
+                <label class="field task-dependencies-field"><span>Dependências <em>opcional</em></span><select id="itemDependencies" multiple size="5" aria-label="Demandas que precisam ser concluídas antes"></select><small class="field-help">Use Ctrl para selecionar mais de uma. A demanda fica bloqueada até todas serem concluídas.</small></label>
+              </div>
+            </section>
+
+            <section class="task-config-section task-recurrence-builder">
+              <label class="recurrence-master-toggle">
+                <span class="recurrence-master-icon"><i data-lucide="repeat-2"></i></span>
+                <span class="recurrence-master-copy"><strong>Demanda recorrente</strong><small>Crie uma rotina que volta sozinha nos dias escolhidos, com histórico por ocorrência.</small></span>
+                <input id="itemRecurringEnabled" type="checkbox">
+              </label>
+              <div id="itemRecurrenceFields" class="recurrence-fields hidden">
+                <div class="recurrence-explainer"><i data-lucide="sparkles"></i><div><strong>Uma ocorrência por dia</strong><p>Concluir a demanda de hoje não encerra a série. No próximo dia válido ela aparece novamente.</p></div></div>
+                <div class="form-grid three">
+                  <label class="field"><span>Repetir</span><select id="itemRecurrenceFrequency"><option value="dias_uteis" selected>Dias úteis</option><option value="diaria">Todos os dias</option><option value="semanal">Semanal</option><option value="personalizada">Dias específicos</option><option value="mensal">Mensal</option></select></label>
+                  <label class="field"><span>Começa em</span><input id="itemRecurrenceStart" type="date"></label>
+                  <label class="field"><span>Termina em <em>opcional</em></span><input id="itemRecurrenceEnd" type="date"></label>
+                </div>
+                <div id="itemRecurrenceWeekdays" class="recurrence-weekdays hidden" aria-label="Dias da semana">
+                  <label><input type="checkbox" value="1"><span>Seg</span></label><label><input type="checkbox" value="2"><span>Ter</span></label><label><input type="checkbox" value="3"><span>Qua</span></label><label><input type="checkbox" value="4"><span>Qui</span></label><label><input type="checkbox" value="5"><span>Sex</span></label><label><input type="checkbox" value="6"><span>Sáb</span></label><label><input type="checkbox" value="7"><span>Dom</span></label>
+                </div>
+                <div class="form-grid two">
+                  <label class="field"><span>Horário do popup diário</span><input id="itemRecurrenceAlertTime" type="time" value="09:00"></label>
+                  <label class="recurrence-alert-toggle"><input id="itemRecurrenceDailyAlert" type="checkbox" checked><span><strong>Popup + som diariamente</strong><small>O responsável recebe um alerta importante no horário programado.</small></span></label>
+                </div>
+                <div class="recurrence-note"><i data-lucide="info"></i><span>O horário de conclusão/prazo de cada ocorrência continua sendo o campo <strong>Horário</strong> acima. Em demandas recorrentes, o campo de data de prazo é substituído pela agenda da série.</span></div>
+              </div>
+            </section>
+          </div>
+
+          <div id="reminderFields" class="hidden">
+            <div class="form-grid two">
+              <label class="field"><span>Data</span><input id="reminderDate" type="date"></label>
+              <label class="field"><span>Horário</span><input id="reminderTime" type="time" value="09:00"></label>
+            </div>
+            <div id="meetingEndFields" class="form-grid two hidden">
+              <label class="field"><span>Termina em</span><input id="meetingEndDate" type="date"></label>
+              <label class="field"><span>Horário final</span><input id="meetingEndTime" type="time" value="10:00"></label>
+            </div>
+            <div class="form-grid two">
+              <label class="field"><span>Avisar</span><select id="reminderOffset"><option value="0">No horário</option><option value="10">10 min antes</option><option value="30" selected>30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
+              <label class="field"><span>Repetir</span><select id="reminderRecurrence"><option value="nenhuma">Não repetir</option><option value="diaria">Todos os dias</option><option value="semanal">Toda semana</option><option value="mensal">Todo mês</option><option value="anual">Todo ano</option></select></label>
+            </div>
+            <label id="visibilityField" class="field"><span>Visibilidade</span><select id="reminderVisibility"><option value="pessoal">Somente eu</option><option value="equipe">Toda a equipe</option></select></label>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="quickAddModal">Cancelar</button><button id="saveItemBtn" class="btn primary" type="submit"><i data-lucide="check"></i>Criar demanda</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="recurrenceModal" class="modal-layer hidden">
+    <div class="modal-card recurrence-edit-modal">
+      <div class="modal-head"><div><span class="eyebrow">Série recorrente</span><h2 id="recurrenceModalTitle">Editar toda a recorrência</h2><p id="recurrenceModalDescription">As alterações valem para as próximas ocorrências. O histórico anterior permanece intacto.</p></div><button class="icon-btn subtle" data-close-modal="recurrenceModal"><i data-lucide="x"></i></button></div>
+      <form id="recurrenceForm">
+        <input id="recurrenceEditId" type="hidden">
+        <input id="recurrenceConvertTaskId" type="hidden">
+        <div class="modal-body">
+          <div class="recurrence-series-banner"><span><i data-lucide="repeat-2"></i></span><div><strong id="recurrenceSeriesStatus">Série ativa</strong><small>Editar a série não altera ocorrências já concluídas.</small></div></div>
+          <label class="field"><span>Título</span><input id="recurrenceEditTitle" required maxlength="160"></label>
+          <label class="field"><span>Descrição</span><textarea id="recurrenceEditDescription" rows="3"></textarea></label>
+          <div class="form-grid three">
+            <div class="visual-field recurrence-assignee-field"><span class="visual-field-label">Responsáveis</span><select id="recurrenceEditAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select><input id="recurrenceEditAssigneesJson" type="hidden" value="[]"><button id="recurrenceEditAssigneePickerBtn" class="assignee-selector-button compact" type="button"><span id="recurrenceEditAssigneePreview" class="assignee-selector-preview"></span><span class="assignee-selector-action"><span>Gerenciar</span><i data-lucide="users-round"></i></span></button></div>
+            <label class="field"><span>Prioridade / urgência</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
+            <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
+          </div>
+          <div class="recurrence-responsibility-mode">
+            <span class="visual-field-label">Modo de responsabilidade das ocorrências</span>
+            <select id="recurrenceEditResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+              <option value="compartilhada">Compartilhada</option>
+              <option value="primeiro_cumprir">Primeiro a cumprir</option>
+            </select>
+            <div class="responsibility-mode-grid">
+              <button type="button" class="responsibility-mode-choice shared" data-choice-target="recurrenceEditResponsibilityMode" data-choice-value="compartilhada">
+                <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
+                <span><strong>Compartilhada</strong><small>Cada ocorrência nasce para todos os responsáveis e a carga é dividida entre eles.</small></span>
+              </button>
+              <button type="button" class="responsibility-mode-choice race" data-choice-target="recurrenceEditResponsibilityMode" data-choice-value="primeiro_cumprir">
+                <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
+                <span><strong>Primeiro a cumprir</strong><small>Cada ocorrência nasce aberta para os candidatos. Quem iniciar primeiro assume aquela ocorrência.</small></span>
+              </button>
+            </div>
+          </div>
+          <div class="form-grid three">
+            <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="recurrenceEditEstimate" type="number" min="0" step="0.5"><span>horas</span></div></label>
+            <label class="field"><span>Projeto</span><input id="recurrenceEditProject" maxlength="100"></label>
+            <label class="field"><span>Tags</span><input id="recurrenceEditTags"></label>
+          </div>
+          <label class="field"><span>Checklist <em>um item por linha</em></span><textarea id="recurrenceEditChecklist" rows="5"></textarea></label>
+          <div class="recurrence-edit-divider"><span>Agenda da série</span></div>
+          <div class="form-grid three">
+            <label class="field"><span>Repetir</span><select id="recurrenceEditFrequency"><option value="dias_uteis">Dias úteis</option><option value="diaria">Todos os dias</option><option value="semanal">Semanal</option><option value="personalizada">Dias específicos</option><option value="mensal">Mensal</option></select></label>
+            <label class="field"><span>Começa em</span><input id="recurrenceEditStart" type="date" required></label>
+            <label class="field"><span>Termina em <em>opcional</em></span><input id="recurrenceEditEnd" type="date"></label>
+          </div>
+          <div id="recurrenceEditWeekdays" class="recurrence-weekdays hidden">
+            <label><input type="checkbox" value="1"><span>Seg</span></label><label><input type="checkbox" value="2"><span>Ter</span></label><label><input type="checkbox" value="3"><span>Qua</span></label><label><input type="checkbox" value="4"><span>Qui</span></label><label><input type="checkbox" value="5"><span>Sex</span></label><label><input type="checkbox" value="6"><span>Sáb</span></label><label><input type="checkbox" value="7"><span>Dom</span></label>
+          </div>
+          <div class="form-grid three">
+            <label class="field"><span>Prazo diário</span><input id="recurrenceEditDueTime" type="time" required></label>
+            <label class="field"><span>Popup diário</span><input id="recurrenceEditAlertTime" type="time" required></label>
+            <label class="recurrence-alert-toggle compact"><input id="recurrenceEditDailyAlert" type="checkbox"><span><strong>Popup + som</strong><small>Alertar a cada ocorrência.</small></span></label>
+          </div>
+        </div>
+        <div class="modal-footer recurrence-modal-footer"><button id="recurrencePauseBtn" type="button" class="btn secondary"><i data-lucide="pause"></i>Pausar</button><button id="recurrenceEndBtn" type="button" class="btn danger-soft"><i data-lucide="square"></i>Encerrar série</button><span class="modal-footer-spacer"></span><button type="button" class="btn secondary" data-close-modal="recurrenceModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar série</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="recurrenceManagerModal" class="modal-layer hidden">
+    <div class="modal-card recurrence-manager-modal">
+      <div class="modal-head"><div><span class="eyebrow">Rotinas do setor</span><h2>Demandas recorrentes</h2><p>Gerencie todas as séries em um único lugar. As ocorrências continuam aparecendo normalmente em Hoje, Agenda, Demandas, Projetos e Equipe.</p></div><button class="icon-btn subtle" data-close-modal="recurrenceManagerModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="recurrence-manager-toolbar">
+          <div class="search-input"><i data-lucide="search"></i><input id="recurrenceManagerSearch" type="search" placeholder="Buscar rotina, projeto ou responsável"></div>
+          <select id="recurrenceManagerStatus"><option value="">Todas</option><option value="ativas">Ativas</option><option value="pausadas">Pausadas</option><option value="encerradas">Encerradas</option></select>
+          <button id="recurrenceManagerNewBtn" type="button" class="btn primary"><i data-lucide="plus"></i>Nova recorrência</button>
+        </div>
+        <div id="recurrenceManagerSummary" class="recurrence-manager-summary"></div>
+        <div id="recurrenceManagerList" class="recurrence-manager-list"></div>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="priorityManagerModal" class="modal-layer hidden">
+    <div class="modal-card priority-manager-modal">
+      <div class="modal-head">
+        <div>
+          <span class="eyebrow">Ação de gestor</span>
+          <h2>Alterar urgência</h2>
+          <p>Reordene a prioridade da demanda sem precisar abrir a edição completa.</p>
+        </div>
+        <button class="icon-btn subtle" type="button" data-close-modal="priorityManagerModal"><i data-lucide="x"></i></button>
+      </div>
+
+      <form id="priorityManagerForm">
+        <input id="priorityManagerTaskId" type="hidden">
+        <input id="priorityManagerValue" type="hidden" value="media">
+
+        <div class="modal-body">
+          <section class="priority-manager-current">
+            <span class="priority-manager-current-icon"><i data-lucide="gauge"></i></span>
+            <div>
+              <small>Demanda</small>
+              <strong id="priorityManagerTaskTitle">Demanda</strong>
+              <span id="priorityManagerCurrentLabel">Urgência atual: Média</span>
+            </div>
+          </section>
+
+          <div class="priority-manager-heading">
+            <div>
+              <span class="eyebrow">Nova urgência</span>
+              <h3>Qual é a prioridade agora?</h3>
+            </div>
+            <small>A alteração é registrada no histórico.</small>
+          </div>
+
+          <div class="priority-manager-grid" role="radiogroup" aria-label="Urgência da demanda">
+            <button type="button" class="priority-manager-choice baixa" data-manager-priority="baixa">
+              <i data-lucide="feather"></i>
+              <span><strong>Baixa</strong><small>Pode aguardar</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice media" data-manager-priority="media">
+              <i data-lucide="circle-dot"></i>
+              <span><strong>Média</strong><small>Fluxo normal</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice alta" data-manager-priority="alta">
+              <i data-lucide="arrow-up"></i>
+              <span><strong>Alta</strong><small>Precisa de atenção</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice urgente" data-manager-priority="urgente">
+              <i data-lucide="siren"></i>
+              <span><strong>Urgente</strong><small>Resposta rápida</small></span>
+            </button>
+            <button type="button" class="priority-manager-choice imediata" data-manager-priority="imediata">
+              <i data-lucide="alarm-smoke"></i>
+              <span><strong>IMEDIATA</strong><small>Interromper e começar agora</small></span>
+            </button>
+          </div>
+
+          <section id="priorityManagerImmediateOptions" class="priority-manager-immediate hidden">
+            <div class="priority-manager-immediate-copy">
+              <span><i data-lucide="siren"></i></span>
+              <div>
+                <strong>Demanda imediata</strong>
+                <small>Essa alteração pode gerar popup crítico e som para quem precisa agir.</small>
+              </div>
+            </div>
+            <label class="priority-manager-check">
+              <input id="priorityManagerAlertAll" type="checkbox">
+              <span>
+                <strong>Alertar toda a equipe</strong>
+                <small>Se desligado, o alerta crítico vai somente para o responsável atual.</small>
+              </span>
+            </label>
+          </section>
+
+          <section id="priorityManagerRecurrenceScope" class="priority-manager-recurrence hidden">
+            <div>
+              <i data-lucide="repeat-2"></i>
+              <span>
+                <strong>Esta demanda faz parte de uma recorrência</strong>
+                <small>Por padrão, a mudança vale somente para esta ocorrência.</small>
+              </span>
+            </div>
+            <label class="priority-manager-check">
+              <input id="priorityManagerApplySeries" type="checkbox">
+              <span>
+                <strong>Aplicar também às próximas ocorrências</strong>
+                <small>Atualiza a série recorrente sem mexer nas ocorrências já concluídas.</small>
+              </span>
+            </label>
+          </section>
+
+          <div class="priority-manager-note">
+            <i data-lucide="history"></i>
+            <span>O colaborador continua responsável pela demanda. Esta ação altera apenas a urgência e, se escolhido, o alcance do alerta imediato.</span>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn secondary" data-close-modal="priorityManagerModal">Cancelar</button>
+          <button id="priorityManagerSaveBtn" type="submit" class="btn primary"><i data-lucide="save"></i>Salvar urgência</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="editTaskModal" class="modal-layer hidden">
+    <div class="modal-card task-edit-modal">
+      <div class="modal-head"><div><span class="eyebrow">Editar</span><h2>Detalhes da demanda</h2><p>Ajuste briefing, prazo, responsável e esforço.</p></div><button class="icon-btn subtle" data-close-modal="editTaskModal"><i data-lucide="x"></i></button></div>
+      <form id="editTaskForm">
+        <input id="editTaskId" type="hidden">
+        <div class="modal-body">
+          <label class="field"><span>Título</span><input id="editTaskTitle" required maxlength="160"></label>
+          <label class="field"><span>Descrição</span><textarea id="editTaskDescription" rows="4"></textarea></label>
+          <section class="task-config-section edit-task-config">
+            <div class="task-setup-grid">
+              <div class="visual-field assignee-visual-field">
+                <span class="visual-field-label">Responsáveis</span>
+                <select id="editTaskAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"></select>
+                <input id="editTaskAssigneesJson" type="hidden" value="[]">
+                <button id="editTaskAssigneePickerBtn" class="assignee-selector-button" type="button">
+                  <span id="editTaskAssigneePreview" class="assignee-selector-preview"></span>
+                  <span class="assignee-selector-action"><span>Gerenciar pessoas</span><i data-lucide="users-round"></i></span>
+                </button>
+              </div>
+
+              <div class="visual-field responsibility-mode-field">
+                <span class="visual-field-label">Modo de responsabilidade</span>
+                <select id="editTaskResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
+                  <option value="compartilhada">Compartilhada</option>
+                  <option value="primeiro_cumprir">Primeiro a cumprir</option>
+                </select>
+                <div class="responsibility-mode-grid compact">
+                  <button type="button" class="responsibility-mode-choice shared" data-choice-target="editTaskResponsibilityMode" data-choice-value="compartilhada">
+                    <span class="responsibility-mode-icon"><i data-lucide="users-round"></i></span>
+                    <span><strong>Compartilhada</strong><small>Todos os responsáveis participam da execução.</small></span>
+                  </button>
+                  <button type="button" class="responsibility-mode-choice race" data-choice-target="editTaskResponsibilityMode" data-choice-value="primeiro_cumprir">
+                    <span class="responsibility-mode-icon"><i data-lucide="flag"></i></span>
+                    <span><strong>Primeiro a cumprir</strong><small>O primeiro que iniciar assume a ocorrência inteira.</small></span>
+                  </button>
+                </div>
+                <small id="editTaskResponsibilityLock" class="responsibility-mode-lock hidden"><i data-lucide="lock-keyhole"></i>O modo não pode ser trocado depois que a execução começou.</small>
+              </div>
+              <div class="visual-field">
+                <span class="visual-field-label">Prioridade / urgência</span>
+                <select id="editTaskPriority" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select>
+                <div class="choice-card-grid priority-choice-grid compact-choice-grid">
+                  <button type="button" class="choice-card priority-low" data-choice-target="editTaskPriority" data-choice-value="baixa"><i data-lucide="feather"></i><span><strong>Baixa</strong><small>Pode aguardar</small></span></button>
+                  <button type="button" class="choice-card priority-medium" data-choice-target="editTaskPriority" data-choice-value="media"><i data-lucide="circle-dot"></i><span><strong>Média</strong><small>Fluxo normal</small></span></button>
+                  <button type="button" class="choice-card priority-high" data-choice-target="editTaskPriority" data-choice-value="alta"><i data-lucide="arrow-up"></i><span><strong>Alta</strong><small>Atenção</small></span></button>
+                  <button type="button" class="choice-card priority-urgent" data-choice-target="editTaskPriority" data-choice-value="urgente"><i data-lucide="siren"></i><span><strong>Urgente</strong><small>Precisa de resposta rápida</small></span></button>
+                  <button type="button" class="choice-card priority-immediate" data-choice-target="editTaskPriority" data-choice-value="imediata"><i data-lucide="alarm-smoke"></i><span><strong>IMEDIATA</strong><small>Começar agora</small></span></button>
+                </div>
+              </div>
+              <div class="visual-field">
+                <span class="visual-field-label">Tamanho</span>
+                <select id="editTaskSize" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select>
+                <div class="choice-card-grid size-choice-grid compact-choice-grid">
+                  <button type="button" class="choice-card" data-choice-target="editTaskSize" data-choice-value="rapida"><i data-lucide="zap"></i><span><strong>Rápida</strong><small>Até 1h</small></span></button>
+                  <button type="button" class="choice-card" data-choice-target="editTaskSize" data-choice-value="media"><i data-lucide="layers-2"></i><span><strong>Média</strong><small>Algumas horas</small></span></button>
+                  <button type="button" class="choice-card" data-choice-target="editTaskSize" data-choice-value="grande"><i data-lucide="mountain"></i><span><strong>Grande</strong><small>Mais de um período</small></span></button>
+                </div>
+              </div>
+            </div>
+          </section>
+          <div id="editImmediateAudienceSection" class="immediate-audience-section compact hidden">
+            <div class="immediate-audience-title"><span class="immediate-siren"><i data-lucide="siren"></i></span><div><strong>Alcance do alerta imediato</strong><small>Escolha se somente o responsável ou toda a equipe será interrompida.</small></div></div>
+            <input id="editTaskAlertAll" type="hidden" value="false">
+            <div class="immediate-audience-options">
+              <button type="button" class="immediate-audience-option active" data-edit-immediate-audience="responsavel"><i data-lucide="user-round"></i><span><strong>Responsável</strong><small>Alerta individual</small></span></button>
+              <button type="button" class="immediate-audience-option team" data-edit-immediate-audience="todos"><i data-lucide="users-round"></i><span><strong>Toda a equipe</strong><small>Alerta coletivo</small></span></button>
+            </div>
+          </div>
+          <section id="editTaskRecurrenceContext" class="edit-recurrence-context hidden">
+            <div class="edit-recurrence-context-icon"><i data-lucide="repeat-2"></i></div>
+            <div class="edit-recurrence-context-copy"><span class="eyebrow">Ocorrência recorrente</span><strong>Você está editando somente este dia</strong><small id="editTaskRecurrenceSummary">As próximas ocorrências continuam seguindo a configuração da série.</small></div>
+            <button id="editTaskOpenSeriesBtn" type="button" class="btn secondary"><i data-lucide="calendar-sync"></i>Editar toda a série</button>
+          </section>
+          <section id="editTaskConvertRecurrence" class="edit-recurrence-convert hidden">
+            <div><i data-lucide="repeat-2"></i><span><strong>Esta demanda ainda não é recorrente</strong><small>Transforme o item atual em uma série e mantenha esta demanda como a primeira ocorrência.</small></span></div>
+            <button id="editTaskConvertRecurrenceBtn" type="button" class="btn soft"><i data-lucide="repeat-2"></i>Transformar em recorrente</button>
+          </section>
+
+          <div class="form-grid three">
+            <label class="field"><span>Prazo</span><input id="editTaskDueDate" type="date"></label>
+            <label class="field"><span>Horário</span><input id="editTaskDueTime" type="time"></label>
+            <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="editTaskEstimate" type="number" min="0" step="0.5"><span>horas</span></div></label>
+          </div>
+          <div class="form-grid three">
+            <label class="field"><span>Projeto <em>opcional</em></span><input id="editTaskProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
+            <label class="field"><span>Lembrar</span><select id="editTaskReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
+            <label class="field"><span>Tags</span><input id="editTaskTags"></label>
+          </div>
+          <div class="task-execution-grid edit-execution-grid">
+            <label class="field task-checklist-field"><span>Checklist <em>um item por linha</em></span><textarea id="editTaskChecklist" rows="5" placeholder="Itens de execução"></textarea></label>
+            <label class="field task-dependencies-field"><span>Dependências <em>opcional</em></span><select id="editTaskDependencies" multiple size="5" aria-label="Demandas que precisam ser concluídas antes"></select><small class="field-help">Uma demanda bloqueada não pode começar até todas as dependências serem concluídas.</small></label>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="editTaskModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar alterações</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="assigneePickerModal" class="modal-layer hidden">
+    <div class="modal-card assignee-picker-modal">
+      <div class="modal-head">
+        <div><span class="eyebrow">Equipe</span><h2 id="assigneePickerTitle">Selecionar responsáveis</h2><p id="assigneePickerDescription">Consulte a carga atual e selecione uma ou mais pessoas para trabalhar na demanda.</p></div>
+        <button class="icon-btn subtle" data-close-modal="assigneePickerModal" type="button"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body assignee-picker-body">
+        <div class="assignee-picker-search"><i data-lucide="search"></i><input id="assigneePickerSearch" type="search" placeholder="Buscar por nome ou cargo"></div>
+        <div id="assigneePickerContext" class="assignee-picker-context"></div>
+        <div id="assigneePickerList" class="assignee-picker-list"></div>
+      </div>
+      <div class="modal-footer assignee-picker-footer"><span id="assigneePickerSelectionSummary" class="assignee-picker-selection-summary">Nenhuma pessoa selecionada</span><div><button type="button" class="btn secondary" data-close-modal="assigneePickerModal">Cancelar</button><button id="assigneePickerApplyBtn" type="button" class="btn primary hidden"><i data-lucide="users-round"></i>Aplicar responsáveis</button></div></div>
+    </div>
+  </div>
+
+  <div id="transferTaskModal" class="modal-layer hidden">
+    <div class="modal-card transfer-task-modal">
+      <div class="modal-head"><div><span class="eyebrow">Responsável principal</span><h2>Trocar responsável principal</h2><p>A demanda pode ter vários responsáveis. Esta ação troca apenas a pessoa principal usada como referência do fluxo legado.</p></div><button class="icon-btn subtle" data-close-modal="transferTaskModal"><i data-lucide="x"></i></button></div>
+      <form id="transferTaskForm">
+        <input id="transferTaskId" type="hidden">
+        <div class="modal-body">
+          <div class="transfer-flow">
+            <div id="transferFromCard" class="transfer-person-card"></div>
+            <div class="transfer-arrow"><i data-lucide="arrow-right"></i><span id="transferHoursBadge">0h</span></div>
+            <div class="transfer-target">
+              <select id="transferAssignee" class="native-choice-hidden" tabindex="-1" aria-hidden="true"><option value="">Selecione</option></select>
+              <button id="transferAssigneePickerBtn" class="transfer-person-card choose" type="button"><span id="transferAssigneePreview"></span><i data-lucide="chevron-right"></i></button>
+            </div>
+          </div>
+          <div class="transfer-preserved"><i data-lucide="package-check"></i><div><strong>O que muda?</strong><span>O novo colaborador passa a ser o responsável principal. Os demais corresponsáveis continuam na demanda até serem removidos em “Gerenciar responsáveis”.</span></div></div>
+          <section id="transferRecurrenceScope" class="transfer-recurrence-scope hidden">
+            <div><i data-lucide="repeat-2"></i><span><strong>Esta demanda faz parte de uma recorrência</strong><small>Escolha se a troca vale só para esta ocorrência ou também para os próximos dias.</small></span></div>
+            <label><input id="transferApplySeries" type="checkbox"><span><strong>Aplicar às próximas ocorrências</strong><small>Atualiza o responsável da série sem alterar ocorrências já concluídas.</small></span></label>
+          </section>
+          <label class="field"><span>Observação da transferência</span><textarea id="transferNote" rows="4" placeholder="Ex.: redistribuição por disponibilidade, troca de frente, continuidade do material..."></textarea></label>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="transferTaskModal">Cancelar</button><button id="transferConfirmBtn" class="btn primary" type="submit"><i data-lucide="arrow-right-left"></i>Confirmar transferência</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="taskEvaluationModal" class="modal-layer hidden">
+    <div class="modal-card evaluation-modal authorship-evaluation-modal">
+      <div class="modal-head"><div><span class="eyebrow">Validação do gestor</span><h2>Avaliar conclusão</h2><p>Valide a entrega e registre quem realmente realizou o trabalho.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
+      <form id="taskEvaluationForm">
+        <input id="evaluationTaskId" type="hidden">
+        <div class="modal-body">
+          <div id="evaluationTaskSummary" class="evaluation-task-summary"></div>
+
+          <section class="evaluation-authorship-section">
+            <div class="evaluation-authorship-head">
+              <div>
+                <span class="eyebrow">Autoria da entrega</span>
+                <h3>Quem realmente fez esta demanda?</h3>
+                <p>Selecione uma ou mais pessoas. A autoria será registrada para todos, mas o popup de confirmação será enviado apenas aos gestores escolhidos.</p>
+              </div>
+              <span id="evaluationExecutorSummary" class="evaluation-executor-summary">0 selecionados</span>
+            </div>
+            <label class="evaluation-executor-search">
+              <i data-lucide="search"></i>
+              <input id="evaluationExecutorSearch" type="search" autocomplete="off" placeholder="Buscar colaborador...">
+            </label>
+            <div id="evaluationExecutorList" class="evaluation-executor-list"></div>
+            <div class="evaluation-authorship-info">
+              <i data-lucide="shield-check"></i>
+              <span>O gestor propõe a autoria. Apenas executores com papel de gestor recebem o popup de confirmação. Colaboradores escolhidos entram na autoria sem precisar responder.</span>
+            </div>
+          </section>
+
+          <label class="field"><span>Observação da revisão <em>opcional ao aprovar, obrigatória ao pedir ajustes</em></span><textarea id="evaluationNote" rows="4" placeholder="Ex.: material validado, entrega realizada em conjunto, pontos que precisam ser corrigidos..."></textarea></label>
+
+          <div class="evaluation-choice-grid">
+            <button id="evaluationRejectBtn" type="button" class="evaluation-choice reject"><i data-lucide="undo-2"></i><span><strong>Devolver para ajustes</strong><small>Volta para Em andamento e cancela qualquer confirmação de autoria pendente.</small></span></button>
+            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="users-round"></i><span><strong>Validar e pedir confirmação</strong><small>Envia um popup para cada executor selecionado confirmar a autoria.</small></span></button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="authorshipConfirmationModal" class="modal-layer authorship-confirmation-layer hidden" role="alertdialog" aria-modal="true" aria-labelledby="authorshipConfirmationTitle">
+    <div class="modal-card authorship-confirmation-modal">
+      <div class="authorship-confirmation-accent"></div>
+      <div class="modal-head">
+        <div><span class="eyebrow">Confirmação de autoria</span><h2 id="authorshipConfirmationTitle">Você participou desta entrega?</h2><p>O gestor validou a demanda e registrou os executores abaixo.</p></div>
+      </div>
+      <div class="modal-body">
+        <input id="authorshipConfirmationReviewId" type="hidden">
+        <div id="authorshipConfirmationTask" class="authorship-confirmation-task"></div>
+
+        <section class="authorship-confirmation-executors">
+          <div class="authorship-confirmation-section-title"><span><i data-lucide="users-round"></i>Executores registrados pelo gestor</span><strong id="authorshipConfirmationCount">0 pessoas</strong></div>
+          <div id="authorshipConfirmationPeople" class="authorship-confirmation-people"></div>
+        </section>
+
+        <div id="authorshipConfirmationManagerNote" class="authorship-manager-note hidden"></div>
+
+        <div class="authorship-confirmation-question">
+          <span><i data-lucide="badge-check"></i></span>
+          <div><strong>Essa lista representa corretamente quem realizou a demanda?</strong><small>Confirme apenas se os nomes estiverem corretos. Se alguém estiver faltando ou incluído por engano, conteste e explique.</small></div>
+        </div>
+
+        <div id="authorshipContestBox" class="authorship-contest-box hidden">
+          <label class="field"><span>O que está errado na autoria?</span><textarea id="authorshipContestReason" rows="4" maxlength="700" placeholder="Ex.: também participei junto com..., ou esta pessoa não executou esta entrega..."></textarea></label>
+          <div class="authorship-contest-actions">
+            <button id="authorshipCancelContestBtn" type="button" class="btn secondary">Voltar</button>
+            <button id="authorshipSendContestBtn" type="button" class="btn danger-soft"><i data-lucide="message-square-warning"></i>Enviar contestação</button>
+          </div>
+        </div>
+      </div>
+      <div id="authorshipConfirmationFooter" class="modal-footer authorship-confirmation-footer">
+        <button id="authorshipLaterBtn" type="button" class="btn secondary"><i data-lucide="clock-3"></i>Responder depois</button>
+        <div>
+          <button id="authorshipDisputeBtn" type="button" class="btn danger-soft"><i data-lucide="message-square-warning"></i>Não, está incorreto</button>
+          <button id="authorshipConfirmBtn" type="button" class="btn primary"><i data-lucide="badge-check"></i>Sim, confirmo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="taskTemplateModal" class="modal-layer hidden">
+    <div class="modal-card small task-template-modal">
+      <div class="modal-head"><div><span class="eyebrow">Modelo de demanda</span><h2>Salvar configuração atual</h2><p>O modelo reaproveita briefing, prioridade, tamanho, prazo-base, projeto, tags e checklist.</p></div><button class="icon-btn subtle" data-close-modal="taskTemplateModal"><i data-lucide="x"></i></button></div>
+      <form id="taskTemplateForm">
+        <div class="modal-body"><label class="field"><span>Nome do modelo</span><input id="taskTemplateName" required maxlength="80" placeholder="Ex.: Campanha mensal"></label><label class="field"><span>Título-base <em>opcional</em></span><input id="taskTemplateBaseTitle" maxlength="160" placeholder="Ex.: Campanha mensal — "></label><label class="field"><span>Prazo-base</span><div class="suffix-input"><input id="taskTemplateDeadlineHours" type="number" min="0" step="1" value="48"><span>horas</span></div></label><div class="settings-note"><i data-lucide="info"></i><span>O responsável não é salvo no modelo, para evitar delegações automáticas acidentais.</span></div></div>
+        <div class="modal-footer"><button class="btn secondary" type="button" data-close-modal="taskTemplateModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar modelo</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="monthlyReportModal" class="modal-layer hidden">
+    <div class="modal-card monthly-report-modal">
+      <div class="modal-head"><div><span class="eyebrow">Gestão do setor</span><h2>Relatório mensal da equipe</h2><p>Gestores não entram no ranking operacional. O relatório compara entregas, prazos, transferências e horas reais x estimadas, com opção de fechar o mês.</p></div><button class="icon-btn subtle" data-close-modal="monthlyReportModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="monthly-report-toolbar"><label class="field"><span>Mês</span><input id="monthlyReportMonth" type="month"></label><div class="monthly-report-toolbar-actions"><button id="monthlySnapshotBtn" class="btn soft" type="button"><i data-lucide="lock-keyhole"></i>Fechar mês</button><button id="monthlyReopenBtn" class="btn danger-soft hidden" type="button"><i data-lucide="lock-keyhole-open"></i>Reabrir</button><button id="monthlyReportCsvBtn" class="btn secondary" type="button"><i data-lucide="download"></i>Exportar CSV</button><button id="monthlyReportPrintBtn" class="btn primary" type="button"><i data-lucide="printer"></i>Imprimir / PDF</button></div></div>
+        <div id="monthlySnapshotStatus" class="monthly-snapshot-status hidden"></div>
+        <div id="monthlyReportContent" class="monthly-report-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="academyTrainingModal" class="modal-layer hidden">
+    <div class="modal-card academy-training-modal">
+      <div class="modal-head"><div><span class="eyebrow">Academia PMG</span><h2 id="academyTrainingTitle">Novo treinamento</h2><p>Cadastre treinamentos internos e bloqueie o espaço automaticamente. Não precisa criar uma reserva separada.</p></div><button class="icon-btn subtle" data-close-modal="academyTrainingModal"><i data-lucide="x"></i></button></div>
+      <form id="academyTrainingForm">
+        <input id="academyTrainingId" type="hidden">
+        <div class="modal-body">
+          <div class="training-type-grid" id="academyTrainingTypeGrid">
+            <button type="button" class="active" data-training-type="PMG Geral"><i data-lucide="graduation-cap"></i><strong>PMG Geral</strong><small>Treinamento institucional</small></button>
+            <button type="button" data-training-type="MKT"><i data-lucide="megaphone"></i><strong>MKT</strong><small>Marketing</small></button>
+            <button type="button" data-training-type="Avulso"><i data-lucide="calendar-range"></i><strong>Avulso</strong><small>Uso interno pontual</small></button>
+            <button type="button" data-training-type="Outro"><i data-lucide="shapes"></i><strong>Outro</strong><small>Outra categoria</small></button>
+          </div>
+          <input id="academyTrainingType" type="hidden" value="PMG Geral">
+          <div class="form-grid two"><label class="field"><span>Título</span><input id="academyTrainingName" required value="Treinamento PMG Geral" placeholder="Ex.: Integração Comercial"></label><label class="field"><span>Data</span><input id="academyTrainingDate" type="date" required></label></div>
+          <label class="academy-full-day-toggle"><span><strong>Bloquear o período inteiro da Academia</strong><small>Usa automaticamente o horário padrão configurado para o espaço.</small></span><input id="academyTrainingFullDay" type="checkbox" checked></label>
+          <div class="form-grid three"><label class="field"><span>Início</span><input id="academyTrainingStart" type="time" value="08:00"></label><label class="field"><span>Fim</span><input id="academyTrainingEnd" type="time" value="18:00"></label><label class="field"><span>Participantes</span><input id="academyTrainingParticipants" type="number" min="0" step="1"></label></div>
+          <label class="field"><span>Observações</span><textarea id="academyTrainingNotes" rows="4" placeholder="Tema, fornecedor, público, equipamentos, montagem..."></textarea></label>
+          <div id="academyTrainingConflictPreview" class="academy-conflict-preview"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyTrainingModal">Cancelar</button><button class="btn training" type="submit"><i data-lucide="calendar-check"></i>Salvar e bloquear data</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="academyBookingModal" class="modal-layer hidden">
+    <div class="modal-card academy-booking-modal">
+      <div class="modal-head"><div><span class="eyebrow">Academia PMG</span><h2 id="academyBookingTitle">Nova reserva</h2><p>Cadastre o uso do espaço e evite choque de horários.</p></div><button class="icon-btn subtle" data-close-modal="academyBookingModal"><i data-lucide="x"></i></button></div>
+      <form id="academyBookingForm">
+        <input id="academyBookingId" type="hidden">
+        <div class="modal-body">
+          <div class="form-grid two"><label class="field"><span>Título do uso</span><input id="academyBookingName" required placeholder="Ex.: Treinamento Comercial"></label><label class="field"><span>Solicitante</span><input id="academyRequester" required placeholder="Nome de quem solicitou"></label></div>
+          <div class="form-grid three"><label class="field"><span>Setor</span><input id="academyDepartment" placeholder="Ex.: Comercial"></label><label class="field"><span>E-mail</span><input id="academyEmail" type="email"></label><label class="field"><span>Telefone/Ramal</span><input id="academyPhone"></label></div>
+          <div class="form-grid three"><label class="field"><span>Data</span><input id="academyDate" type="date" required></label><label class="field"><span>Início</span><input id="academyStartTime" type="time" required value="09:00"></label><label class="field"><span>Fim</span><input id="academyEndTime" type="time" required value="10:00"></label></div>
+          <div class="form-grid two"><label class="field"><span>Quantidade de pessoas</span><input id="academyParticipants" type="number" min="0" step="1"></label><label class="field"><span>Finalidade</span><input id="academyPurpose" placeholder="Treinamento, reunião, apresentação..."></label></div>
+          <label class="field"><span>Observações</span><textarea id="academyNotes" rows="4" placeholder="Equipamentos, montagem, necessidades específicas..."></textarea></label>
+          <div id="academyConflictPreview" class="academy-conflict-preview"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyBookingModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar reserva</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="academyConfigModal" class="modal-layer hidden">
+    <div class="modal-card small">
+      <div class="modal-head"><div><span class="eyebrow">Academia PMG</span><h2>Configuração e Forms</h2><p>Cadastre o link que será enviado aos outros setores e o horário padrão do espaço.</p></div><button class="icon-btn subtle" data-close-modal="academyConfigModal"><i data-lucide="x"></i></button></div>
+      <form id="academyConfigForm"><div class="modal-body">
+        <label class="field"><span>Link do Google Forms</span><input id="academyFormsUrl" type="url" placeholder="https://forms.gle/..."></label>
+        <div class="form-grid two"><label class="field"><span>Abertura</span><input id="academyOpenTime" type="time" value="08:00"></label><label class="field"><span>Fechamento</span><input id="academyCloseTime" type="time" value="18:00"></label></div>
+        <label class="field"><span>Observações do espaço</span><textarea id="academyConfigNotes" rows="4" placeholder="Capacidade, equipamentos disponíveis, regras de uso..."></textarea></label>
+      </div><div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyConfigModal">Cancelar</button><button class="btn primary" type="submit"><i data-lucide="save"></i>Salvar configuração</button></div></form>
+    </div>
+  </div>
+
+  <div id="academyImportModal" class="modal-layer hidden">
+    <div class="modal-card academy-import-modal">
+      <div class="modal-head"><div><span class="eyebrow">Forms</span><h2>Importar relatório de solicitações</h2><p>Escolha o Excel ou CSV exportado do Forms. O Connect detecta as colunas e permite ajustar o mapeamento antes de importar.</p></div><button class="icon-btn subtle" data-close-modal="academyImportModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <label class="academy-file-drop"><input id="academyImportFile" type="file" accept=".xlsx,.xls,.csv"><i data-lucide="file-spreadsheet"></i><span><strong>Selecionar relatório do Forms</strong><small>XLSX, XLS ou CSV</small></span></label>
+        <div id="academyImportMapping" class="academy-import-mapping hidden"></div>
+        <div id="academyImportPreview" class="academy-import-preview"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyImportModal">Cancelar</button><button id="academyImportConfirmBtn" class="btn primary" type="button" disabled><i data-lucide="upload"></i>Importar solicitações</button></div>
+    </div>
+  </div>
+
+  <div id="accessibilityModal" class="modal-layer hidden">
+    <div class="modal-card accessibility-modal">
+      <div class="modal-head"><div><span class="eyebrow">Acessibilidade</span><h2>Deixe a Central confortável para cada pessoa</h2><p>O tamanho altera a interface inteira: textos, cartões, botões, avatares, imagens, campos e calendários. O modo escuro agora é controlado pelo botão no topo da Central.</p></div><button class="icon-btn subtle" data-close-modal="accessibilityModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="accessibility-section"><strong>Tamanho da interface</strong><div class="accessibility-size-grid three-options"><button type="button" data-ui-scale="medium"><span>A</span><strong>Médio</strong><small>Mais compacto, ainda confortável</small></button><button type="button" data-ui-scale="large"><span>A+</span><strong>Grande</strong><small>Recomendado para uso diário</small></button><button type="button" data-ui-scale="xlarge"><span>A++</span><strong>Extra grande</strong><small>Máxima leitura e alvos maiores</small></button></div></div>
+        <div class="accessibility-switches"><label><span><strong>Alto contraste</strong><small>Aumenta separação entre textos, bordas e fundos.</small></span><input id="accessibilityContrast" type="checkbox"></label><label><span><strong>Reduzir animações</strong><small>Evita movimentos que possam atrapalhar a leitura. Alertas imediatos continuam bem visíveis.</small></span><input id="accessibilityMotion" type="checkbox"></label></div>
+      </div>
+      <div class="modal-footer"><button id="accessibilityResetBtn" class="btn secondary" type="button"><i data-lucide="rotate-ccw"></i>Restaurar padrão</button><button class="btn primary" type="button" data-close-modal="accessibilityModal"><i data-lucide="check"></i>Pronto</button></div>
+    </div>
+  </div>
+
+  <div id="profileModal" class="modal-layer hidden">
+    <div class="modal-card small">
+      <div class="modal-head"><div><span class="eyebrow">Seu perfil</span><h2>Como você aparece</h2><p>Depois você pode trocar as iniciais por um avatar personalizado.</p></div><button id="profileCloseBtn" class="icon-btn subtle" data-close-modal="profileModal"><i data-lucide="x"></i></button></div>
+      <form id="profileForm">
+        <div class="modal-body">
+          <div class="profile-preview"><div id="profileAvatar"></div><div><strong id="profilePreviewName">Seu nome</strong><span id="profilePreviewJob">Marketing</span></div></div>
+          <label class="field"><span>Nome</span><input id="profileName" required></label>
+          <label class="field"><span>Cargo</span><input id="profileJob" placeholder="Ex.: Assistente de Marketing"></label>
+        </div>
+        <div class="modal-footer"><button class="btn primary wide" type="submit">Salvar perfil</button></div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- Alerta invasivo de notificações importantes -->
+  <div id="intrusiveNotificationModal" class="intrusive-notification-layer hidden" role="alertdialog" aria-modal="true" aria-labelledby="intrusiveNotificationTitle" aria-describedby="intrusiveNotificationMessage">
+    <article id="intrusiveNotificationCard" class="intrusive-notification-card tone-blue">
+      <div class="intrusive-notification-glow" aria-hidden="true"></div>
+
+      <header class="intrusive-notification-header">
+        <div class="intrusive-notification-brand">
+          <img src="/imagenssite/pmglogo.png" alt="PMG">
+          <div><strong>PMG Connect</strong><span>Alerta importante</span></div>
+        </div>
+        <span id="intrusiveNotificationCounter" class="intrusive-notification-counter">1 de 1</span>
+      </header>
+
+      <div class="intrusive-notification-body">
+        <div class="intrusive-notification-hero">
+          <span id="intrusiveNotificationIcon" class="intrusive-notification-icon"><i data-lucide="bell-ring"></i></span>
+          <div>
+            <span id="intrusiveNotificationType" class="intrusive-notification-type">NOVA NOTIFICAÇÃO</span>
+            <h2 id="intrusiveNotificationTitle">Você recebeu uma atualização</h2>
+            <p id="intrusiveNotificationMessage">Abra a notificação para ver todos os detalhes.</p>
+          </div>
+        </div>
+
+        <div id="intrusiveNotificationActor" class="intrusive-notification-actor"></div>
+        <div id="intrusiveNotificationMeta" class="intrusive-notification-meta"></div>
+
+        <div class="intrusive-notification-warning">
+          <i data-lucide="eye"></i>
+          <span id="intrusiveNotificationWarningText">Este aviso não desaparece sozinho. Abra agora ou escolha ver depois para continuar.</span>
+        </div>
+      </div>
+
+      <footer class="intrusive-notification-footer">
+        <button id="intrusiveNotificationLaterBtn" class="intrusive-notification-later" type="button"><i data-lucide="clock-3"></i>Ver depois</button>
+        <button id="intrusiveNotificationOpenBtn" class="intrusive-notification-open" type="button"><span>Abrir agora</span><i data-lucide="arrow-up-right"></i></button>
+      </footer>
+    </article>
+  </div>
+
+  <div id="onboardingModal" class="onboarding-layer hidden" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+    <div class="onboarding-card">
+      <button id="onboardingCloseBtn" class="onboarding-close" type="button" aria-label="Fechar tutorial"><i data-lucide="x"></i></button>
+
+      <section class="onboarding-visual" aria-hidden="true">
+        <div class="onboarding-brand"><img src="/imagenssite/pmglogo.png" alt=""><span>PMG Connect</span><b id="onboardingRoleBadge" class="onboarding-role-badge">Tutorial</b></div>
+        <div id="onboardingDemo" class="onboarding-demo"></div>
+        <div class="onboarding-visual-note"><i data-lucide="book-open-check"></i><span>Este guia explica o fluxo completo do seu perfil. Você pode voltar aos passos, usar as setas do teclado e reabrir o tutorial pelo menu do usuário.</span></div>
+      </section>
+
+      <section class="onboarding-content">
+        <div class="onboarding-progress-row">
+          <span id="onboardingProgressText">Passo 1 de 9</span>
+          <div id="onboardingStepDots" class="onboarding-step-dots" aria-label="Progresso do tutorial"></div>
+        </div>
+
+        <div id="onboardingIcon" class="onboarding-icon"><i data-lucide="rocket"></i></div>
+        <span id="onboardingEyebrow" class="eyebrow">Primeiro acesso</span>
+        <h2 id="onboardingTitle">Bem-vindo à Central de Demandas</h2>
+        <p id="onboardingDescription"></p>
+        <div id="onboardingPoints" class="onboarding-points"></div>
+        <div id="onboardingTip" class="onboarding-tip"></div>
+
+        <div class="onboarding-footer">
+          <button id="onboardingSkipBtn" class="onboarding-skip" type="button">Pular tutorial</button>
+          <div>
+            <button id="onboardingBackBtn" class="btn secondary" type="button"><i data-lucide="arrow-left"></i>Voltar</button>
+            <button id="onboardingNextBtn" class="btn primary" type="button">Continuar<i data-lucide="arrow-right"></i></button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="projectModal" class="modal-layer hidden">
+    <div class="modal-card medium project-modal-card">
+      <div class="modal-head"><div><span class="eyebrow">Projetos</span><h2 id="projectModalTitle">Novo projeto</h2><p>Defina o objetivo e conecte as demandas usando o mesmo nome do projeto.</p></div><button class="icon-btn subtle" data-close-modal="projectModal"><i data-lucide="x"></i></button></div>
+      <form id="projectForm">
+        <input id="projectId" type="hidden">
+        <div class="modal-body">
+          <label class="field"><span>Nome do projeto</span><input id="projectName" maxlength="100" required placeholder="Ex.: Campanha Black Friday"></label>
+          <label class="field"><span>Objetivo</span><textarea id="projectObjective" rows="4" maxlength="1000" placeholder="Qual resultado esse projeto precisa entregar?"></textarea></label>
+          <div class="form-grid two">
+            <label class="field"><span>Responsável</span><select id="projectOwner"><option value="">Sem responsável principal</option></select></label>
+            <label class="field"><span>Status</span><select id="projectStatus"><option value="planejado">Planejado</option><option value="ativo" selected>Ativo</option><option value="pausado">Pausado</option><option value="concluido">Concluído</option></select></label>
+          </div>
+          <div class="form-grid two">
+            <label class="field"><span>Início</span><input id="projectStart" type="date"></label>
+            <label class="field"><span>Prazo final</span><input id="projectDue" type="date"></label>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="projectModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar projeto</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="automationModal" class="modal-layer hidden">
+    <div class="modal-card medium automation-modal-card">
+      <div class="modal-head"><div><span class="eyebrow">Automações</span><h2 id="automationModalTitle">Nova automação</h2><p>Escolha o gatilho, uma condição opcional e quem deve ser avisado.</p></div><button class="icon-btn subtle" data-close-modal="automationModal"><i data-lucide="x"></i></button></div>
+      <form id="automationForm">
+        <input id="automationId" type="hidden">
+        <div class="modal-body">
+          <label class="field"><span>Nome da regra</span><input id="automationName" maxlength="100" required placeholder="Ex.: Cobrar revisão do gestor"></label>
+          <div class="automation-flow-builder">
+            <section><span class="automation-flow-step">SE</span><label class="field"><span>Gatilho</span><select id="automationTrigger" required><option value="tarefa_criada">Uma demanda for criada</option><option value="status_alterado">O status mudar</option><option value="prioridade_alterada">A prioridade mudar</option><option value="revisao">Entrar em revisão</option><option value="conclusao">For concluída</option><option value="prazo_24h">Faltar até 24h para o prazo</option><option value="atrasada">Ficar atrasada</option><option value="sem_movimentacao_3d">Ficar 3 dias sem movimentação</option></select></label></section>
+            <section><span class="automation-flow-step muted">E</span><div class="automation-condition-grid"><label class="field"><span>Condição</span><select id="automationConditionField"><option value="qualquer">Qualquer demanda</option><option value="prioridade">Prioridade</option><option value="status">Status</option><option value="projeto">Projeto</option><option value="responsavel">Responsável</option></select></label><label class="field"><span>Valor</span><input id="automationConditionValue" placeholder="Ex.: urgente, revisao ou nome do projeto"></label></div></section>
+            <section><span class="automation-flow-step then">ENTÃO</span><div class="automation-condition-grid"><label class="field"><span>Notificar</span><select id="automationDestination"><option value="responsavel">Responsável da demanda</option><option value="criador">Gestor/criador da demanda</option><option value="equipe">Toda a equipe operacional</option></select></label><label class="field"><span>Nível</span><select id="automationLevel"><option value="critica">Crítica</option><option value="importante">Importante</option><option value="normal" selected>Normal</option><option value="informativa">Informativa</option></select></label></div></section>
+          </div>
+          <label class="field"><span>Mensagem</span><textarea id="automationMessage" rows="3" maxlength="240" placeholder="Ex.: Esta demanda está há 3 dias sem movimentação."></textarea></label>
+          <label class="academy-full-day-toggle automation-enabled-toggle"><span><strong>Automação ativa</strong><small>Desative sem excluir a regra.</small></span><input id="automationEnabled" type="checkbox" checked></label>
+        </div>
+        <div class="modal-footer"><button id="automationDeleteBtn" type="button" class="btn danger-soft hidden"><i data-lucide="trash-2"></i>Excluir</button><span class="modal-footer-spacer"></span><button type="button" class="btn secondary" data-close-modal="automationModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar automação</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="notificationSettingsModal" class="modal-layer hidden">
+    <div class="modal-card small">
+      <div class="modal-head"><div><span class="eyebrow">Notificações</span><h2>Alertas deste computador</h2><p>Controle quando o Windows pode avisar você.</p></div><button class="icon-btn subtle" data-close-modal="notificationSettingsModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="setting-status-card"><span id="notificationStatusIcon" class="setting-icon"><i data-lucide="bell-off"></i></span><div><strong id="notificationStatusTitle">Notificações desativadas</strong><p id="notificationStatusText">Ative para receber lembretes mesmo com a aba fechada.</p></div></div>
+        <div class="notification-levels-settings">
+          <div><span class="notification-level-dot critical"></span><strong>Crítica</strong><small>Bloqueia a tela e exige ação. Ex.: demanda imediata.</small></div>
+          <div><span class="notification-level-dot important"></span><strong>Importante</strong><small>Pop-up grande. Ex.: atraso, revisão ou transferência.</small></div>
+          <div><span class="notification-level-dot normal"></span><strong>Normal</strong><small>Fica na central e pode gerar aviso do Windows.</small></div>
+          <div><span class="notification-level-dot info"></span><strong>Informativa</strong><small>Atualizações de contexto e resumos.</small></div>
+        </div>
+        <div class="notification-sound-panel">
+          <label class="notification-sound-toggle">
+            <span class="notification-sound-icon"><i data-lucide="volume-2"></i></span>
+            <span class="notification-sound-copy">
+              <strong>Sons de alerta</strong>
+              <small>Toca sons diferentes conforme a importância da notificação neste computador.</small>
+            </span>
+            <input id="notificationSoundEnabled" type="checkbox" checked>
+          </label>
+          <div class="notification-sound-previews">
+            <button type="button" class="sound-preview critical" data-sound-preview="critica"><i data-lucide="siren"></i><span>Crítica</span></button>
+            <button type="button" class="sound-preview important" data-sound-preview="importante"><i data-lucide="triangle-alert"></i><span>Importante</span></button>
+            <button type="button" class="sound-preview normal" data-sound-preview="normal"><i data-lucide="bell-ring"></i><span>Normal</span></button>
+            <button type="button" class="sound-preview info" data-sound-preview="informativa"><i data-lucide="info"></i><span>Info</span></button>
+          </div>
+        </div>
+        <button id="enablePushBtn" class="btn primary wide"><i data-lucide="bell-ring"></i>Ativar notificações</button>
+        <button id="testPushBtn" class="btn secondary wide"><i data-lucide="send"></i>Testar neste computador</button>
+        <button id="disablePushBtn" class="btn danger-soft wide hidden"><i data-lucide="bell-off"></i>Desativar neste computador</button>
+        <div class="settings-note"><i data-lucide="shield-check"></i><span>As notificações são vinculadas apenas a este navegador e ao seu usuário.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="searchModal" class="modal-layer search-layer hidden">
+    <div class="search-command">
+      <div class="search-command-input"><i data-lucide="search"></i><input id="globalSearchInput" placeholder="Busque demandas, pessoas, projetos ou digite um comando..."><kbd>Esc</kbd></div>
+      <div id="globalSearchResults" class="search-results"></div>
+    </div>
+  </div>
+
+  <div id="toastStack" class="toast-stack"></div>
+
+  <script src="/assets/demandas-v2.js"></script>
+</body>
+</html>

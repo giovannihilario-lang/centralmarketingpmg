@@ -1,5 +1,9 @@
 /* global CAMPOS_METRICA, DB, normalizeKey, showToast */
 (function () {
+  // Consultas comerciais seguem o Dashboard Regional: SQL via Node local.
+  const CAMPANHAS_SQL_API_BASE = String(window.CAMPANHAS_SQL_API_BASE || 'http://localhost:3001/api').replace(/\/$/, '');
+  const CAMPANHAS_SQL_ENDPOINT = `${CAMPANHAS_SQL_API_BASE}/campanhas-data`;
+
   const CORES = ['#2d7a4f', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#0891b2', '#7c3aed'];
 
   const state = {
@@ -13,6 +17,9 @@
     catalogoVisualPromise: null,
     fornecedorAtivo: { id: '', nome: '' },
     semFornecedor: false,
+    etapaProdutosAtiva: false,
+    carregamentoEtapaPromise: null,
+    enriquecimentoVisualPromise: null,
   };
 
   function id() {
@@ -33,6 +40,26 @@
     return Number.isFinite(n) ? n : 0;
   }
 
+
+
+  async function fetchJson(url, options = {}) {
+    let resposta;
+    try {
+      resposta = await fetch(url, options);
+    } catch (erroRede) {
+      throw new Error(`Servidor local PMG indisponível em ${CAMPANHAS_SQL_API_BASE}. Execute npm start na pasta do projeto. Detalhe: ${erroRede?.message || erroRede}`);
+    }
+    const textoResposta = await resposta.text();
+    let dados = null;
+    try {
+      dados = textoResposta ? JSON.parse(textoResposta) : null;
+    } catch (_) {
+      const trecho = textoResposta.trim().slice(0, 180) || 'resposta vazia';
+      throw new Error(`A API respondeu ${resposta.status} sem JSON: ${trecho}`);
+    }
+    if (!resposta.ok) throw new Error(dados?.erro || dados?.message || `Falha HTTP ${resposta.status}`);
+    return dados;
+  }
 
   function urlImagem(valor) {
     const limpa = String(valor || '').trim().replace(/\\/g, '/');
@@ -55,9 +82,7 @@
 
     state.catalogoVisualPromise = (async () => {
       try {
-        const resposta = await fetch('/api/produtos-supabase');
-        if (!resposta.ok) throw new Error(`Catálogo visual retornou ${resposta.status}`);
-        const produtos = await resposta.json();
+        const produtos = await fetchJson('/api/produtos-supabase');
         const normalizados = (produtos || []).map((produto) => {
           const categoria = typeof window.categoriaPorId === 'function'
             ? window.categoriaPorId(produto.id_categoria)
@@ -110,6 +135,9 @@
       cor: parcial.cor || CORES[state.grupos.length % CORES.length],
       criterio: parcial.criterio || 'SEM_PONTOS',
       valorPontos: numero(parcial.valorPontos),
+      participaMix: parcial.participaMix !== false,
+      obrigatoriaMix: parcial.obrigatoriaMix !== false,
+      minimoProdutosMix: Math.max(1, numero(parcial.minimoProdutosMix) || 1),
       produtos: Array.isArray(parcial.produtos) ? parcial.produtos : [],
     };
   }
@@ -136,6 +164,9 @@
             nome: regra.grupoNome || 'Produtos participantes',
             cor: regra.grupoCor || CORES[porGrupo.size % CORES.length],
             ...pontos,
+            participaMix: regra.participaMix !== false,
+            obrigatoriaMix: regra.obrigatoriaMix !== false,
+            minimoProdutosMix: Math.max(1, numero(regra.minimoProdutosMix) || 1),
           }));
         }
 
@@ -180,12 +211,13 @@
 
   function montarResumo() {
     const comPontos = state.grupos.filter((grupo) => grupo.criterio !== 'SEM_PONTOS').length;
+    const obrigatoriasMix = state.grupos.filter((grupo) => grupo.participaMix && grupo.obrigatoriaMix).length;
     return `
       <div class="cb-summary">
         <span><b>${state.grupos.length}</b> categoria(s)</span>
         <span><b>${totalProdutos()}</b> produto(s) participante(s)</span>
         <span><b>${comPontos}</b> categoria(s) com pontuação</span>
-        <span>Mix calculado sobre os produtos selecionados</span>
+        <span><b>${obrigatoriasMix}</b> categoria(s) obrigatória(s) no mix</span>
       </div>`;
   }
 
@@ -255,6 +287,11 @@
           <div style="display:flex;align-items:center;font-size:10px;color:var(--gray-text);padding:0 4px;">
             ${grupo.criterio === 'PONTOS_PC' ? 'por PC' : grupo.criterio === 'PONTOS_KG' ? 'por KG' : grupo.criterio === 'PONTOS_REAL' ? 'por R$' : grupo.criterio === 'PONTOS_FIXOS' ? 'por linha' : 'sem pontos'}
           </div>
+        </div>
+        <div class="cb-mix-config">
+          <label class="cb-check"><input type="checkbox" ${grupo.participaMix ? 'checked' : ''} onchange="cbAtualizarGrupo('${esc(grupo.id)}', 'participaMix', this.checked)"> Participa do mix</label>
+          <label class="cb-check"><input type="checkbox" ${grupo.obrigatoriaMix ? 'checked' : ''} ${grupo.participaMix ? '' : 'disabled'} onchange="cbAtualizarGrupo('${esc(grupo.id)}', 'obrigatoriaMix', this.checked)"> Categoria obrigatória</label>
+          <label class="cb-mix-min">Mínimo de produtos distintos vendidos <input type="number" min="1" step="1" value="${grupo.minimoProdutosMix || 1}" ${grupo.participaMix ? '' : 'disabled'} oninput="cbAtualizarGrupo('${esc(grupo.id)}', 'minimoProdutosMix', this.value)"></label>
         </div>
         <div class="cb-group-products">${produtos}</div>
       </section>`;
@@ -343,20 +380,18 @@
     const fornecedorId = String(document.getElementById('cf_fornecedorId')?.value || state.fornecedorAtivo.id || '').trim();
     const chave = `${fornecedorId}|${fornecedor}`;
     if (!forcar && state.filtros && state.filtrosChave === chave) return state.filtros;
-    await carregarCatalogoVisual();
 
     try {
       const parametros = new URLSearchParams({ recurso: 'filtros-produtos' });
       if (fornecedorId) parametros.set('fornecedorId', fornecedorId);
       if (fornecedor) parametros.set('fornecedor', fornecedor);
-      const resposta = await fetch('/api/campanhas-data?' + parametros.toString());
-      const dados = await resposta.json();
-      if (!resposta.ok) throw new Error(dados.erro || 'Falha ao carregar filtros de produtos');
+      const dados = await fetchJson(CAMPANHAS_SQL_ENDPOINT + '?' + parametros.toString());
       state.filtros = dados;
       state.filtrosChave = chave;
       return dados;
     } catch (erro) {
       console.warn('[campaign-builder] filtros SQL indisponíveis; usando catálogo PMG', erro);
+      await carregarCatalogoVisual();
       const listaFornecedor = fornecedor
         ? state.catalogoVisualLista.filter((produto) => normalizeKey(produto.fornecedor) === normalizeKey(fornecedor))
         : state.catalogoVisualLista;
@@ -387,6 +422,7 @@
     state.carregando = true;
     renderizarCatalogo();
 
+    let usouFallbackVisual = false;
     try {
       const fornecedor = String(document.getElementById('cf_fornecedor')?.value || state.fornecedorAtivo.nome || '').trim();
       const fornecedorId = String(document.getElementById('cf_fornecedorId')?.value || state.fornecedorAtivo.id || '').trim();
@@ -408,23 +444,17 @@
         limite: '1000',
       });
 
-      await carregarCatalogoVisual();
       let dados = null;
-
       try {
-        const resposta = await fetch('/api/campanhas-data?' + parametros.toString());
-        const corpo = await resposta.json();
-        if (!resposta.ok) throw new Error(corpo.erro || 'Falha ao carregar produtos');
-        dados = corpo;
+        dados = await fetchJson(CAMPANHAS_SQL_ENDPOINT + '?' + parametros.toString());
       } catch (erro) {
         console.warn('[campaign-builder] produtos SQL indisponíveis; usando catálogo PMG', erro);
-      }
-
-      if (!Array.isArray(dados)) {
+        await carregarCatalogoVisual();
+        usouFallbackVisual = true;
         dados = produtosDoCatalogoVisual().filter((produto) => !fornecedor || normalizeKey(produto.fornecedor) === normalizeKey(fornecedor));
       }
 
-      state.catalogo = dados.map((produto) => {
+      state.catalogo = (Array.isArray(dados) ? dados : []).map((produto) => {
         const visual = state.catalogoVisual.get(String(produto.id ?? produto.codigo)) || {};
         return {
           ...produto,
@@ -442,6 +472,23 @@
     } finally {
       state.carregando = false;
       renderizarCatalogo();
+      renderizarGrupos();
+    }
+
+    // As imagens não bloqueiam o catálogo. Produtos aparecem primeiro e são enriquecidos depois.
+    if (!usouFallbackVisual && !state.catalogoVisual.size && !state.enriquecimentoVisualPromise) {
+      state.enriquecimentoVisualPromise = carregarCatalogoVisual()
+        .then(() => {
+          state.catalogo = state.catalogo.map((produto) => {
+            const visual = state.catalogoVisual.get(String(produto.id ?? produto.codigo)) || {};
+            return { ...produto, ...visual, imagem: visual.imagem || produto.imagem || '' };
+          });
+          enriquecerProdutosSelecionados();
+          renderizarCatalogo();
+          renderizarGrupos();
+        })
+        .catch((erro) => console.warn('[campaign-builder] enriquecimento visual', erro))
+        .finally(() => { state.enriquecimentoVisualPromise = null; });
     }
   }
 
@@ -492,25 +539,52 @@
   };
 
   window.abrirDndProdutos = async function () {
+    // Abertura do modal deve ser instantânea. Nada de consultar catálogo enquanto a etapa está escondida.
     renderizarGrupos();
-    try {
-      await carregarCatalogoVisual();
-      enriquecerProdutosSelecionados();
-      renderizarGrupos();
-      const fornecedorCampanha = document.getElementById('cf_fornecedor')?.value?.trim() || '';
-      const fornecedorId = document.getElementById('cf_fornecedorId')?.value || '';
-      state.fornecedorAtivo = { id: fornecedorId, nome: fornecedorCampanha };
-      const nomeFornecedor = document.getElementById('cbFornecedorNome');
-      if (nomeFornecedor) nomeFornecedor.textContent = fornecedorCampanha || 'Selecione na etapa Informações';
-      const filtros = await carregarFiltros(true);
-      preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
-      preencherSelect('cbFiltroSubgrupo', filtros.subgrupos, 'Todos os subgrupos');
-      preencherSelect('cbFiltroStatus', filtros.status, 'Todos os status');
-      await buscarProdutos();
-    } catch (erro) {
-      console.error('[campaign-builder] filtros', erro);
-      if (typeof showToast === 'function') showToast('Não foi possível carregar o catálogo: ' + erro.message, true);
-    }
+    const fornecedorCampanha = document.getElementById('cf_fornecedor')?.value?.trim() || '';
+    const fornecedorId = document.getElementById('cf_fornecedorId')?.value || '';
+    state.fornecedorAtivo = { id: fornecedorId, nome: fornecedorCampanha };
+    state.etapaProdutosAtiva = false;
+    const nomeFornecedor = document.getElementById('cbFornecedorNome');
+    if (nomeFornecedor) nomeFornecedor.textContent = fornecedorCampanha || 'Selecione na etapa Informações';
+    renderizarCatalogo();
+  };
+
+  window.cbAtivarEtapaProdutos = async function (forcar = false) {
+    if (state.carregamentoEtapaPromise && !forcar) return state.carregamentoEtapaPromise;
+    if (state.etapaProdutosAtiva && !forcar) return;
+
+    state.carregamentoEtapaPromise = (async () => {
+      try {
+        const fornecedorCampanha = document.getElementById('cf_fornecedor')?.value?.trim() || '';
+        const fornecedorId = document.getElementById('cf_fornecedorId')?.value || '';
+        state.fornecedorAtivo = { id: fornecedorId, nome: fornecedorCampanha };
+        state.semFornecedor = !fornecedorCampanha && !fornecedorId;
+        const nomeFornecedor = document.getElementById('cbFornecedorNome');
+        if (nomeFornecedor) nomeFornecedor.textContent = fornecedorCampanha || 'Selecione na etapa Informações';
+
+        if (state.semFornecedor) {
+          state.catalogo = [];
+          renderizarCatalogo();
+          state.etapaProdutosAtiva = true;
+          return;
+        }
+
+        const filtros = await carregarFiltros(forcar);
+        preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
+        preencherSelect('cbFiltroSubgrupo', filtros.subgrupos, 'Todos os subgrupos');
+        preencherSelect('cbFiltroStatus', filtros.status, 'Todos os status');
+        await buscarProdutos();
+        state.etapaProdutosAtiva = true;
+      } catch (erro) {
+        console.error('[campaign-builder] filtros', erro);
+        if (typeof showToast === 'function') showToast('Não foi possível carregar o catálogo: ' + erro.message, true);
+      } finally {
+        state.carregamentoEtapaPromise = null;
+      }
+    })();
+
+    return state.carregamentoEtapaPromise;
   };
 
   window.cbBuscarProdutos = buscarProdutos;
@@ -527,8 +601,11 @@
   window.cbAtualizarGrupo = function (grupoId, campo, valor) {
     const grupo = state.grupos.find((item) => item.id === grupoId);
     if (!grupo) return;
-    grupo[campo] = campo === 'valorPontos' ? numero(valor) : valor;
-    if (campo === 'criterio' || campo === 'cor') renderizarGrupos();
+    if (campo === 'valorPontos') grupo[campo] = numero(valor);
+    else if (campo === 'minimoProdutosMix') grupo[campo] = Math.max(1, numero(valor) || 1);
+    else if (campo === 'participaMix' || campo === 'obrigatoriaMix') grupo[campo] = Boolean(valor);
+    else grupo[campo] = valor;
+    if (campo === 'criterio' || campo === 'cor' || campo === 'participaMix') renderizarGrupos();
   };
 
   window.cbExcluirGrupo = function (grupoId) {
@@ -600,15 +677,14 @@
     state.filtros = null;
     state.filtrosChave = '';
     state.catalogo = [];
+    state.etapaProdutosAtiva = false;
     const contexto = document.getElementById('cbFornecedorNome');
     if (contexto) contexto.textContent = state.fornecedorAtivo.nome || 'Selecione na etapa Informações';
-    if (document.getElementById('cbCatalogoProdutos')) {
-      const filtros = await carregarFiltros(true);
-      preencherSelect('cbFiltroGrupo', filtros.grupos, 'Todos os grupos');
-      preencherSelect('cbFiltroSubgrupo', filtros.subgrupos, 'Todos os subgrupos');
-      preencherSelect('cbFiltroStatus', filtros.status, 'Todos os status');
-      await buscarProdutos();
-    }
+    renderizarCatalogo();
+
+    // Só consulta produtos se o usuário já estiver na etapa Produtos e categorias.
+    const etapaVisivel = document.getElementById('campTab2') && document.getElementById('campTab2').style.display !== 'none';
+    if (etapaVisivel) await window.cbAtivarEtapaProdutos(true);
   };
 
   window.cbAdicionarFiltrados = function () {
@@ -650,6 +726,9 @@
           grupoNome: grupo.nome.trim() || 'Categoria sem nome',
           grupoCor: grupo.cor,
           criterio: grupo.criterio,
+          participaMix: grupo.participaMix !== false,
+          obrigatoriaMix: grupo.obrigatoriaMix !== false,
+          minimoProdutosMix: Math.max(1, numero(grupo.minimoProdutosMix) || 1),
           ordemGrupo,
           ordemProduto,
           pontosPorKg: grupo.criterio === 'PONTOS_KG' ? numero(grupo.valorPontos) : 0,

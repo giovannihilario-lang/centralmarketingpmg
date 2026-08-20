@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-pmg-auth>
+<head>
+  <meta charset="UTF-8">
+  <title>Upload de Relatório – PMG</title>
+  <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--deep:#0D2B1A;--green:#2D7A4F;--soft:#EEF6F0;--line:#D8E5DC;--text:#102117;--muted:#66756B}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;background:linear-gradient(145deg,#eef5f0,#f8fbf9);font-family:Inter,system-ui,sans-serif;color:var(--text);padding:32px}
+    .shell{width:min(720px,100%);margin:0 auto}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--deep)}.brand img{width:42px;height:42px;object-fit:contain}.brand strong{font-family:Sora,sans-serif}.top-actions{display:flex;gap:8px}.ghost{border:1px solid var(--line);background:#fff;color:var(--deep);border-radius:10px;padding:9px 12px;text-decoration:none;font:600 13px Inter;cursor:pointer}
+    .card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:30px;box-shadow:0 18px 50px rgba(13,43,26,.08)}.eyebrow{color:var(--green);font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase}.card h1{font:700 clamp(24px,4vw,34px) Sora;margin:8px 0 10px;color:var(--deep)}.card>p{color:var(--muted);line-height:1.6;margin:0 0 24px}.field{display:grid;gap:8px;margin-top:18px}.field label{font-size:13px;font-weight:700}.field input,.field select{width:100%;padding:12px 13px;border:1px solid #cfdcd3;border-radius:11px;background:#fff;font:500 14px Inter;color:var(--text)}.field input:focus,.field select:focus{outline:3px solid rgba(45,122,79,.12);border-color:var(--green)}
+    .primary{width:100%;margin-top:22px;border:0;border-radius:12px;background:var(--deep);color:#fff;padding:13px 18px;font:700 14px Inter;cursor:pointer}.primary:disabled{opacity:.6;cursor:wait}#status{min-height:24px;margin-top:16px;padding:12px 14px;border-radius:11px;background:var(--soft);font-size:13px;font-weight:600;color:var(--deep)}
+    @media(max-width:560px){body{padding:18px}.card{padding:22px}.top{align-items:flex-start}.top-actions{flex-direction:column}}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/connect-auth.js?v=1.2.0"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="top"><a class="brand" href="/central.html"><img src="/imagenssite/pmglogo.png" alt="PMG"><strong>PMG Connect</strong></a><div class="top-actions"><a class="ghost" href="/central.html">Voltar ao Connect</a><button class="ghost" type="button" data-pmg-logout>Sair</button></div></header>
+    <main class="card"><span class="eyebrow">Dados comerciais</span><h1>Importar relatório de vendas</h1><p>Envie o XLSX exportado do sistema. A importação exige uma sessão válida do PMG Connect.</p>
+      <div class="field"><label for="arquivo">Arquivo XLSX</label><input type="file" id="arquivo" accept=".xlsx" /></div>
+      <button class="primary" id="sendButton" onclick="enviar()">Enviar e processar</button><div id="status" aria-live="polite">Aguardando arquivo.</div>
+    </main>
+  </div>
+  <script>
+    async function enviar() {
+      const file = document.getElementById('arquivo').files[0];
+      const status = document.getElementById('status');
+
+      if (!file) return status.textContent = 'Selecione um arquivo.';
+      status.textContent = 'Processando…';
+      const button = document.getElementById('sendButton');
+      button.disabled = true;
+
+      // Converte para base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      try {
+        const res = await fetch('/api/processar-xlsx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileBase64: base64 })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          status.textContent = `${data.inseridos} pedidos importados com sucesso.`;
+        } else {
+          status.textContent = `Erro: ${data.erro || data.message || 'falha ao processar o arquivo.'}`;
+        }
+      } catch (error) {
+        status.textContent = `Erro: ${error?.message || 'falha de comunicação com o servidor.'}`;
+      } finally {
+        button.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

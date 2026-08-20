@@ -192,3 +192,55 @@
   .cs-tiebreak-item select { grid-column:2/5; }
   .cb-bulk-bar { grid-template-columns:1fr; }
 }
+
+/* V3.4 — painel de performance dentro da campanha */
+.cs-results-kpis {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:0 0 16px;
+}
+.cs-result-kpi {
+  min-height:104px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:var(--panel);
+  box-shadow:0 8px 20px rgba(24,52,39,.05);
+}
+.cs-result-kpi small,.cs-result-kpi strong,.cs-result-kpi span { display:block; }
+.cs-result-kpi small { color:var(--ink-500); font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+.cs-result-kpi strong { margin-top:8px; color:var(--ink-950); font-size:18px; }
+.cs-result-kpi span { margin-top:7px; color:var(--ink-600); font-size:10px; line-height:1.35; }
+.cs-result-kpi.success { border-color:#a9d8bc; background:#effaf3; }
+.cs-result-kpi.success strong { color:#16713f; }
+.cs-result-kpi.danger { border-color:#ecc3bc; background:#fff4f2; }
+.cs-result-kpi.danger strong { color:#a13e32; }
+.cs-result-kpi.neutral { background:var(--panel-soft); }
+.cs-performance-table { min-width:1680px; }
+.cs-performance-table th { white-space:nowrap; }
+.cs-performance-table td { vertical-align:middle; }
+.cs-cell-sub { display:block; margin-top:3px; color:var(--ink-500); font-size:9px; }
+.cs-positive { color:#16814a; }
+.cs-negative { color:#b34437; }
+.badge-eleg.warn { background:#fff5d9; color:#8a6500; }
+.cs-inline-warning { display:flex; flex-direction:column; gap:4px; }
+.cs-inline-warning strong { font-size:11px; }
+.cs-inline-warning small { opacity:.85; }
+
+/* Períodos: evita cartões espremidos e datas sobrepostas */
+.periodo-kpi-row { grid-template-columns:repeat(4,minmax(150px,1fr)) !important; gap:10px !important; }
+.periodo-kpi-row .kpi-card { min-width:0; }
+.periodo-kpi-row .kpi-value { white-space:nowrap; }
+.periodo-compare-box { gap:14px !important; }
+.periodo-compare-col { min-width:0; }
+.periodo-compare-col .range { white-space:nowrap; }
+
+@media (max-width:1250px) {
+  .cs-results-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .periodo-kpi-row { grid-template-columns:repeat(2,minmax(160px,1fr)) !important; }
+}
+@media (max-width:760px) {
+  .cs-results-kpis { grid-template-columns:1fr; }
+  .periodo-kpi-row { grid-template-columns:1fr !important; }
+}

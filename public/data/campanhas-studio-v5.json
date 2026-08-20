@@ -1,0 +1,1093 @@
+{
+  "version": 5,
+  "updatedAt": "2026-08-14T11:42:31.963Z",
+  "campanhas": [
+    {
+      "id": "campaign_mshzca75_n6yjne",
+      "name": "cepera",
+      "description": "",
+      "start": "2026-07-06",
+      "end": "2026-08-10",
+      "periodMode": "six_mondays",
+      "suppliers": [
+        {
+          "id": 1551,
+          "name": "1551 - CONSERVAS CEPÊRA",
+          "totalProducts": 31
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "points",
+        "revenue",
+        "positivity"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 8,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_mshzca76_e8gfup",
+          "scope": "collective",
+          "mode": "growth_percent",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 10.05
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_mshzca76_paot4l",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 10
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule_msrzfzx5_2gl1nh",
+          "name": "Positivação mínima",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 3
+        }
+      ],
+      "pointRules": [],
+      "categories": [
+        {
+          "id": "category_msryw9i7_xaoa80",
+          "name": "Produtos focos",
+          "requiredMix": false,
+          "minDistinct": 1,
+          "pointUnit": "pieces",
+          "pointValue": 30,
+          "products": [
+            {
+              "id": 9746,
+              "name": "MAIONESE SABOR CHURRASCO CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806030",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9743,
+              "name": "MOLHO AMERICANO CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806047",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9742,
+              "name": "MOLHO DE PIMENTA EXTRA FORTE CHILLI BEANS CEPÊRA 60 ML (CX 12 VD)",
+              "unit": "CX",
+              "factor": 0,
+              "master": 0,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801967",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9741,
+              "name": "MOLHO DE PIMENTA MEXICANO CHILLI BEANS CEPÊRA 60 ML (CX 12 VD)",
+              "unit": "CX",
+              "factor": 0,
+              "master": 0,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801967",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9744,
+              "name": "MAIONESE TEMPERADA CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806023",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9740,
+              "name": "MOSTARDA COM MEL CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806016",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9747,
+              "name": "MOSTARDA DIJON CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806122",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        },
+        {
+          "id": "category_msryywia_bcafsa",
+          "name": "Demais produtos",
+          "requiredMix": false,
+          "minDistinct": 1,
+          "pointUnit": "pieces",
+          "pointValue": 10,
+          "products": [
+            {
+              "id": 4876,
+              "name": "MOLHO DE TOMATE PIZZA CEPÊRA MAMMA D ORO 1,7 KG (CX 6 BAG)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHO DE TOMATE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803091",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3210,
+              "name": "MOLHO DE TOMATE TRADICIONAL MAMMA D ORO CEPÊRA 1,7 KG (CX 6 BAG)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHO DE TOMATE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803145",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3610,
+              "name": "MOLHO ALHO CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802858",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7259,
+              "name": "MOLHO BARBECUE CEPÊRA 1,01 KG (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803206",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3729,
+              "name": "MOLHO BARBECUE CEPÊRA 3,5 KG (CX 4 GL)",
+              "unit": "GL",
+              "factor": 1,
+              "master": 4,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803121",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8896,
+              "name": "MOLHO BARBECUE SACHÊ CEPÊRA 7 G (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805750",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3611,
+              "name": "MOLHO DE PIMENTA VERMELHA CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802865",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8897,
+              "name": "MOLHO DE PIMENTA VERMELHA SACHÊ CEPÊRA 5 ML (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805729",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3398,
+              "name": "MOLHO INGLÊS CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802889",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 1118,
+              "name": "MOLHO SHOYU CEPÊRA 1,01 L (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "CONSERVAS",
+              "subgroup": "MOLHOS",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802872",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8599,
+              "name": "PASSATA GOURMET KNORR 1,5 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 1,
+              "master": 6,
+              "group": "CONSERVAS",
+              "subgroup": "PASSATA / POLPA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805774",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3270,
+              "name": "AZEITE DENDÊ CEPÊRA 900 ML (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "AZEITE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801080",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 413,
+              "name": "CATCHUP CEPÊRA 3,5 KG (CX 4 GL)",
+              "unit": "GL",
+              "factor": 1,
+              "master": 4,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802674",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9745,
+              "name": "CATCHUP ORIGINAL CEPÊRA 1,1 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025806009",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 4874,
+              "name": "CATCHUP PEQUENO CEPÊRA 1,01 KG (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025801172",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8894,
+              "name": "CATCHUP SACHÊ CEPÊRA 7 G (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "CATCHUP",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805170",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8600,
+              "name": "MAIONESE CEPÊRA 1,7 KG (CX 6 BAG)",
+              "unit": "BAG",
+              "factor": 1,
+              "master": 6,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805804",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8895,
+              "name": "MAIONESE SACHÊ CEPÊRA 7 G (CX 140 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MAIONESE",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805194",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 3100,
+              "name": "MOSTARDA COM MEL CEPÊRA 400 G (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803718",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 5146,
+              "name": "MOSTARDA DIJON CEPÊRA 190 G (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025803831",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 280,
+              "name": "MOSTARDA GRANDE AMARELA CEPÊRA 3,3 KG (CX 4 GL)",
+              "unit": "GL",
+              "factor": 1,
+              "master": 4,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802681",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8898,
+              "name": "MOSTARDA SACHÊ CEPÊRA 7 G (CX 154 UN)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DERIVADOS DE VEGETAL",
+              "subgroup": "MOSTARDA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805187",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 1396,
+              "name": "CEREJA MARRASQUINO SEM TALO CEPÊRA 125 G (CX 12 VD)",
+              "unit": "VD",
+              "factor": 1,
+              "master": 12,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CEREJA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025802384",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8368,
+              "name": "AROMA ARTIFICIAL DE BAUNILHA CEPÊRA 480 ML (CX 12 FR)",
+              "unit": "FR",
+              "factor": 1,
+              "master": 12,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "COBERTURA",
+              "supplierId": 1551,
+              "supplierName": "1551 - CONSERVAS CEPÊRA",
+              "manufacturer": "7896025805798",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        }
+      ],
+      "orderActivationRule": {
+        "enabled": false,
+        "name": "Benefício de primeira compra",
+        "baseCategoryId": "",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "points",
+          "direction": "desc"
+        },
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [
+        {
+          "position": 1,
+          "type": "money",
+          "description": "2500"
+        },
+        {
+          "position": 2,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 3,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 4,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 5,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 6,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 7,
+          "type": "money",
+          "description": ""
+        },
+        {
+          "position": 8,
+          "type": "money",
+          "description": ""
+        }
+      ],
+      "createdAt": "2026-08-06T20:40:00.162Z",
+      "updatedAt": "2026-08-13T20:41:28.213Z"
+    },
+    {
+      "id": "campaign_mshzjso7_uawou7",
+      "name": "ceperas",
+      "description": "",
+      "start": "2026-07-06",
+      "end": "2026-08-10",
+      "suppliers": [
+        {
+          "id": 1551,
+          "name": "1551 - CONSERVAS CEPÊRA",
+          "totalProducts": 31
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "points",
+        "positivity",
+        "kg"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 5,
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_mshzjso8_321eu9",
+          "scope": "collective",
+          "mode": "growth_percent",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 12
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_mshzjso8_y2a9pw",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 10
+        }
+      ],
+      "rules": [],
+      "pointRules": [],
+      "categories": [],
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [],
+      "createdAt": "2026-08-06T20:45:50.696Z",
+      "updatedAt": "2026-08-06T20:47:01.849Z"
+    },
+    {
+      "id": "campaign_msp1c9zk_xad12g",
+      "name": "harald",
+      "description": "q4132eqw",
+      "start": "2026-08-17",
+      "end": "2026-09-21",
+      "suppliers": [
+        {
+          "id": 48,
+          "name": "48 - CHOCOLATES HARALD",
+          "totalProducts": 30
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "activationRate"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 5,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_msp1c9zk_cami46",
+          "scope": "collective",
+          "mode": "absolute",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 100
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_msp1c9zk_psbq4j",
+          "scope": "individual",
+          "mode": "absolute",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 4
+        }
+      ],
+      "rules": [],
+      "pointRules": [],
+      "categories": [
+        {
+          "id": "category_msp1kagd_poit3v",
+          "name": "Fortunata",
+          "requiredMix": true,
+          "minDistinct": 1,
+          "pointUnit": "none",
+          "pointValue": 0,
+          "products": [
+            {
+              "id": 9997,
+              "name": "CHEDDAR FORTUNATA CREMOSO RECHEIO 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE LEITE",
+              "subgroup": "CHEDDAR",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077839595",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 9996,
+              "name": "REQUEIJÃO FORTUNATA CREMOSO RECHEIO 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 0,
+              "master": 0,
+              "group": "DERIVADOS DE LEITE",
+              "subgroup": "REQUEIJÃO COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838437",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        },
+        {
+          "id": "category_msp1lxet_lij1is",
+          "name": "Forneáveis",
+          "requiredMix": true,
+          "minDistinct": 1,
+          "pointUnit": "none",
+          "pointValue": 0,
+          "products": [
+            {
+              "id": 5985,
+              "name": "CHOCOLATE FORNEÁVEL AO LEITE CONFEIPOP HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077837027",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7065,
+              "name": "CHOCOLATE FORNEÁVEL AVELÃ CONFEIPOP HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 8,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838123",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7903,
+              "name": "CHOCOLATE FORNEÁVEL BRANCO CONFEIPOP HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE COMUM",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838482",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 416,
+              "name": "CHOCOLATE FORNEÁVEL AO LEITE CONFEITEIRO HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077836952",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 4397,
+              "name": "CHOCOLATE FORNEÁVEL AVELÃ CONFEITEIRO HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 8,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077836969",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 410,
+              "name": "CHOCOLATE FORNEÁVEL BRANCO CONFEITEIRO HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "CX",
+              "factor": 1,
+              "master": 1,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077836945",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 7902,
+              "name": "CHOCOLATE FORNEÁVEL GRANDE AO LEITE CONFEITEIRO HARALD 2,010 KG (CX 6 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 6,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077838468",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8604,
+              "name": "CHOCOLATE FORNEÁVEL GRANDE AVELÃ CONFEITEIRO HARALD 2,010 KG (CX 6 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 6,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "CHOCOLATE ESPECIAL",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077839021",
+              "status": "Ativo",
+              "image": ""
+            },
+            {
+              "id": 8603,
+              "name": "RECHEIO E COBERTURA FORNEÁVEL SABOR PISTACHE HARALD 1,010 KG (CX 8 BIS)",
+              "unit": "BIS",
+              "factor": 1,
+              "master": 8,
+              "group": "DOCES / FRUTAS",
+              "subgroup": "COBERTURA",
+              "supplierId": 48,
+              "supplierName": "48 - CHOCOLATES HARALD",
+              "manufacturer": "7897077839014",
+              "status": "Ativo",
+              "image": ""
+            }
+          ]
+        }
+      ],
+      "orderActivationRule": {
+        "enabled": true,
+        "name": "Benefício da primeira compra ",
+        "baseCategoryId": "category_msp1lxet_lij1is",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "category_msp1kagd_poit3v",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [],
+      "createdAt": "2026-08-11T19:10:22.352Z",
+      "updatedAt": "2026-08-11T19:23:42.388Z"
+    },
+    {
+      "id": "campaign_msp27so6_p0kvxg",
+      "name": "Campanha teste Edilson Mccain",
+      "description": "Campanha teste Edilson Mccain\nCampanha teste Edilson Mccain\nCampanha teste Edilson Mccain\nCampanha teste Edilson Mccain\nCampanha teste Edilson Mccain",
+      "start": "2026-08-03",
+      "end": "2026-09-07",
+      "suppliers": [
+        {
+          "id": 14807,
+          "name": "14807 - BATATAS MCCAIN ARAXÁ",
+          "totalProducts": 17
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "points",
+        "kg",
+        "kgGrowth",
+        "mix"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 10,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_msp27so6_kpbj9b",
+          "scope": "collective",
+          "mode": "absolute",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 305000
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_msp27so6_99xoqs",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "kg",
+          "operator": ">=",
+          "value": 10
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule_msp2tvhm_cfdbt5",
+          "name": "Positivação mínima",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 5
+        }
+      ],
+      "pointRules": [
+        {
+          "id": "point_msp2s8bi_o1f7tz",
+          "source": "mixCategories",
+          "mode": "per_unit",
+          "basis": 1,
+          "points": 100
+        }
+      ],
+      "categories": [],
+      "orderActivationRule": {
+        "enabled": false,
+        "name": "Benefício de primeira compra",
+        "baseCategoryId": "",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        },
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [
+        {
+          "position": 1,
+          "type": "money",
+          "description": "1000,00"
+        },
+        {
+          "position": 2,
+          "type": "money",
+          "description": "carro"
+        },
+        {
+          "position": 3,
+          "type": "money",
+          "description": "bike"
+        },
+        {
+          "position": 4,
+          "type": "money",
+          "description": "vale "
+        },
+        {
+          "position": 5,
+          "type": "money",
+          "description": "23,00"
+        }
+      ],
+      "createdAt": "2026-08-11T19:34:52.902Z",
+      "updatedAt": "2026-08-11T19:58:22.998Z"
+    },
+    {
+      "id": "campaign_msp41kf4_74114g",
+      "name": "Leão (Oficial)",
+      "description": "",
+      "start": "2026-07-20",
+      "end": "2026-08-24",
+      "suppliers": [
+        {
+          "id": 19036,
+          "name": "19036 - BEBIDAS LEÃO",
+          "totalProducts": 2
+        }
+      ],
+      "participantMode": "all",
+      "representatives": [],
+      "rankingMetrics": [
+        "revenue"
+      ],
+      "rankingMode": "TOP_N_ELIGIBLE",
+      "topN": 3,
+      "salesScopeMode": "supplier_all",
+      "goalMode": "both",
+      "collectiveGoals": [
+        {
+          "id": "goal_msp41kf4_wbdpqd",
+          "scope": "collective",
+          "mode": "absolute",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 20000
+        }
+      ],
+      "individualGoals": [
+        {
+          "id": "goal_msp41kf4_hkzjgw",
+          "scope": "individual",
+          "mode": "growth_percent",
+          "metric": "revenue",
+          "operator": ">=",
+          "value": 20
+        }
+      ],
+      "rules": [
+        {
+          "id": "rule_msp44gxa_nt0u5g",
+          "name": "Positivação mínima",
+          "metric": "positivity",
+          "operator": ">=",
+          "value": 3
+        }
+      ],
+      "pointRules": [],
+      "categories": [],
+      "orderActivationRule": {
+        "enabled": false,
+        "name": "Benefício de primeira compra",
+        "baseCategoryId": "",
+        "baseMeasure": "distinct_products",
+        "baseMin": 1,
+        "triggerCategoryId": "",
+        "triggerMeasure": "distinct_products",
+        "triggerMin": 1,
+        "countMode": "first_per_client",
+        "firstPurchaseMode": "historical_trigger",
+        "discountType": "pending",
+        "discountValue": 0
+      },
+      "tieBreaks": [
+        {
+          "metric": "revenue",
+          "direction": "desc"
+        },
+        {
+          "metric": "positivity",
+          "direction": "desc"
+        }
+      ],
+      "prizes": [],
+      "createdAt": "2026-08-11T20:26:01.504Z",
+      "updatedAt": "2026-08-11T20:28:46.663Z"
+    }
+  ]
+}

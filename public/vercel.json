@@ -26,6 +26,9 @@
   "functions": {
     "api/campanhas-data.js": {
       "maxDuration": 60
+    },
+    "api/analisar-documento.js": {
+      "maxDuration": 60
     }
   }
 }

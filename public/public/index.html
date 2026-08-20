@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b3b24">
+  <title>Entrar · PMG Connect</title>
+
+  <link rel="icon" type="image/png" href="/favicon.png?v=7">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png?v=7">
+  <link rel="apple-touch-icon" href="/favicon.png?v=7">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;font-family:Inter,system-ui,sans-serif;color:#122019;background:#eef3ef}
+    body{
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      padding:24px;
+      background:
+        radial-gradient(circle at 70% 10%,rgba(68,151,100,.08),transparent 30%),
+        #eef3ef;
+    }
+    button,input{font:inherit}
+    .shell{
+      width:min(930px,100%);
+      min-height:555px;
+      display:grid;
+      grid-template-columns:1.08fr .92fr;
+      overflow:hidden;
+      border:1px solid #d7e2da;
+      border-radius:22px;
+      background:#fff;
+      box-shadow:0 26px 70px rgba(18,49,31,.14);
+    }
+    .visual{
+      position:relative;
+      overflow:hidden;
+      padding:42px 45px;
+      color:#fff;
+      background:
+        radial-gradient(circle at 95% 10%,rgba(98,199,135,.20),transparent 35%),
+        linear-gradient(145deg,#032616,#0d4329 70%,#164f32);
+      display:flex;
+      flex-direction:column;
+    }
+    .brand{display:flex;align-items:center;gap:12px;position:relative;z-index:2}
+    .logo{
+      width:42px;height:42px;border-radius:12px;background:#fff;object-fit:contain;
+      box-shadow:0 7px 18px rgba(0,0,0,.18);
+    }
+    .brand strong{font:800 14px Sora,sans-serif}
+    .brand small{display:block;margin-top:4px;color:#75d497;font-size:8px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase}
+    .copy{margin:auto 0;position:relative;z-index:2;max-width:480px}
+    .eyebrow{display:block;color:#72d598;font-size:9px;font-weight:800;letter-spacing:1.35px;text-transform:uppercase}
+    .copy h1{margin:14px 0 16px;font:800 clamp(36px,4.5vw,53px)/1.06 Sora,sans-serif;letter-spacing:-1.9px}
+    .copy p{margin:0;max-width:445px;color:rgba(255,255,255,.77);font-size:13px;line-height:1.65}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+    .chips span{padding:7px 11px;border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(255,255,255,.07);font-size:9px;font-weight:600}
+    .glow{position:absolute;width:330px;height:330px;right:-140px;bottom:-165px;border-radius:50%;background:radial-gradient(circle,rgba(92,197,132,.20),transparent 68%)}
+    .form-side{display:flex;align-items:center;padding:48px}
+    .form{width:100%}
+    .form h2{margin:0;font:800 25px Sora,sans-serif;letter-spacing:-.7px;color:#0d2016}
+    .form>p{margin:8px 0 27px;color:#718277;font-size:11px}
+    .field{display:block;margin:14px 0}
+    .field span{display:block;margin-bottom:7px;color:#1d3125;font-size:10px;font-weight:800}
+    .field input{
+      width:100%;height:45px;padding:0 13px;
+      border:1px solid #d8e2db;border-radius:9px;background:#f7faf8;color:#132219;
+      outline:none;transition:.16s;
+    }
+    .field input:focus{border-color:#459465;background:#fff;box-shadow:0 0 0 3px rgba(56,139,87,.10)}
+    .error{
+      display:none;margin:0 0 14px;padding:10px 12px;border:1px solid #efc4c7;border-radius:9px;
+      background:#fff3f4;color:#b62f38;font-size:10px;line-height:1.45
+    }
+    .error.show{display:block}
+    .submit{
+      width:100%;height:44px;border:0;border-radius:9px;margin-top:3px;
+      background:#165b36;color:#fff;font-weight:800;font-size:11px;cursor:pointer;
+      box-shadow:0 8px 18px rgba(22,91,54,.18);transition:.17s;
+    }
+    .submit:hover{background:#1d6b42;transform:translateY(-1px)}
+    .submit:disabled{cursor:wait;opacity:.72;transform:none}
+    .divider{height:1px;background:#e4ebe6;margin:17px 0}
+    .safe{display:flex;align-items:flex-start;gap:9px;color:#829187;font-size:9px;line-height:1.5}
+    .safe i{
+      width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:50%;
+      background:#e3f3e8;color:#28744a;font-style:normal;font-weight:900
+    }
+    .foot{margin-top:25px;text-align:center;color:#a1ada5;font-size:8px}
+    .loading{
+      position:fixed;inset:0;display:none;place-items:center;background:rgba(238,243,239,.78);
+      backdrop-filter:blur(5px);z-index:20
+    }
+    .loading.show{display:grid}
+    .loader{width:40px;height:40px;border:4px solid #cfe1d5;border-top-color:#27744a;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:760px){
+      body{padding:12px}
+      .shell{grid-template-columns:1fr;min-height:0}
+      .visual{display:none}
+      .form-side{padding:34px 24px}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="visual">
+      <div class="brand">
+        <img class="logo" src="/imagenssite/pmglogo.png" alt="PMG">
+        <div><strong>PMG Connect</strong><small>Portal interno</small></div>
+      </div>
+
+      <div class="copy">
+        <span class="eyebrow">Operação conectada</span>
+        <h1>Informação certa,<br>no mesmo lugar.</h1>
+        <p>Demandas, campanhas, vendas, fornecedores e ferramentas da PMG em uma única sessão de acesso.</p>
+        <div class="chips">
+          <span>Demandas</span>
+          <span>Campanhas</span>
+          <span>Dashboards</span>
+          <span>Catálogo</span>
+        </div>
+      </div>
+
+      <div class="glow"></div>
+    </section>
+
+    <section class="form-side">
+      <form id="loginForm" class="form" novalidate>
+        <h2>Entrar no Connect</h2>
+        <p>Use a mesma conta cadastrada no módulo de Demandas.</p>
+
+        <div id="loginError" class="error" role="alert"></div>
+
+        <label class="field">
+          <span>E-mail</span>
+          <input id="loginEmail" type="email" autocomplete="email" required placeholder="nome@pmg.com.br">
+        </label>
+
+        <label class="field">
+          <span>Senha</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Sua senha">
+        </label>
+
+        <button id="loginButton" class="submit" type="submit">Entrar →</button>
+
+        <div class="divider"></div>
+
+        <div class="safe">
+          <i>✓</i>
+          <span>A sessão é validada pelo Supabase Auth. Senhas não ficam armazenadas em arquivos públicos do site.</span>
+        </div>
+
+        <div class="foot">PMG Atacadista © 2026</div>
+      </form>
+    </section>
+  </main>
+
+  <div id="loading" class="loading" aria-hidden="true"><div class="loader"></div></div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      let db = null;
+      let configPromise = null;
+
+      const $ = id => document.getElementById(id);
+
+      function showError(message) {
+        const box = $('loginError');
+        box.textContent = message || 'Não foi possível entrar.';
+        box.classList.add('show');
+      }
+
+      function clearError() {
+        $('loginError').classList.remove('show');
+        $('loginError').textContent = '';
+      }
+
+      function setLoading(active) {
+        $('loading').classList.toggle('show', active);
+        $('loginButton').disabled = active;
+        $('loginButton').textContent = active ? 'Entrando...' : 'Entrar →';
+      }
+
+      function friendlyError(error) {
+        const raw = String(error?.message || error?.details || error || '').trim();
+
+        if (/invalid login credentials/i.test(raw)) {
+          return 'E-mail ou senha inválidos.';
+        }
+        if (/email not confirmed/i.test(raw)) {
+          return 'Este e-mail ainda não foi confirmado no Supabase.';
+        }
+        if (/failed to fetch|networkerror|load failed/i.test(raw)) {
+          return 'Não foi possível acessar o servidor de autenticação. Confira a conexão e tente novamente.';
+        }
+        if (/SUPABASE_URL|SUPABASE_ANON_KEY/i.test(raw)) {
+          return 'A configuração pública do Supabase não está disponível na Vercel.';
+        }
+        return raw || 'Não foi possível entrar no PMG Connect.';
+      }
+
+      async function getDb() {
+        if (db) return db;
+        if (configPromise) return configPromise;
+
+        configPromise = (async () => {
+          if (!window.supabase?.createClient) {
+            throw new Error('Biblioteca do Supabase não carregou. Atualize a página e tente novamente.');
+          }
+
+          const response = await fetch('/api/notificar-demandas?config=1', {
+            method: 'GET',
+            cache: 'no-store',
+            headers: { Accept: 'application/json' }
+          });
+
+          const contentType = response.headers.get('content-type') || '';
+          const payload = contentType.includes('application/json')
+            ? await response.json()
+            : { erro: await response.text() };
+
+          if (!response.ok) {
+            throw new Error(payload?.erro || 'Não foi possível carregar a configuração do Supabase.');
+          }
+
+          if (!payload?.supabaseUrl || !payload?.supabaseAnonKey) {
+            throw new Error('SUPABASE_URL ou SUPABASE_ANON_KEY não configurada no servidor.');
+          }
+
+          db = window.supabase.createClient(
+            payload.supabaseUrl,
+            payload.supabaseAnonKey,
+            {
+              auth: {
+                persistSession: true,
+                autoRefreshToken: true,
+                detectSessionInUrl: true
+              }
+            }
+          );
+
+          return db;
+        })();
+
+        try {
+          return await configPromise;
+        } catch (error) {
+          configPromise = null;
+          throw error;
+        }
+      }
+
+      function destination() {
+        const params = new URLSearchParams(location.search);
+        const requested = params.get('next');
+
+        // Só aceita caminhos internos. Nada de transformar login em open redirect,
+        // porque aparentemente até páginas de login precisam ter limites.
+        if (requested && requested.startsWith('/') && !requested.startsWith('//')) {
+          return requested;
+        }
+
+        return '/central.html';
+      }
+
+      async function restoreExistingSession() {
+        try {
+          const client = await getDb();
+          const { data, error } = await client.auth.getSession();
+
+          if (error) throw error;
+          if (data?.session) {
+            location.replace(destination());
+          }
+        } catch (error) {
+          // Não bloqueia a tela de login se só a restauração falhar.
+          console.warn('[PMG Connect login]', error);
+        }
+      }
+
+      $('loginForm').addEventListener('submit', async event => {
+        event.preventDefault();
+        clearError();
+
+        const email = $('loginEmail').value.trim();
+        const password = $('loginPassword').value;
+
+        if (!email || !password) {
+          showError('Informe e-mail e senha.');
+          return;
+        }
+
+        setLoading(true);
+
+        try {
+          const client = await getDb();
+
+          // Autenticação oficial usada também pelo módulo Demandas.
+          // Não depende de window.algumaCoisa.login, que era a origem do erro.
+          const { data, error } = await client.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (error) throw error;
+          if (!data?.session) throw new Error('O Supabase não devolveu uma sessão válida.');
+
+          location.replace(destination());
+        } catch (error) {
+          console.error('[PMG Connect login]', error);
+          showError(friendlyError(error));
+        } finally {
+          setLoading(false);
+        }
+      });
+
+      restoreExistingSession();
+    })();
+  </script>
+</body>
+</html>

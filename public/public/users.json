@@ -1,0 +1,5 @@
+{
+  "deprecated": true,
+  "message": "A autenticação foi migrada para o Supabase Auth. Nenhuma credencial deve ser armazenada neste arquivo.",
+  "users": []
+}
