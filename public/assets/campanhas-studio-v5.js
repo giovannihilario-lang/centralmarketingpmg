@@ -514,12 +514,17 @@
 
           const daily = status.dailySnapshot || {};
           if (!status.ready && (daily.syncing || daily.status === 'loading')) {
+            const dailyPhase = String(daily.phase || 'query');
+            const phaseMap = {
+              start:'connect', connect:'connect', schema:'query', query:'query',
+              transform:'organize', compress:'cache', done:'cache', load:'cache', ready:'ready',
+            };
             status = {
               ...status,
               status: 'loading',
-              phase: 'query',
-              progress: Math.max(12, Number(status.progress) || 0),
-              message: 'Sincronizando o snapshot comercial diário com o Azure SQL…',
+              phase: phaseMap[dailyPhase] || 'query',
+              progress: Math.max(12, Number(daily.progress) || Number(status.progress) || 0),
+              message: daily.message || 'Sincronizando o snapshot comercial diário com o Azure SQL…',
             };
           }
 

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
+import { Worker, isMainThread } from 'node:worker_threads';
 import { getPool, resetPool } from './db.js';
 
 const gzipAsync = promisify(gzip);
@@ -27,6 +28,9 @@ const state = {
   lastAttemptDay: null,
   lastAttemptAt: null,
   deferredUntil: null,
+  phase: 'idle',
+  progress: 0,
+  message: 'Aguardando sincronização.',
 };
 
 let diskLoaded = false;
@@ -73,7 +77,7 @@ function publicStatus() {
     startedAt: state.startedAt,
     source: state.source,
     stale: state.stale,
-    syncing: Boolean(syncPromise),
+    syncing: Boolean(syncPromise) || state.status === 'loading',
     counts: state.counts,
     error: state.error,
     timezone: SNAPSHOT_TIMEZONE,
@@ -82,6 +86,9 @@ function publicStatus() {
     lastAttemptDay: state.lastAttemptDay,
     lastAttemptAt: state.lastAttemptAt,
     sqlTimeoutMs: SNAPSHOT_SQL_TIMEOUT_MS,
+    phase: state.phase,
+    progress: state.progress,
+    message: state.message,
     version: SNAPSHOT_VERSION,
   };
 }
@@ -89,6 +96,13 @@ function publicStatus() {
 export function getDailySnapshotStatus() {
   return publicStatus();
 }
+
+function setSnapshotProgress(phase, progress, message) {
+  state.phase = phase;
+  state.progress = Math.max(0, Math.min(100, Number(progress) || 0));
+  state.message = String(message || '');
+}
+
 
 function buildIndexes(snapshot) {
   const ordersById = new Map();
@@ -158,11 +172,12 @@ function normalizeLoaded(parsed) {
   state.status = 'ready';
   state.error = null;
   state.counts = parsed.counts || computeCounts(snapshot);
+  setSnapshotProgress('ready', 100, state.stale ? 'Último snapshot local carregado.' : 'Snapshot comercial do dia pronto.');
   return snapshot;
 }
 
-async function loadDiskSnapshot() {
-  if (diskLoaded) return state.snapshot;
+async function loadDiskSnapshot({ forceReload = false } = {}) {
+  if (diskLoaded && !forceReload) return state.snapshot;
   diskLoaded = true;
   try {
     const compressed = await fs.readFile(SNAPSHOT_PATH);
@@ -251,9 +266,12 @@ async function resolveClientDocumentSql(pool) {
   return 'CAST(NULL AS nvarchar(200))';
 }
 
-async function querySnapshotFromSql() {
+async function querySnapshotFromSql(onProgress = () => {}) {
+  onProgress('connect', 5, 'Conectando ao Azure SQL…');
   const pool = await getPool();
+  onProgress('schema', 9, 'Conexão pronta. Conferindo o schema comercial…');
   const clientDocumentSql = await resolveClientDocumentSql(pool);
+  onProgress('query', 12, 'Lendo vendas, produtos, clientes e representantes do Azure SQL…');
   const request = pool.request();
   request.timeout = SNAPSHOT_SQL_TIMEOUT_MS;
   const result = await request.query(`
@@ -430,12 +448,14 @@ async function querySnapshotFromSql() {
     WHERE p.[ID Produto] IS NOT NULL AND p.[ID Fornecedor] IS NOT NULL;
   `);
 
+  onProgress('transform', 72, 'Consulta concluída. Organizando os dados comerciais…');
+
   const [
     ordersRaw = [], regionalOrdersRaw = [], linesRaw = [], productsRaw = [], regionalProductsRaw = [],
     regionalClientsRaw = [], activeClientsRaw = [], activeSellersRaw = [], productSuppliersRaw = [],
   ] = result.recordsets || [];
 
-  return {
+  const snapshot = {
     orders: ordersRaw.map((row) => ({
       o: String(row.orderId),
       d: row.orderDate ? new Date(row.orderDate).toISOString() : null,
@@ -506,6 +526,70 @@ async function querySnapshotFromSql() {
       s: Number(row.supplierId),
     })).filter((row) => Number.isFinite(row.p) && Number.isFinite(row.s)),
   };
+
+  onProgress('transform', 82, 'Dados organizados. Preparando o snapshot local…');
+  return snapshot;
+}
+
+async function buildSnapshotFile(day, onProgress = () => {}) {
+  try {
+    const snapshot = await querySnapshotFromSql(onProgress);
+    await resetPool();
+    const updatedAt = new Date().toISOString();
+    onProgress('compress', 88, 'Compactando o snapshot comercial…');
+    await writeSnapshot(snapshot, day, updatedAt);
+    const counts = computeCounts(snapshot);
+    onProgress('done', 100, `Snapshot ${day} salvo com ${counts.pedidos} pedidos e ${counts.itensVenda} itens.`);
+    return { day, updatedAt, counts };
+  } catch (error) {
+    try { await resetPool(); } catch {}
+    throw error;
+  }
+}
+
+export async function runSnapshotWorkerJob({ day = snapshotDay(), onProgress = () => {} } = {}) {
+  return buildSnapshotFile(day, onProgress);
+}
+
+function runSnapshotBuildWorker(day) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./daily-commercial-snapshot-worker.js', import.meta.url), {
+      workerData: { day },
+    });
+
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    };
+
+    worker.on('message', (message = {}) => {
+      if (message.type === 'progress') {
+        setSnapshotProgress(message.phase, message.progress, message.message);
+        return;
+      }
+      if (message.type === 'done') {
+        finish(resolve, message.result || {});
+        return;
+      }
+      if (message.type === 'error') {
+        const error = new Error(message.error?.message || 'Falha na sincronização diária.');
+        error.code = message.error?.code || 'PMG_DAILY_SNAPSHOT_WORKER_ERROR';
+        error.stack = message.error?.stack || error.stack;
+        finish(reject, error);
+      }
+    });
+
+    worker.on('error', (error) => finish(reject, error));
+    worker.on('exit', (code) => {
+      if (!settled) {
+        const error = new Error(`O processo de sincronização diária encerrou sem concluir (código ${code}).`);
+        error.code = 'PMG_DAILY_SNAPSHOT_WORKER_EXIT';
+        finish(reject, error);
+      }
+    });
+  });
 }
 
 async function synchronize() {
@@ -516,34 +600,43 @@ async function synchronize() {
   state.lastAttemptAt = state.startedAt;
   state.deferredUntil = null;
   state.error = null;
+  setSnapshotProgress('start', 2, 'Iniciando a sincronização comercial diária…');
 
   try {
-    const snapshot = buildIndexes(await querySnapshotFromSql());
-    // Depois da carga diária, o pool do Azure não precisa permanecer aberto.
-    // Se outra área administrativa realmente precisar do SQL, ela o reabre.
-    await resetPool();
-    const updatedAt = new Date().toISOString();
-    await writeSnapshot(snapshot, today, updatedAt);
+    // A consulta pesada, transformação e compactação rodam em uma Worker Thread.
+    // Assim o Express continua respondendo /api/status enquanto milhões de linhas
+    // do Azure são processadas. O worker grava o arquivo por troca atômica.
+    const result = isMainThread
+      ? await runSnapshotBuildWorker(today)
+      : await buildSnapshotFile(today, (phase, progress, message) => setSnapshotProgress(phase, progress, message));
 
-    state.snapshot = snapshot;
-    state.day = today;
-    state.updatedAt = updatedAt;
-    state.source = 'sql';
+    setSnapshotProgress('load', 96, 'Snapshot salvo. Carregando os índices locais…');
+    const snapshot = await loadDiskSnapshot({ forceReload: true });
+    if (!snapshot || state.day !== today) {
+      const error = new Error('O snapshot foi gerado, mas não pôde ser carregado pelo servidor local.');
+      error.code = 'PMG_DAILY_SNAPSHOT_RELOAD_FAILED';
+      throw error;
+    }
+
+    state.updatedAt = result?.updatedAt || state.updatedAt;
+    state.source = 'sql-worker';
     state.stale = false;
     state.status = 'ready';
-    state.counts = computeCounts(snapshot);
+    state.counts = result?.counts || computeCounts(snapshot);
+    setSnapshotProgress('ready', 100, 'Snapshot comercial do dia pronto.');
     console.log(`[snapshot-diario] ${today} pronto: ${state.counts.pedidos} pedidos, ${state.counts.itensVenda} itens.`);
     return snapshot;
   } catch (error) {
-    try { await resetPool(); } catch {}
     state.error = { message: error?.message || String(error), code: error?.code || null, at: new Date().toISOString() };
     if (state.snapshot) {
       state.status = 'ready';
       state.stale = true;
+      setSnapshotProgress('ready', 100, 'Usando o último snapshot válido; a atualização de hoje falhou.');
       console.warn('[snapshot-diario] atualização falhou; mantendo último snapshot válido:', error?.message || error);
       return state.snapshot;
     }
     state.status = 'error';
+    setSnapshotProgress('error', 0, state.error.message);
     throw error;
   }
 }
@@ -572,6 +665,21 @@ export async function ensureDailySnapshot({ force = false } = {}) {
 
   syncPromise = synchronize().finally(() => { syncPromise = null; });
   return syncPromise;
+}
+
+export function startDailySnapshot({ force = false } = {}) {
+  // Dispara a preparação sem prender a requisição HTTP que iniciou o processo.
+  // Erros ficam refletidos em getDailySnapshotStatus() e são tratados pelo fluxo
+  // normal de fallback para o último snapshot válido.
+  if (!syncPromise && state.status === 'idle') {
+    state.status = 'loading';
+    setSnapshotProgress('start', 1, 'Sincronização diária enfileirada…');
+  }
+  const pending = ensureDailySnapshot({ force });
+  pending.catch((error) => {
+    console.warn('[snapshot-diario] sincronização em segundo plano:', error?.message || error);
+  });
+  return publicStatus();
 }
 
 export async function getDailySnapshot() {

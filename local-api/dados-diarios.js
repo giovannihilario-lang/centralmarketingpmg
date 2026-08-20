@@ -2,6 +2,7 @@ import {
   ensureDailySnapshot,
   forceDailySnapshot,
   getDailySnapshotStatus,
+  startDailySnapshot,
 } from '../src/lib/daily-commercial-snapshot.js';
 
 export default async function handler(req, res) {
@@ -14,6 +15,11 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(204).end();
 
     if (action === 'status') return res.status(200).json(getDailySnapshotStatus());
+
+    if (action === 'iniciar' || action === 'start') {
+      const status = startDailySnapshot();
+      return res.status(status.ready && status.day === status.today ? 200 : 202).json(status);
+    }
 
     if (action === 'garantir' || action === 'ensure') {
       await ensureDailySnapshot();

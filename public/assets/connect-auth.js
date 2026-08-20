@@ -395,7 +395,7 @@
     const token = hostState.session?.access_token || '';
     if (!token || isLoopbackPage) return null;
     try {
-      const response = await originalFetch('http://localhost:3001/api/dados-diarios?acao=garantir', {
+      const response = await originalFetch('http://localhost:3001/api/dados-diarios?acao=iniciar', {
         method:'GET',
         headers:{ Authorization:`Bearer ${token}` },
         cache:'no-store',
