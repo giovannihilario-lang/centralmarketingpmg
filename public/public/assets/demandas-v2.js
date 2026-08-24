@@ -79,6 +79,9 @@ const VIEW_META = {
   demandas: ['Fluxo de trabalho', 'Demandas'], projetos: ['Planejamento conectado', 'Projetos'], automacoes: ['Rotinas automáticas', 'Automações'], equipe: ['Capacidade do setor', 'Equipe']
 };
 
+const ACADEMY_REGISTRATION_FORMS_URL = 'https://forms.gle/9FANZaCTBquJaRkz7';
+const ACADEMY_REP_CACHE_KEY = 'pmg-academia-representantes-v1';
+
 const state = {
   session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, authorshipReviews: [], authorshipConfirmations: [], taskExecutors: [], authorshipReady: false, evaluationExecutorIds: [], authorshipPostponed: new Set(), reminders: [], notifications: [], activities: [],
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
@@ -88,9 +91,10 @@ const state = {
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
   assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
   intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false,
-  transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
+  transfers: [], academyReservations: [], academyConfig: null, academyRegistrations: [], academyAttendanceReady: true, v3Ready: true,
   agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyTab: 'calendar', academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
+  academyRepresentatives: [], academyRepresentativesLoaded: false, academyRegistrationImportRows: [], academyRegistrationImportHeaders: [], academyRegistrationImportMap: {},
   templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
   monthlyReportData: null, projects: [], automations: [], intelligenceReady: false, selectedProjectId: null, projectSearch: '', projectStatusFilter: '', accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
@@ -1007,6 +1011,14 @@ function renderTaskAvatarFilters() {
 }
 function renderBoard() {
   const tasks = filteredTasks();
+  document.addEventListener('change', event => {
+    const presence=event.target.closest('[data-academy-presence]');
+    if(presence){updateAcademyRegistrationPresence(presence.dataset.academyPresence,Boolean(presence.checked));return;}
+    const repSelect=event.target.closest('[data-academy-rep-select]');
+    if(repSelect){updateAcademyRegistrationRepresentative(repSelect.dataset.academyRepSelect,repSelect.value);return;}
+    const trainingSelect=event.target.closest('[data-academy-training-select]');
+    if(trainingSelect){updateAcademyRegistrationTraining(trainingSelect.dataset.academyTrainingSelect,trainingSelect.value);return;}
+  });
   $$('.kanban-column').forEach(column => {
     const status = column.dataset.status; const items = tasks.filter(task => task.status === status);
     column.querySelector('.kanban-head b').textContent = items.length;
@@ -2502,6 +2514,7 @@ function setupRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comentarios' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atividades_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'academia_reservas' }, refreshDebounced)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'academia_inscricoes' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'transferencias_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'dependencias_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_tempo' }, refreshDebounced)
@@ -3240,10 +3253,28 @@ async function loadOperationalV3() {
     state.academyReservations = academyResult.data || [];
     state.academyConfig = configResult.data || null;
     state.v3Ready = true;
+
+    // Inscrições/presenças são uma camada NOVA e independente. A ausência
+    // desta migração nunca derruba reservas, solicitações ou treinamentos.
+    const registrationResult = await db.from('academia_inscricoes').select('*').order('criado_em', { ascending: false }).limit(5000);
+    if (registrationResult.error) {
+      const message = String(registrationResult.error?.message || registrationResult.error || '');
+      if (/academia_inscricoes|does not exist|schema cache/i.test(message)) {
+        state.academyRegistrations = [];
+        state.academyAttendanceReady = false;
+      } else {
+        console.warn('[Academia inscrições]', registrationResult.error);
+        state.academyRegistrations = [];
+        state.academyAttendanceReady = false;
+      }
+    } else {
+      state.academyRegistrations = registrationResult.data || [];
+      state.academyAttendanceReady = true;
+    }
   } catch (error) {
     if (!isV3MissingError(error)) throw error;
     console.warn('[Demandas V3] Migração ainda não disponível:', error);
-    state.transfers = []; state.academyReservations = []; state.academyConfig = null; state.v3Ready = false;
+    state.transfers = []; state.academyReservations = []; state.academyConfig = null; state.academyRegistrations = []; state.academyAttendanceReady = false; state.v3Ready = false;
   }
 }
 
@@ -3377,14 +3408,14 @@ function academyFreeSlots(key) {
 }
 
 function setAcademyTab(tab, render=true) {
-  const allowed=['calendar','trainings','requests'];
+  const allowed=['calendar','trainings','requests','attendance'];
   state.academyTab=allowed.includes(tab)?tab:'calendar';
   document.querySelectorAll('[data-academy-tab]').forEach(button=>{
     const active=button.dataset.academyTab===state.academyTab;
     button.classList.toggle('active',active);
     button.setAttribute('aria-selected',String(active));
   });
-  const panels={calendar:'academyPanelCalendar',trainings:'academyPanelTrainings',requests:'academyPanelRequests'};
+  const panels={calendar:'academyPanelCalendar',trainings:'academyPanelTrainings',requests:'academyPanelRequests',attendance:'academyPanelAttendance'};
   Object.entries(panels).forEach(([key,id])=>$(id)?.classList.toggle('hidden',key!==state.academyTab));
   if(render){renderAcademy();refreshIcons();}
 }
@@ -3409,6 +3440,11 @@ function renderAcademy() {
   const futureTrainingsForTab=trainings.filter(r=>new Date(r.fim_em)>=new Date()).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em));
   if($('academyTrainingTabCount')) $('academyTrainingTabCount').textContent=String(futureTrainingsForTab.length);
   if($('academyRequestTabCount')) { $('academyRequestTabCount').textContent=String(pending.length); $('academyRequestTabCount').classList.toggle('has-items',pending.length>0); }
+  if($('academyAttendanceTabCount')) {
+    const pendingLinks=state.academyRegistrations.filter(item=>!item.vendedor_nome).length;
+    $('academyAttendanceTabCount').textContent=String(state.academyRegistrations.length);
+    $('academyAttendanceTabCount').classList.toggle('has-items',pendingLinks>0);
+  }
   setAcademyTab(state.academyTab,false);
   const thisMonthTrainings=trainings.filter(r=>new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
   const thisMonthReservations=reservations.filter(r=>new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
@@ -3445,6 +3481,7 @@ function renderAcademy() {
   const futureTrainings=futureTrainingsForTab;
   if($('academyTrainingCount'))$('academyTrainingCount').textContent=`${futureTrainings.length} programado${futureTrainings.length===1?'':'s'}`;
   if($('academyTrainingList'))$('academyTrainingList').innerHTML=futureTrainings.length?futureTrainings.slice(0,12).map(r=>academyTrainingListCard(r)).join(''):`<div class="empty-state"><i data-lucide="calendar-plus"></i>Nenhum treinamento futuro cadastrado.</div>`;
+  renderAcademyAttendance();
   refreshIcons();
 }
 
@@ -3603,6 +3640,239 @@ async function handleAcademyImportFile(event){const file=event.target.files?.[0]
 function renderAcademyImportPreview(){const rows=state.academyImportRows.slice(0,5);$('academyImportPreview').innerHTML=rows.length?`<div class="academy-import-preview-head"><strong>Prévia</strong><span>${state.academyImportRows.length} linhas no arquivo</span></div>${rows.map((r,i)=>`<div class="academy-import-preview-row"><b>${i+1}</b><span><strong>${escapeHtml(String(academyMapped(r,'titulo')||'Sem título'))}</strong><small>${escapeHtml(String(academyMapped(r,'solicitante')||'Sem solicitante'))} · ${escapeHtml(String(academyMapped(r,'data')||'Sem data'))}</small></span></div>`).join('')}`:'';}
 async function importAcademyFormsRows(){if(!state.academyImportRows.length)return;const required=['titulo','solicitante','data','inicio','fim'];const missing=required.filter(k=>!state.academyImportMap[k]);if(missing.length)return toast('Mapeie título, solicitante, data, início e fim antes de importar.', 'error');setLoading(true);let ok=0,failed=0;try{for(let i=0;i<state.academyImportRows.length;i++){const row=state.academyImportRows[i],date=parseFormsDate(academyMapped(row,'data')),start=parseFormsTime(academyMapped(row,'inicio'),'09:00'),end=parseFormsTime(academyMapped(row,'fim'),'10:00');if(!date){failed++;continue;}const rawKey=String(academyMapped(row,'chave')||'').trim();const key=rawKey||`${fileSafeKey(academyMapped(row,'solicitante'))}:${date}:${start}:${fileSafeKey(academyMapped(row,'titulo'))}`;const participants=parseInt(String(academyMapped(row,'participantes')||'').replace(/\D+/g,''),10);const {error}=await db.rpc('importar_reserva_academia_forms',{p_chave:key,p_titulo:String(academyMapped(row,'titulo')||'').trim(),p_solicitante:String(academyMapped(row,'solicitante')||'').trim(),p_setor:String(academyMapped(row,'setor')||'').trim()||null,p_email:String(academyMapped(row,'email')||'').trim()||null,p_telefone:String(academyMapped(row,'telefone')||'').trim()||null,p_finalidade:String(academyMapped(row,'finalidade')||'').trim()||null,p_inicio_em:localDateTime(date,start),p_fim_em:localDateTime(date,end),p_participantes:Number.isFinite(participants)?participants:null,p_observacoes:String(academyMapped(row,'observacoes')||'').trim()||null,p_payload:row});if(error){console.warn('[Forms import]',error);failed++;}else ok++;}closeModal('academyImportModal');await refreshData();toast(`${ok} solicitação${ok===1?'':'ões'} importada${ok===1?'':'s'}${failed?` · ${failed} ignorada${failed===1?'':'s'} por erro`:''}.`);}finally{setLoading(false);}}
 function fileSafeKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'linha';}
+
+/* =========================================================
+   ACADEMIA PMG — INSCRIÇÕES, PRESENÇAS E BÔNUS DE CAMPANHA
+   Fluxo totalmente separado de academia_reservas/forms_url.
+   ========================================================= */
+function academyParticipantNorm(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().replace(/\s+/g,' ');}
+function academySellerIdentity(raw){
+  const text=String(raw||'').trim();
+  const match=text.match(/^(.*?)(?:\s*[-–—]\s*|\s+)(\d{1,10})$/);
+  return match?{raw:text,name:match[1].trim(),code:match[2].trim()}:{raw:text,name:text,code:''};
+}
+function academyRepresentativeCatalog(){
+  return (state.academyRepresentatives||[]).map(rep=>{
+    const identity=academySellerIdentity(rep.name||rep.vendedor||'');
+    return {...rep,rawName:identity.raw,namePart:identity.name,code:identity.code,norm:academyParticipantNorm(identity.name)};
+  }).filter(rep=>rep.rawName);
+}
+function matchAcademyRepresentative(rawName,rawCode=''){
+  const reps=academyRepresentativeCatalog();
+  const code=String(rawCode||'').replace(/\D+/g,'');
+  if(code){const byCode=reps.find(rep=>rep.code===code);if(byCode)return byCode;}
+  const identity=academySellerIdentity(rawName);
+  if(identity.code){const byEmbeddedCode=reps.find(rep=>rep.code===identity.code);if(byEmbeddedCode)return byEmbeddedCode;}
+  const norm=academyParticipantNorm(identity.name);
+  if(!norm)return null;
+  const exact=reps.filter(rep=>rep.norm===norm);
+  return exact.length===1?exact[0]:null;
+}
+function academyTrainingCatalog(){
+  return state.academyReservations.filter(item=>isAcademyTraining(item)&&item.status==='aprovada').sort((a,b)=>new Date(b.inicio_em)-new Date(a.inicio_em));
+}
+function academyTrainingLabel(training){return training?`${formatDate(training.inicio_em)} · ${training.titulo}`:'Sem treinamento vinculado';}
+function academyRegistrationTraining(reg){return academyTrainingCatalog().find(item=>item.id===reg.treinamento_id)||state.academyReservations.find(item=>item.id===reg.treinamento_id)||null;}
+function academyRegistrationRepKey(reg){
+  if(reg?.vendedor_codigo)return `code:${String(reg.vendedor_codigo).trim()}`;
+  if(reg?.vendedor_nome)return `name:${academyParticipantNorm(reg.vendedor_nome)}`;
+  return '';
+}
+function academyAttendanceGroups(rows=state.academyRegistrations){
+  const groups=new Map();
+  rows.forEach(reg=>{
+    const key=academyRegistrationRepKey(reg);if(!key)return;
+    if(!groups.has(key))groups.set(key,{key,code:reg.vendedor_codigo||'',name:reg.vendedor_nome||reg.vendedor_raw||reg.nome_forms||'',trainings:new Map(),presentRows:[]});
+    const group=groups.get(key);
+    if(reg.presente&&reg.treinamento_id){
+      group.trainings.set(reg.treinamento_id,academyRegistrationTraining(reg));
+      group.presentRows.push(reg);
+    }
+  });
+  groups.forEach(group=>{group.presences=group.trainings.size;group.bonus=Math.min(30,group.presences*10);});
+  return groups;
+}
+function academyBonusForRegistration(reg,groups=academyAttendanceGroups()){const key=academyRegistrationRepKey(reg);return key&&groups.get(key)?groups.get(key).bonus:0;}
+function academyAttendanceFilteredRows(){
+  const training=$('academyAttendanceTrainingFilter')?.value||'';
+  const query=academyParticipantNorm($('academyAttendanceSearch')?.value||'');
+  const presence=$('academyAttendancePresenceFilter')?.value||'';
+  const match=$('academyAttendanceMatchFilter')?.value||'';
+  return state.academyRegistrations.filter(reg=>{
+    if(training&&reg.treinamento_id!==training)return false;
+    if(query&&!academyParticipantNorm([reg.nome_forms,reg.email,reg.vendedor_codigo,reg.vendedor_nome,reg.vendedor_raw].join(' ')).includes(query))return false;
+    if(presence==='present'&&!reg.presente)return false;
+    if(presence==='absent'&&reg.presente)return false;
+    if(match==='matched'&&!reg.vendedor_nome)return false;
+    if(match==='pending'&&reg.vendedor_nome)return false;
+    return true;
+  });
+}
+function academyTrainingOptionsHTML(selected='',includeBlank=true){
+  return `${includeBlank?'<option value="">Sem vínculo definido</option>':''}${academyTrainingCatalog().map(item=>`<option value="${item.id}" ${item.id===selected?'selected':''}>${escapeHtml(academyTrainingLabel(item))}</option>`).join('')}`;
+}
+function renderAcademyAttendance(){
+  const box=$('academyAttendanceTable');if(!box)return;
+  const setup=$('academyAttendanceSetupNotice');
+  if(!state.academyAttendanceReady){
+    setup?.classList.remove('hidden');
+    if(setup)setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>Instalação única para liberar inscrições e presenças.</strong><span>Execute <code>sql/12-ACADEMIA-INSCRICOES-PRESENCAS-V3.8.1.sql</code> no Supabase. Reservas e solicitações continuam funcionando normalmente.</span></div>`;
+  }else setup?.classList.add('hidden');
+
+  const trainingFilter=$('academyAttendanceTrainingFilter');
+  if(trainingFilter){const current=trainingFilter.value;trainingFilter.innerHTML=`<option value="">Todos os treinamentos</option>${academyTrainingCatalog().map(item=>`<option value="${item.id}">${escapeHtml(academyTrainingLabel(item))}</option>`).join('')}`;trainingFilter.value=[...trainingFilter.options].some(o=>o.value===current)?current:'';}
+
+  const rows=academyAttendanceFilteredRows();
+  const groups=academyAttendanceGroups();
+  const totalPresent=state.academyRegistrations.filter(r=>r.presente).length;
+  const matched=state.academyRegistrations.filter(r=>r.vendedor_nome).length;
+  const maxed=[...groups.values()].filter(g=>g.bonus>=30).length;
+  if($('academyAttendanceSummary'))$('academyAttendanceSummary').innerHTML=[
+    ['users-round',state.academyRegistrations.length,'Inscrições importadas'],
+    ['user-check',totalPresent,'Presenças confirmadas'],
+    ['link-2',matched,'Vinculadas ao SQL'],
+    ['badge-percent',[...groups.values()].filter(g=>g.bonus>0).length,'Representantes com bônus'],
+    ['shield-check',maxed,'No teto de 30%']
+  ].map(([icon,value,label])=>`<article><i data-lucide="${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></article>`).join('');
+
+  const reps=academyRepresentativeCatalog();
+  if($('academyRepresentativesStatus'))$('academyRepresentativesStatus').textContent=state.academyRepresentativesLoaded?`${reps.length} representantes do SQL`:'Representantes não carregados';
+  if(!state.academyAttendanceReady){box.innerHTML='<div class="empty-state"><i data-lucide="database"></i>A migração de inscrições ainda não foi instalada.</div>';return;}
+  if(!state.academyRegistrations.length){box.innerHTML='<div class="empty-state"><i data-lucide="user-round-plus"></i>Nenhuma inscrição importada ainda. Use “Importar inscrições” com o arquivo de respostas do Forms.</div>';return;}
+  if(!rows.length){box.innerHTML='<div class="empty-state"><i data-lucide="search-x"></i>Nenhum participante corresponde aos filtros atuais.</div>';return;}
+
+  const repOptions=(selectedRaw='')=>`<option value="">Pendente de vínculo</option>${reps.map(rep=>`<option value="${escapeHtml(rep.rawName)}" ${rep.rawName===selectedRaw?'selected':''}>${escapeHtml(rep.code?`${rep.namePart} · ${rep.code}`:rep.namePart)}</option>`).join('')}`;
+  box.innerHTML=`<div class="academy-attendance-row head"><span>Participante</span><span>Treinamento</span><span>Representante no SQL</span><span>Presença</span><span>Bônus</span></div>${rows.map(reg=>{
+    const training=academyRegistrationTraining(reg),bonus=academyBonusForRegistration(reg,groups),matched=Boolean(reg.vendedor_nome),selectedRaw=reg.vendedor_raw&&matched?reg.vendedor_raw:(matched?(reg.vendedor_codigo?`${reg.vendedor_nome}-${reg.vendedor_codigo}`:reg.vendedor_nome):'');
+    const matchedCatalog=reps.find(rep=>(reg.vendedor_codigo&&rep.code===String(reg.vendedor_codigo))||(!reg.vendedor_codigo&&academyParticipantNorm(rep.namePart)===academyParticipantNorm(reg.vendedor_nome)));
+    const selectValue=matchedCatalog?.rawName||selectedRaw;
+    return `<article class="academy-attendance-row ${reg.presente?'is-present':''} ${matched?'is-matched':'is-pending'}"><span class="academy-attendee"><strong>${escapeHtml(reg.nome_forms||'Sem nome')}</strong><small>${escapeHtml(reg.email||reg.telefone||'Importado do Forms')}</small></span><span class="academy-attendance-training"><select data-academy-training-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${academyTrainingOptionsHTML(reg.treinamento_id||'',true)}</select><small>${training?`${formatDate(training.inicio_em)} · ${academyTrainingCategory(training)}`:'Sem treinamento: não gera bônus'}</small></span><span class="academy-representative-link"><select data-academy-rep-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${repOptions(selectValue)}</select><small>${matched?`Vinculado${reg.vinculo_status==='automatico'?' automaticamente':''}`:'Não entra no bônus até ser vinculado'}</small></span><span class="academy-presence-cell"><label class="academy-presence-toggle"><input type="checkbox" data-academy-presence="${reg.id}" ${reg.presente?'checked':''} ${!canManageAcademy()?'disabled':''}><span></span><b>${reg.presente?'SIM':'NÃO'}</b></label><small>${reg.presente&&reg.confirmado_em?`Confirmado ${formatDateTime(reg.confirmado_em)}`:'Aguardando confirmação'}</small></span><span class="academy-bonus-cell"><strong>${matched&&bonus?`+${bonus}%`:'0%'}</strong><small>${matched?`${Math.min(3,groups.get(academyRegistrationRepKey(reg))?.presences||0)} de 3 presenças válidas`:'Sem representante'}</small></span></article>`;
+  }).join('')}`;
+}
+
+async function academyLocalApiRequest(resource){
+  const isLoopback=location.protocol==='http:'&&location.port==='3001'&&['localhost','127.0.0.1'].includes(location.hostname);
+  const base=isLoopback?'/api':String(localStorage.getItem('pmg_campaigns_sql_base')||window.PMG_SQL_API_BASE||'http://localhost:3001/api').replace(/\/$/,'');
+  const url=`${base}/campanhas-data?recurso=${encodeURIComponent(resource)}`;
+  const headers={};if(state.session?.access_token)headers.Authorization=`Bearer ${state.session.access_token}`;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
+  try{
+    const options={headers,cache:'no-store',signal:controller.signal,credentials:isLoopback?'same-origin':'omit'};
+    if(!isLoopback){options.mode='cors';options.targetAddressSpace='loopback';}
+    const response=await fetch(url,options),raw=await response.text();let data={};try{data=raw?JSON.parse(raw):{};}catch(_){throw new Error(`A API local respondeu sem JSON (HTTP ${response.status}).`);}
+    return{response,data};
+  }finally{clearTimeout(timer);}
+}
+function restoreAcademyRepresentativeCache(){
+  if(state.academyRepresentativesLoaded)return true;
+  try{const cached=JSON.parse(localStorage.getItem(ACADEMY_REP_CACHE_KEY)||'null');if(cached?.date===todayKey()&&Array.isArray(cached.items)&&cached.items.length){state.academyRepresentatives=cached.items;state.academyRepresentativesLoaded=true;return true;}}catch(_){}
+  return false;
+}
+async function loadAcademyRepresentatives({force=false,silent=false}={}){
+  if(!force&&restoreAcademyRepresentativeCache()){renderAcademyAttendance();refreshIcons();return true;}
+  const status=$('academyRepresentativesStatus');if(status)status.textContent='Consultando contexto comercial…';
+  try{
+    let {response,data}=await academyLocalApiRequest('contexto');
+    if(response.status===202||!data?.context){
+      await academyLocalApiRequest('contexto-preparar');
+      if(!silent)toast('O contexto comercial está sendo preparado no servidor local. Tente atualizar os representantes novamente em instantes.');
+      if(status)status.textContent='Contexto comercial preparando';
+      return false;
+    }
+    if(!response.ok)throw new Error(data?.erro||`Falha HTTP ${response.status}`);
+    const reps=Array.isArray(data.context.representatives)?data.context.representatives:[];
+    state.academyRepresentatives=reps;state.academyRepresentativesLoaded=true;
+    try{localStorage.setItem(ACADEMY_REP_CACHE_KEY,JSON.stringify({date:todayKey(),items:reps}));}catch(_){}
+    renderAcademyAttendance();refreshIcons();
+    if(!silent)toast(`${reps.length} representantes carregados do contexto do Campanhas.`);
+    return true;
+  }catch(error){
+    console.warn('[Academia representantes]',error);
+    if(status)status.textContent='Falha ao consultar representantes';
+    if(!silent)toast(error?.name==='AbortError'?'A API local demorou para responder. Abra o PMG Connect pelo servidor local e tente novamente.':`Não foi possível carregar representantes: ${error.message}`,'error');
+    return false;
+  }
+}
+function openAcademyRegistrationForms(){window.open(ACADEMY_REGISTRATION_FORMS_URL,'_blank','noopener,noreferrer');}
+async function copyAcademyRegistrationForms(){try{await navigator.clipboard.writeText(ACADEMY_REGISTRATION_FORMS_URL);toast('Link do Forms de inscrição copiado.');}catch(_){toast('Não foi possível copiar automaticamente.','error');}}
+
+const ACADEMY_REGISTRATION_IMPORT_FIELDS=[
+  ['nome','Nome do participante',['nome completo','nome do participante','participante','seu nome','nome']],
+  ['email','E-mail',['e mail','email']],
+  ['telefone','Telefone',['telefone','celular','whatsapp','fone']],
+  ['vendedor','Representante / vendedor',['representante','vendedor','consultor','nome do representante','nome do vendedor']],
+  ['codigo','Código do representante',['codigo do representante','codigo vendedor','codigo do vendedor','id vendedor','id representante']],
+  ['chave','ID / Data da resposta',['id da resposta','response id','data de conclusao','hora de conclusao','timestamp','carimbo de data hora']]
+];
+function autoAcademyRegistrationMap(headers){const normalized=headers.map(h=>[h,normalizeHeader(h)]),map={};ACADEMY_REGISTRATION_IMPORT_FIELDS.forEach(([key,_label,candidates])=>{const found=normalized.find(([,n])=>candidates.some(c=>n===c||n.includes(c)));map[key]=found?.[0]||'';});return map;}
+function academyRegistrationMapped(row,key){const header=state.academyRegistrationImportMap[key];return header?row[header]:'';}
+function academyRegistrationImportSelect(key,label){const value=state.academyRegistrationImportMap[key]||'';return `<label><span>${label}</span><select data-academy-registration-map="${key}"><option value="">Não importar</option>${state.academyRegistrationImportHeaders.map(h=>`<option value="${escapeHtml(h)}" ${h===value?'selected':''}>${escapeHtml(h)}</option>`).join('')}</select></label>`;}
+function renderAcademyRegistrationImportMapping(){
+  const box=$('academyRegistrationImportMapping');if(!box)return;
+  if(!state.academyRegistrationImportHeaders.length){box.classList.add('hidden');return;}
+  box.classList.remove('hidden');box.innerHTML=`<div class="academy-import-map-head"><strong>Mapeamento das inscrições</strong><span>Nome é obrigatório. Representante/código são opcionais e ajudam o vínculo automático.</span></div><div class="academy-import-map-grid">${ACADEMY_REGISTRATION_IMPORT_FIELDS.map(([k,l])=>academyRegistrationImportSelect(k,l)).join('')}</div>`;renderAcademyRegistrationImportPreview();
+}
+function renderAcademyRegistrationImportPreview(){
+  const rows=state.academyRegistrationImportRows.slice(0,5),reps=academyRepresentativeCatalog();
+  const box=$('academyRegistrationImportPreview');if(!box)return;
+  box.innerHTML=rows.length?`<div class="academy-import-preview-head"><strong>Prévia</strong><span>${state.academyRegistrationImportRows.length} respostas · ${reps.length?`${reps.length} representantes disponíveis para conciliação`:'carregue os representantes para conciliar automaticamente'}</span></div>${rows.map((row,i)=>{const name=String(academyRegistrationMapped(row,'nome')||''),seller=String(academyRegistrationMapped(row,'vendedor')||name),code=String(academyRegistrationMapped(row,'codigo')||''),match=matchAcademyRepresentative(seller,code);return `<div class="academy-import-preview-row"><b>${i+1}</b><span><strong>${escapeHtml(name||'Sem nome')}</strong><small>${match?`Será vinculado a ${escapeHtml(match.namePart)}${match.code?` · ${escapeHtml(match.code)}`:''}`:'Vínculo SQL pendente'}</small></span></div>`;}).join('')}`:'';
+}
+async function handleAcademyRegistrationImportFile(event){
+  const file=event.target.files?.[0];if(!file)return;if(!window.XLSX)return toast('Biblioteca de Excel não carregou. Atualize a página.','error');
+  try{const data=await file.arrayBuffer(),workbook=XLSX.read(data,{type:'array',cellDates:true}),sheet=workbook.Sheets[workbook.SheetNames[0]],rows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false});state.academyRegistrationImportRows=rows;state.academyRegistrationImportHeaders=rows.length?Object.keys(rows[0]):[];state.academyRegistrationImportMap=autoAcademyRegistrationMap(state.academyRegistrationImportHeaders);renderAcademyRegistrationImportMapping();$('academyRegistrationImportConfirmBtn').disabled=!rows.length;toast(`${rows.length} inscrição${rows.length===1?'':'ões'} carregada${rows.length===1?'':'s'} para conferência.`);}catch(error){console.error(error);toast('Não foi possível ler o arquivo de inscrições.','error');}
+}
+function openAcademyRegistrationImport(){
+  if(!canManageAcademy())return toast('Você não tem permissão para gerenciar presenças.','error');
+  state.academyRegistrationImportRows=[];state.academyRegistrationImportHeaders=[];state.academyRegistrationImportMap={};
+  $('academyRegistrationImportFile').value='';$('academyRegistrationImportMapping').classList.add('hidden');$('academyRegistrationImportPreview').innerHTML='';$('academyRegistrationImportConfirmBtn').disabled=true;
+  const select=$('academyRegistrationTraining');if(select){select.innerHTML=academyTrainingOptionsHTML('',true);const upcoming=academyTrainingCatalog().filter(item=>new Date(item.fim_em)>=new Date()).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em))[0];if(upcoming)select.value=upcoming.id;}
+  $('academyRegistrationImportModal').classList.remove('hidden');refreshIcons();
+  if(!state.academyRepresentativesLoaded)void loadAcademyRepresentatives({silent:true});
+}
+async function importAcademyRegistrationRows(){
+  if(!state.academyRegistrationImportRows.length)return;
+  if(!state.academyRegistrationImportMap.nome)return toast('Mapeie a coluna com o nome do participante.','error');
+  const trainingId=$('academyRegistrationTraining').value||null;setLoading(true);let ok=0,failed=0;
+  try{
+    for(let i=0;i<state.academyRegistrationImportRows.length;i++){
+      const row=state.academyRegistrationImportRows[i],name=String(academyRegistrationMapped(row,'nome')||'').trim();if(!name){failed++;continue;}
+      const email=String(academyRegistrationMapped(row,'email')||'').trim(),phone=String(academyRegistrationMapped(row,'telefone')||'').trim(),sellerRaw=String(academyRegistrationMapped(row,'vendedor')||name).trim(),rawCode=String(academyRegistrationMapped(row,'codigo')||'').trim(),match=matchAcademyRepresentative(sellerRaw,rawCode),rawKey=String(academyRegistrationMapped(row,'chave')||'').trim(),key=rawKey||`${trainingId||'sem-treinamento'}:${fileSafeKey(name)}:${fileSafeKey(email||phone||String(i+1))}`;
+      const {error}=await db.rpc('importar_inscricao_academia_forms',{p_chave:key,p_treinamento_id:trainingId,p_nome:name,p_email:email||null,p_telefone:phone||null,p_vendedor_raw:sellerRaw||null,p_vendedor_codigo:match?.code||rawCode.replace(/\D+/g,'')||null,p_vendedor_nome:match?.namePart||null,p_vinculo_status:match?'automatico':'pendente',p_payload:row});
+      if(error){console.warn('[Inscrição Forms]',error);failed++;}else ok++;
+    }
+    closeModal('academyRegistrationImportModal');await loadOperationalV3();state.academyTab='attendance';renderAcademy();toast(`${ok} inscrição${ok===1?'':'ões'} importada${ok===1?'':'s'}${failed?` · ${failed} ignorada${failed===1?'':'s'} por erro`:''}.`);
+  }finally{setLoading(false);}
+}
+async function updateAcademyRegistrationPresence(id,present){
+  if(!canManageAcademy())return;
+  const reg=state.academyRegistrations.find(item=>item.id===id);if(!reg)return;
+  const previous=Boolean(reg.presente);reg.presente=present;reg.confirmado_em=present?new Date().toISOString():null;renderAcademyAttendance();refreshIcons();
+  try{const{error}=await db.rpc('atualizar_presenca_academia',{p_id:id,p_presente:present});if(error)throw error;await loadOperationalV3();renderAcademyAttendance();refreshIcons();toast(present?'Presença confirmada. O bônus foi recalculado.':'Presença removida. O bônus foi recalculado.');}catch(error){reg.presente=previous;renderAcademyAttendance();refreshIcons();toast(errorMessage(error),'error');}
+}
+async function updateAcademyRegistrationRepresentative(id,rawName){
+  if(!canManageAcademy())return;
+  const reg=state.academyRegistrations.find(item=>item.id===id);if(!reg)return;
+  const rep=academyRepresentativeCatalog().find(item=>item.rawName===rawName)||null;
+  try{const{error}=await db.rpc('vincular_inscricao_academia',{p_id:id,p_vendedor_codigo:rep?.code||null,p_vendedor_nome:rep?.namePart||null,p_vendedor_raw:rep?.rawName||reg.vendedor_raw||reg.nome_forms||null});if(error)throw error;reg.vendedor_codigo=rep?.code||null;reg.vendedor_nome=rep?.namePart||null;reg.vendedor_raw=rep?.rawName||reg.vendedor_raw||reg.nome_forms||null;reg.vinculo_status=rep?'manual':'pendente';renderAcademyAttendance();refreshIcons();toast(rep?'Representante vinculado à inscrição.':'Vínculo removido.');}catch(error){toast(errorMessage(error),'error');await loadOperationalV3();renderAcademyAttendance();}
+}
+async function updateAcademyRegistrationTraining(id,trainingId){
+  if(!canManageAcademy())return;
+  const reg=state.academyRegistrations.find(item=>item.id===id);if(!reg)return;
+  const previous=reg.treinamento_id||null;reg.treinamento_id=trainingId||null;renderAcademyAttendance();refreshIcons();
+  try{const{error}=await db.rpc('vincular_treinamento_inscricao_academia',{p_id:id,p_treinamento_id:trainingId||null});if(error)throw error;toast(trainingId?'Treinamento vinculado à inscrição. O bônus foi recalculado.':'Vínculo com treinamento removido.');}catch(error){reg.treinamento_id=previous;renderAcademyAttendance();refreshIcons();toast(errorMessage(error),'error');}
+}
+function exportAcademyAttendanceXlsx(){
+  if(!window.XLSX)return toast('Biblioteca de Excel não carregou. Atualize a página.','error');
+  const reps=academyRepresentativeCatalog();if(!reps.length)return toast('Atualize a lista de representantes do SQL antes de exportar.','error');
+  const groups=academyAttendanceGroups(),allTrainings=academyTrainingCatalog();
+  const summary=reps.map(rep=>{const key=rep.code?`code:${rep.code}`:`name:${academyParticipantNorm(rep.namePart)}`,group=groups.get(key),trainingNames=group?[...group.trainings.values()].map(t=>t?.titulo||'Treinamento').filter(Boolean):[];return{'Código':rep.code||'','Representante':rep.namePart,'Representante SQL':rep.rawName,'Clientes ativos':Number(rep.activeClients||0),'Presenças válidas':group?.presences||0,'Acréscimo crescimento (%)':group?.bonus||0,'Treinamentos confirmados':trainingNames.join(' | ')};});
+  const detail=state.academyRegistrations.map(reg=>{const training=academyRegistrationTraining(reg),key=academyRegistrationRepKey(reg),group=key?groups.get(key):null;return{'Data do treinamento':training?formatDate(training.inicio_em):'','Treinamento':training?.titulo||'Sem vínculo','Participante no Forms':reg.nome_forms||'','E-mail':reg.email||'','Telefone':reg.telefone||'','Código representante':reg.vendedor_codigo||'','Representante':reg.vendedor_nome||'','Presente':reg.presente?'SIM':'NÃO','Bônus total representante (%)':group?.bonus||0,'Status do vínculo':reg.vendedor_nome?(reg.vinculo_status||'vinculado'):'pendente','Confirmado por':reg.confirmado_por?(collaborator(reg.confirmado_por)?.nome||reg.confirmado_por):'','Confirmado em':reg.confirmado_em?formatDateTime(reg.confirmado_em):''};});
+  const wb=XLSX.utils.book_new(),wsSummary=XLSX.utils.json_to_sheet(summary),wsDetail=XLSX.utils.json_to_sheet(detail);
+  wsSummary['!cols']=[{wch:12},{wch:30},{wch:36},{wch:14},{wch:16},{wch:24},{wch:70}];wsDetail['!cols']=[{wch:18},{wch:34},{wch:32},{wch:30},{wch:18},{wch:20},{wch:30},{wch:12},{wch:26},{wch:18},{wch:22},{wch:24},{wch:22}];
+  XLSX.utils.book_append_sheet(wb,wsSummary,'BONUS_CAMPANHAS');XLSX.utils.book_append_sheet(wb,wsDetail,'PRESENCAS');
+  const guide=XLSX.utils.aoa_to_sheet([['REGRA ACADEMIA PMG'],['Cada treinamento distinto com presença confirmada adiciona 10 pontos percentuais ao crescimento da campanha.'],['O bônus máximo por representante é 30%.'],['Inscrições sem representante do SQL ou sem treinamento vinculado não geram bônus.'],[],['Treinamentos cadastrados',allTrainings.length],['Inscrições importadas',state.academyRegistrations.length],['Gerado em',new Date().toLocaleString('pt-BR')]]);guide['!cols']=[{wch:105},{wch:18}];XLSX.utils.book_append_sheet(wb,guide,'LEIA-ME');
+  XLSX.writeFile(wb,`academia-pmg-bonus-campanhas-${todayKey()}.xlsx`);toast('Excel de presença e bônus exportado.');
+}
 
 function monthInputValue(date=new Date()){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;}
 function monthBounds(value){const [y,m]=String(value||monthInputValue()).split('-').map(Number);const start=new Date(y,m-1,1),end=new Date(y,m,1);return{start,end,label:new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(start)};}
@@ -3872,6 +4142,7 @@ function bindEvents() {
       await loadOperationalV3();
       setAcademyTab(tab, false);
       renderAcademy();
+      if(tab==='attendance'&&!state.academyRepresentativesLoaded)void loadAcademyRepresentatives({silent:true});
     } catch (error) {
       console.warn('[Academia refresh]', error);
       setAcademyTab(tab);
@@ -3896,6 +4167,16 @@ function bindEvents() {
   $('academyImportFile')?.addEventListener('change', handleAcademyImportFile);
   $('academyImportMapping')?.addEventListener('change', event => { const select = event.target.closest('[data-academy-map]'); if (!select) return; state.academyImportMap[select.dataset.academyMap] = select.value; renderAcademyImportPreview(); });
   $('academyImportConfirmBtn')?.addEventListener('click', importAcademyFormsRows);
+  $('academyRegistrationFormsBtn')?.addEventListener('click', openAcademyRegistrationForms);
+  $('academyRegistrationCopyBtn')?.addEventListener('click', copyAcademyRegistrationForms);
+  $('academyRegistrationImportBtn')?.addEventListener('click', openAcademyRegistrationImport);
+  $('academyRepresentativesSyncBtn')?.addEventListener('click', () => loadAcademyRepresentatives({force:true}));
+  $('academyAttendanceExportBtn')?.addEventListener('click', exportAcademyAttendanceXlsx);
+  $('academyRegistrationImportFile')?.addEventListener('change', handleAcademyRegistrationImportFile);
+  $('academyRegistrationImportMapping')?.addEventListener('change', event => { const select=event.target.closest('[data-academy-registration-map]');if(!select)return;state.academyRegistrationImportMap[select.dataset.academyRegistrationMap]=select.value;renderAcademyRegistrationImportPreview(); });
+  $('academyRegistrationImportConfirmBtn')?.addEventListener('click', importAcademyRegistrationRows);
+  ['academyAttendanceTrainingFilter','academyAttendancePresenceFilter','academyAttendanceMatchFilter'].forEach(id => $(id)?.addEventListener('change', () => { renderAcademyAttendance();refreshIcons(); }));
+  $('academyAttendanceSearch')?.addEventListener('input', debounce(() => { renderAcademyAttendance();refreshIcons(); },120));
   ['academyDate','academyStartTime','academyEndTime'].forEach(id => $(id)?.addEventListener('change', updateAcademyConflictPreview));
   $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', jsonInputId: 'itemAssigneesJson', multi: true, title: 'Selecionar responsáveis' }));
   $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', jsonInputId: 'editTaskAssigneesJson', multi: true, title: 'Gerenciar responsáveis' }));

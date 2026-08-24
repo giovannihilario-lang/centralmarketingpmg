@@ -297,6 +297,7 @@
             <button type="button" class="academy-section-tab active" data-academy-tab="calendar" role="tab" aria-selected="true"><i data-lucide="calendar-days"></i><span><strong>Calendário</strong><small>Disponibilidade e ocupações</small></span></button>
             <button type="button" class="academy-section-tab" data-academy-tab="trainings" role="tab" aria-selected="false"><i data-lucide="presentation"></i><span><strong>Treinamentos</strong><small>Cadastrar e gerenciar</small></span><b id="academyTrainingTabCount" class="academy-tab-count">0</b></button>
             <button type="button" class="academy-section-tab" data-academy-tab="requests" role="tab" aria-selected="false"><i data-lucide="inbox"></i><span><strong>Solicitações</strong><small>Pedidos do Forms</small></span><b id="academyRequestTabCount" class="academy-tab-count">0</b></button>
+            <button type="button" class="academy-section-tab" data-academy-tab="attendance" role="tab" aria-selected="false"><i data-lucide="clipboard-check"></i><span><strong>Inscrições e Presenças</strong><small>Treinamentos e bônus</small></span><b id="academyAttendanceTabCount" class="academy-tab-count">0</b></button>
           </nav>
 
           <div id="academyPanelCalendar" class="academy-tab-panel">
@@ -356,6 +357,47 @@
             <section class="academy-requests card">
               <div class="section-header"><div><span class="eyebrow">Fila de análise</span><h3>Solicitações pendentes</h3></div><span id="academyPendingCount" class="soft-count">0 solicitações</span></div>
               <div id="academyPendingList" class="academy-pending-list"></div>
+            </section>
+          </div>
+
+
+          <div id="academyPanelAttendance" class="academy-tab-panel hidden">
+            <section class="academy-attendance-hub card">
+              <div class="academy-attendance-hub-copy">
+                <span class="eyebrow">Treinamentos comerciais</span>
+                <h3>Inscrições, presença e bônus de crescimento</h3>
+                <p>Este fluxo é independente das reservas da Academia. Importe as inscrições do Forms, vincule cada participante ao representante do SQL e confirme quem realmente compareceu.</p>
+                <div class="academy-training-rules">
+                  <span><i data-lucide="badge-plus"></i> +10% por presença</span>
+                  <span><i data-lucide="shield-check"></i> Máximo de 30%</span>
+                  <span><i data-lucide="database"></i> Representantes do Campanhas</span>
+                  <span><i data-lucide="file-spreadsheet"></i> Exportação XLSX</span>
+                </div>
+              </div>
+              <div class="academy-attendance-actions">
+                <button id="academyRegistrationFormsBtn" type="button" class="btn secondary"><i data-lucide="external-link"></i>Abrir Forms de inscrição</button>
+                <button id="academyRegistrationCopyBtn" type="button" class="btn secondary"><i data-lucide="copy"></i>Copiar link</button>
+                <button id="academyRegistrationImportBtn" type="button" class="btn training academy-manager-only"><i data-lucide="file-up"></i>Importar inscrições</button>
+                <button id="academyRepresentativesSyncBtn" type="button" class="btn secondary"><i data-lucide="refresh-cw"></i>Atualizar representantes</button>
+                <button id="academyAttendanceExportBtn" type="button" class="btn primary"><i data-lucide="file-down"></i>Exportar Excel</button>
+              </div>
+            </section>
+
+            <div id="academyAttendanceSetupNotice" class="academy-setup-notice hidden"></div>
+            <div id="academyAttendanceSummary" class="academy-attendance-summary"></div>
+
+            <section class="academy-attendance-manager card">
+              <div class="section-header academy-attendance-header">
+                <div><span class="eyebrow">Controle de participação</span><h3>Participantes dos treinamentos</h3><p>O bônus considera treinamentos distintos com presença confirmada. Três ou mais presenças ficam travadas em 30%.</p></div>
+                <span id="academyRepresentativesStatus" class="soft-count">Representantes não carregados</span>
+              </div>
+              <div class="academy-attendance-filters">
+                <label class="field"><span>Treinamento</span><select id="academyAttendanceTrainingFilter"><option value="">Todos os treinamentos</option></select></label>
+                <label class="field"><span>Buscar participante</span><div class="search-input"><i data-lucide="search"></i><input id="academyAttendanceSearch" placeholder="Nome, código ou representante"></div></label>
+                <label class="field"><span>Presença</span><select id="academyAttendancePresenceFilter"><option value="">Todos</option><option value="present">Presentes</option><option value="absent">Não confirmados</option></select></label>
+                <label class="field"><span>Vínculo SQL</span><select id="academyAttendanceMatchFilter"><option value="">Todos</option><option value="matched">Vinculados</option><option value="pending">Pendentes</option></select></label>
+              </div>
+              <div id="academyAttendanceTable" class="academy-attendance-table"></div>
             </section>
           </div>
         </section>
@@ -1142,6 +1184,23 @@
         <div id="academyImportPreview" class="academy-import-preview"></div>
       </div>
       <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyImportModal">Cancelar</button><button id="academyImportConfirmBtn" class="btn primary" type="button" disabled><i data-lucide="upload"></i>Importar solicitações</button></div>
+    </div>
+  </div>
+
+
+  <div id="academyRegistrationImportModal" class="modal-layer hidden">
+    <div class="modal-card academy-import-modal">
+      <div class="modal-head"><div><span class="eyebrow">Forms de inscrição</span><h2>Importar participantes do treinamento</h2><p>Este importador é exclusivo das inscrições e não altera reservas ou solicitações da Academia PMG.</p></div><button class="icon-btn subtle" data-close-modal="academyRegistrationImportModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-body">
+        <div class="academy-registration-import-target">
+          <label class="field"><span>Treinamento deste arquivo</span><select id="academyRegistrationTraining"><option value="">Sem vínculo definido</option></select></label>
+          <div class="settings-note"><i data-lucide="circle-help"></i><span>Selecione o treinamento cadastrado na Academia. Se deixar sem vínculo, a inscrição poderá ser vinculada depois, mas não contará para o bônus enquanto estiver sem treinamento.</span></div>
+        </div>
+        <label class="academy-file-drop"><input id="academyRegistrationImportFile" type="file" accept=".xlsx,.xls,.csv"><i data-lucide="users-round"></i><span><strong>Selecionar respostas do Forms de inscrição</strong><small>XLSX, XLS ou CSV exportado das respostas</small></span></label>
+        <div id="academyRegistrationImportMapping" class="academy-import-mapping hidden"></div>
+        <div id="academyRegistrationImportPreview" class="academy-import-preview"></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyRegistrationImportModal">Cancelar</button><button id="academyRegistrationImportConfirmBtn" class="btn training" type="button" disabled><i data-lucide="upload"></i>Importar inscrições</button></div>
     </div>
   </div>
 

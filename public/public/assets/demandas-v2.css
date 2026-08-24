@@ -4168,3 +4168,41 @@ body.ui-theme-dark .review-deadline-pause-v379>b{
   .review-deadline-pause-v379{grid-template-columns:42px minmax(0,1fr)}
   .review-deadline-pause-v379>b{grid-column:1/-1;justify-self:start}
 }
+
+/* =========================================================
+   V3.8.1 — ACADEMIA: INSCRIÇÕES, PRESENÇAS E BÔNUS
+   Fluxo separado de reservas/solicitações do espaço.
+   ========================================================= */
+.academy-section-tabs{grid-template-columns:repeat(4,minmax(0,1fr))}
+.academy-attendance-hub{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,390px);gap:22px;align-items:center;padding:24px;border:1px solid rgba(112,86,200,.22);border-radius:var(--radius,18px);background:linear-gradient(135deg,rgba(112,86,200,.10),rgba(112,86,200,.025) 58%,var(--panel,#fff))}
+.academy-attendance-hub-copy h3{margin:5px 0 7px;font:800 20px/1.2 Sora,sans-serif;color:var(--ink)}
+.academy-attendance-hub-copy>p{max-width:780px;margin:0;color:var(--muted);font-size:11px;line-height:1.65}
+.academy-attendance-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.academy-attendance-actions .btn{min-height:45px;justify-content:flex-start}.academy-attendance-actions .btn:last-child{grid-column:1/-1;justify-content:center}
+.academy-attendance-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0}
+.academy-attendance-summary article{min-height:86px;padding:14px;border:1px solid var(--line);border-radius:15px;background:var(--panel,#fff);display:flex;align-items:center;gap:11px}
+.academy-attendance-summary article>svg{width:21px;height:21px;padding:9px;box-sizing:content-box;border-radius:11px;background:#f1edff;color:#7056c8}
+.academy-attendance-summary strong{display:block;font:800 19px Sora,sans-serif;color:var(--ink)}.academy-attendance-summary span{display:block;margin-top:3px;font-size:9px;color:var(--muted)}
+.academy-attendance-manager{padding:20px}.academy-attendance-header{align-items:flex-start}.academy-attendance-header p{margin:4px 0 0;font-size:9px;color:var(--muted);max-width:780px}
+.academy-attendance-filters{display:grid;grid-template-columns:1.1fr 1.4fr .8fr .8fr;gap:9px;margin:16px 0 12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface-2)}
+.academy-attendance-filters .field{margin:0}.academy-attendance-filters .search-input{height:42px}.academy-attendance-filters select{height:42px}
+.academy-attendance-table{overflow-x:auto;border:1px solid var(--line);border-radius:15px;background:var(--panel,#fff)}
+.academy-attendance-row{min-width:1040px;display:grid;grid-template-columns:minmax(190px,1.25fr) minmax(180px,1.05fr) minmax(270px,1.45fr) minmax(145px,.75fr) minmax(115px,.55fr);align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--line);background:var(--panel,#fff);transition:.16s ease}
+.academy-attendance-row:last-child{border-bottom:0}.academy-attendance-row:not(.head):hover{background:var(--surface-2)}.academy-attendance-row.is-present{box-shadow:inset 4px 0 0 #2d8b57}.academy-attendance-row.is-pending{box-shadow:inset 4px 0 0 #d99b32}.academy-attendance-row.is-present.is-pending{box-shadow:inset 4px 0 0 #d99b32}
+.academy-attendance-row.head{position:sticky;top:0;z-index:2;min-height:40px;padding-top:9px;padding-bottom:9px;background:var(--surface-2);font:800 8px Sora,sans-serif;text-transform:uppercase;letter-spacing:.45px;color:var(--muted)}
+.academy-attendee strong,.academy-attendance-training strong{display:block;font-size:10px;color:var(--ink)}.academy-attendee small,.academy-attendance-training small,.academy-representative-link small,.academy-presence-cell small,.academy-bonus-cell small{display:block;margin-top:4px;font-size:8px;line-height:1.35;color:var(--muted)}
+.academy-representative-link select{width:100%;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--panel,#fff);padding:0 9px;font-size:9px;color:var(--text)}
+.academy-presence-cell{display:flex;flex-direction:column;align-items:flex-start}.academy-presence-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}.academy-presence-toggle input{position:absolute;opacity:0;pointer-events:none}.academy-presence-toggle>span{position:relative;width:42px;height:23px;border-radius:99px;background:#dfe5e1;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);transition:.18s}.academy-presence-toggle>span:after{content:"";position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);transition:.18s}.academy-presence-toggle input:checked+span{background:#2d8b57}.academy-presence-toggle input:checked+span:after{transform:translateX(19px)}.academy-presence-toggle b{font:800 9px Sora,sans-serif;color:var(--muted)}.academy-presence-toggle input:checked~b{color:#257348}.academy-presence-toggle input:disabled+span{opacity:.55;cursor:not-allowed}
+.academy-bonus-cell strong{display:inline-flex;align-items:center;justify-content:center;min-width:54px;padding:7px 9px;border-radius:99px;background:#eef2ef;color:#68736c;font:800 12px Sora,sans-serif}.academy-attendance-row.is-present.is-matched .academy-bonus-cell strong{background:#e7f6ed;color:#257348}
+.academy-registration-import-target{display:grid;grid-template-columns:minmax(250px,.85fr) minmax(0,1.15fr);gap:10px;align-items:end;margin-bottom:13px}.academy-registration-import-target .settings-note{min-height:64px;margin:0}
+
+html[data-theme="dark"] .academy-attendance-hub,body.ui-theme-dark .academy-attendance-hub{background:linear-gradient(135deg,rgba(129,104,212,.16),rgba(129,104,212,.04) 58%,#121b16);border-color:#4a3e66}
+html[data-theme="dark"] .academy-attendance-summary article,html[data-theme="dark"] .academy-attendance-table,html[data-theme="dark"] .academy-attendance-row,body.ui-theme-dark .academy-attendance-summary article,body.ui-theme-dark .academy-attendance-table,body.ui-theme-dark .academy-attendance-row{background:#121b16;border-color:#293a30}
+html[data-theme="dark"] .academy-attendance-row.head,html[data-theme="dark"] .academy-attendance-filters,body.ui-theme-dark .academy-attendance-row.head,body.ui-theme-dark .academy-attendance-filters{background:#17231b;border-color:#293a30}
+html[data-theme="dark"] .academy-representative-link select,body.ui-theme-dark .academy-representative-link select{background:#111914;border-color:#34473a;color:#e7eee9}
+html[data-theme="dark"] .academy-attendance-summary article>svg,body.ui-theme-dark .academy-attendance-summary article>svg{background:#211d32;color:#cfc3ff}
+
+@media(max-width:1180px){.academy-section-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.academy-attendance-hub{grid-template-columns:1fr}.academy-attendance-summary{grid-template-columns:repeat(3,1fr)}.academy-attendance-filters{grid-template-columns:1fr 1fr}}
+@media(max-width:720px){.academy-section-tabs{grid-template-columns:1fr}.academy-attendance-actions{grid-template-columns:1fr}.academy-attendance-actions .btn:last-child{grid-column:auto}.academy-attendance-summary{grid-template-columns:1fr 1fr}.academy-attendance-filters{grid-template-columns:1fr}.academy-registration-import-target{grid-template-columns:1fr}}
+@media(max-width:460px){.academy-attendance-summary{grid-template-columns:1fr}}
+.academy-attendance-training select{width:100%;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--panel,#fff);padding:0 9px;font-size:9px;color:var(--text)}
+html[data-theme="dark"] .academy-attendance-training select,body.ui-theme-dark .academy-attendance-training select{background:#111914;border-color:#34473a;color:#e7eee9}
