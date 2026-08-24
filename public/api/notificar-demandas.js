@@ -209,6 +209,140 @@ async function processAcademyFormsWebhook(req, supabase) {
   return { ok: true, reservaId: result.id, status: result.status, chave: key };
 }
 
+
+function academyRegistrationsWebhookAuthorized(req) {
+  const expected = process.env.ACADEMIA_INSCRICOES_WEBHOOK_SECRET;
+  if (!expected) throw new Error('ACADEMIA_INSCRICOES_WEBHOOK_SECRET não configurado');
+  const provided = String(req.headers['x-academia-inscricoes-secret'] || req.headers['x-pmg-secret'] || '');
+  if (!provided || provided !== expected) throw new Error('Webhook de inscrições da Academia não autorizado');
+}
+
+function normalizeAcademyFormKey(value) {
+  return String(value || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function academyRegistrationValue(values, candidates) {
+  const entries = Object.entries(values || {}).map(([key, value]) => [normalizeAcademyFormKey(key), value]);
+  for (const candidate of candidates) {
+    const needle = normalizeAcademyFormKey(candidate);
+    const exact = entries.find(([key]) => key === needle);
+    if (exact) return cleanText(Array.isArray(exact[1]) ? exact[1].join(' · ') : exact[1]);
+  }
+  for (const candidate of candidates) {
+    const needle = normalizeAcademyFormKey(candidate);
+    const partial = entries.find(([key]) => key.includes(needle) || needle.includes(key));
+    if (partial) return cleanText(Array.isArray(partial[1]) ? partial[1].join(' · ') : partial[1]);
+  }
+  return null;
+}
+
+async function resolveAcademyRegistrationTraining(supabase, body, values) {
+  const explicitId = cleanText(body.trainingId || body.treinamentoId || body.treinamento_id);
+  if (explicitId) {
+    const { data } = await supabase.from('academia_reservas').select('id').eq('id', explicitId).maybeSingle();
+    if (data?.id) return data.id;
+  }
+
+  const trainingText = cleanText(body.trainingName || body.treinamentoNome || body.treinamento_nome) || academyRegistrationValue(values, [
+    'treinamento', 'treinamento escolhido', 'nome do treinamento', 'evento', 'curso', 'capacitação', 'capacitacao'
+  ]);
+  if (!trainingText) return null;
+
+  const { data, error } = await supabase
+    .from('academia_reservas')
+    .select('id,titulo,inicio_em,status,tipo_registro')
+    .eq('status', 'aprovada')
+    .eq('tipo_registro', 'treinamento')
+    .order('inicio_em', { ascending: false })
+    .limit(250);
+  if (error) throw error;
+  const target = normalizeAcademyFormKey(trainingText);
+  const matches = (data || []).filter(item => {
+    const title = normalizeAcademyFormKey(item.titulo);
+    return title === target || title.includes(target) || target.includes(title);
+  });
+  return matches.length === 1 ? matches[0].id : null;
+}
+
+async function processAcademyRegistrationsWebhook(req, supabase) {
+  academyRegistrationsWebhookAuthorized(req);
+  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  if (body.dryRun === true) return { ok: true, dryRun: true, message: 'Conector de inscrições da Academia PMG autorizado.' };
+  const values = body.values && typeof body.values === 'object' ? body.values : body;
+
+  const name = cleanText(body.nome || body.name) || academyRegistrationValue(values, [
+    'nome completo', 'nome do participante', 'participante', 'seu nome', 'nome'
+  ]);
+  if (!name) throw new Error('Não foi possível identificar o nome do participante na resposta');
+
+  const email = cleanText(body.email) || academyRegistrationValue(values, ['e-mail', 'email', 'endereço de e-mail', 'endereco de email']);
+  const phone = cleanText(body.telefone || body.phone) || academyRegistrationValue(values, ['telefone', 'celular', 'whatsapp', 'fone']);
+  const sellerRaw = cleanText(body.vendedor || body.representante) || academyRegistrationValue(values, [
+    'representante', 'nome do representante', 'vendedor', 'nome do vendedor', 'consultor'
+  ]) || name;
+  const sellerCode = cleanText(body.codigoVendedor || body.codigoRepresentante || body.vendedor_codigo) || academyRegistrationValue(values, [
+    'código do representante', 'codigo do representante', 'código vendedor', 'codigo vendedor', 'id vendedor', 'id representante'
+  ]);
+  const trainingId = await resolveAcademyRegistrationTraining(supabase, body, values);
+  const key = cleanText(body.responseId || body.response_id || body.chave || body.id)
+    || `auto:${normalizeAcademyFormKey(name)}:${normalizeAcademyFormKey(email || phone || body.submittedAt || Date.now())}`;
+
+  const payload = {
+    _pmg_source: 'google_forms_automatico',
+    _pmg_received_at: new Date().toISOString(),
+    _pmg_submitted_at: cleanText(body.submittedAt || body.timestamp),
+    _pmg_sheet: cleanText(body.sheetName),
+    _pmg_row: body.row || null,
+    values
+  };
+
+  const sellerCodeDigits = sellerCode ? String(sellerCode).replace(/\D+/g, '') || null : null;
+  const row = {
+    treinamento_id: trainingId,
+    forms_linha_chave: key,
+    nome_forms: name,
+    email,
+    telefone: phone,
+    vendedor_raw: sellerRaw,
+    vendedor_codigo: sellerCodeDigits,
+    vendedor_nome: null,
+    vinculo_status: 'pendente',
+    forms_payload: payload,
+    atualizado_em: new Date().toISOString()
+  };
+
+  const { data: existing, error: findError } = await supabase
+    .from('academia_inscricoes')
+    .select('id,vinculo_status,vendedor_nome,vendedor_codigo,treinamento_id,presente')
+    .eq('forms_linha_chave', key)
+    .maybeSingle();
+  if (findError) throw findError;
+
+  let result;
+  if (existing?.id) {
+    if (existing.vinculo_status === 'manual') {
+      delete row.vendedor_raw;
+      delete row.vendedor_codigo;
+      delete row.vendedor_nome;
+      delete row.vinculo_status;
+    }
+    if (!trainingId && existing.treinamento_id) delete row.treinamento_id;
+    const { data, error } = await supabase
+      .from('academia_inscricoes').update(row).eq('id', existing.id).select('id,treinamento_id').single();
+    if (error) throw error;
+    result = data;
+  } else {
+    const { data, error } = await supabase
+      .from('academia_inscricoes').insert(row).select('id,treinamento_id').single();
+    if (error) throw error;
+    result = data;
+  }
+
+  return { ok: true, inscricaoId: result.id, treinamentoId: result.treinamento_id || null, chave: key };
+}
+
 async function processPending(supabase) {
   // Gera lembretes vencidos antes de buscar a fila. Assim a chamada feita
   // pelo navegador e a chamada do cron usam exatamente o mesmo fluxo.
@@ -331,13 +465,21 @@ export default async function handler(req, res) {
     return res.status(200).json({
       supabaseUrl,
       supabaseAnonKey,
-      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || ''
+      vapidPublicKey: process.env.VAPID_PUBLIC_KEY || '',
+      academyRegistrationWebhookReady: Boolean(process.env.ACADEMIA_INSCRICOES_WEBHOOK_SECRET)
     });
   }
 
   try {
     // O mesmo endpoint recebe respostas do Forms via Power Automate sem criar
     // outra função Serverless. Isso preserva o limite do plano Hobby da Vercel.
+    if (req.method === 'POST' && String(req.query?.academia || '') === 'inscricoes') {
+      await loadDependencies();
+      const supabase = makeSupabase();
+      const result = await processAcademyRegistrationsWebhook(req, supabase);
+      return res.status(200).json(result);
+    }
+
     if (req.method === 'POST' && String(req.query?.academia || '') === 'forms') {
       await loadDependencies();
       const supabase = makeSupabase();

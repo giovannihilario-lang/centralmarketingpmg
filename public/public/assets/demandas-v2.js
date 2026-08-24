@@ -20,6 +20,7 @@ async function initializeSupabaseClient() {
         throw new Error('SUPABASE_URL ou SUPABASE_ANON_KEY não configurada no servidor.');
       }
       VAPID_PUBLIC_KEY = payload.vapidPublicKey || '';
+      state.academyRegistrationWebhookReady = Boolean(payload.academyRegistrationWebhookReady);
       db = supabase.createClient(payload.supabaseUrl, payload.supabaseAnonKey, {
         realtime: { params: { eventsPerSecond: 8 } }
       });
@@ -94,7 +95,7 @@ const state = {
   transfers: [], academyReservations: [], academyConfig: null, academyRegistrations: [], academyAttendanceReady: true, v3Ready: true,
   agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyTab: 'calendar', academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
-  academyRepresentatives: [], academyRepresentativesLoaded: false, academyRegistrationImportRows: [], academyRegistrationImportHeaders: [], academyRegistrationImportMap: {},
+  academyRepresentatives: [], academyRepresentativesLoaded: false, academyRegistrationWebhookReady: false, academyRegistrationRefreshing: false, academyRegistrationAutoLinking: false, academyRegistrationImportRows: [], academyRegistrationImportHeaders: [], academyRegistrationImportMap: {},
   templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
   monthlyReportData: null, projects: [], automations: [], intelligenceReady: false, selectedProjectId: null, projectSearch: '', projectStatusFilter: '', accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
@@ -3713,6 +3714,7 @@ function academyTrainingOptionsHTML(selected='',includeBlank=true){
 }
 function renderAcademyAttendance(){
   const box=$('academyAttendanceTable');if(!box)return;
+  renderAcademyRegistrationAutoStatus();
   const setup=$('academyAttendanceSetupNotice');
   if(!state.academyAttendanceReady){
     setup?.classList.remove('hidden');
@@ -3738,7 +3740,7 @@ function renderAcademyAttendance(){
   const reps=academyRepresentativeCatalog();
   if($('academyRepresentativesStatus'))$('academyRepresentativesStatus').textContent=state.academyRepresentativesLoaded?`${reps.length} representantes do SQL`:'Representantes não carregados';
   if(!state.academyAttendanceReady){box.innerHTML='<div class="empty-state"><i data-lucide="database"></i>A migração de inscrições ainda não foi instalada.</div>';return;}
-  if(!state.academyRegistrations.length){box.innerHTML='<div class="empty-state"><i data-lucide="user-round-plus"></i>Nenhuma inscrição importada ainda. Use “Importar inscrições” com o arquivo de respostas do Forms.</div>';return;}
+  if(!state.academyRegistrations.length){box.innerHTML='<div class="empty-state"><i data-lucide="user-round-plus"></i>Nenhuma inscrição ainda. Novas respostas do Forms atual entram automaticamente; use “Importar histórico” apenas para arquivos antigos.</div>';return;}
   if(!rows.length){box.innerHTML='<div class="empty-state"><i data-lucide="search-x"></i>Nenhum participante corresponde aos filtros atuais.</div>';return;}
 
   const repOptions=(selectedRaw='')=>`<option value="">Pendente de vínculo</option>${reps.map(rep=>`<option value="${escapeHtml(rep.rawName)}" ${rep.rawName===selectedRaw?'selected':''}>${escapeHtml(rep.code?`${rep.namePart} · ${rep.code}`:rep.namePart)}</option>`).join('')}`;
@@ -3746,7 +3748,7 @@ function renderAcademyAttendance(){
     const training=academyRegistrationTraining(reg),bonus=academyBonusForRegistration(reg,groups),matched=Boolean(reg.vendedor_nome),selectedRaw=reg.vendedor_raw&&matched?reg.vendedor_raw:(matched?(reg.vendedor_codigo?`${reg.vendedor_nome}-${reg.vendedor_codigo}`:reg.vendedor_nome):'');
     const matchedCatalog=reps.find(rep=>(reg.vendedor_codigo&&rep.code===String(reg.vendedor_codigo))||(!reg.vendedor_codigo&&academyParticipantNorm(rep.namePart)===academyParticipantNorm(reg.vendedor_nome)));
     const selectValue=matchedCatalog?.rawName||selectedRaw;
-    return `<article class="academy-attendance-row ${reg.presente?'is-present':''} ${matched?'is-matched':'is-pending'}"><span class="academy-attendee"><strong>${escapeHtml(reg.nome_forms||'Sem nome')}</strong><small>${escapeHtml(reg.email||reg.telefone||'Importado do Forms')}</small></span><span class="academy-attendance-training"><select data-academy-training-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${academyTrainingOptionsHTML(reg.treinamento_id||'',true)}</select><small>${training?`${formatDate(training.inicio_em)} · ${academyTrainingCategory(training)}`:'Sem treinamento: não gera bônus'}</small></span><span class="academy-representative-link"><select data-academy-rep-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${repOptions(selectValue)}</select><small>${matched?`Vinculado${reg.vinculo_status==='automatico'?' automaticamente':''}`:'Não entra no bônus até ser vinculado'}</small></span><span class="academy-presence-cell"><label class="academy-presence-toggle"><input type="checkbox" data-academy-presence="${reg.id}" ${reg.presente?'checked':''} ${!canManageAcademy()?'disabled':''}><span></span><b>${reg.presente?'SIM':'NÃO'}</b></label><small>${reg.presente&&reg.confirmado_em?`Confirmado ${formatDateTime(reg.confirmado_em)}`:'Aguardando confirmação'}</small></span><span class="academy-bonus-cell"><strong>${matched&&bonus?`+${bonus}%`:'0%'}</strong><small>${matched?`${Math.min(3,groups.get(academyRegistrationRepKey(reg))?.presences||0)} de 3 presenças válidas`:'Sem representante'}</small></span></article>`;
+    return `<article class="academy-attendance-row ${reg.presente?'is-present':''} ${matched?'is-matched':'is-pending'}"><span class="academy-attendee"><strong>${escapeHtml(reg.nome_forms||'Sem nome')}</strong><small>${escapeHtml([reg.email||reg.telefone,academyRegistrationSourceLabel(reg)].filter(Boolean).join(' · '))}</small></span><span class="academy-attendance-training"><select data-academy-training-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${academyTrainingOptionsHTML(reg.treinamento_id||'',true)}</select><small>${training?`${formatDate(training.inicio_em)} · ${academyTrainingCategory(training)}`:'Sem treinamento: não gera bônus'}</small></span><span class="academy-representative-link"><select data-academy-rep-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${repOptions(selectValue)}</select><small>${matched?`Vinculado${reg.vinculo_status==='automatico'?' automaticamente':''}`:'Não entra no bônus até ser vinculado'}</small></span><span class="academy-presence-cell"><label class="academy-presence-toggle"><input type="checkbox" data-academy-presence="${reg.id}" ${reg.presente?'checked':''} ${!canManageAcademy()?'disabled':''}><span></span><b>${reg.presente?'SIM':'NÃO'}</b></label><small>${reg.presente&&reg.confirmado_em?`Confirmado ${formatDateTime(reg.confirmado_em)}`:'Aguardando confirmação'}</small></span><span class="academy-bonus-cell"><strong>${matched&&bonus?`+${bonus}%`:'0%'}</strong><small>${matched?`${Math.min(3,groups.get(academyRegistrationRepKey(reg))?.presences||0)} de 3 presenças válidas`:'Sem representante'}</small></span></article>`;
   }).join('')}`;
 }
 
@@ -3769,7 +3771,7 @@ function restoreAcademyRepresentativeCache(){
   return false;
 }
 async function loadAcademyRepresentatives({force=false,silent=false}={}){
-  if(!force&&restoreAcademyRepresentativeCache()){renderAcademyAttendance();refreshIcons();return true;}
+  if(!force&&restoreAcademyRepresentativeCache()){renderAcademyAttendance();refreshIcons();void autoLinkPendingAcademyRegistrations();return true;}
   const status=$('academyRepresentativesStatus');if(status)status.textContent='Consultando contexto comercial…';
   try{
     let {response,data}=await academyLocalApiRequest('contexto');
@@ -3783,7 +3785,7 @@ async function loadAcademyRepresentatives({force=false,silent=false}={}){
     const reps=Array.isArray(data.context.representatives)?data.context.representatives:[];
     state.academyRepresentatives=reps;state.academyRepresentativesLoaded=true;
     try{localStorage.setItem(ACADEMY_REP_CACHE_KEY,JSON.stringify({date:todayKey(),items:reps}));}catch(_){}
-    renderAcademyAttendance();refreshIcons();
+    renderAcademyAttendance();refreshIcons();void autoLinkPendingAcademyRegistrations();
     if(!silent)toast(`${reps.length} representantes carregados do contexto do Campanhas.`);
     return true;
   }catch(error){
@@ -3793,6 +3795,56 @@ async function loadAcademyRepresentatives({force=false,silent=false}={}){
     return false;
   }
 }
+
+function renderAcademyRegistrationAutoStatus(){
+  const box=$('academyRegistrationAutoStatus');if(!box)return;
+  const ready=Boolean(state.academyRegistrationWebhookReady);
+  box.className=`academy-auto-sync-status ${ready?'is-ready':'is-pending'}`;
+  box.innerHTML=ready
+    ? `<i data-lucide="radio-tower"></i><div><strong>Sincronização automática preparada</strong><span>Quando o conector da planilha de respostas estiver instalado, cada nova inscrição entra aqui automaticamente e aparece via Realtime. O botão “Sincronizar agora” apenas força a atualização da tela.</span></div><b>ONLINE</b>`
+    : `<i data-lucide="plug-zap"></i><div><strong>Falta ativar o conector do Forms</strong><span>Configure <code>ACADEMIA_INSCRICOES_WEBHOOK_SECRET</code> na Vercel e instale o Apps Script incluído em <code>integracoes/google-forms-academia-inscricoes</code>. Isso é separado do Forms de reservas.</span></div><b>CONFIGURAR</b>`;
+}
+function academyRegistrationSourceLabel(reg){
+  const source=reg?.forms_payload?._pmg_source;
+  if(source==='google_forms_automatico')return 'Automático · Google Forms';
+  return 'Histórico importado';
+}
+async function autoLinkPendingAcademyRegistrations(){
+  if(state.academyRegistrationAutoLinking||!state.academyAttendanceReady||!state.academyRepresentativesLoaded||!canManageAcademy())return 0;
+  const pending=state.academyRegistrations.filter(reg=>!reg.vendedor_nome).slice(0,250);
+  if(!pending.length)return 0;
+  state.academyRegistrationAutoLinking=true;let linked=0;
+  try{
+    for(const reg of pending){
+      const match=matchAcademyRepresentative(reg.vendedor_raw||reg.nome_forms,reg.vendedor_codigo||'');
+      if(!match)continue;
+      const {error}=await db.rpc('vincular_inscricao_academia',{p_id:reg.id,p_vendedor_codigo:match.code||null,p_vendedor_nome:match.namePart,p_vendedor_raw:reg.vendedor_raw||reg.nome_forms||match.raw});
+      if(!error){reg.vendedor_codigo=match.code||null;reg.vendedor_nome=match.namePart;reg.vinculo_status='automatico';linked++;}
+    }
+    if(linked){renderAcademyAttendance();refreshIcons();}
+    return linked;
+  }finally{state.academyRegistrationAutoLinking=false;}
+}
+async function refreshAcademyRegistrations({silent=false}={}){
+  if(state.academyRegistrationRefreshing)return;
+  const btn=$('academyRegistrationRefreshBtn');state.academyRegistrationRefreshing=true;
+  if(btn){btn.disabled=true;btn.classList.add('is-loading');}
+  try{
+    const result=await db.from('academia_inscricoes').select('*').order('criado_em',{ascending:false}).limit(5000);
+    if(result.error)throw result.error;
+    state.academyRegistrations=result.data||[];state.academyAttendanceReady=true;
+    if(!state.academyRepresentativesLoaded)await loadAcademyRepresentatives({silent:true});
+    const linked=await autoLinkPendingAcademyRegistrations();
+    renderAcademyAttendance();refreshIcons();
+    if(!silent)toast(`${state.academyRegistrations.length} inscrição${state.academyRegistrations.length===1?'':'ões'} atualizada${state.academyRegistrations.length===1?'':'s'}${linked?` · ${linked} vínculo${linked===1?'':'s'} conciliado${linked===1?'':'s'} automaticamente`:''}.`);
+  }catch(error){
+    console.error('[Academia inscrições refresh]',error);
+    if(!silent)toast(`Não foi possível atualizar as inscrições: ${error.message}`,'error');
+  }finally{
+    state.academyRegistrationRefreshing=false;if(btn){btn.disabled=false;btn.classList.remove('is-loading');}
+  }
+}
+
 function openAcademyRegistrationForms(){window.open(ACADEMY_REGISTRATION_FORMS_URL,'_blank','noopener,noreferrer');}
 async function copyAcademyRegistrationForms(){try{await navigator.clipboard.writeText(ACADEMY_REGISTRATION_FORMS_URL);toast('Link do Forms de inscrição copiado.');}catch(_){toast('Não foi possível copiar automaticamente.','error');}}
 
@@ -4169,6 +4221,7 @@ function bindEvents() {
   $('academyImportConfirmBtn')?.addEventListener('click', importAcademyFormsRows);
   $('academyRegistrationFormsBtn')?.addEventListener('click', openAcademyRegistrationForms);
   $('academyRegistrationCopyBtn')?.addEventListener('click', copyAcademyRegistrationForms);
+  $('academyRegistrationRefreshBtn')?.addEventListener('click',()=>refreshAcademyRegistrations());
   $('academyRegistrationImportBtn')?.addEventListener('click', openAcademyRegistrationImport);
   $('academyRepresentativesSyncBtn')?.addEventListener('click', () => loadAcademyRepresentatives({force:true}));
   $('academyAttendanceExportBtn')?.addEventListener('click', exportAcademyAttendanceXlsx);
