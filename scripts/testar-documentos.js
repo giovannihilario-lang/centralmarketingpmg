@@ -57,8 +57,8 @@ const html = fs.readFileSync(new URL('../public/acompanhamento.html', import.met
 assert.match(html, /pdfjs-dist@3\.11\.174/);
 assert.match(html, /tesseract\.js@5\.1\.1/);
 assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.5/);
-assert.match(html, /acompanhamento-documentos\.css\?v=1\.4\.0/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.4\.0/);
+assert.match(html, /acompanhamento-documentos\.css\?v=1\.6\.0/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.6\.0/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');
@@ -68,6 +68,8 @@ assert.match(documentModule, /Gemini 3\.7 Flash/);
 assert.match(documentModule, /excluir_entrada_documento_v1/);
 assert.match(documentModule, /Documento já vinculado: histórico preservado/);
 assert.match(documentModule, /return \(\) => cancelAnimationFrame\(frame\)/, 'O efeito dos icones precisa devolver uma funcao de limpeza.');
+assert.doesNotMatch(documentModule, /label="Controle"/);
+assert.doesNotMatch(documentModule, /Somente gestores|pelo gestor/);
 
 const envExample = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 assert.doesNotMatch(envExample, /OPENAI_API_KEY/);
@@ -104,6 +106,7 @@ assert.doesNotMatch(sql, /grant (insert|update|delete) on public\.acompanhamento
 
 const deleteSql = fs.readFileSync(new URL('../sql/09-EXCLUIR-DOCUMENTOS-PENDENTES.sql', import.meta.url), 'utf8');
 assert.match(deleteSql, /status = 'aprovado'/);
-assert.match(deleteSql, /Somente quem enviou o documento ou um gestor/);
+assert.doesNotMatch(deleteSql, /sou_gestor|Somente quem enviou|criado_por/);
+assert.match(deleteSql, /Usuario nao encontrado ou inativo/);
 
 console.log(JSON.stringify({ status:'ok', reader:'gemini-free+local-fallback', templates:samples.length, paid_api:false, human_review:true }));

@@ -1,8 +1,8 @@
-# PMG Connect — Central de Acompanhamento V1.5.0
+# PMG Connect — Central de Acompanhamento V1.6.0
 
-> Interface `1.5.0`: cockpit executivo PMG com Planejamento PMG, execução estratégica em Kanban, Central Financeira unificada, Caixa de Documentos, leitura visual pelo Gemini, contingência OCR local e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
+> Interface `1.6.0`: cockpit executivo organizado por fluxo — Planejamento, Recebimentos, Investimentos, Execução e Pendências — com Central Financeira, Caixa de Documentos e conferência obrigatória. Use `Ctrl + K` (ou `Cmd + K`) para localizar fornecedores, acompanhamentos e ações rápidas sem sair da tela atual.
 
-Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Marketing / Fornecedores** em uma única base editável.
+Uma única base operacional para trabalhar previsões, valores recebidos, investimentos, atividades e documentos sem dividir a experiência por pessoa, área ou perfil.
 
 ## O que o módulo controla
 
@@ -20,11 +20,11 @@ Novo módulo operacional para reunir o **Controle Marcos** e o **Controle Market
 - Planejamento PMG 2026 com matriz mensal: fonte vermelha da planilha vira realizado; fonte preta permanece prevista, sem baixa automática pelo simples vencimento do mês.
 - Central Financeira com Receita, Agenda, Fechamento e Parceiros em uma única área.
 - Quatro tipos de recebimento do Marketing: desconto em boleto, depósito, bonificação e sobra Marketing, preservando combinações e a referência original da NF.
-- Fechamento mensal Marketing → Marcos com de-para alfabético e assinatura de conferência.
+- Fechamento mensal com de-para alfabético entre recebido e previsto, além de assinatura de conferência.
 - Centro de custo obrigatório nos lançamentos manuais; MTRIX/Emitrix é tratado como investimento adicional fora da VERBA, enquanto demais aberturas ficam dentro da VERBA.
 - Atividades do Planejamento com responsável, prazo, progresso, custos, bloqueios e evidência de conclusão.
 - Baixa financeira protegida: data, forma de pagamento e documento/NF são obrigatórios para marcar um lançamento manual como pago.
-- Importação e fechamento reservados a gestores; demais colaboradores continuam operando os acompanhamentos conforme o perfil individual.
+- Acesso operacional igual para toda pessoa autenticada e ativa: importar, conferir, marcar divergência, arquivar e tratar documentos pendentes, sempre com auditoria de autor e data.
 
 ## Dados já consolidados
 
@@ -64,22 +64,28 @@ sql/10-TAXONOMIA-DOCUMENTOS-V1.2.5.sql
 sql/11-GESTAO-MKT-V1.3.0.sql
 ```
 
-6. Para ativar a execução estratégica, as validações de baixa, a governança por perfil e a proteção contra PDFs sem conferência, execute:
+6. Para ativar a execução estratégica, as validações de baixa e a proteção contra PDFs sem conferência, execute:
 
 ```text
 sql/12-CONTROLES-OPERACIONAIS-V1.4.0.sql
 ```
 
+7. Para atualizar instalações existentes para a experiência unificada da V1.6, execute por último:
+
+```text
+sql/13-CENTRAL-UNIFICADA-V1.6.0.sql
+```
+
 No ambiente da Vercel, mantenha `GEMINI_API_KEY` com uma chave gratuita do Google AI Studio e, opcionalmente, `GEMINI_DOCUMENT_MODEL=gemini-3.7-flash`. Não é necessário ativar faturamento. Se a chave não existir ou a cota gratuita estiver indisponível, a interface usa automaticamente o OCR local.
 
-7. Reinicie o servidor local:
+8. Reinicie o servidor local:
 
 ```powershell
 npm install
 npm start
 ```
 
-8. Acesse pela Central ou diretamente:
+9. Acesse pela Central ou diretamente:
 
 ```text
 http://localhost:3001/acompanhamento.html
@@ -91,7 +97,7 @@ Para abrir a versão local, entre primeiro no PMG Connect hospedado e navegue pe
 
 1. Abra **Importar planilhas**.
 2. Envie `Fornecedores 2024/2025/2026` ou `MKTG 2026`.
-3. A Central reconhecerá o modelo oficial e processará todas as abas automaticamente, inclusive Podcast, Copa, convenções, pendências, ANUGA, FISPAL, FIPAN e cartão no controle do Marcos.
+3. A Central reconhecerá o modelo oficial e processará todas as abas automaticamente, inclusive Podcast, Copa, convenções, pendências, ANUGA, FISPAL, FIPAN e cartão.
 4. Confira a quantidade de registros, movimentos e a conciliação dos totais.
 5. Conclua a atualização.
 
@@ -109,9 +115,9 @@ A Caixa de Entrada recebe PDFs escaneados, separa as páginas e prepara a confer
 
 O leitor sugere fornecedor, datas, números, categoria e valores. Ele mantém três valores separados para evitar lançamentos indevidos: valor total do documento, valor relacionado ao Marketing e valor efetivamente aprovado para lançamento.
 
-Nenhum documento é lançado automaticamente. Cada item permanece em **Aguardando conferência** até uma pessoa revisar os campos, escolher se deseja criar, vincular, somente anexar ou ignorar, marcar a confirmação obrigatória e aprovar. A decisão, o colaborador e a data ficam no histórico.
+Nenhum documento é lançado automaticamente. Cada item permanece em **Aguardando conferência** até uma pessoa revisar os campos, escolher se deseja criar, vincular, somente anexar ou ignorar, marcar a confirmação obrigatória e aprovar. A decisão, o usuário e a data ficam no histórico.
 
-Documentos pendentes podem ser excluídos por quem realizou o envio ou por um gestor. Depois da aprovação, o documento fica bloqueado para exclusão porque já integra a trilha de auditoria.
+Documentos pendentes podem ser excluídos por qualquer pessoa autenticada e ativa. Depois da aprovação, o documento fica bloqueado para exclusão porque já integra a trilha de auditoria.
 
 A leitura principal usa o Gemini 3.7 Flash para compreender o PDF visualmente e devolver campos estruturados. A cota gratuita não exige contratação nem ativa cobrança automática. O servidor valida a sessão do PMG Connect, busca o PDF no bucket privado e mantém a chave fora do navegador.
 
@@ -137,6 +143,7 @@ Quando o Gemini está ativo, o conteúdo do PDF é enviado temporariamente à AP
 - `sql/10-TAXONOMIA-DOCUMENTOS-V1.2.5.sql`
 - `sql/11-GESTAO-MKT-V1.3.0.sql`
 - `sql/12-CONTROLES-OPERACIONAIS-V1.4.0.sql`
+- `sql/13-CENTRAL-UNIFICADA-V1.6.0.sql`
 - `data/acompanhamento-carga-inicial.json` (fora de `public/` para não expor a consolidação por URL)
 - `scripts/gerar-carga-acompanhamento.js`
 - `scripts/testar-acompanhamento.js`
@@ -147,7 +154,8 @@ Quando o Gemini está ativo, o conteúdo do PDF é enviado temporariamente à AP
 ## Segurança e permissões
 
 - Somente usuários autenticados e ativos do PMG Connect visualizam os dados.
-- Toda criação e alteração registra o colaborador responsável.
+- Toda criação e alteração registra o usuário responsável.
+- A Central não diferencia gestor e colaborador nas operações; a autenticação e a auditoria permanecem obrigatórias.
 - Todo documento exige confirmação humana explícita antes de gerar ou vincular um lançamento.
 - Escritas são realizadas por funções protegidas no Supabase.
 - Os anexos ficam em bucket privado e são abertos por link temporário.

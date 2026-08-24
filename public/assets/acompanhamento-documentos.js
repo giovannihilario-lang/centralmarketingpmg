@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.4.0 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.6.0 */
 (() => {
   'use strict';
 
@@ -142,14 +142,14 @@
         valor_total_documento:parseMoney(form.get('valor_total_documento')),
         valor_marketing:parseMoney(form.get('valor_marketing')),
         acompanhamento:{
-          controle:form.get('controle'), ano_referencia:Number(String(referenceDate).slice(0, 4)) || new Date().getFullYear(),
+          controle:'marketing', ano_referencia:Number(String(referenceDate).slice(0, 4)) || new Date().getFullYear(),
           fornecedor:supplier, fornecedor_codigo:String(form.get('fornecedor_codigo') || '').trim(),
           natureza:form.get('natureza'), impacta_totais:true, categoria:form.get('categoria'),
           titulo:String(form.get('titulo') || '').trim(), descricao:String(form.get('descricao') || '').trim(),
           referencia:`Documento conferido na Caixa de Entrada · ${TYPES[form.get('tipo_documento')]?.label || 'Documento'}`,
           status:'em_andamento', prioridade:'normal', data_inicio:referenceDate, data_fim:null,
           valor_acordado:amount, numero_documento:documentNumber,
-          tags:['documento-conferido', String(form.get('tipo_documento') || 'documento'), String(form.get('controle') || 'marketing')],
+          tags:['documento-conferido', String(form.get('tipo_documento') || 'documento'), 'caixa-documentos'],
           observacoes:String(form.get('observacoes') || '').trim(),
           origem_importacao:'caixa_documentos', dados_originais:extracted,
         },
@@ -180,7 +180,6 @@
 
       <section className="doc-review-section"><div className="doc-review-heading"><span>02</span><div><small>Classificação</small><h3>Confira a leitura do documento</h3></div><b className=${`doc-confidence ${item.confianca >= .9 ? 'high' : item.confianca >= .7 ? 'medium' : 'low'}`}>${Math.round(Number(item.confianca || 0) * 100)}% de confiança</b></div><div className="doc-form-grid">
         <${Field} label="Tipo de documento"><select name="tipo_documento" defaultValue=${normalizeType(item.tipo)}>${Object.entries(TYPES).map(([key, meta]) => html`<option value=${key}>${meta.label}</option>`)}</select></${Field}>
-        <${Field} label="Controle"><select name="controle" defaultValue="marketing"><option value="marketing">Marketing / Fornecedores</option><option value="marcos">Marcos / Presidência</option></select></${Field}>
         <${Field} label="Fornecedor"><input name="fornecedor" defaultValue=${extracted.fornecedor || ''} placeholder="Fornecedor ou parceiro"/></${Field}>
         <${Field} label="Código do fornecedor"><input name="fornecedor_codigo" defaultValue=${extracted.fornecedor_codigo || ''} placeholder="Opcional"/></${Field}>
         <${Field} label="Categoria"><select name="categoria" defaultValue=${extracted.categoria_sugerida || 'outro'}>${Object.entries(CATEGORIES).map(([key, label]) => html`<option value=${key}>${label}</option>`)}</select></${Field}>
@@ -377,7 +376,7 @@
         }
         if (selectedEntryId === entry.id) { setSelectedEntryId(null); setActiveItemId(null); setPreviewUrl(''); }
         await context.reload(true);
-        context.notify(storageWarning ? 'Documento removido da fila. O PDF privado precisará de limpeza pelo gestor.' : 'Documento e leitura pendente excluídos.');
+        context.notify(storageWarning ? 'Documento removido da fila. O PDF privado precisará de limpeza técnica no Storage.' : 'Documento e leitura pendente excluídos.');
       } catch (error) {
         context.notify(error.message || 'Não foi possível excluir o documento.', 'error');
       } finally { setBusyEntryId(null); }

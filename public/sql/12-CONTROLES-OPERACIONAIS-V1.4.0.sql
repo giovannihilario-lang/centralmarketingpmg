@@ -410,53 +410,18 @@ end;
 $$;
 
 -- ------------------------------------------------------------
--- GOVERNANCA POR PERFIL
+-- ACESSO UNIFICADO DA CENTRAL
 -- ------------------------------------------------------------
-
-create or replace function public.exigir_gestor_acompanhamento_v1()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  -- Execuções administrativas no SQL Editor não possuem usuário Auth.
-  if auth.uid() is null then
-    if tg_op = 'DELETE' then return old; end if;
-    return new;
-  end if;
-  if not public.sou_gestor() then raise exception 'Operacao reservada a gestores'; end if;
-  if tg_op = 'DELETE' then return old; end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists trg_gestor_importacoes on public.acompanhamento_importacoes;
-create trigger trg_gestor_importacoes before insert or update or delete on public.acompanhamento_importacoes
-for each row execute function public.exigir_gestor_acompanhamento_v1();
 drop trigger if exists trg_gestor_conferencias on public.acompanhamento_conferencias;
-create trigger trg_gestor_conferencias before insert or update or delete on public.acompanhamento_conferencias
-for each row execute function public.exigir_gestor_acompanhamento_v1();
 drop trigger if exists trg_gestor_excluir_pagamento on public.acompanhamento_pagamentos;
-create trigger trg_gestor_excluir_pagamento before delete on public.acompanhamento_pagamentos
-for each row execute function public.exigir_gestor_acompanhamento_v1();
-
-create or replace function public.proteger_arquivamento_acompanhamento_v1()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if auth.uid() is null then return new; end if;
-  if old.arquivado_em is null and new.arquivado_em is not null and not public.sou_gestor() then
-    raise exception 'Somente gestores podem arquivar acompanhamentos';
-  end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists trg_proteger_arquivamento on public.acompanhamento_registros;
-create trigger trg_proteger_arquivamento before update of arquivado_em on public.acompanhamento_registros
-for each row execute function public.proteger_arquivamento_acompanhamento_v1();
+drop function if exists public.exigir_gestor_acompanhamento_v1();
+drop function if exists public.proteger_arquivamento_acompanhamento_v1();
+
+-- O login ativo continua obrigatório e todas as ações preservam ator e data.
+-- Dentro da Central, importação, conferência, arquivamento e manutenção
+-- seguem as mesmas políticas RLS para toda a equipe autenticada.
 
 -- ------------------------------------------------------------
 -- RLS E PERMISSOES

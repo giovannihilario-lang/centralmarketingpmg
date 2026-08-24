@@ -56,7 +56,7 @@ node --check server.js
 
 ## Central de Acompanhamento
 
-O módulo que unifica o Controle Marcos e o Controle Marketing / Fornecedores está documentado em:
+O módulo que reúne planejamento, recebimentos, investimentos e execução em uma única Central está documentado em:
 
 ```text
 README-acompanhamento.md

@@ -12,6 +12,7 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 const original = fs.readFileSync(appPath, 'utf8');
 const html = fs.readFileSync(path.join(projectRoot, 'public', 'acompanhamento.html'), 'utf8');
 const operationalSql = fs.readFileSync(path.join(projectRoot, 'sql', '12-CONTROLES-OPERACIONAIS-V1.4.0.sql'), 'utf8');
+const unifiedSql = fs.readFileSync(path.join(projectRoot, 'sql', '13-CENTRAL-UNIFICADA-V1.6.0.sql'), 'utf8');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);",
   'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError };',
@@ -164,29 +165,44 @@ if (!ajinomotoMay || Number(ajinomotoMay.registro.valor_acordado) !== 10000 || a
   throw new Error('Regra AJINOMOTO/incentivo maio 2026 não foi preservada');
 }
 
-if (!/acompanhamento\.css\?v=1\.5\.0/.test(html) || !/acompanhamento\.js\?v=1\.5\.0/.test(html)) {
-  throw new Error('A página não referencia a interface V1.5.0');
+if (!/acompanhamento\.css\?v=1\.6\.0/.test(html) || !/acompanhamento\.js\?v=1\.6\.0/.test(html)) {
+  throw new Error('A página não referencia a interface V1.6.0');
 }
 for (const expected of [
   /function PlanningActivityBoard/,
   /function PlanningMatrix/,
   /function FinanceWorkspace/,
+  /const workflow/,
   /const SIDEBAR_VIEWS = \['dashboard', 'planejamento', 'financeiro', 'registros', 'documentos', 'importar'\]/,
   /salvar_atividade_planejamento_v1/,
-  /Somente gestores podem assinar/,
+  /Planejamento, recebimentos e execução/,
+  /Recebido lançado\./,
   /Data, forma e documento são obrigatórios/,
 ]) {
   if (!expected.test(original)) throw new Error(`Controle operacional ausente: ${expected}`);
+}
+for (const forbidden of [/Controle Marcos/, /Controle Marketing/, /Somente gestores/, /Aguardando gestor/, /context\.canManage/, /me\?\.role/]) {
+  if (forbidden.test(original)) throw new Error(`Separação antiga ainda visível: ${forbidden}`);
 }
 if (/registrar_anexo_acompanhamento_v1/.test(original)) throw new Error('A interface ainda permite contornar a conferência de documentos');
 for (const expected of [
   /create table if not exists public\.acompanhamento_planejamento_atividades/,
   /trg_validar_baixa_pagamento/,
   /trg_bloquear_pdf_sem_conferencia/,
-  /trg_gestor_importacoes/,
+  /drop trigger if exists trg_gestor_importacoes/,
   /on delete set null/,
 ]) {
   if (!expected.test(operationalSql)) throw new Error(`Proteção SQL ausente: ${expected}`);
+}
+if (/create trigger trg_gestor_/.test(operationalSql)) throw new Error('O SQL operacional ainda recria barreiras por perfil');
+for (const expected of [
+  /drop trigger if exists trg_gestor_importacoes/,
+  /drop trigger if exists trg_proteger_arquivamento/,
+  /create or replace function public\.excluir_entrada_documento_v1/,
+  /equipe remove arquivos pendentes acompanhamento/,
+  /status = 'aprovado'/,
+]) {
+  if (!expected.test(unifiedSql)) throw new Error(`Migração unificada incompleta: ${expected}`);
 }
 if (fs.existsSync(path.join(projectRoot, 'public', 'data', 'acompanhamento-carga-inicial.json'))) {
   throw new Error('A carga financeira não pode permanecer publicada em public/data');
