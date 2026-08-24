@@ -350,16 +350,27 @@ function setLoading(on) {
   $('loadingScreen').classList.toggle('hidden', state.loading === 0);
 }
 function toast(message, type = 'success') {
+  const stack = $('toastStack');
+  if (!stack) return;
+  const signature = `${type}:${String(message || '')}`;
+  const existing = [...stack.querySelectorAll('.toast')].find(item => item.dataset.toastSignature === signature);
+  if (existing) {
+    existing.classList.remove('toast-repeat-pulse');
+    void existing.offsetWidth;
+    existing.classList.add('toast-repeat-pulse');
+    return;
+  }
   const el = document.createElement('div');
   el.className = `toast ${type}`;
+  el.dataset.toastSignature = signature;
   el.innerHTML = `<i data-lucide="${type === 'error' ? 'circle-alert' : 'circle-check'}"></i><span>${escapeHtml(message)}</span>`;
-  $('toastStack').appendChild(el); refreshIcons();
+  stack.appendChild(el); refreshIcons();
   setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; }, 3400);
   setTimeout(() => el.remove(), 3750);
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
-  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql no Supabase para ativar a confirmação de autoria.';
+  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'A confirmação compartilhada ainda não está disponível. Execute o SQL 15-HOTFIX-AUTORIA-V3-8-4.sql no Supabase e atualize a página.';
   if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'Execute o SQL 11-MODO-RESPONSABILIDADE-V3-7-1.sql no Supabase para ativar Compartilhada / Primeiro a cumprir.';
   if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
@@ -3279,7 +3290,7 @@ async function submitTaskEvaluation(approved) {
   }
 
   if (approved) {
-    if (!state.authorshipReady) return toast('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql antes de aprovar novas conclusões.', 'error');
+    if (!state.authorshipReady) return toast('Execute o SQL 15-HOTFIX-AUTORIA-V3-8-4.sql antes de validar uma entrega compartilhada.', 'error');
     const executors = uniqueIdsV37(state.evaluationExecutorIds);
     if (!executors.length) return toast('Selecione pelo menos uma pessoa que realizou a demanda.', 'error');
   }
@@ -6164,11 +6175,32 @@ document.addEventListener('click',event=>{const item=event.target.closest('[data
 
 /* ---------- Autoria: 1 encerra; 2+ confirmam ---------- */
 const submitTaskEvaluationBeforeUxV381 = submitTaskEvaluation;
-submitTaskEvaluation = async function submitTaskEvaluationUxV381(approved){
+submitTaskEvaluation = async function submitTaskEvaluationUxV384(approved){
   if(!approved)return submitTaskEvaluationBeforeUxV381(false);
   const taskId=$('evaluationTaskId').value,note=$('evaluationNote').value.trim();
-  if(!state.authorshipReady)return toast('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql antes de aprovar novas conclusões.','error');
-  const executors=uniqueIdsV37(state.evaluationExecutorIds);if(!executors.length)return toast('Selecione pelo menos uma pessoa que realizou a demanda.','error');
+  const executors=uniqueIdsV37(state.evaluationExecutorIds);
+  if(!executors.length)return toast('Selecione pelo menos uma pessoa que realizou a demanda.','error');
+
+  // Trabalho individual nunca depende do módulo de confirmação coletiva.
+  // Se a estrutura de autoria estiver disponível, usamos o RPC novo para
+  // também registrar o executor. Se não estiver, aprovamos pela rotina V3.
+  if(executors.length===1&&!state.authorshipReady){
+    setLoading(true);
+    try{
+      const {error}=await db.rpc('avaliar_conclusao',{p_tarefa_id:taskId,p_aprovado:true,p_observacao:note||null});
+      if(error)throw error;
+      closeModal('taskEvaluationModal');
+      await refreshData();
+      await dispatchPendingPush();
+      if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);
+      toast('Entrega validada e concluída. Trabalho individual não exige confirmação de autoria.');
+    }catch(error){toast(errorMessage(error),'error');}
+    finally{setLoading(false);}
+    return;
+  }
+
+  if(!state.authorshipReady)return toast('Execute o SQL 15-HOTFIX-AUTORIA-V3-8-4.sql antes de validar uma entrega compartilhada.','error');
+
   setLoading(true);try{
     const {data,error}=await db.rpc('solicitar_confirmacao_autoria_v1',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});if(error)throw error;
     closeModal('taskEvaluationModal');await refreshData();await dispatchPendingPush();if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);

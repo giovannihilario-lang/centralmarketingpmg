@@ -1,0 +1,20 @@
+PMG CONNECT — DEMANDAS V3.8.4 — HOTFIX AUTORIA
+
+1. No Supabase > SQL Editor, execute:
+   sql/15-HOTFIX-AUTORIA-V3-8-4.sql
+
+2. Confirme que a última consulta do SQL retorna TRUE nas seis colunas.
+
+3. Substitua no projeto:
+   public/assets/demandas-v2.js
+   public/public/assets/demandas-v2.js
+
+4. Faça deploy e pressione Ctrl+F5 no navegador.
+
+O que este hotfix corrige:
+- instala autoria sem depender do SQL 13 inteiro;
+- atualiza o CHECK de avaliacao_status para os estados da autoria;
+- força reload do schema do Supabase/PostgREST;
+- 1 executor conclui mesmo se a autoria coletiva estiver indisponível;
+- 2+ executores usam confirmação coletiva;
+- impede vários toasts idênticos empilhados.
