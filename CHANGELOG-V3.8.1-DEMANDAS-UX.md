@@ -42,3 +42,9 @@ Melhorar o uso diário do módulo Demandas sem substituir a base existente e sem
 - CSS com chaves balanceadas.
 - Arquivos espelhados `public/` e `public/public/` conferidos byte a byte.
 - A alteração do JavaScript preserva a base anterior e acrescenta a camada V3.8.1 ao final, sem remover funções existentes.
+
+## Hotfix V3.8.2 — confirmação de autoria
+- Corrigido o último `Sim, confirmo` do fluxo compartilhado.
+- O colaborador não chama mais `avaliar_conclusao()`, que exige papel de gestor.
+- A aprovação registrada anteriormente pelo gestor é preservada e usada para encerrar a demanda quando todos confirmam.
+- Nenhuma permissão de gestor é concedida ao colaborador.
