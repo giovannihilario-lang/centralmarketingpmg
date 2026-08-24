@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.5 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.4.0 */
 (() => {
   'use strict';
 
@@ -211,12 +211,16 @@
     return html`<div className="doc-workspace"><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[normalizeType(item.tipo)] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>Nenhum campo será lançado antes da sua aprovação.</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
   }
 
-  function QueueCard({ entry, items, selected, select }) {
+  function QueueCard({ entry, items, selected, select, remove, removing }) {
     const meta = STATUS[entry.status] || STATUS.recebido;
     const pending = items.filter(item => item.status === 'aguardando_conferencia').length;
     const typeIcons = [...new Set(items.map(item => normalizeType(item.tipo)))].slice(0, 4);
-    useLucide([entry.id, entry.status, pending, selected]);
-    return html`<button className=${`doc-queue-card ${selected ? 'active' : ''}`} onClick=${select}><span className=${`doc-file-icon ${meta.tone}`}><${Icon} name=${entry.status === 'analisando' ? 'loader-circle' : 'file-text'}/></span><div className="doc-queue-copy"><strong>${entry.nome_arquivo}</strong><small>${entry.total_paginas || '—'} página(s) · ${dateTime(entry.criado_em)}</small><div><span className=${`doc-status ${meta.tone}`}><i></i>${meta.label}</span>${pending ? html`<b>${pending} pendente${pending === 1 ? '' : 's'}</b>` : null}</div></div><span className="doc-type-stack">${typeIcons.map(type => html`<i title=${TYPES[type]?.label || type}><${Icon} name=${TYPES[type]?.icon || 'file-question'}/></i>`)}</span><${Icon} name="chevron-right"/></button>`;
+    const locked = items.some(item => item.status === 'aprovado');
+    useLucide([entry.id, entry.status, pending, selected, locked, removing]);
+    const openWithKeyboard = event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); }
+    };
+    return html`<div className=${`doc-queue-card ${selected ? 'active' : ''}`} onClick=${select} onKeyDown=${openWithKeyboard} role="button" tabIndex="0"><span className=${`doc-file-icon ${meta.tone}`}><${Icon} name=${entry.status === 'analisando' ? 'loader-circle' : 'file-text'}/></span><div className="doc-queue-copy"><strong>${entry.nome_arquivo}</strong><small>${entry.total_paginas || '—'} página(s) · ${dateTime(entry.criado_em)}</small><div><span className=${`doc-status ${meta.tone}`}><i></i>${meta.label}</span>${pending ? html`<b>${pending} pendente${pending === 1 ? '' : 's'}</b>` : null}</div></div><span className="doc-type-stack">${typeIcons.map(type => html`<i title=${TYPES[type]?.label || type}><${Icon} name=${TYPES[type]?.icon || 'file-question'}/></i>`)}</span><button type="button" className=${`doc-delete-entry ${locked ? 'locked' : ''}`} disabled=${locked || removing} title=${locked ? 'Documento já vinculado: histórico preservado' : 'Excluir documento'} aria-label=${locked ? 'Documento vinculado não pode ser excluído' : `Excluir ${entry.nome_arquivo}`} onKeyDown=${event => event.stopPropagation()} onClick=${event => { event.stopPropagation(); remove(entry, items); }}>${removing ? html`<${Icon} name="loader-circle"/>` : html`<${Icon} name=${locked ? 'lock-keyhole' : 'trash-2'}/>`}</button></div>`;
   }
 
   function DocumentInbox({ context }) {
@@ -345,6 +349,40 @@
       await context.reload(true); context.notify('Documento liberado para conferência manual.', 'info');
     }
 
+    async function deleteEntry(entry, items = []) {
+      if (!entry?.id) return;
+      if (items.some(item => item.status === 'aprovado')) {
+        return context.notify('Este documento já foi vinculado a um lançamento. O histórico precisa ser preservado.', 'error');
+      }
+      const confirmed = window.confirm(`Excluir "${entry.nome_arquivo}"?\n\nO PDF e toda a leitura pendente serão apagados. Esta ação não pode ser desfeita.`);
+      if (!confirmed) return;
+      if (DEMO_MODE) return context.notify('Modo demonstração: o documento seria excluído.', 'info');
+      setBusyEntryId(entry.id);
+      try {
+        const { data:path, error } = await context.client.rpc('excluir_entrada_documento_v1', { p_entrada_id:entry.id });
+        if (error) {
+          if (/excluir_entrada_documento_v1|schema cache|PGRST202/i.test(error.message || '')) {
+            throw new Error('Execute o SQL 09 no Supabase para ativar a exclusão de documentos.');
+          }
+          throw error;
+        }
+        const storagePath = path || entry.caminho;
+        let storageWarning = false;
+        if (storagePath) {
+          const { error:storageError } = await context.client.storage.from('acompanhamento').remove([storagePath]);
+          if (storageError) {
+            storageWarning = true;
+            console.warn('[PMG Documentos] PDF órfão no Storage:', storageError.message || storageError);
+          }
+        }
+        if (selectedEntryId === entry.id) { setSelectedEntryId(null); setActiveItemId(null); setPreviewUrl(''); }
+        await context.reload(true);
+        context.notify(storageWarning ? 'Documento removido da fila. O PDF privado precisará de limpeza pelo gestor.' : 'Documento e leitura pendente excluídos.');
+      } catch (error) {
+        context.notify(error.message || 'Não foi possível excluir o documento.', 'error');
+      } finally { setBusyEntryId(null); }
+    }
+
     async function processFile(file) {
       if (!file) return;
       if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return context.notify('Envie somente arquivos PDF.', 'error');
@@ -398,7 +436,7 @@
       <input ref=${fileInput} type="file" accept="application/pdf,.pdf" hidden onChange=${event => processFile(event.target.files?.[0])}/>
       <div className="documents-toolbar"><div className="doc-queue-tabs">${[['pendentes','Para conferir'],['conferidos','Conferidos'],['todos','Todos']].map(([key, label]) => html`<button className=${queueFilter === key ? 'active' : ''} onClick=${() => setQueueFilter(key)}>${label}${key === 'pendentes' && pendingCount ? html`<b>${pendingCount}</b>` : null}</button>`)}</div><div className="documents-safety"><${Icon} name="shield-check"/><span>Conferência obrigatória ativa</span></div></div>
 
-      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar com Gemini' : 'Tentar com Gemini'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
+      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()} aria-label="Selecionar PDF"><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => { const items = allItems.filter(item => item.entrada_id === entry.id); return html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${items} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)} remove=${deleteEntry} removing=${busyEntryId === entry.id}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar com Gemini' : 'Tentar com Gemini'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`; }) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
     </section>`;
   }
 

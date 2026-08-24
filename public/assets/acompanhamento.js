@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento V1 / React + HTM */
+/* PMG Connect — Central de Acompanhamento V1.5 / React + HTM */
 (() => {
   'use strict';
 
@@ -12,11 +12,13 @@
     receita: { label: 'Receita', eyebrow: 'Recebíveis, investimento e saldo', icon: 'landmark' },
     fechamento: { label: 'Fechamento mensal', eyebrow: 'Marketing → Marcos', icon: 'badge-check' },
     registros: { label: 'Acompanhamentos', eyebrow: 'Operação completa', icon: 'rows-3' },
-    financeiro: { label: 'Financeiro', eyebrow: 'Previsão e pagamentos', icon: 'wallet-cards' },
+    financeiro: { label: 'Central financeira', eyebrow: 'Receita, pagamentos e conferência', icon: 'wallet-cards' },
     fornecedores: { label: 'Parceiros', eyebrow: 'Mapa de fornecedores', icon: 'building-2' },
     documentos: { label: 'Caixa de documentos', eyebrow: 'Leitura e conferência', icon: 'scan-line' },
     importar: { label: 'Importar planilhas', eyebrow: 'Migração inteligente', icon: 'file-spreadsheet' },
   };
+  const SIDEBAR_VIEWS = ['dashboard', 'planejamento', 'financeiro', 'registros', 'documentos', 'importar'];
+  const FINANCE_VIEWS = ['receita', 'financeiro', 'fechamento', 'fornecedores'];
 
   const CATEGORIES = {
     cota_anual: { label: 'Cota anual', icon: 'badge-dollar-sign', tone: 'emerald' },
@@ -60,6 +62,13 @@
     cancelado: { label: 'Cancelado', icon: 'ban' },
   };
 
+  const PLANNING_ACTIVITY_STATUS = {
+    planejada:{ label:'Planejada', icon:'circle-dashed' },
+    em_andamento:{ label:'Em andamento', icon:'loader-circle' },
+    bloqueada:{ label:'Bloqueada', icon:'octagon-alert' },
+    concluida:{ label:'Concluída', icon:'circle-check-big' },
+  };
+
   const FINANCE_STATUS = {
     sem_pagamentos: 'Sem parcelas', pendente: 'Pendente', parcial: 'Parcial', pago: 'Pago', atrasado: 'Atrasado', cancelado: 'Cancelado'
   };
@@ -70,7 +79,13 @@
   });
   const documentTypeLabel = value => DOCUMENT_TYPE_LABELS[value] || String(value || 'Documento').replaceAll('_', ' ');
 
-  const PAYMENT_METHODS = ['Boleto', 'PIX', 'Transferência bancária', 'Depósito', 'Depósito + abatimento em verba', 'Nota fiscal / faturamento', 'Cartão', 'Abatimento em verba', 'Bonificação', 'Patrocínio', 'Consolidado anual', 'Permuta', 'Dinheiro', 'Não informado', 'Outro'];
+  const RECEIPT_METHODS = [
+    { key:'desconto', label:'Desconto em boleto', icon:'receipt-text', tone:'discount' },
+    { key:'deposito', label:'Depósito', icon:'landmark', tone:'deposit' },
+    { key:'bonificacao', label:'Bonificação', icon:'gift', tone:'bonus' },
+    { key:'sobra', label:'Sobra Marketing', icon:'piggy-bank', tone:'surplus' },
+  ];
+  const PAYMENT_METHODS = ['Desconto em boleto', 'Depósito', 'Bonificação', 'Sobra Marketing', 'Depósito + desconto em boleto', 'PIX', 'TED', 'Transferência bancária', 'Boleto', 'Nota fiscal / faturamento', 'Cartão', 'Patrocínio', 'Consolidado anual', 'Permuta', 'Dinheiro', 'Não informado', 'Outro'];
   const IMPORT_FIELDS = [
     ['fornecedor', 'Fornecedor / parceiro'], ['fornecedor_codigo', 'Código do fornecedor'],
     ['natureza', 'Natureza financeira'], ['categoria', 'Categoria / tipo'], ['titulo', 'Título / ação'], ['descricao', 'Descrição'],
@@ -108,7 +123,6 @@
   const monthLabel = value => new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(value).replace('.', '');
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const safeFileName = value => normalize(value).replace(/\s+/g, '-').slice(0, 80) || 'arquivo';
   const todayKey = () => new Date().toISOString().slice(0, 10);
   const isOverdue = payment => payment.status !== 'pago' && payment.status !== 'cancelado' && payment.vencimento && payment.vencimento < todayKey();
   const category = value => CATEGORIES[value] || { label: value || 'Outro', icon: 'shapes', tone: 'slate' };
@@ -123,6 +137,14 @@
   const monthKeyToDate = key => key ? `${key}-01` : '';
   const monthLong = key => key ? new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric' }).format(new Date(`${key}-01T12:00:00`)) : 'Sem competência';
   const supplierKey = value => normalize(value).replace(/\s+/g, ' ');
+  const receiptMethodKey = value => {
+    const text = normalize(value);
+    if (text.includes('sobra')) return 'sobra';
+    if (text.includes('bonific')) return 'bonificacao';
+    if (text.includes('deposito') || text.includes('pix') || text.includes('ted') || text.includes('transfer')) return 'deposito';
+    if (text.includes('desconto') || text.includes('abatimento') || text.includes('boleto') || text.includes('nota fiscal')) return 'desconto';
+    return 'nao_informado';
+  };
 
   function costCenterFromCampaign(value) {
     const text = normalize(value);
@@ -151,8 +173,8 @@
     if (/video/.test(text)) return 'videos pmg';
     if (/brinde/.test(text)) return 'brindes';
     if (/graac|aacd/.test(text)) return 'graac aacd';
-    if (/ifb/.test(text)) return 'ifb';
-    if (/abad/.test(text)) return 'abad';
+    if (/\bifb\b/.test(text)) return 'ifb';
+    if (/\babad\b/.test(text)) return 'abad';
     if (/convencao/.test(text)) return 'convencao';
     if (/diverso|outro/.test(text)) return 'diversos';
     return '';
@@ -197,15 +219,15 @@
 
   function inferCategory(value) {
     const text = normalize(value);
-    if (text.includes('campanha') || text.includes('incentivo')) return 'campanha_incentivo';
+    if (text.includes('pendente') || text.includes('falta') || text.includes('haver')) return 'pendencia';
+    if (text.includes('campanha') || text.includes('incentivo') || text.includes('promocao')) return 'campanha_incentivo';
     if (text.includes('feira') || text.includes('fipan') || text.includes('fispal') || text.includes('anuga') || text.includes('expo')) return 'feira';
-    if (text.includes('evento') || text.includes('encontro') || text.includes('convencao') || text.includes('30 anos') || text.includes('copa')) return 'evento';
-    if (text.includes('podcast') || text.includes('mtrix')) return 'midia';
+    if (text.includes('evento') || text.includes('encontro') || text.includes('convencao') || text.includes('30 anos') || text.includes('copa') || text.includes('dia do motorista') || text.includes('treinamento')) return 'evento';
+    if (text.includes('podcast') || text.includes('mtrix') || text.includes('midia') || text.includes('video') || text.includes('google') || text.includes('edm') || text.includes('boletim') || text.includes('divulgacao') || text.includes('encarte')) return 'midia';
+    if (text.includes('material') || text.includes('brinde') || text.includes('catalogo') || text.includes('fold') || text.includes('folder')) return 'material';
+    if (text.includes('bonificacao') || text.includes('premio')) return 'bonificacao';
     if (text.includes('cota') || text.includes('plano anual')) return 'cota_anual';
     if (text.includes('trade') || text.includes('degustacao') || text.includes('acao')) return 'acao_trade';
-    if (text.includes('midia') || text.includes('divulgacao') || text.includes('encarte')) return 'midia';
-    if (text.includes('material') || text.includes('brinde')) return 'material';
-    if (text.includes('bonificacao') || text.includes('premio')) return 'bonificacao';
     if (text.includes('parceria')) return 'parceria';
     return 'outro';
   }
@@ -314,6 +336,21 @@
       prioridade:index === 5 ? 'urgente' : 'normal', responsavel_id:index % 2 ? 'c2' : 'c1', atualizado_em:new Date(Date.now() - index * 36e5 * 11).toISOString(),
       data_inicio:iso(-60 + index * 4), data_fim:iso(80 + index * 5), tags:index % 2 ? ['fornecedor', '2026'] : ['diretoria']
     }));
+    const planningRecords = [
+      ['plan-1','Promoções',360000,'campanha_incentivo'],
+      ['plan-2','Feiras / Eventos',220000,'feira'],
+      ['plan-3','Catálogo / Fold',95000,'material'],
+      ['plan-4','Vídeos PMG',72000,'midia'],
+    ].map(([id, reference, value, planningCategory], index) => ({
+      id, codigo:1100 + index, controle:'marcos', ano_referencia:2026, fornecedor:'', categoria:planningCategory,
+      titulo:`Planejamento 2026 — ${reference}`, referencia:reference, natureza:'despesa', impacta_totais:true,
+      status:'em_andamento', valor_acordado:value, total_previsto:value, total_pago:0, saldo_aberto:value,
+      situacao_financeira:'pendente', proximo_vencimento:iso(25 + index * 18), quantidade_pagamentos:1,
+      pagamentos_pagos:0, pagamentos_atrasados:0, descricao:'Frente oficial do planejamento anual acompanhada pela Presidência.',
+      prioridade:'normal', responsavel_id:index % 2 ? 'c2' : 'c1', atualizado_em:new Date(Date.now() - index * 9e5).toISOString(),
+      data_inicio:'2026-01-01', data_fim:'2026-12-31', centro_custo:'Marketing', tags:['marcos','planejamento','despesa','2026',normalize(reference)],
+    }));
+    records.push(...planningRecords);
     const payments = records.flatMap((record, index) => {
       const count = record.quantidade_pagamentos;
       return Array.from({ length:count }, (_, p) => {
@@ -336,9 +373,16 @@
       { id:'doc-item-3', entrada_id:'doc-demo-1', ordem:3, paginas:[3], tipo:'deposito', confianca:.99, status:'aguardando_conferencia', dados_extraidos:{ fornecedor:'Tondo S.A. Un. São Paulo SP (Jaguaré)', cnpj:'88.618.285/0015-75', numero_documento:'000.056.354', numero_nota:'000.056.354', data_emissao:'2026-08-12', valor_total_documento:10064.60, valor_marketing:10064.60, valor_lancamento_sugerido:10064.60, natureza_sugerida:'receita', categoria_sugerida:'bonificacao', forma_pagamento:null, titulo_sugerido:'Bonificação Tondo - NF 56.354', descricao:'Depósito identificado a partir de nota fiscal/DANFE de remessa em bonificação, doação ou brinde.', observacoes:'Confirmar o tratamento financeiro da bonificação.', evidencias:['REMESSA EM BONIF. DOACAO OU BRINDE', 'VALOR TOTAL DA NOTA 10.064,60'], alertas:['A natureza financeira depende da conferência humana.'], campos_duvidosos:['forma_pagamento'] } },
       { id:'doc-item-4', entrada_id:'doc-demo-1', ordem:4, paginas:[4], tipo:'extrato_bancario', confianca:.94, status:'aguardando_conferencia', dados_extraidos:{ fornecedor:'Cargill Agrícola S.A.', numero_documento:'5477797', data_pagamento:'2026-08-14', valor_total_documento:10000, valor_marketing:10000, valor_lancamento_sugerido:10000, natureza_sugerida:'receita', categoria_sugerida:'parceria', forma_pagamento:'TED', titulo_sugerido:'Transferência recebida - Cargill', descricao:'Crédito destacado no extrato bancário.', observacoes:'Validar o vínculo com o acompanhamento correto da Cargill.', evidencias:['TED-TRANSF ELET DISPON - REMET. CARGILL AGRICOLA S A - R$ 10.000,00'], alertas:[], campos_duvidosos:['acompanhamento_relacionado'] } },
     ].map(item => ({ ...item, entrada:documents[0], criado_em:documents[0].criado_em }));
+    const planningActivities = planningRecords.map((record, index) => ({
+      id:`pa-${index}`, registro_id:record.id, titulo:['Definir escopo e responsáveis','Validar orçamento com a diretoria','Contratar fornecedores homologados','Conferir entrega e evidências'][index],
+      descricao:'Atividade operacional do planejamento estratégico.', responsavel_id:index % 2 ? 'c2' : 'c1', prazo:iso(14 + index * 9),
+      status:['em_andamento','planejada','bloqueada','concluida'][index], percentual:[45,0,20,100][index], evidencia:index === 3 ? 'Entrega conferida pela equipe.' : '',
+      criado_em:new Date(Date.now() - index * 864e5).toISOString(), atualizado_em:new Date().toISOString(),
+    }));
     return {
       records, payments, collaborators:[{ id:'c1', nome:'Giovanni', role:'colaborador' }, { id:'c2', nome:'Edilson', role:'gestor' }],
       attachments:[], imports:[], conferences:[], conferencesSetupMissing:false, documents, documentItems, documentsSetupMissing:false,
+      planningActivities, planningActivitiesSetupMissing:false,
       activities:records.slice(0, 6).map((record, i) => ({ id:i + 1, registro_id:record.id, ator_id:i % 2 ? 'c2' : 'c1', tipo:i % 3 === 0 ? 'pagamento_editado' : 'editado', resumo:i % 3 === 0 ? 'atualizou uma previsão de pagamento' : 'atualizou o acompanhamento', criado_em:record.atualizado_em }))
     };
   }
@@ -364,13 +408,23 @@
     const conferenceQuery = await db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).limit(5000);
     const conferencesSetupMissing = Boolean(conferenceQuery.error && isMissingConferenceSetupError(conferenceQuery.error));
     if (conferenceQuery.error && !conferencesSetupMissing) throw conferenceQuery.error;
+    const planningActivityQuery = await db.from('acompanhamento_planejamento_atividades').select('*').order('prazo', { ascending:true }).limit(5000);
+    const planningActivitiesSetupMissing = Boolean(planningActivityQuery.error && isMissingPlanningActivitySetupError(planningActivityQuery.error));
+    if (planningActivityQuery.error && !planningActivitiesSetupMissing) throw planningActivityQuery.error;
     return {
       records:queries[0].data || [], payments:queries[1].data || [], collaborators:queries[2].data || [],
       attachments:queries[3].data || [], activities:queries[4].data || [], imports:queries[5].data || [],
       conferences:conferencesSetupMissing ? [] : (conferenceQuery.data || []), conferencesSetupMissing,
+      planningActivities:planningActivitiesSetupMissing ? [] : (planningActivityQuery.data || []), planningActivitiesSetupMissing,
       documents:documentsSetupMissing ? [] : (documentQueries[0].data || []),
       documentItems:documentsSetupMissing ? [] : (documentQueries[1].data || []), documentsSetupMissing
     };
+  }
+
+  function isMissingPlanningActivitySetupError(fetchError) {
+    const details = [fetchError?.message, fetchError?.details, fetchError?.hint, fetchError?.code, fetchError?.status]
+      .filter(Boolean).join(' ');
+    return /acompanhamento_planejamento_atividades|schema cache|PGRST205|42P01|404|does not exist|could not find/i.test(details);
   }
 
   function isMissingConferenceSetupError(fetchError) {
@@ -400,7 +454,7 @@
     const [setupMissing, setSetupMissing] = useState(false);
     const [client, setClient] = useState(null);
     const [me, setMe] = useState(null);
-    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:false, documents:[], documentItems:[], documentsSetupMissing:false });
+    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:false, planningActivities:[], planningActivitiesSetupMissing:false, documents:[], documentItems:[], documentsSetupMissing:false });
     const [control, setControl] = useState('todos');
     const [year, setYear] = useState(new Date().getFullYear());
     const [search, setSearch] = useState('');
@@ -424,7 +478,7 @@
         setError(null); setSetupMissing(false);
       } catch (fetchError) {
         const missing = isMissingSetupError(fetchError);
-        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:true, documents:[], documentItems:[], documentsSetupMissing:true });
+        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:true, planningActivities:[], planningActivitiesSetupMissing:true, documents:[], documentItems:[], documentsSetupMissing:true });
         setSetupMissing(missing);
         setError(fetchError);
       } finally { if (!quiet) setLoading(false); }
@@ -470,6 +524,9 @@
       if (!data.conferencesSetupMissing) {
         channel = channel.on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_conferencias' }, () => void reload(true));
       }
+      if (!data.planningActivitiesSetupMissing) {
+        channel = channel.on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_planejamento_atividades' }, () => void reload(true));
+      }
       if (!data.documentsSetupMissing) {
         channel = channel
           .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_entrada' }, () => void reload(true))
@@ -477,7 +534,7 @@
       }
       subscriptionRef.current = channel.subscribe();
       return () => subscriptionRef.current?.unsubscribe?.();
-    }, [client, reload, data.documentsSetupMissing, data.conferencesSetupMissing]);
+    }, [client, reload, data.documentsSetupMissing, data.conferencesSetupMissing, data.planningActivitiesSetupMissing]);
 
     const years = useMemo(() => uniq(data.records.map(item => item.ano_referencia)).sort((a, b) => b - a), [data.records]);
     const filteredRecords = useMemo(() => {
@@ -491,7 +548,7 @@
     }, [data.records, control, year, search]);
 
     const selected = useMemo(() => data.records.find(item => item.id === selectedId) || null, [data.records, selectedId]);
-    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, client, me, reload, notify, saving, setSaving,
+    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, client, me, canManage:me?.role === 'gestor', reload, notify, saving, setSaving,
       openRecord:record => setSelectedId(record.id), editRecord:record => setRecordModal(record), newRecord:() => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year }),
       newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), saveConference, setView };
 
@@ -522,6 +579,7 @@
 
     async function saveConference({ competencia, fornecedor, status = 'conferido', valor = 0, observacoes = '' }) {
       if (DEMO_MODE) { notify(status === 'conferido' ? 'Conferência assinada no modo demonstração.' : 'Divergência registrada no modo demonstração.', 'info'); return true; }
+      if (me?.role !== 'gestor') { notify('Somente gestores podem assinar ou registrar divergências no fechamento.', 'error'); return false; }
       if (data.conferencesSetupMissing) { notify('Execute o SQL 11 — Gestão MKT V1.3.0 no Supabase para liberar as conferências.', 'error'); return false; }
       setSaving(true);
       try {
@@ -547,19 +605,16 @@
         <div className="ac-main">
           <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context} openCommand=${() => setCommandOpen(true)}/>
           <main className="ac-content">
-            ${!['documentos','planejamento','receita','fechamento'].includes(view) && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
+            ${!['documentos','planejamento', ...FINANCE_VIEWS].includes(view) && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
             ${setupMissing ? html`<${SetupState}/>` : html`
               <div className="view-stage" key=${view}>
                 ${view === 'dashboard' && html`<${Dashboard} context=${context}/>`}
                 ${view === 'planejamento' && html`<${PlanningView} context=${context}/>`}
-                ${view === 'receita' && html`<${RevenueView} context=${context}/>`}
-                ${view === 'fechamento' && html`<${ClosingView} context=${context}/>`}
+                ${FINANCE_VIEWS.includes(view) && html`<${FinanceWorkspace} context=${context} activeView=${view}/>`}
                 ${view === 'registros' && html`<${RecordsView} context=${context}/>`}
-                ${view === 'financeiro' && html`<${FinanceView} context=${context}/>`}
-                ${view === 'fornecedores' && html`<${SuppliersView} context=${context}/>`}
                 ${view === 'documentos' && window.PMGDocumentModule?.DocumentInbox && html`<${window.PMGDocumentModule.DocumentInbox} context=${context}/>`}
                 ${view === 'documentos' && !window.PMGDocumentModule?.DocumentInbox && html`<${MiniEmpty} icon="scan-line" title="Módulo de documentos indisponível" text="Atualize a página para carregar a Caixa de Entrada."/>`}
-                ${view === 'importar' && html`<${ImportView} context=${context} defaultControl=${control} defaultYear=${year}/>`}
+                ${view === 'importar' && (context.canManage ? html`<${ImportView} context=${context} defaultControl=${control} defaultYear=${year}/>` : html`<${PermissionState} title="Importação protegida" text="Somente gestores podem substituir ou conciliar as planilhas oficiais."/>`)}
               </div>`}
           </main>
         </div>
@@ -586,6 +641,11 @@
     return html`<section className="setup-state"><div className="setup-orbit"><span></span><span></span><i><${Icon} name="database-zap" size=${32}/></i></div><div><p className="eyebrow">Uma etapa para ativar</p><h2>A interface está pronta. Falta criar a estrutura no banco.</h2><p>Execute <code>sql/06-CENTRAL-ACOMPANHAMENTO.sql</code> no SQL Editor do Supabase. Depois, carregue os dados pelos arquivos numerados da pasta <code>sql/carga-acompanhamento-sql-editor</code> ou pela tela Importar planilhas. A carga integral foi dividida para respeitar o limite do editor.</p><div className="setup-steps"><span><b>1</b>Executar o SQL 06</span><span><b>2</b>Carregar os lotes 07</span><span><b>3</b>Atualizar esta página</span></div><button className="button primary" onClick=${() => location.reload()}><${Icon} name="refresh-cw"/>Já executei, verificar agora</button></div></section>`;
   }
 
+  function PermissionState({ title, text }) {
+    useLucide([]);
+    return html`<section className="permission-state"><span><${Icon} name="shield-check" size=${30}/></span><div><p className="eyebrow">Operação protegida</p><h2>${title}</h2><p>${text}</p></div></section>`;
+  }
+
   function Sidebar({ view, setView, open, setOpen, me, records, documentItems = [] }) {
     const overdue = records.filter(record => record.situacao_financeira === 'atrasado').length;
     const pendingDocuments = documentItems.filter(item => item.status === 'aguardando_conferencia').length;
@@ -600,7 +660,7 @@
           <div className="side-spotlight"><span className="live-pulse"></span><div><small>Operação conectada</small><strong>${int(openCount)} acompanhamentos ativos</strong></div></div>
           <nav className="side-nav">
             <span className="side-label">Central</span>
-            ${Object.entries(VIEWS).map(([key, item]) => html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b>${key === 'financeiro' && overdue > 0 ? html`<em>${overdue}</em>` : key === 'documentos' && pendingDocuments > 0 ? html`<em>${pendingDocuments}</em>` : null}</button>`)}
+            ${SIDEBAR_VIEWS.filter(key => key !== 'importar' || me?.role === 'gestor').map(key => { const item=VIEWS[key]; const active=key === 'financeiro' ? FINANCE_VIEWS.includes(view) : view === key; return html`<button key=${key} className=${`side-link ${active ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b>${key === 'financeiro' && overdue > 0 ? html`<em>${overdue}</em>` : key === 'documentos' && pendingDocuments > 0 ? html`<em>${pendingDocuments}</em>` : null}</button>`; })}
             <span className="side-label">PMG Connect</span>
             <a className="side-link" href="/central.html"><span><${Icon} name="house"/></span><b>Início</b></a>
             <a className="side-link" href="/demandas.html"><span><${Icon} name="clipboard-check"/></span><b>Demandas</b></a>
@@ -615,7 +675,7 @@
     const meta = VIEWS[view];
     useLucide([view]);
     const documentView = view === 'documentos';
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Fornecedor, ação ou comando</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button><button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)} aria-label="Abrir menu"><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Fornecedor, ação ou comando</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label>${(documentView || context.canManage) && html`<button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button>`}<button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
   }
 
   function CommandPalette({ context, onClose }) {
@@ -630,7 +690,7 @@
       { label:'Abrir Receita', detail:'Recebíveis, investimento e saldo', icon:'landmark', action:() => context.setView('receita') },
       { label:'Fechamento mensal', detail:'Conferência Marketing → Marcos', icon:'badge-check', action:() => context.setView('fechamento') },
       { label:'Novo acompanhamento', detail:'Cadastrar ação ou projeto', icon:'plus-circle', action:context.newRecord },
-      { label:'Importar planilha', detail:'Atualizar os controles oficiais', icon:'file-up', action:() => context.setView('importar') },
+      ...(context.canManage ? [{ label:'Importar planilha', detail:'Atualizar os controles oficiais', icon:'file-up', action:() => context.setView('importar') }] : []),
       { label:'Conferir documentos', detail:'Abrir a caixa de entrada', icon:'scan-line', action:() => context.setView('documentos') },
       { label:'Ver agenda financeira', detail:'Pagamentos e previsões', icon:'wallet-cards', action:() => context.setView('financeiro') },
     ];
@@ -727,7 +787,7 @@
         <div className="metric-grid financial-metrics">
           <${MetricCard} label="Receita prevista" value=${forecastRevenue} icon="trending-up" tone="emerald" hint="Controle Marcos"/>
           <${MetricCard} label="Realizado com fornecedores" value=${realized} icon="badge-check" tone="gold" hint="Controle Marketing"/>
-          <${MetricCard} label="Investimento previsto" value=${forecastExpenses} icon="trending-down" tone="violet" hint="Planejamento anual"/>
+          <${MetricCard} label="Investimento previsto" value=${forecastExpenses} icon="trending-down" tone="investment" hint="Planejamento anual"/>
           <${MetricCard} label="Saldo projetado" value=${forecastBalance} icon="landmark" tone=${overduePayments.length ? 'danger' : 'emerald'} hint=${overduePayments.length ? `${overduePayments.length} pendência(s) vencida(s)` : 'Receita menos investimento'} pulse=${overduePayments.length > 0}/>
         </div>
 
@@ -819,9 +879,90 @@
   function actualInvestmentRows(context) {
     return context.allRecords.filter(record => {
       if (Number(record.ano_referencia) !== 2026 || record.natureza !== 'despesa' || record.status === 'cancelado') return false;
-      if (hasTag(record, 'planejamento') || hasTag(record, 'legado-fora-coluna-valor')) return false;
+      if (hasTag(record, 'legado-fora-coluna-valor') || hasTag(record, 'dentro-verba')) return false;
+      if (!hasTag(record, 'planejamento') && record.impacta_totais === false) return false;
       return recordRealized(context.payments, record) > 0;
     }).map(record => ({ record, value:recordRealized(context.payments, record) }));
+  }
+
+  function PlanningActivityModal({ activity, planning, context, onClose }) {
+    const [status, setStatus] = useState(activity.status || 'planejada');
+    const [saving, setSaving] = useState(false);
+    const recordMap = Object.fromEntries(context.allRecords.map(item => [item.id, item]));
+    const paymentOptions = context.payments.filter(item => item.status === 'pago').slice(-300).reverse();
+    const submit = async event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const paymentId = form.get('pagamento_id') || null;
+      const linkedPayment = context.payments.find(item => item.id === paymentId);
+      const payload = {
+        registro_id:form.get('registro_id'), titulo:form.get('titulo'), descricao:form.get('descricao'),
+        responsavel_id:form.get('responsavel_id') || null, prazo:form.get('prazo') || null,
+        status:linkedPayment?.status === 'pago' ? 'concluida' : status,
+        percentual:linkedPayment?.status === 'pago' ? 100 : Number(form.get('percentual') || 0),
+        evidencia:form.get('evidencia'), pagamento_id:paymentId,
+        custo_previsto:parseMoney(form.get('custo_previsto')), custo_realizado:parseMoney(form.get('custo_realizado')),
+      };
+      if (DEMO_MODE) { context.notify('Modo demonstração: atividade estratégica validada.', 'info'); onClose(); return; }
+      setSaving(true);
+      try {
+        const { error } = await context.client.rpc('salvar_atividade_planejamento_v1', { p_atividade_id:activity.id || null, p_dados:payload });
+        if (error) throw error;
+        await context.reload(true); context.notify(activity.id ? 'Atividade atualizada.' : 'Atividade adicionada ao planejamento.'); onClose();
+      } catch (error) { context.notify(error.message || 'Não foi possível salvar a atividade.', 'error'); }
+      finally { setSaving(false); }
+    };
+    return html`<${ModalShell} title=${activity.id ? 'Editar atividade estratégica' : 'Nova atividade estratégica'} eyebrow="Execução do planejamento" icon="list-checks" onClose=${onClose} wide=${true}><form className="ac-form planning-activity-form" onSubmit=${submit}><div className="form-grid">
+      <${Field} label="Frente estratégica" wide=${true}><select name="registro_id" defaultValue=${activity.registro_id || planning[0]?.id || ''} required><option value="">Selecione...</option>${planning.map(record => html`<option value=${record.id}>${record.referencia || record.titulo}</option>`)}</select></${Field}>
+      <${Field} label="Atividade" wide=${true}><input name="titulo" defaultValue=${activity.titulo || ''} placeholder="Ex.: aprovar briefing e fornecedores" required/></${Field}>
+      <${Field} label="Responsável"><select name="responsavel_id" defaultValue=${activity.responsavel_id || ''}><option value="">Não atribuído</option>${context.collaborators.map(person => html`<option value=${person.id}>${person.nome}</option>`)}</select></${Field}>
+      <${Field} label="Prazo"><input name="prazo" type="date" defaultValue=${activity.prazo || ''}/></${Field}>
+      <${Field} label="Status"><select name="status" value=${status} onChange=${event => setStatus(event.target.value)}>${Object.entries(PLANNING_ACTIVITY_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></${Field}>
+      <${Field} label="Execução (%)"><input name="percentual" type="number" min="0" max="100" defaultValue=${activity.percentual ?? (status === 'concluida' ? 100 : 0)}/></${Field}>
+      <${Field} label="Custo previsto"><div className="money-input"><span>R$</span><input name="custo_previsto" inputMode="decimal" defaultValue=${activity.custo_previsto || ''}/></div></${Field}>
+      <${Field} label="Custo realizado"><div className="money-input"><span>R$</span><input name="custo_realizado" inputMode="decimal" defaultValue=${activity.custo_realizado || ''}/></div></${Field}>
+      <${Field} label="Pagamento vinculado" wide=${true}><select name="pagamento_id" defaultValue=${activity.pagamento_id || ''}><option value="">Sem vínculo financeiro</option>${paymentOptions.map(payment => { const record=recordMap[payment.registro_id]; return html`<option value=${payment.id}>${record?.fornecedor || record?.titulo || 'Lançamento'} · ${payment.descricao || `Parcela ${payment.parcela}`} · ${money(paymentValue(payment))}</option>`; })}</select><small className="field-help">Ao vincular um pagamento realizado, a atividade recebe baixa automática e vai para 100%.</small></${Field}>
+      <${Field} label="Descrição" wide=${true}><textarea name="descricao" rows="3" defaultValue=${activity.descricao || ''} placeholder="Escopo, entregáveis e dependências."></textarea></${Field}>
+      <${Field} label="Evidência / conclusão" wide=${true}><textarea name="evidencia" rows="3" defaultValue=${activity.evidencia || ''} placeholder="Link, protocolo, observação ou comprovação da entrega."></textarea></${Field}>
+      </div><footer className="modal-footer"><button type="button" className="button secondary" onClick=${onClose}>Cancelar</button><button type="submit" className="button investment" disabled=${saving}>${saving ? html`<span className="spinner"></span>` : html`<${Icon} name="save"/>`}Salvar atividade</button></footer></form></${ModalShell}>`;
+  }
+
+  function PlanningActivityBoard({ context, planning }) {
+    const [editor, setEditor] = useState(null);
+    const activities = context.planningActivities || [];
+    const recordMap = Object.fromEntries(planning.map(item => [item.id, item]));
+    const collaboratorMap = Object.fromEntries(context.collaborators.map(item => [item.id, item]));
+    const complete = activities.filter(item => item.status === 'concluida').length;
+    const overdue = activities.filter(item => item.status !== 'concluida' && item.prazo && item.prazo < todayKey()).length;
+    const columns = Object.entries(PLANNING_ACTIVITY_STATUS);
+    useLucide([activities.length, editor?.id, overdue, complete]);
+    const quickComplete = async activity => {
+      if (DEMO_MODE) return context.notify('Atividade concluída no modo demonstração.', 'info');
+      try {
+        const { error } = await context.client.rpc('salvar_atividade_planejamento_v1', { p_atividade_id:activity.id, p_dados:{ ...activity, status:'concluida', percentual:100 } });
+        if (error) throw error; await context.reload(true); context.notify('Atividade concluída.');
+      } catch (error) { context.notify(error.message || 'Não foi possível concluir a atividade.', 'error'); }
+    };
+    if (context.planningActivitiesSetupMissing) return html`<div className="management-setup-warning planning-setup"><${Icon} name="list-checks"/><div><strong>Atividades estratégicas prontas para ativação</strong><p>Execute <code>sql/12-CONTROLES-OPERACIONAIS-V1.4.0.sql</code> para liberar responsáveis, prazos, bloqueios, evidências e baixa automática.</p></div></div>`;
+    return html`<article className="strategy-execution"><header><div><span className="eyebrow light">Execução estratégica</span><h2>Do plano à entrega, sem perder a evidência.</h2><p>Responsáveis, prazos, custos e conclusão conectados às 15 frentes do MKTG 2026.</p></div><div className="strategy-summary"><span><b>${activities.length}</b><small>atividades</small></span><span className=${overdue ? 'danger' : ''}><b>${overdue}</b><small>atrasadas</small></span><span><b>${activities.length ? Math.round(complete / activities.length * 100) : 0}%</b><small>concluídas</small></span><button className="button investment" onClick=${() => setEditor({})}><${Icon} name="plus"/>Nova atividade</button></div></header><div className="strategy-kanban">${columns.map(([key, meta]) => { const rows=activities.filter(item => item.status === key); return html`<section className=${`strategy-column ${key}`}><div className="strategy-column-title"><span><${Icon} name=${meta.icon}/>${meta.label}</span><b>${rows.length}</b></div><div>${rows.length ? rows.map(item => { const front=recordMap[item.registro_id]; const person=collaboratorMap[item.responsavel_id]; const late=item.status!=='concluida'&&item.prazo&&item.prazo<todayKey(); return html`<article className=${`strategy-card ${late?'late':''}`} tabIndex="0" role="button" onClick=${() => setEditor(item)} onKeyDown=${event => { if(event.key==='Enter'||event.key===' '){event.preventDefault();setEditor(item);} }}><div className="strategy-card-top"><span>${front?.referencia || front?.titulo || 'Frente estratégica'}</span>${item.pagamento_id && html`<i title="Baixa vinculada ao financeiro"><${Icon} name="link-2"/></i>`}</div><h3>${item.titulo}</h3><p>${item.descricao || 'Sem descrição adicional.'}</p><div className="strategy-progress"><i style=${{width:`${Math.min(100,Number(item.percentual)||0)}%`}}></i><span>${Number(item.percentual)||0}%</span></div><footer><span className=${late?'late':''}><${Icon} name=${late?'alarm-clock':'calendar'}/>${item.prazo?date(item.prazo):'Sem prazo'}</span><span><${Icon} name="user-round"/>${person?.nome || 'Não atribuído'}</span>${item.status!=='concluida'&&html`<button title="Concluir atividade" aria-label="Concluir atividade" onClick=${event => {event.stopPropagation();quickComplete(item);}}><${Icon} name="check"/></button>`}</footer></article>`; }) : html`<div className="strategy-empty"><${Icon} name=${meta.icon}/><span>Nenhuma atividade</span></div>`}</div></section>`; })}</div>${editor && html`<${PlanningActivityModal} activity=${editor} planning=${planning} context=${context} onClose=${() => setEditor(null)}/>`}</article>`;
+  }
+
+  function PlanningMatrix({ planning, payments, openRecord }) {
+    const paymentMap = new Map();
+    const planningIds = new Set(planning.map(record => record.id));
+    payments.filter(payment => planningIds.has(payment.registro_id)).forEach(payment => {
+      const key = `${payment.registro_id}|${String(payment.vencimento || '').slice(0, 7)}`;
+      paymentMap.set(key, payment);
+    });
+    const rows = [...planning].sort((a, b) => String(a.referencia || a.titulo).localeCompare(String(b.referencia || b.titulo), 'pt-BR'));
+    const realized = sum([...paymentMap.values()].filter(payment => payment.status === 'pago'), paymentValue);
+    useLucide([rows.length, realized]);
+    return html`<article className="management-panel planning-matrix-panel"><div className="panel-heading compact"><div><span className="eyebrow">Espelho vivo da planilha</span><h2>Planejamento por categoria e mês</h2><p>Vermelho na fonte é realizado. Preto continua previsto até haver gasto real.</p></div><div className="planning-legend"><span className="realized"><i></i>Realizado</span><span className="forecast"><i></i>Previsto</span></div></div>
+      <div className="planning-matrix-wrap"><table className="planning-matrix"><thead><tr><th>Categoria</th>${OFFICIAL_MONTHS.map(([, label]) => html`<th>${label.slice(0, 3)}</th>`)}<th>Total</th><th>Realizado</th></tr></thead><tbody>${rows.map(record => {
+        const cells = OFFICIAL_MONTHS.map((_, monthIndex) => paymentMap.get(`${record.id}|2026-${String(monthIndex + 1).padStart(2, '0')}`));
+        const planned = sum(cells, payment => payment?.valor_previsto || 0); const done = sum(cells.filter(payment => payment?.status === 'pago'), paymentValue);
+        return html`<tr><th><button onClick=${() => openRecord(record)}>${record.referencia || record.titulo}<small>${category(record.categoria).label}</small></button></th>${cells.map(payment => html`<td className=${payment ? (payment.status === 'pago' ? 'realized' : 'forecast') : 'empty'}>${payment ? html`<button title=${payment.status === 'pago' ? 'Realizado na planilha oficial' : 'Previsto na planilha oficial'} onClick=${() => openRecord(record)}><span>${compactMoney(payment.valor_previsto)}</span><i></i></button>` : '—'}</td>`)}<td className="row-total">${compactMoney(planned)}</td><td className="row-realized">${compactMoney(done)}</td></tr>`;
+      })}</tbody></table></div></article>`;
   }
 
   function PlanningView({ context }) {
@@ -853,7 +994,9 @@
     useLucide([fronts.length, actualRows.length]);
     return html`<section className="management-section planning-view">
       <div className="management-hero planning-hero"><div><span className="eyebrow light">Planejamento estratégico PMG · 2026</span><h2>Planejar é uma coisa.<br/>Realizar é outra.</h2><p>O previsto continua previsto até existir gasto real. Virar o mês não baixa parcela, porque calendário não é comprovante.</p></div><div className="management-hero-badge"><${Icon} name="target" size=${34}/><span><b>${fronts.length}</b> frentes estratégicas</span></div></div>
-      <div className="management-kpis"><${MetricCard} label="Investimento planejado" value=${plannedTotal} icon="target" tone="violet" hint="Plano 2026"/><${MetricCard} label="Investimento realizado" value=${realizedTotal} icon="badge-dollar-sign" tone="emerald" hint="Somente gasto real"/><${MetricCard} label="Saldo do planejamento" value=${plannedTotal - realizedTotal} icon="scale" tone="gold" hint="Previsto menos realizado"/><${MetricCard} label="Execução" value=${plannedTotal ? realizedTotal / plannedTotal * 100 : 0} format="percent" icon="gauge" tone="slate" hint="Inclui gastos sem vínculo"/></div>
+      <div className="management-kpis"><${MetricCard} label="Investimento planejado" value=${plannedTotal} icon="target" tone="investment" hint="Plano 2026"/><${MetricCard} label="Investimento realizado" value=${realizedTotal} icon="badge-dollar-sign" tone="investment" hint="Somente gasto real"/><${MetricCard} label="Saldo do planejamento" value=${plannedTotal - realizedTotal} icon="scale" tone="gold" hint="Previsto menos realizado"/><${MetricCard} label="Execução" value=${plannedTotal ? realizedTotal / plannedTotal * 100 : 0} format="percent" icon="gauge" tone="slate" hint="Inclui gastos sem vínculo"/></div>
+      <${PlanningMatrix} planning=${planning} payments=${context.payments} openRecord=${context.openRecord}/>
+      <${PlanningActivityBoard} context=${context} planning=${planning}/>
       <div className="management-grid planning-grid"><article className="management-panel wide"><div className="panel-heading compact"><div><span className="eyebrow">Frentes estratégicas</span><h2>Previsto x realizado</h2></div><span className="management-chip">${fronts.length} frentes</span></div>
         <div className="planning-fronts">${fronts.length ? fronts.map(item => html`<button className="planning-front" onClick=${() => context.openRecord(item.record)}><div className="planning-front-head"><div><strong>${item.record.referencia || item.record.titulo}</strong><small>${category(item.record.categoria).label}</small></div><span>${Math.round(item.progress)}%</span></div><div className="planning-front-values"><span><small>Previsto</small><b>${money(item.planned)}</b></span><span><small>Realizado</small><b>${money(item.realized)}</b></span><span><small>Saldo</small><b className=${item.balance < 0 ? 'negative' : ''}>${money(item.balance)}</b></span></div><div className="planning-bar"><i style=${{ width:`${Math.min(100, item.progress)}%` }}></i></div></button>`) : html`<${MiniEmpty} icon="target" title="Planejamento ainda não importado" text="Reimporte MKTG 2026 para carregar as 15 frentes estratégicas."/>`}</div>
       </article><article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">Ritmo mensal</span><h2>2026 mês a mês</h2></div></div><div className="monthly-plan-list">${OFFICIAL_MONTHS.map(([, label], index) => { const planned = monthlyPlan[index]; const actual = monthlyActual[index]; const pct = planned ? Math.min(100, actual / planned * 100) : 0; return html`<div className="monthly-plan-row"><span>${label.slice(0,3)}</span><div><i style=${{ width:`${pct}%` }}></i></div><b>${compactMoney(actual)}</b><small>${compactMoney(planned)}</small></div>`; })}</div></article></div>
@@ -904,11 +1047,13 @@
     marcosForecast.forEach(record => { if (!record.fornecedor) return; const key=supplierKey(record.fornecedor); const row=supplierMap.get(key)||{name:record.fornecedor,forecast:0,received:0}; row.forecast += Number(record.valor_acordado||0); supplierMap.set(key,row); });
     marketingReceipts.forEach(record => { if (!record.fornecedor) return; const key=supplierKey(record.fornecedor); const row=supplierMap.get(key)||{name:record.fornecedor,forecast:0,received:0}; row.received += recordRealized(context.payments, record); supplierMap.set(key,row); });
     const suppliers = [...supplierMap.values()].sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
-    useLucide([suppliers.length]);
+    const pendingRecords = records2026.filter(record => record.categoria === 'pendencia' && !['concluido', 'cancelado'].includes(record.status));
+    useLucide([suppliers.length, pendingRecords.length]);
     return html`<section className="management-section revenue-view"><div className="management-hero revenue-hero"><div><span className="eyebrow light">Receita · 2026</span><h2>Receber, investir<br/>e saber o que sobra.</h2><p>A previsão vem do controle do Marcos. O realizado vem do fechamento do Marketing. Uma conta só, finalmente.</p></div><div className="balance-orbit"><span><small>Saldo realizado</small><strong>${money(realizedBalance)}</strong></span><i></i><i></i></div></div>
-      <div className="management-kpis six"><${MetricCard} label="Receita prevista" value=${forecastRevenue} icon="chart-no-axes-combined" tone="emerald" hint="Previsão anual"/><${MetricCard} label="Receita recebida" value=${received} icon="circle-dollar-sign" tone="emerald" hint="Fechamento Marketing"/><${MetricCard} label="A receber" value=${Math.max(0, forecastRevenue - received)} icon="clock-3" tone="gold" hint="Previsão menos recebido"/><${MetricCard} label="Investimento previsto" value=${forecastInvestment} icon="target" tone="violet" hint="Planejamento"/><${MetricCard} label="Investimento realizado" value=${actualInvestment} icon="receipt-text" tone="violet" hint="Gastos reais"/><${MetricCard} label="Saldo projetado" value=${projectedBalance} icon="scale" tone="slate" hint="Receita − investimento"/></div>
+      <div className="management-kpis six"><${MetricCard} label="Receita prevista" value=${forecastRevenue} icon="chart-no-axes-combined" tone="emerald" hint="Previsão anual"/><${MetricCard} label="Receita recebida" value=${received} icon="circle-dollar-sign" tone="emerald" hint="Fechamento Marketing"/><${MetricCard} label="A receber" value=${Math.max(0, forecastRevenue - received)} icon="clock-3" tone="gold" hint="Previsão menos recebido"/><${MetricCard} label="Investimento previsto" value=${forecastInvestment} icon="target" tone="investment" hint="Planejamento"/><${MetricCard} label="Investimento realizado" value=${actualInvestment} icon="receipt-text" tone="investment" hint="Gastos reais"/><${MetricCard} label="Saldo projetado" value=${projectedBalance} icon="scale" tone="slate" hint="Receita − investimento"/></div>
       <div className="management-grid revenue-grid"><article className="management-panel wide"><div className="panel-heading compact"><div><span className="eyebrow">Recebimentos mensais</span><h2>2026 x 2025</h2><p>Comparação dos fechamentos efetivamente lançados pelo Marketing.</p></div></div><${RevenueComparisonChart} context=${context}/></article><article className="management-panel balance-card"><span className="eyebrow">Leitura do ano</span><div className="balance-equation"><span><small>Recebido</small><b>${money(received)}</b></span><em>−</em><span><small>Investido</small><b>${money(actualInvestment)}</b></span><em>=</em><span className=${realizedBalance < 0 ? 'negative' : 'positive'}><small>Saldo</small><b>${money(realizedBalance)}</b></span></div><div className="balance-progress"><div><span>Receita realizada</span><b>${forecastRevenue ? Math.round(received/forecastRevenue*100) : 0}%</b></div><i><em style=${{width:`${Math.min(100, forecastRevenue ? received/forecastRevenue*100 : 0)}%`}}></em></i></div></article></div>
       <article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">De-para por fornecedor</span><h2>Previsão e recebido</h2><p>Ordem alfabética para a conferência bater com as planilhas oficiais.</p></div><span className="management-chip">${suppliers.length} fornecedores</span></div><div className="supplier-revenue-table"><table><thead><tr><th>Fornecedor</th><th>Previsão</th><th>Recebido</th><th>A receber</th><th>Realização</th></tr></thead><tbody>${suppliers.map(row => { const remaining=Math.max(0,row.forecast-row.received); const pct=row.forecast ? row.received/row.forecast*100 : (row.received>0?100:0); return html`<tr><td><strong>${row.name}</strong></td><td>${money(row.forecast)}</td><td><b className="positive-text">${money(row.received)}</b></td><td>${money(remaining)}</td><td><div className="table-progress"><i><em style=${{width:`${Math.min(100,pct)}%`}}></em></i><span>${Math.round(pct)}%</span></div></td></tr>`; })}</tbody></table></div></article>
+      <article className="management-panel pending-financial-panel"><div className="panel-heading compact"><div><span className="eyebrow">Pendências e em haver</span><h2>O que ainda precisa de conferência</h2><p>Observações mensais e valores destacados no controle do Marcos.</p></div><span className=${`management-chip ${pendingRecords.length ? 'warning' : 'ok'}`}>${pendingRecords.length ? `${pendingRecords.length} aberto(s)` : 'Tudo conferido'}</span></div>${pendingRecords.length ? html`<div className="pending-financial-list">${pendingRecords.map(record => html`<button onClick=${() => context.openRecord(record)}><span><${Icon} name=${hasTag(record,'haver') ? 'piggy-bank' : 'triangle-alert'}/></span><div><strong>${record.fornecedor || record.titulo}</strong><small>${record.descricao || record.observacoes || record.referencia}</small></div><b>${record.valor_acordado ? money(record.valor_acordado) : 'Sem valor informado'}</b><${Icon} name="chevron-right"/></button>`)}</div>` : html`<${MiniEmpty} icon="badge-check" title="Nenhuma pendência aberta" text="Os apontamentos das planilhas estão todos resolvidos."/>`}</article>
     </section>`;
   }
 
@@ -937,8 +1082,9 @@
     const save = (row,status) => context.saveConference({ competencia:competence, fornecedor:row.name, status, valor:row.value, observacoes:status === 'divergente' ? `Divergência com referência MKTG: ${money(row.marcos)}. Marketing: ${money(row.value)}.` : `Conferido contra fechamento do Marketing em ${monthLong(month)}.` });
     return html`<section className="management-section closing-view"><div className="management-hero closing-hero"><div><span className="eyebrow light">Fechamento mensal</span><h2>Marketing lança.<br/>Marcos confere.</h2><p>O valor realizado nasce uma vez no Marketing. Aqui ele aparece em ordem alfabética, com o de-para da planilha do Marcos e assinatura de conferência.</p></div><label className="closing-month"><span>Competência</span><select value=${month} onChange=${event=>setChosenMonth(event.target.value)}>${availableMonths.length ? availableMonths.map(key=>html`<option value=${key}>${monthLong(key)}</option>`) : html`<option value=${month}>${monthLong(month)}</option>`}</select></label></div>
       ${context.conferencesSetupMissing && html`<div className="management-setup-warning"><${Icon} name="database-zap"/><div><strong>Conferência ainda não ativada no Supabase</strong><p>Execute <code>sql/11-GESTAO-MKT-V1.3.0.sql</code>. A leitura funciona sem ele; a assinatura fica bloqueada.</p></div></div>`}
+      ${!context.canManage && html`<div className="management-setup-warning permission"><${Icon} name="shield-check"/><div><strong>Fechamento em modo de leitura</strong><p>O Marketing acompanha os valores; a assinatura e a divergência ficam reservadas ao gestor responsável pela conferência.</p></div></div>`}
       <div className="closing-kpis"><span><small>Fechamento Marketing</small><strong>${money(total)}</strong></span><span><small>Referência MKTG</small><strong>${money(referenceTotal)}</strong></span><span><small>Conferidos</small><strong>${signed}/${rows.length}</strong></span><span className=${divergent ? 'danger' : ''}><small>Divergências</small><strong>${divergent}</strong></span></div>
-      <article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">De-para mensal</span><h2>${monthLong(month)}</h2><p>Fornecedor por fornecedor, exatamente na ordem em que a conferência precisa acontecer.</p></div><span className="management-chip">${rows.length} fornecedores</span></div>${rows.length ? html`<div className="closing-table-wrap"><table className="closing-table"><thead><tr><th>Fornecedor</th><th>Centros de custo</th><th>Marketing</th><th>Referência Marcos</th><th>Diferença</th><th>Conferência</th></tr></thead><tbody>${rows.map(row=>{ const diff=row.value-row.marcos; const status=row.conference?.status||'pendente'; return html`<tr className=${status}><td><strong>${row.name}</strong><small>${row.records.length} lançamento(s)</small></td><td><div className="cost-chips">${row.details.length ? row.details.map(detail=>html`<span className=${hasTag(detail,'adicional-investimento')?'extra':''}>${detail.centro_custo || category(detail.categoria).label}<b>${money(detail.valor_acordado)}</b></span>`) : html`<em>Sem abertura</em>`}</div></td><td><strong>${money(row.value)}</strong></td><td>${row.marcos ? money(row.marcos) : html`<span className="muted-value">Sem valor</span>`}</td><td><span className=${Math.abs(diff)>.01?'diff danger':'diff ok'}>${money(diff)}</span></td><td>${status==='conferido' ? html`<span className="signed-pill"><${Icon} name="badge-check"/>Assinado<small>${row.conference?.conferido_em ? dateTime(row.conference.conferido_em) : ''}</small></span>` : html`<div className="conference-actions"><button className="button primary small" disabled=${context.saving || context.conferencesSetupMissing} onClick=${()=>save(row,'conferido')}><${Icon} name="signature"/>Assinar</button><button className=${`icon-button ${status==='divergente'?'divergent':''}`} title="Marcar divergência" disabled=${context.saving || context.conferencesSetupMissing} onClick=${()=>save(row,'divergente')}><${Icon} name="triangle-alert"/></button></div>`}</td></tr>`;})}</tbody></table></div>` : html`<${MiniEmpty} icon="calendar-x" title="Nenhum fechamento nesta competência" text="Importe a planilha de fornecedores ou escolha outro mês."/>`}</article>
+      <article className="management-panel"><div className="panel-heading compact"><div><span className="eyebrow">De-para mensal</span><h2>${monthLong(month)}</h2><p>Fornecedor por fornecedor, exatamente na ordem em que a conferência precisa acontecer.</p></div><span className="management-chip">${rows.length} fornecedores</span></div>${rows.length ? html`<div className="closing-table-wrap"><table className="closing-table"><thead><tr><th>Fornecedor</th><th>Centros de custo</th><th>Marketing</th><th>Referência Marcos</th><th>Diferença</th><th>Conferência</th></tr></thead><tbody>${rows.map(row=>{ const diff=row.value-row.marcos; const status=row.conference?.status||'pendente'; return html`<tr className=${status}><td><strong>${row.name}</strong><small>${row.records.length} lançamento(s)</small></td><td><div className="cost-chips">${row.details.length ? row.details.map(detail=>html`<span className=${hasTag(detail,'adicional-investimento')?'extra':''}>${detail.centro_custo || category(detail.categoria).label}<b>${money(detail.valor_acordado)}</b></span>`) : html`<em>Sem abertura</em>`}</div></td><td><strong>${money(row.value)}</strong></td><td>${row.marcos ? money(row.marcos) : html`<span className="muted-value">Sem valor</span>`}</td><td><span className=${Math.abs(diff)>.01?'diff danger':'diff ok'}>${money(diff)}</span></td><td>${status==='conferido' ? html`<span className="signed-pill"><${Icon} name="badge-check"/>Assinado<small>${row.conference?.conferido_em ? dateTime(row.conference.conferido_em) : ''}</small></span>` : context.canManage ? html`<div className="conference-actions"><button className="button primary small" disabled=${context.saving || context.conferencesSetupMissing} onClick=${()=>save(row,'conferido')}><${Icon} name="signature"/>Assinar</button><button className=${`icon-button ${status==='divergente'?'divergent':''}`} title="Marcar divergência" disabled=${context.saving || context.conferencesSetupMissing} onClick=${()=>save(row,'divergente')}><${Icon} name="triangle-alert"/></button></div>` : html`<span className="read-only-pill"><${Icon} name="eye"/>Aguardando gestor</span>`}</td></tr>`;})}</tbody></table></div>` : html`<${MiniEmpty} icon="calendar-x" title="Nenhum fechamento nesta competência" text="Importe a planilha de fornecedores ou escolha outro mês."/>`}</article>
     </section>`;
   }
 
@@ -949,13 +1095,13 @@
     const filtered = records.filter(record => (status === 'todos' || record.status === status) && (categoryFilter === 'todos' || record.categoria === categoryFilter));
     const visible = filtered.slice(0, pageSize);
     useLucide([status, categoryFilter, layout, filtered.length]);
-    return html`<section className="records-section"><div className="view-tools"><div className="view-tools-copy"><span className="eyebrow">Base unificada</span><h2>Todos os acompanhamentos</h2><p>Marcos e Marketing trabalhando sobre a mesma fonte de verdade.</p></div><div className="view-tools-actions"><label className="compact-select"><${Icon} name="list-filter"/><select value=${status} onChange=${e => setStatus(e.target.value)}><option value="todos">Todos os status</option>${Object.entries(RECORD_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><label className="compact-select"><${Icon} name="shapes"/><select value=${categoryFilter} onChange=${e => setCategoryFilter(e.target.value)}><option value="todos">Todas as categorias</option>${Object.entries(CATEGORIES).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><div className="layout-toggle"><button className=${layout === 'table' ? 'active' : ''} onClick=${() => setLayout('table')}><${Icon} name="list"/></button><button className=${layout === 'cards' ? 'active' : ''} onClick=${() => setLayout('cards')}><${Icon} name="layout-grid"/></button></div></div></div>
+    return html`<section className="records-section"><div className="view-tools"><div className="view-tools-copy"><span className="eyebrow">Base unificada</span><h2>Todos os acompanhamentos</h2><p>Marcos e Marketing trabalhando sobre a mesma fonte de verdade.</p></div><div className="view-tools-actions"><label className="compact-select"><${Icon} name="list-filter"/><select value=${status} onChange=${e => setStatus(e.target.value)}><option value="todos">Todos os status</option>${Object.entries(RECORD_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><label className="compact-select"><${Icon} name="shapes"/><select value=${categoryFilter} onChange=${e => setCategoryFilter(e.target.value)}><option value="todos">Todas as categorias</option>${Object.entries(CATEGORIES).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><div className="layout-toggle"><button aria-label="Exibir em tabela" className=${layout === 'table' ? 'active' : ''} onClick=${() => setLayout('table')}><${Icon} name="list"/></button><button aria-label="Exibir em cartões" className=${layout === 'cards' ? 'active' : ''} onClick=${() => setLayout('cards')}><${Icon} name="layout-grid"/></button></div></div></div>
       ${filtered.length ? html`${layout === 'table' ? html`<div className="records-table-wrap"><table className="records-table"><thead><tr><th>Acompanhamento</th><th>Controle</th><th>Categoria</th><th>Status</th><th>Financeiro</th><th>Próximo vencimento</th><th></th></tr></thead><tbody>${visible.map(record => html`<${RecordRow} key=${record.id} record=${record} payments=${payments.filter(item => item.registro_id === record.id)} onOpen=${() => openRecord(record)} onEdit=${() => editRecord(record)}/>` )}</tbody></table></div>` : html`<div className="record-card-grid">${visible.map(record => html`<${RecordCard} key=${record.id} record=${record} onOpen=${() => openRecord(record)}/>` )}</div>`}${filtered.length > visible.length && html`<div className="load-more"><span>Exibindo ${int(visible.length)} de ${int(filtered.length)}</span><button className="button secondary" onClick=${() => setPageSize(size => size + 150)}><${Icon} name="chevrons-down"/>Carregar mais 150</button></div>`}` : html`<div className="large-empty"><span><${Icon} name="telescope" size=${34}/></span><h3>Nenhum acompanhamento nesta visão</h3><p>Ajuste os filtros ou cadastre o primeiro item.</p><button className="button primary" onClick=${newRecord}><${Icon} name="plus"/>Novo acompanhamento</button></div>`}</section>`;
   }
 
   function RecordRow({ record, onOpen, onEdit }) {
     const meta = category(record.categoria); const finance = record.situacao_financeira || 'sem_pagamentos'; const nature = NATURES[record.natureza] || NATURES.neutro;
-    return html`<tr onClick=${onOpen}><td><div className="record-title-cell"><span className=${`category-mark ${meta.tone}`}><${Icon} name=${meta.icon}/></span><div><strong>${record.fornecedor || 'Sem fornecedor'}</strong><p>${record.titulo}</p><small>#${record.codigo || '—'} · ${record.ano_referencia}${record.impacta_totais === false ? ' · detalhamento' : ''}</small></div></div></td><td><span className=${`control-pill ${record.controle}`}><i></i>${record.controle === 'marcos' ? 'Marcos' : 'Marketing'}</span></td><td><span className="plain-category">${meta.label}</span><span className=${`nature-pill ${nature.tone}`}><${Icon} name=${nature.icon}/>${nature.label}</span></td><td><span className=${`status-pill ${record.status}`}><i></i>${RECORD_STATUS[record.status]?.label || record.status}</span></td><td><div className="finance-cell"><strong>${money(record.valor_acordado)}</strong><span className=${`finance-label ${finance}`}>${FINANCE_STATUS[finance] || finance}</span></div></td><td><span className=${record.pagamentos_atrasados ? 'date-alert' : ''}>${record.proximo_vencimento ? date(record.proximo_vencimento) : '—'}</span></td><td><button className="row-action" onClick=${event => { event.stopPropagation(); onEdit(); }}><${Icon} name="pencil"/></button></td></tr>`;
+    return html`<tr onClick=${onOpen} onKeyDown=${event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen(); } }} role="button" tabIndex="0"><td><div className="record-title-cell"><span className=${`category-mark ${meta.tone}`}><${Icon} name=${meta.icon}/></span><div><strong>${record.fornecedor || 'Sem fornecedor'}</strong><p>${record.titulo}</p><small>#${record.codigo || '—'} · ${record.ano_referencia}${record.impacta_totais === false ? ' · detalhamento' : ''}</small></div></div></td><td><span className=${`control-pill ${record.controle}`}><i></i>${record.controle === 'marcos' ? 'Marcos' : 'Marketing'}</span></td><td><span className="plain-category">${meta.label}</span><span className=${`nature-pill ${nature.tone}`}><${Icon} name=${nature.icon}/>${nature.label}</span></td><td><span className=${`status-pill ${record.status}`}><i></i>${RECORD_STATUS[record.status]?.label || record.status}</span></td><td><div className="finance-cell"><strong>${money(record.valor_acordado)}</strong><span className=${`finance-label ${finance}`}>${FINANCE_STATUS[finance] || finance}</span></div></td><td><span className=${record.pagamentos_atrasados ? 'date-alert' : ''}>${record.proximo_vencimento ? date(record.proximo_vencimento) : '—'}</span></td><td><button className="row-action" aria-label="Editar acompanhamento" onClick=${event => { event.stopPropagation(); onEdit(); }}><${Icon} name="pencil"/></button></td></tr>`;
   }
 
   function RecordCard({ record, onOpen }) {
@@ -963,19 +1109,50 @@
     return html`<button className="record-card" onClick=${onOpen}><div className="record-card-top"><span className=${`category-mark ${meta.tone}`}><${Icon} name=${meta.icon}/></span><span className=${`control-pill ${record.controle}`}><i></i>${record.controle === 'marcos' ? 'Marcos' : 'Marketing'}</span></div><span className="record-code">#${record.codigo || '—'} · ${record.ano_referencia}${record.impacta_totais === false ? ' · DETALHE' : ''}</span><h3>${record.fornecedor || record.titulo}</h3><p>${record.fornecedor ? record.titulo : record.referencia || 'Acompanhamento PMG'}</p><div className="record-card-meta"><span className=${`status-pill ${record.status}`}><i></i>${RECORD_STATUS[record.status]?.label || record.status}</span><span className=${`nature-pill ${nature.tone}`}><${Icon} name=${nature.icon}/>${nature.label}</span></div><div className="record-card-value"><span><small>Valor acompanhado</small><strong>${money(record.valor_acordado)}</strong></span><b>${Math.round(progress)}%</b></div><div className="record-progress"><i style=${{ width:`${progress}%` }}></i></div><div className="record-card-foot"><span>${record.proximo_vencimento ? `Próximo: ${date(record.proximo_vencimento)}` : 'Sem parcelas futuras'}</span><${Icon} name="arrow-up-right"/></div><div className="card-glow"></div></button>`;
   }
 
+  function FinanceWorkspace({ context, activeView }) {
+    const tabs = [
+      ['receita', 'Visão financeira', 'chart-no-axes-combined'],
+      ['financeiro', 'Agenda', 'calendar-clock'],
+      ['fechamento', 'Fechamento', 'badge-check'],
+      ['fornecedores', 'Parceiros', 'building-2'],
+    ];
+    const supplierRecords = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marketing'
+      && record.natureza === 'receita' && record.impacta_totais !== false && hasTag(record, 'fornecedores') && record.status !== 'cancelado');
+    const supplierIds = new Set(supplierRecords.map(record => record.id));
+    const receipts = context.payments.filter(payment => payment.status === 'pago' && supplierIds.has(payment.registro_id));
+    const methodTotals = RECEIPT_METHODS.map(meta => {
+      const rows = receipts.filter(payment => receiptMethodKey(payment.forma_pagamento) === meta.key);
+      return { ...meta, count:rows.length, value:sum(rows, paymentValue) };
+    });
+    const pending = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.categoria === 'pendencia' && !['concluido', 'cancelado'].includes(record.status));
+    const pendingValue = sum(pending, record => record.valor_acordado);
+    useLucide([activeView, receipts.length, pending.length]);
+    return html`<section className="finance-workspace">
+      <div className="finance-hub-nav"><div><span className="eyebrow">Central financeira PMG</span><h2>Uma área, quatro leituras</h2><p>Receita, agenda, conferência e parceiros sem espalhar o controle pelo menu.</p></div><nav>${tabs.map(([key, label, icon]) => html`<button className=${activeView === key ? 'active' : ''} onClick=${() => context.setView(key)}><${Icon} name=${icon}/>${label}</button>`)}</nav></div>
+      <div className="receipt-method-grid">${methodTotals.map(item => html`<article className=${`receipt-method ${item.tone}`}><span><${Icon} name=${item.icon}/></span><div><small>${item.label}</small><strong>${money(item.value)}</strong><em>${int(item.count)} lançamento(s)</em></div></article>`)}</div>
+      ${pending.length > 0 && html`<button className="financial-pending-signal" onClick=${() => context.setView('receita')}><span><${Icon} name="triangle-alert"/></span><div><small>Pendências e valores em haver</small><strong>${int(pending.length)} item(ns) para conferência</strong></div><b>${money(pendingValue)}</b><${Icon} name="chevron-right"/></button>`}
+      ${activeView === 'receita' && html`<${RevenueView} context=${context}/>`}
+      ${activeView === 'financeiro' && html`<${FinanceView} context=${context}/>`}
+      ${activeView === 'fechamento' && html`<${ClosingView} context=${context}/>`}
+      ${activeView === 'fornecedores' && html`<${SuppliersView} context=${context}/>`}
+    </section>`;
+  }
+
   function FinanceView({ context }) {
     const { records, payments, openRecord, newPayment } = context; const recordMap = Object.fromEntries(context.allRecords.map(item => [item.id, item]));
     const allowed = new Set(records.map(item => item.id)); const visible = payments.filter(item => allowed.has(item.registro_id));
-    const [paymentStatus, setPaymentStatus] = useState('abertos'); const [month, setMonth] = useState('todos');
+    const [paymentStatus, setPaymentStatus] = useState('abertos'); const [month, setMonth] = useState('todos'); const [method, setMethod] = useState('todos');
     const months = uniq(visible.map(item => item.vencimento?.slice(0, 7))).sort().reverse();
-    const filtered = visible.filter(item => (month === 'todos' || item.vencimento?.startsWith(month)) && (paymentStatus === 'todos' || paymentStatus === 'abertos' ? (paymentStatus === 'todos' || !['pago', 'cancelado'].includes(item.status)) : item.status === paymentStatus)).sort((a, b) => String(a.vencimento || '9999').localeCompare(String(b.vencimento || '9999')));
+    const filtered = visible.filter(item => (month === 'todos' || item.vencimento?.startsWith(month))
+      && (method === 'todos' || receiptMethodKey(item.forma_pagamento) === method)
+      && (paymentStatus === 'todos' || paymentStatus === 'abertos' ? (paymentStatus === 'todos' || !['pago', 'cancelado'].includes(item.status)) : item.status === paymentStatus)).sort((a, b) => String(a.vencimento || '9999').localeCompare(String(b.vencimento || '9999')));
     const due = sum(visible.filter(item => !['pago', 'cancelado'].includes(item.status)), item => item.valor_previsto);
     const paid = sum(visible.filter(item => item.status === 'pago'), item => item.valor_pago || item.valor_previsto);
     const overdue = visible.filter(isOverdue);
-    useLucide([paymentStatus, month, visible.length]);
+    useLucide([paymentStatus, month, method, visible.length]);
     return html`<section className="finance-section"><div className="finance-hero"><div><span className="eyebrow light">Radar financeiro PMG</span><h2>O futuro dos pagamentos,<br/>sem surpresa no vencimento.</h2><p>Acompanhe previsões, aprovações e baixas em uma linha do tempo única.</p></div><div className="finance-hero-numbers"><span><small>Em aberto</small><strong>${money(due)}</strong></span><span><small>Realizado</small><strong>${money(paid)}</strong></span><span className=${overdue.length ? 'danger' : ''}><small>Atrasados</small><strong>${int(overdue.length)}</strong></span></div><div className="finance-orbit"><i></i><i></i><span><${Icon} name="wallet-cards" size=${32}/></span></div></div>
-      <div className="view-tools finance-tools"><div><span className="eyebrow">Agenda de parcelas</span><h2>${int(filtered.length)} lançamentos encontrados</h2></div><div className="view-tools-actions"><label className="compact-select"><${Icon} name="calendar"/><select value=${month} onChange=${e => setMonth(e.target.value)}><option value="todos">Todos os meses</option>${months.map(item => html`<option value=${item}>${new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric' }).format(new Date(`${item}-01T12:00:00`))}</option>`)}</select></label><label className="compact-select"><${Icon} name="circle-dollar-sign"/><select value=${paymentStatus} onChange=${e => setPaymentStatus(e.target.value)}><option value="abertos">Somente em aberto</option><option value="todos">Todos os lançamentos</option>${Object.entries(PAYMENT_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><button className="button primary" onClick=${() => newPayment(null)}><${Icon} name="plus"/>Nova parcela</button></div></div>
-      <div className="payment-timeline">${filtered.length ? filtered.map(payment => { const record = recordMap[payment.registro_id]; const overdueItem = isOverdue(payment); return html`<article key=${payment.id} className=${`payment-row ${overdueItem ? 'overdue' : ''} ${payment.status}`} onClick=${() => record && openRecord(record)}><div className="payment-date"><b>${payment.vencimento ? payment.vencimento.slice(8, 10) : '—'}</b><span>${payment.vencimento ? monthLabel(new Date(`${payment.vencimento}T12:00:00`)) : 'sem data'}</span></div><span className="payment-line"><i></i></span><div className="payment-main"><div><span className=${`payment-status ${overdueItem ? 'atrasado' : payment.status}`}><${Icon} name=${overdueItem ? 'triangle-alert' : PAYMENT_STATUS[payment.status]?.icon || 'clock'}/>${overdueItem ? 'Atrasado' : PAYMENT_STATUS[payment.status]?.label || payment.status}</span><h3>${record?.fornecedor || record?.titulo || 'Acompanhamento'}</h3><p>${payment.descricao || `Parcela ${payment.parcela}`} · ${record?.titulo || ''}</p></div><div className="payment-amount"><strong>${money(payment.valor_previsto)}</strong><span>${payment.forma_pagamento || 'Forma a definir'}</span></div><button className="row-action" onClick=${event => { event.stopPropagation(); context.editPayment(payment); }}><${Icon} name="pencil"/></button></div></article>`; }) : html`<div className="large-empty"><span><${Icon} name="calendar-check-2" size=${34}/></span><h3>Nenhuma parcela nesta seleção</h3><p>Cadastre uma previsão para preencher a agenda.</p></div>`}</div></section>`;
+      <div className="view-tools finance-tools"><div><span className="eyebrow">Agenda de parcelas</span><h2>${int(filtered.length)} lançamentos encontrados</h2></div><div className="view-tools-actions"><label className="compact-select"><${Icon} name="calendar"/><select value=${month} onChange=${e => setMonth(e.target.value)}><option value="todos">Todos os meses</option>${months.map(item => html`<option value=${item}>${new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric' }).format(new Date(`${item}-01T12:00:00`))}</option>`)}</select></label><label className="compact-select"><${Icon} name="landmark"/><select value=${method} onChange=${e => setMethod(e.target.value)}><option value="todos">Todos os tipos</option>${RECEIPT_METHODS.map(item => html`<option value=${item.key}>${item.label}</option>`)}</select></label><label className="compact-select"><${Icon} name="circle-dollar-sign"/><select value=${paymentStatus} onChange=${e => setPaymentStatus(e.target.value)}><option value="abertos">Somente em aberto</option><option value="todos">Todos os lançamentos</option>${Object.entries(PAYMENT_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><button className="button primary" onClick=${() => newPayment(null)}><${Icon} name="plus"/>Nova parcela</button></div></div>
+      <div className="payment-timeline">${filtered.length ? filtered.map(payment => { const record = recordMap[payment.registro_id]; const overdueItem = isOverdue(payment); const methodKey=receiptMethodKey(payment.forma_pagamento); return html`<article key=${payment.id} className=${`payment-row ${overdueItem ? 'overdue' : ''} ${payment.status}`} onClick=${() => record && openRecord(record)}><div className="payment-date"><b>${payment.vencimento ? payment.vencimento.slice(8, 10) : '—'}</b><span>${payment.vencimento ? monthLabel(new Date(`${payment.vencimento}T12:00:00`)) : 'sem data'}</span></div><span className="payment-line"><i></i></span><div className="payment-main"><div><span className=${`payment-status ${overdueItem ? 'atrasado' : payment.status}`}><${Icon} name=${overdueItem ? 'triangle-alert' : PAYMENT_STATUS[payment.status]?.icon || 'clock'}/>${overdueItem ? 'Atrasado' : PAYMENT_STATUS[payment.status]?.label || payment.status}</span><h3>${record?.fornecedor || record?.titulo || 'Acompanhamento'}</h3><p>${payment.descricao || `Parcela ${payment.parcela}`} · ${record?.titulo || ''}</p></div><div className="payment-amount"><strong>${money(payment.valor_previsto)}</strong><span className=${`method-pill ${methodKey}`}>${payment.forma_pagamento || 'Forma a definir'}</span></div><button className="row-action" onClick=${event => { event.stopPropagation(); context.editPayment(payment); }}><${Icon} name="pencil"/></button></div></article>`; }) : html`<div className="large-empty"><span><${Icon} name="calendar-check-2" size=${34}/></span><h3>Nenhuma parcela nesta seleção</h3><p>Cadastre uma previsão para preencher a agenda.</p></div>`}</div></section>`;
   }
 
   function SuppliersView({ context }) {
@@ -989,13 +1166,24 @@
   }
 
   function ModalShell({ title, eyebrow, icon, onClose, children, wide = false }) {
+    const dialogRef = useRef(null);
     useEffect(() => {
-      const close = event => { if (event.key === 'Escape') onClose(); };
+      const previous = document.activeElement;
+      const close = event => {
+        if (event.key === 'Escape') onClose();
+        if (event.key !== 'Tab' || !dialogRef.current) return;
+        const focusable = [...dialogRef.current.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')];
+        if (!focusable.length) return;
+        const first = focusable[0]; const last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      };
       document.addEventListener('keydown', close); document.body.classList.add('modal-open');
-      return () => { document.removeEventListener('keydown', close); document.body.classList.remove('modal-open'); };
+      requestAnimationFrame(() => dialogRef.current?.querySelector('input,select,textarea,button')?.focus());
+      return () => { document.removeEventListener('keydown', close); document.body.classList.remove('modal-open'); previous?.focus?.(); };
     }, [onClose]);
     useLucide([title]);
-    return html`<div className="modal-backdrop" onMouseDown=${event => event.target === event.currentTarget && onClose()}><section className=${`ac-modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true"><header><span className="modal-title-icon"><${Icon} name=${icon}/></span><div><span className="eyebrow">${eyebrow}</span><h2>${title}</h2></div><button className="icon-button" onClick=${onClose}><${Icon} name="x"/></button></header>${children}</section></div>`;
+    return html`<div className="modal-backdrop" onMouseDown=${event => event.target === event.currentTarget && onClose()}><section ref=${dialogRef} className=${`ac-modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label=${title}><header><span className="modal-title-icon"><${Icon} name=${icon}/></span><div><span className="eyebrow">${eyebrow}</span><h2>${title}</h2></div><button className="icon-button" onClick=${onClose} aria-label="Fechar"><${Icon} name="x"/></button></header>${children}</section></div>`;
   }
 
   function Field({ label, hint, wide = false, children }) {
@@ -1049,8 +1237,11 @@
 
   function PaymentModal({ payment, records, onClose, onSave, saving }) {
     const editing = Boolean(payment.id); const defaultRecord = payment.registro_id || records[0]?.id || '';
+    const [currentStatus, setCurrentStatus] = useState(payment.status || 'previsto');
+    const paid = currentStatus === 'pago';
     const submit = event => {
       event.preventDefault(); const form = new FormData(event.currentTarget); const status = form.get('status'); const value = parseMoney(form.get('valor_previsto'));
+      if (status === 'pago' && (!form.get('pago_em') || !form.get('forma_pagamento') || !form.get('numero_documento'))) return;
       onSave({ parcela:Number(form.get('parcela') || 1), descricao:form.get('descricao'), valor_previsto:value,
         valor_pago:parseMoney(form.get('valor_pago')) || (status === 'pago' ? value : 0), vencimento:form.get('vencimento'), pago_em:form.get('pago_em'),
         status, forma_pagamento:form.get('forma_pagamento'), favorecido:form.get('favorecido'), numero_documento:form.get('numero_documento'), observacoes:form.get('observacoes') }, payment.id, form.get('registro_id'));
@@ -1061,18 +1252,18 @@
       <${Field} label="Descrição"><input name="descricao" defaultValue=${payment.descricao || ''} placeholder="Ex.: 1ª parcela"/></${Field}>
       <${Field} label="Valor previsto"><div className="money-input"><span>R$</span><input name="valor_previsto" inputMode="decimal" defaultValue=${payment.valor_previsto || ''} required/></div></${Field}>
       <${Field} label="Vencimento"><input name="vencimento" type="date" defaultValue=${payment.vencimento || ''}/></${Field}>
-      <${Field} label="Status"><select name="status" defaultValue=${payment.status || 'previsto'}>${Object.entries(PAYMENT_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></${Field}>
-      <${Field} label="Forma de pagamento"><select name="forma_pagamento" defaultValue=${payment.forma_pagamento || ''}><option value="">A definir</option>${PAYMENT_METHODS.map(item => html`<option value=${item}>${item}</option>`)}</select></${Field}>
-      <${Field} label="Data realizada"><input name="pago_em" type="date" defaultValue=${payment.pago_em || ''}/></${Field}>
+      <${Field} label="Status"><select name="status" value=${currentStatus} onChange=${event => setCurrentStatus(event.target.value)}>${Object.entries(PAYMENT_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></${Field}>
+      <${Field} label=${paid ? 'Tipo / método do movimento *' : 'Tipo / método do movimento'}><select name="forma_pagamento" defaultValue=${payment.forma_pagamento || ''} required=${paid}><option value="">${paid ? 'Selecione para concluir' : 'A definir'}</option>${PAYMENT_METHODS.filter(item => item !== 'Não informado').map(item => html`<option value=${item}>${item}</option>`)}</select><small className="field-help">Recebimentos de Marketing: desconto em boleto, depósito, bonificação ou sobra Marketing.</small></${Field}>
+      <${Field} label=${paid ? 'Data realizada *' : 'Data realizada'}><input name="pago_em" type="date" defaultValue=${payment.pago_em || (paid ? todayKey() : '')} required=${paid}/></${Field}>
       <${Field} label="Valor realizado"><div className="money-input"><span>R$</span><input name="valor_pago" inputMode="decimal" defaultValue=${payment.valor_pago || ''}/></div></${Field}>
       <${Field} label="Favorecido"><input name="favorecido" defaultValue=${payment.favorecido || ''}/></${Field}>
-      <${Field} label="Documento / NF"><input name="numero_documento" defaultValue=${payment.numero_documento || ''}/></${Field}>
+      <${Field} label=${paid ? 'Documento / NF *' : 'Documento / NF'}><input name="numero_documento" defaultValue=${payment.numero_documento || ''} required=${paid} placeholder=${paid ? 'Obrigatório para confirmar a baixa' : ''}/></${Field}>
       <${Field} label="Observações" wide=${true}><textarea name="observacoes" rows="3" defaultValue=${payment.observacoes || ''}></textarea></${Field}>
-      </div><footer className="modal-footer"><button type="button" className="button secondary" onClick=${onClose}>Cancelar</button><button type="submit" className="button primary" disabled=${saving}>${saving ? html`<span className="spinner"></span>` : html`<${Icon} name="save"/>`}Salvar pagamento</button></footer></form></${ModalShell}>`;
+      </div>${paid && html`<div className="payment-proof-note"><${Icon} name="shield-check"/><div><strong>Baixa financeira protegida</strong><p>Data, forma e documento são obrigatórios. PDFs devem ser enviados pela Caixa de Documentos e conferidos antes do vínculo.</p></div></div>`}<footer className="modal-footer"><button type="button" className="button secondary" onClick=${onClose}>Cancelar</button><button type="submit" className="button primary" disabled=${saving}>${saving ? html`<span className="spinner"></span>` : html`<${Icon} name="save"/>`}Salvar pagamento</button></footer></form></${ModalShell}>`;
   }
 
   function RecordDrawer({ record, context, onClose }) {
-    const [tab, setTab] = useState('resumo'); const [uploading, setUploading] = useState(false); const fileRef = useRef(null);
+    const [tab, setTab] = useState('resumo');
     const payments = context.payments.filter(item => item.registro_id === record.id).sort((a, b) => (a.parcela || 0) - (b.parcela || 0));
     const attachments = context.attachments.filter(item => item.registro_id === record.id);
     const linkedDocuments = (context.documentItems || []).filter(item => item.registro_id === record.id && item.status === 'aprovado');
@@ -1080,9 +1271,10 @@
     const collaboratorMap = Object.fromEntries(context.collaborators.map(item => [item.id, item]));
     const meta = category(record.categoria); const nature = NATURES[record.natureza] || NATURES.neutro; const progress = record.valor_acordado ? Math.min(100, Number(record.total_pago) / Number(record.valor_acordado) * 100) : 0;
     useEffect(() => { document.body.classList.add('drawer-open'); return () => document.body.classList.remove('drawer-open'); }, []);
-    useLucide([tab, payments.length, attachments.length, activities.length, uploading]);
+    useLucide([tab, payments.length, attachments.length, activities.length]);
 
     async function archiveRecord() {
+      if (!context.canManage) return context.notify('Somente gestores podem arquivar acompanhamentos.', 'error');
       if (!confirm('Arquivar este acompanhamento? Ele sairá das visões ativas, mas o histórico será preservado.')) return;
       if (DEMO_MODE) { context.notify('Modo demonstração: arquivamento validado.', 'info'); onClose(); return; }
       context.setSaving(true);
@@ -1091,29 +1283,7 @@
     }
 
     async function quickPaid(payment) {
-      if (DEMO_MODE) { context.notify('Pagamento marcado como realizado.', 'info'); return; }
-      context.setSaving(true);
-      try { const { error } = await context.client.rpc('salvar_pagamento_acompanhamento_v1', { p_pagamento_id:payment.id, p_registro_id:record.id, p_dados:{ ...payment, status:'pago', valor_pago:payment.valor_pago || payment.valor_previsto, pago_em:todayKey() } }); if (error) throw error; await context.reload(true); context.notify('Pagamento realizado.'); }
-      catch (error) { context.notify(error.message || 'Não foi possível baixar o pagamento.', 'error'); } finally { context.setSaving(false); }
-    }
-
-    async function uploadFiles(event) {
-      const files = [...(event.target.files || [])]; if (!files.length) return;
-      if (DEMO_MODE) { context.notify('Modo demonstração: arquivos validados.', 'info'); return; }
-      setUploading(true);
-      try {
-        const { data:userData, error:userError } = await context.client.auth.getUser(); if (userError || !userData?.user) throw userError || new Error('Sessão inválida.');
-        for (const file of files) {
-          if (file.size > 15 * 1024 * 1024) throw new Error(`${file.name}: limite de 15 MB.`);
-          const path = `${userData.user.id}/${record.id}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
-          const { error:uploadError } = await context.client.storage.from('acompanhamento').upload(path, file, { contentType:file.type || 'application/octet-stream', upsert:false });
-          if (uploadError) throw uploadError;
-          const { error:metaError } = await context.client.rpc('registrar_anexo_acompanhamento_v1', { p_registro_id:record.id, p_pagamento_id:null, p_nome:file.name, p_caminho:path, p_mime_type:file.type, p_tamanho_bytes:file.size, p_tipo:'documento' });
-          if (metaError) throw metaError;
-        }
-        await context.reload(true); context.notify(`${files.length} arquivo(s) anexado(s).`);
-      } catch (error) { context.notify(error.message || 'Falha no envio.', 'error'); }
-      finally { setUploading(false); event.target.value = ''; }
+      context.editPayment({ ...payment, status:'pago', valor_pago:payment.valor_pago || payment.valor_previsto, pago_em:payment.pago_em || todayKey() });
     }
 
     async function openAttachment(item) {
@@ -1135,9 +1305,9 @@
     return html`<div className="drawer-shell"><button className="drawer-backdrop" onClick=${onClose} aria-label="Fechar detalhes"></button><aside className="record-drawer"><header className="drawer-head"><div className="drawer-head-actions"><span className=${`control-pill ${record.controle}`}><i></i>${record.controle === 'marcos' ? 'Controle Marcos' : 'Controle Marketing'}</span><button className="icon-button" onClick=${onClose}><${Icon} name="x"/></button></div><div className="drawer-identity"><span className=${`category-mark large ${meta.tone}`}><${Icon} name=${meta.icon} size=${24}/></span><div><small>#${record.codigo || '—'} · ${record.ano_referencia} · ${meta.label}</small><h2>${record.fornecedor || record.titulo}</h2><p>${record.fornecedor ? record.titulo : record.referencia || ''}</p></div></div><div className="drawer-status-row"><span className=${`status-pill ${record.status}`}><i></i>${RECORD_STATUS[record.status]?.label || record.status}</span><span className=${`nature-pill ${nature.tone}`}><${Icon} name=${nature.icon}/>${nature.label}</span><span className=${`finance-label ${record.situacao_financeira}`}>${FINANCE_STATUS[record.situacao_financeira] || record.situacao_financeira}</span>${record.impacta_totais === false && html`<span className="detail-pill"><${Icon} name="layers-2"/>Detalhamento</span>`}${record.prioridade === 'urgente' && html`<span className="priority-urgent"><${Icon} name="siren"/>Urgente</span>`}</div></header>
       <nav className="drawer-tabs">${[['resumo','Visão geral'],['pagamentos','Pagamentos'],['documentos','Documentos'],['historico','Histórico']].map(([key, label]) => html`<button className=${tab === key ? 'active' : ''} onClick=${() => setTab(key)}>${label}${key === 'pagamentos' && html`<b>${payments.length}</b>`}${key === 'documentos' && (attachments.length + linkedDocuments.length) ? html`<b>${attachments.length + linkedDocuments.length}</b>` : null}</button>`)}</nav>
       <div className="drawer-content">
-        ${tab === 'resumo' && html`<div className="drawer-section-stack"><section className="drawer-money-card"><div><small>Valor acompanhado</small><strong>${money(record.valor_acordado)}</strong></div><div className="drawer-money-split"><span><small>Realizado</small><b>${money(record.total_pago)}</b></span><span><small>Saldo futuro</small><b>${money(record.saldo_aberto)}</b></span></div><div className="drawer-progress-label"><span>Execução financeira</span><b>${Math.round(progress)}%</b></div><div className="drawer-progress"><i style=${{ width:`${progress}%` }}></i></div></section><section className="drawer-info-grid"><div><span><${Icon} name="calendar-range"/>Período</span><strong>${record.data_inicio ? date(record.data_inicio) : 'Não definido'} → ${record.data_fim ? date(record.data_fim) : 'aberto'}</strong></div><div><span><${Icon} name="user-round"/>Responsável</span><strong>${collaboratorMap[record.responsavel_id]?.nome || 'Não atribuído'}</strong></div><div><span><${Icon} name="crosshair"/>Referência</span><strong>${record.referencia || 'Não informada'}</strong></div><div><span><${Icon} name="file-text"/>Documento</span><strong>${record.numero_documento || 'Não informado'}</strong></div></section>${record.descricao && html`<section className="drawer-text"><span className="eyebrow">Descrição</span><p>${record.descricao}</p></section>`}${record.observacoes && html`<section className="drawer-note"><${Icon} name="sticky-note"/><div><strong>Observações internas</strong><p>${record.observacoes}</p></div></section>`}<div className="drawer-actions"><button className="button primary" onClick=${() => context.editRecord(record)}><${Icon} name="pencil"/>Editar acompanhamento</button><button className="button secondary" onClick=${() => context.newPayment(record)}><${Icon} name="receipt-text"/>Adicionar parcela</button><button className="button danger-ghost" onClick=${archiveRecord}><${Icon} name="archive"/>Arquivar</button></div></div>`}
+        ${tab === 'resumo' && html`<div className="drawer-section-stack"><section className="drawer-money-card"><div><small>Valor acompanhado</small><strong>${money(record.valor_acordado)}</strong></div><div className="drawer-money-split"><span><small>Realizado</small><b>${money(record.total_pago)}</b></span><span><small>Saldo futuro</small><b>${money(record.saldo_aberto)}</b></span></div><div className="drawer-progress-label"><span>Execução financeira</span><b>${Math.round(progress)}%</b></div><div className="drawer-progress"><i style=${{ width:`${progress}%` }}></i></div></section><section className="drawer-info-grid"><div><span><${Icon} name="calendar-range"/>Período</span><strong>${record.data_inicio ? date(record.data_inicio) : 'Não definido'} → ${record.data_fim ? date(record.data_fim) : 'aberto'}</strong></div><div><span><${Icon} name="user-round"/>Responsável</span><strong>${collaboratorMap[record.responsavel_id]?.nome || 'Não atribuído'}</strong></div><div><span><${Icon} name="crosshair"/>Referência</span><strong>${record.referencia || 'Não informada'}</strong></div><div><span><${Icon} name="file-text"/>Documento</span><strong>${record.numero_documento || 'Não informado'}</strong></div></section>${record.descricao && html`<section className="drawer-text"><span className="eyebrow">Descrição</span><p>${record.descricao}</p></section>`}${record.observacoes && html`<section className="drawer-note"><${Icon} name="sticky-note"/><div><strong>Observações internas</strong><p>${record.observacoes}</p></div></section>`}<div className="drawer-actions"><button className="button primary" onClick=${() => context.editRecord(record)}><${Icon} name="pencil"/>Editar acompanhamento</button><button className="button secondary" onClick=${() => context.newPayment(record)}><${Icon} name="receipt-text"/>Adicionar parcela</button>${context.canManage && html`<button className="button danger-ghost" onClick=${archiveRecord}><${Icon} name="archive"/>Arquivar</button>`}</div></div>`}
         ${tab === 'pagamentos' && html`<div className="drawer-section-stack"><div className="drawer-section-heading"><div><span className="eyebrow">Cronograma financeiro</span><h3>${payments.length ? `${payments.length} lançamento(s)` : 'Sem parcelas'}</h3></div><button className="button primary small" onClick=${() => context.newPayment(record)}><${Icon} name="plus"/>Adicionar</button></div>${payments.length ? payments.map(payment => html`<article className=${`drawer-payment ${isOverdue(payment) ? 'overdue' : ''}`}><span className=${`payment-check ${payment.status}`}><${Icon} name=${payment.status === 'pago' ? 'check' : isOverdue(payment) ? 'triangle-alert' : 'clock-3'}/></span><div><strong>${payment.descricao || `Parcela ${payment.parcela}`}</strong><p>${payment.vencimento ? `Vence ${date(payment.vencimento)}` : 'Sem vencimento'} · ${payment.forma_pagamento || 'Forma a definir'}</p></div><span><strong>${money(payment.valor_previsto)}</strong><small>${isOverdue(payment) ? 'Atrasado' : PAYMENT_STATUS[payment.status]?.label}</small></span><div className="drawer-payment-actions">${payment.status !== 'pago' && html`<button title="Marcar como pago" onClick=${() => quickPaid(payment)}><${Icon} name="check"/></button>`}<button title="Editar" onClick=${() => context.editPayment(payment)}><${Icon} name="pencil"/></button></div></article>`) : html`<${MiniEmpty} icon="receipt-text" title="Nenhum pagamento cadastrado" text="Crie parcelas, datas e formas de pagamento para controlar o fluxo futuro." action=${() => context.newPayment(record)}/>`}</div>`}
-        ${tab === 'documentos' && html`<div className="drawer-section-stack"><div className="dropzone" onClick=${() => fileRef.current?.click()}><input ref=${fileRef} type="file" multiple hidden onChange=${uploadFiles}/><span><${Icon} name=${uploading ? 'loader-circle' : 'cloud-upload'} size=${28}/></span><h3>${uploading ? 'Enviando arquivos...' : 'Anexar documentos'}</h3><p>Contratos, notas fiscais, boletos, propostas ou comprovantes · até 15 MB</p><button className="button secondary small" type="button">Selecionar arquivos</button></div>${linkedDocuments.length ? html`<div className="linked-documents"><span className="eyebrow">Conferidos pela Caixa de Entrada</span>${linkedDocuments.map(item => html`<button className="attachment-row reviewed" onClick=${() => openInboxDocument(item)}><span><${Icon} name="scan-line"/></span><div><strong>${item.entrada?.nome_arquivo || 'Documento conferido'}</strong><small>${documentTypeLabel(item.tipo)} · página ${(item.paginas || []).join(', ')}</small></div><${Icon} name="badge-check"/></button>`)}</div>` : null}<div className="attachment-list">${attachments.map(item => html`<button className="attachment-row" onClick=${() => openAttachment(item)}><span><${Icon} name=${item.mime_type?.includes('pdf') ? 'file-text' : item.mime_type?.includes('image') ? 'image' : 'paperclip'}/></span><div><strong>${item.nome}</strong><small>${item.tipo?.replace('_', ' ')} · ${item.tamanho_bytes ? `${Math.round(item.tamanho_bytes / 1024)} KB` : ''}</small></div><${Icon} name="external-link"/></button>`)}</div></div>`}
+        ${tab === 'documentos' && html`<div className="drawer-section-stack"><div className="document-gate"><span><${Icon} name="scan-line" size=${28}/></span><div><h3>Todo PDF passa pela conferência</h3><p>A Caixa de Documentos faz a leitura, exige sua validação e somente depois vincula o arquivo ao acompanhamento.</p></div><button className="button primary small" type="button" onClick=${() => { onClose(); context.setView('documentos'); }}><${Icon} name="file-up"/>Enviar e conferir</button></div>${linkedDocuments.length ? html`<div className="linked-documents"><span className="eyebrow">Conferidos pela Caixa de Entrada</span>${linkedDocuments.map(item => html`<button className="attachment-row reviewed" onClick=${() => openInboxDocument(item)}><span><${Icon} name="scan-line"/></span><div><strong>${item.entrada?.nome_arquivo || 'Documento conferido'}</strong><small>${documentTypeLabel(item.tipo)} · página ${(item.paginas || []).join(', ')}</small></div><${Icon} name="badge-check"/></button>`)}</div>` : null}<div className="attachment-list">${attachments.map(item => html`<button className="attachment-row" onClick=${() => openAttachment(item)}><span><${Icon} name=${item.mime_type?.includes('pdf') ? 'file-text' : item.mime_type?.includes('image') ? 'image' : 'paperclip'}/></span><div><strong>${item.nome}</strong><small>${item.tipo?.replace('_', ' ')} · ${item.tamanho_bytes ? `${Math.round(item.tamanho_bytes / 1024)} KB` : ''}</small></div><${Icon} name="external-link"/></button>`)}</div></div>`}
         ${tab === 'historico' && html`<div className="drawer-section-stack"><div className="history-timeline">${activities.length ? activities.map(activity => html`<div className="history-row"><span><${Icon} name=${activity.tipo.includes('pagamento') ? 'receipt-text' : activity.tipo === 'criado' ? 'sparkles' : activity.tipo === 'anexo' ? 'paperclip' : 'pencil-line'}/></span><div><strong>${collaboratorMap[activity.ator_id]?.nome || 'Equipe PMG'} ${activity.resumo}</strong><small>${dateTime(activity.criado_em)}</small></div></div>`) : html`<${MiniEmpty} icon="history" title="Ainda sem movimentações" text="Cada alteração será registrada automaticamente."/>`}</div></div>`}
       </div></aside></div>`;
   }
@@ -1180,12 +1350,56 @@
   }
 
   function officialMethod(value) {
-    const text = normalize(value); const deposit = text.includes('deposito') || text.includes('desposito'); const discount = text.includes('desconto') || text.includes('abatimento');
-    if (deposit && discount) return 'Depósito + abatimento em verba';
-    if (deposit) return 'Depósito'; if (discount) return 'Abatimento em verba';
-    if (text.includes('pix')) return 'PIX'; if (text.includes('boleto')) return 'Boleto';
-    if (text.includes('transfer')) return 'Transferência bancária'; if (text.includes('bonific')) return 'Bonificação';
-    return /\d/.test(text) ? 'Nota fiscal / faturamento' : 'Não informado';
+    const text = normalize(value); const deposit = text.includes('deposito') || text.includes('desposito'); const discount = text.includes('desconto') || text.includes('abatimento') || text.includes('boleto');
+    if (text.includes('sobra')) return 'Sobra Marketing';
+    if (text.includes('bonific')) return 'Bonificação';
+    if (deposit && discount) return 'Depósito + desconto em boleto';
+    if (deposit || text.includes('pix') || text.includes('ted') || text.includes('transfer')) return 'Depósito';
+    if (discount || /\d/.test(text)) return 'Desconto em boleto';
+    return 'Não informado';
+  }
+
+  function officialMethodTag(value) {
+    const method = officialMethod(value);
+    if (method === 'Sobra Marketing') return 'recebimento-sobra-marketing';
+    if (method === 'Bonificação') return 'recebimento-bonificacao';
+    if (method === 'Depósito') return 'recebimento-deposito';
+    if (method === 'Depósito + desconto em boleto') return 'recebimento-misto';
+    if (method === 'Desconto em boleto') return 'recebimento-desconto-boleto';
+    return 'recebimento-nao-informado';
+  }
+
+  function workbookFileText(workbook, filePath) {
+    const content = workbook?.files?.[filePath]?.content;
+    if (typeof content === 'string') return content;
+    if (content instanceof Uint8Array || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(content))) {
+      if (typeof TextDecoder !== 'undefined') return new TextDecoder().decode(content);
+      return Array.from(content, byte => String.fromCharCode(byte)).join('');
+    }
+    return '';
+  }
+
+  function worksheetXmlPath(workbook, sheetName) {
+    const sheet = workbook?.Workbook?.Sheets?.find(item => item.name === sheetName);
+    const relationshipId = sheet?.id;
+    const relationships = workbookFileText(workbook, 'xl/_rels/workbook.xml.rels');
+    if (relationshipId && relationships) {
+      const relation = relationships.match(new RegExp(`<Relationship\\b(?=[^>]*\\bId=["']${relationshipId}["'])[^>]*/>`, 'i'))?.[0];
+      const target = relation?.match(/\bTarget=["']([^"']+)["']/i)?.[1];
+      if (target) return target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`;
+    }
+    const index = workbook.SheetNames.indexOf(sheetName);
+    return index >= 0 ? `xl/worksheets/sheet${index + 1}.xml` : '';
+  }
+
+  function planningSourceStatus(workbook, cellReference) {
+    const xml = workbookFileText(workbook, worksheetXmlPath(workbook, 'Planejamento'));
+    const cellTag = xml.match(new RegExp(`<c\\b(?=[^>]*\\br=["']${cellReference}["'])[^>]*>`, 'i'))?.[0] || '';
+    const styleIndex = Number(cellTag.match(/\bs=["'](\d+)["']/i)?.[1]);
+    const style = Number.isInteger(styleIndex) ? workbook?.Styles?.CellXf?.[styleIndex] : null;
+    const fontIndex = Number(style?.fontId ?? style?.fontid);
+    const color = Number.isInteger(fontIndex) ? workbook?.Styles?.Fonts?.[fontIndex]?.color : null;
+    return /FF0000$/i.test(String(color?.rgb || '')) ? 'realizado' : 'previsto';
   }
 
   function officialTags(value) {
@@ -1205,7 +1419,7 @@
   }
 
   function parseOfficialSupplierWorkbook(fileName, workbook, year) {
-    const canonicalFile = `Fornecedores ${year}.xlsx`; const items = []; const totals = [];
+    const canonicalFile = `Fornecedores ${year}.xlsx`; const items = []; const totals = []; const knownSuppliers = new Set();
     workbook.SheetNames.forEach(sheetName => {
       const monthIndex = Math.max(0, OFFICIAL_MONTHS.findIndex(([key]) => key === normalize(sheetName)));
       const monthLabel = OFFICIAL_MONTHS[monthIndex]?.[1] || sheetName;
@@ -1218,27 +1432,28 @@
           return;
         }
         const value = officialMoney(row[2]); if (value <= 0) return;
-        const supplier = officialSupplierName(supplierRaw); const document = String(row[3] ?? '').trim(); const specific = specificCostValue(row); const highlighted = specific.value;
-        const recordFingerprint = fingerprint(['marketing', 'fornecedores', year, sheetName, line, supplier, categoryRaw]);
+        const supplier = officialSupplierName(supplierRaw); const document = String(row[3] ?? '').trim(); const method = officialMethod(document); const specific = specificCostValue(row); const highlighted = specific.value;
+        knownSuppliers.add(supplier);
+        const recordFingerprint = fingerprint(['marketing', 'fornecedores', year, sheetName, supplier, categoryRaw]);
         calculated += value;
         items.push(officialItem({
           controle:'marketing', ano_referencia:year, fornecedor:supplier, natureza:'receita', impacta_totais:true,
           categoria:inferCategory(categoryRaw), titulo:`${categoryRaw.replace(/\s+/g, ' ').trim()} — ${supplier} — ${monthLabel} ${year}`,
           descricao:`Verba mensal de fornecedor registrada pelo Marketing.${highlighted > 0 ? ` A fonte destaca ${money(highlighted)} para abertura de centro de custo.` : ''}`,
           referencia:categoryRaw, status:'concluido', data_inicio:officialMonthStart(year, monthIndex), data_fim:officialMonthEnd(year, monthIndex),
-          valor_acordado:value, numero_documento:document, tags:['marketing', 'fornecedores', String(year), monthLabel.toLocaleLowerCase('pt-BR'), ...officialTags(categoryRaw)],
+          valor_acordado:value, numero_documento:document, tags:['marketing', 'fornecedores', String(year), monthLabel.toLocaleLowerCase('pt-BR'), officialMethodTag(document), ...officialTags(categoryRaw)],
           observacoes:highlighted > 0 ? `Centro de custo destacado: ${money(highlighted)}.` : '', origem_importacao:canonicalFile, linha_origem:line,
-          fingerprint:recordFingerprint, dados_originais:{ arquivo:canonicalFile, aba:sheetName, linha:line, campanha:categoryRaw, fornecedor_original:supplierRaw, verba:value, nf:document, valor_especifico:highlighted || null },
+          fingerprint:recordFingerprint, dados_originais:{ arquivo:canonicalFile, aba:sheetName, linha:line, campanha:categoryRaw, fornecedor_original:supplierRaw, verba:value, nf:document, valor_especifico:highlighted || null, tipo_recebimento:method },
         }, [{
           parcela:1, descricao:`Competência ${monthLabel} ${year}`, valor_previsto:value, valor_pago:value,
-          vencimento:officialMonthEnd(year, monthIndex), pago_em:officialMonthEnd(year, monthIndex), status:'pago', forma_pagamento:officialMethod(document),
+          vencimento:officialMonthEnd(year, monthIndex), pago_em:officialMonthEnd(year, monthIndex), status:'pago', forma_pagamento:method,
           favorecido:supplier, numero_documento:document, observacoes:'A fonte informa apenas a competência mensal; a data exata do movimento não foi registrada.',
           fingerprint:fingerprint([recordFingerprint, 'competencia', year, monthIndex + 1]),
         }]));
         if (highlighted > 0) {
           const center = costCenterFromCampaign(categoryRaw); const outsideVerba = /mtrix|emitrix/.test(normalize(categoryRaw));
           const legacyOutsideColumn = specific.legacy;
-          const detailFingerprint = fingerprint(['marketing', 'centro-custo', year, sheetName, line, supplier, categoryRaw, center, specific.columnIndex]);
+          const detailFingerprint = fingerprint(['marketing', 'centro-custo', year, sheetName, supplier, categoryRaw, center]);
           items.push(officialItem({
             controle:'marketing', ano_referencia:year, fornecedor:supplier, natureza:'despesa',
             impacta_totais:outsideVerba && !legacyOutsideColumn, categoria:inferCategory(categoryRaw),
@@ -1251,7 +1466,7 @@
             origem_importacao:canonicalFile, linha_origem:line, fingerprint:detailFingerprint,
             dados_originais:{ arquivo:canonicalFile, aba:sheetName, linha:line, campanha:categoryRaw, fornecedor_original:supplierRaw, verba_recebida:value, valor_centro_custo:highlighted, incluido_na_verba:!outsideVerba, coluna_valor:XLSX.utils.encode_col(specific.columnIndex), legado_fora_coluna_valor:legacyOutsideColumn },
           }, [{ parcela:1, descricao:`Centro de custo — ${monthLabel} ${year}`, valor_previsto:highlighted, valor_pago:highlighted,
-            vencimento:officialMonthEnd(year, monthIndex), pago_em:officialMonthEnd(year, monthIndex), status:'pago', forma_pagamento:officialMethod(document),
+            vencimento:officialMonthEnd(year, monthIndex), pago_em:officialMonthEnd(year, monthIndex), status:'pago', forma_pagamento:method,
             favorecido:supplier, numero_documento:document, observacoes:outsideVerba ? 'Investimento adicional fora da verba.' : 'Detalhamento já incluído na verba recebida.',
             fingerprint:fingerprint([detailFingerprint, 'centro-custo', year, monthIndex + 1]) }]));
         }
@@ -1259,12 +1474,14 @@
       rows.slice(2).forEach((row, offset) => {
         const note = String(row[0] ?? '').trim(); if (!note || !/pendent|falta|ainda nao|faltou/.test(normalize(note))) return;
         const line = offset + 3; const noteValue = officialMoney(note.match(/R\$\s*[\d.,]+/i)?.[0]);
+        const noteKey = normalize(note); const supplierMatches = [...knownSuppliers].filter(name => noteKey.includes(normalize(name)));
+        const supplier = supplierMatches.length === 1 ? supplierMatches[0] : '';
         items.push(officialItem({
-          controle:'marketing', ano_referencia:year, natureza:'receita', impacta_totais:noteValue > 0, categoria:'pendencia',
+          controle:'marketing', ano_referencia:year, fornecedor:supplier, natureza:'receita', impacta_totais:noteValue > 0, categoria:'pendencia',
           titulo:`Pendência — ${monthLabel} ${year}`, descricao:note, referencia:'Observação da planilha mensal', status:'negociacao', prioridade:'alta',
           data_inicio:officialMonthEnd(year, monthIndex), valor_acordado:noteValue, tags:['marketing', 'pendência', String(year), monthLabel.toLocaleLowerCase('pt-BR')],
           observacoes:note, origem_importacao:canonicalFile, linha_origem:line,
-          fingerprint:fingerprint(['marketing', 'fornecedores', year, sheetName, line, note]),
+          fingerprint:fingerprint(['marketing', 'fornecedores', year, sheetName, note]),
           dados_originais:{ arquivo:canonicalFile, aba:sheetName, linha:line, observacao:note },
         }));
       });
@@ -1289,19 +1506,26 @@
 
   function appendOfficialDetail({ canonicalFile, sheetName, title, nature, category:detailCategory, value, lines, status = 'em_andamento', reference = '', startDate = '', observations = '' }, items) {
     const recordFingerprint = fingerprint(['marcos', 'detalhamento', 2026, sheetName, title]);
+    const identityCounts = new Map();
+    const payments = lines.filter(line => line.value > 0).map((line, index) => {
+      const identity = normalize([line.description, line.due, line.favored].join('|'));
+      const occurrence = (identityCounts.get(identity) || 0) + 1;
+      identityCounts.set(identity, occurrence);
+      return {
+        parcela:index + 1, descricao:line.description || `Item ${index + 1}`, valor_previsto:line.value,
+        valor_pago:line.status === 'pago' ? line.value : 0, vencimento:line.due || '',
+        pago_em:line.status === 'pago' ? (line.paidAt || line.due || '') : '', status:line.status || 'previsto',
+        forma_pagamento:line.method || 'Não informado', favorecido:line.favored || '', observacoes:line.observations || '',
+        fingerprint:fingerprint([recordFingerprint, line.description, line.due, line.favored, occurrence]),
+      };
+    });
     items.push(officialItem({
       controle:'marcos', ano_referencia:2026, natureza:nature, impacta_totais:false, categoria:detailCategory, titulo:title,
       descricao:'Detalhamento operacional preservado da aba específica do controle MKTG 2026.', referencia:reference || sheetName,
       status, data_inicio:startDate, valor_acordado:value, centro_custo:'Marketing',
       tags:['marcos', 'detalhamento', '2026', normalize(sheetName)], observacoes:observations, origem_importacao:canonicalFile,
       fingerprint:recordFingerprint, dados_originais:{ arquivo:canonicalFile, aba:sheetName, linhas:lines },
-    }, lines.filter(line => line.value > 0).map((line, index) => ({
-      parcela:index + 1, descricao:line.description || `Item ${index + 1}`, valor_previsto:line.value,
-      valor_pago:line.status === 'pago' ? line.value : 0, vencimento:line.due || '',
-      pago_em:line.status === 'pago' ? (line.paidAt || line.due || '') : '', status:line.status || 'previsto',
-      forma_pagamento:line.method || 'Não informado', favorecido:line.favored || '', observacoes:line.observations || '',
-      fingerprint:fingerprint([recordFingerprint, index + 1, line.description]),
-    }))));
+    }, payments));
   }
 
   function appendOfficialMarcosDetails(workbook, canonicalFile, items) {
@@ -1441,18 +1665,23 @@
     for (let columnIndex = 1; columnIndex <= 15; columnIndex += 1) {
       const header = String(planningRows[1]?.[columnIndex] ?? '').trim(); if (!header) continue;
       const monthly = Array.from({ length:12 }, (_, index) => officialMoney(planningRows[2 + index]?.[columnIndex]));
+      const sourceStatuses = monthly.map((value, monthIndex) => value > 0
+        ? planningSourceStatus(workbook, XLSX.utils.encode_cell({ r:monthIndex + 2, c:columnIndex })) : 'vazio');
       const total = sum(monthly, value => value); if (total <= 0) continue;
+      const realizedCount = sourceStatuses.filter(status => status === 'realizado').length;
+      const plannedCount = sourceStatuses.filter(status => status === 'previsto').length;
       const recordFingerprint = fingerprint(['marcos', 'planejamento', 2026, header]);
       items.push(officialItem({
         controle:'marcos', ano_referencia:2026, natureza:'despesa', impacta_totais:true, categoria:planningCategory(header), titulo:`Planejamento 2026 — ${header}`,
-        descricao:'Planejamento anual de investimento do Marketing acompanhado pela Presidência.', referencia:header, status:'em_andamento',
+        descricao:'Planejamento anual de investimento do Marketing acompanhado pela Presidência.', referencia:header, status:plannedCount ? 'em_andamento' : 'concluido',
         data_inicio:'2026-01-01', data_fim:'2026-12-31', valor_acordado:total, centro_custo:'Marketing', tags:['marcos', 'planejamento', 'despesa', '2026', normalize(header)],
+        observacoes:`${realizedCount} competência(s) já realizada(s) em vermelho e ${plannedCount} ainda prevista(s) em preto na fonte.`,
         origem_importacao:canonicalFile, linha_origem:2, fingerprint:recordFingerprint,
-        dados_originais:{ arquivo:canonicalFile, aba:'Planejamento', coluna:XLSX.utils.encode_col(columnIndex), categoria_original:header, valores_mensais:monthly },
-      }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(item => item.value > 0).map(({ value, monthIndex }, index) => ({
-        parcela:index + 1, descricao:`${header} — ${OFFICIAL_MONTHS[monthIndex][1]} 2026`, valor_previsto:value, valor_pago:0,
-        vencimento:officialMonthEnd(2026, monthIndex), pago_em:'', status:'previsto', forma_pagamento:'Não informado',
-        observacoes:'Valor planejado. A passagem do mês não realiza a despesa; a baixa depende de gasto real vinculado ou conferência.',
+        dados_originais:{ arquivo:canonicalFile, aba:'Planejamento', coluna:XLSX.utils.encode_col(columnIndex), categoria_original:header, valores_mensais:monthly, status_mensais:sourceStatuses },
+      }, monthly.map((value, monthIndex) => ({ value, monthIndex, sourceStatus:sourceStatuses[monthIndex] })).filter(item => item.value > 0).map(({ value, monthIndex, sourceStatus }, index) => ({
+        parcela:index + 1, descricao:`${header} — ${OFFICIAL_MONTHS[monthIndex][1]} 2026`, valor_previsto:value, valor_pago:sourceStatus === 'realizado' ? value : 0,
+        vencimento:officialMonthEnd(2026, monthIndex), pago_em:sourceStatus === 'realizado' ? officialMonthEnd(2026, monthIndex) : '', status:sourceStatus === 'realizado' ? 'pago' : 'previsto', forma_pagamento:'Não informado',
+        observacoes:sourceStatus === 'realizado' ? 'Valor realizado: a célula está vermelha na planilha oficial.' : 'Valor previsto: a célula está preta na planilha oficial. A passagem do mês não realiza a despesa.',
         fingerprint:fingerprint([recordFingerprint, 'planejamento', monthIndex + 1])
       }))));
     }
@@ -1519,7 +1748,7 @@
       if (!nextFile) return;
       if (!/\.(xlsx|xls|xlsm|csv)$/i.test(nextFile.name)) return context.notify('Envie um arquivo Excel ou CSV.', 'error');
       try {
-        const buffer = await nextFile.arrayBuffer(); const workbook = XLSX.read(buffer, { type:'array', cellDates:true });
+        const buffer = await nextFile.arrayBuffer(); const workbook = XLSX.read(buffer, { type:'array', cellDates:true, cellStyles:true, bookFiles:true });
         workbookRef.current = workbook; setFile(nextFile); setSheets(workbook.SheetNames);
         const detected = parseOfficialWorkbook(nextFile.name, workbook);
         if (detected) {
@@ -1590,7 +1819,7 @@
     return html`<section className="import-section"><div className="import-hero"><div><span className="eyebrow light">Importador inteligente</span><h2>Traga anos de planilhas<br/>para uma única história.</h2><p>A Central reconhece colunas, sugere correspondências e preserva a linha original para auditoria.</p></div><div className="import-features"><span><${Icon} name="wand-sparkles"/><b>Mapeamento automático</b><small>Reconhece nomes parecidos</small></span><span><${Icon} name="shield-check"/><b>Sem duplicar</b><small>Identifica reimportações</small></span><span><${Icon} name="history"/><b>Rastreável</b><small>Arquivo e linha de origem</small></span></div></div>
       ${!file ? html`<div className=${`import-drop ${dragging ? 'dragging' : ''}`} onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); loadFile(event.dataTransfer.files[0]); }} onClick=${() => inputRef.current?.click()}><input ref=${inputRef} hidden type="file" accept=".xlsx,.xls,.xlsm,.csv" onChange=${event => loadFile(event.target.files[0])}/><div className="import-drop-art"><span><${Icon} name="file-spreadsheet" size=${40}/></span><i></i><i></i><i></i></div><h3>Solte sua planilha aqui</h3><p>Excel ou CSV · controles de 2024, 2025, 2026 e futuras atualizações</p><button className="button primary"><${Icon} name="folder-open"/>Escolher arquivo</button></div>` : html`<div className="import-workspace"><div className="import-file-bar"><span className="file-badge"><${Icon} name="file-spreadsheet"/></span><div><strong>${file.name}</strong><small>${int(rows.length)} registros reconhecidos · ${sheets.length} aba(s)</small></div><label><span>Leitura</span>${official ? html`<select disabled><option>Todas as abas</option></select>` : html`<select value=${sheet} onChange=${event => readSheet(event.target.value)}>${sheets.map(name => html`<option value=${name}>${name}</option>`)}</select>`}</label><label><span>Destino</span><select value=${control} disabled=${Boolean(official)} onChange=${event => setControl(event.target.value)}><option value="marketing">Marketing / Fornecedores</option><option value="marcos">Marcos / Presidência</option></select></label><label><span>Ano</span><input type="number" value=${year} disabled=${Boolean(official)} min="2000" max="2200" onInput=${event => setYear(Number(event.target.value))}/></label><button className="icon-button" title="Trocar arquivo" onClick=${() => { setFile(null); setRows([]); setOfficial(null); setResult(null); workbookRef.current = null; }}><${Icon} name="x"/></button></div>
         ${official ? html`<div className="mapping-panel official-detection"><div className="official-detection-icon"><${Icon} name="badge-check" size=${25}/></div><div><span className="eyebrow">Modelo oficial reconhecido</span><h3>${official.label}</h3><p>A Central leu todas as abas, retirou cabeçalhos e totais, ignorou marcadores de R$ 1,00 e preparou uma atualização sem duplicidades.</p><div className="official-stats"><span><b>${int(official.items.length)}</b> acompanhamentos</span><span><b>${int(sum(official.items, item => item.pagamentos.length))}</b> movimentos</span><span><b>${int(sheets.length)}</b> abas processadas</span></div>${official.warnings.length ? html`<div className="official-warning"><${Icon} name="triangle-alert"/>${official.warnings.join(' · ')}</div>` : html`<div className="official-ok"><${Icon} name="shield-check"/>Totais das abas conferidos.</div>`}</div></div>` : html`<div className="mapping-panel"><div className="mapping-head"><div><span className="eyebrow">Correspondência das colunas</span><h3>Confirme o que cada coluna significa</h3><p>As sugestões já foram preenchidas. Ajuste somente o que precisar.</p></div><span className="mapping-score"><b>${Object.keys(mapping).length}</b> campos reconhecidos</span></div><div className="mapping-grid">${IMPORT_FIELDS.map(([field, label]) => html`<label><span>${label}</span><div><${Icon} name="arrow-left-right"/><select value=${mapping[field] ?? ''} onChange=${event => setMapping(current => ({ ...current, [field]:event.target.value }))}><option value="">Não importar</option>${headers.map(header => html`<option value=${header.index}>${header.label}</option>`)}</select></div></label>`)}</div></div>`}
-        <div className="import-preview"><div className="mapping-head"><div><span className="eyebrow">Prévia normalizada</span><h3>É assim que os primeiros registros entrarão</h3></div></div><div className="preview-table-wrap"><table><thead><tr><th>Fornecedor</th><th>Acompanhamento</th><th>Categoria</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>${preview.map(item => html`<tr><td><strong>${item.registro.fornecedor || '—'}</strong></td><td>${item.registro.titulo}</td><td>${category(item.registro.categoria).label}</td><td>${money(item.registro.valor_acordado)}</td><td>${item.pagamentos[0]?.vencimento ? date(item.pagamentos[0].vencimento) : '—'}</td><td><span className=${`status-pill ${item.registro.status}`}><i></i>${RECORD_STATUS[item.registro.status]?.label}</span></td></tr>`)}</tbody></table></div></div>
+        <div className="import-preview"><div className="mapping-head"><div><span className="eyebrow">Prévia normalizada</span><h3>É assim que os primeiros registros entrarão</h3></div></div><div className="preview-table-wrap"><table><thead><tr><th>Fornecedor</th><th>Acompanhamento</th><th>Categoria</th><th>Valor</th><th>Tipo / método</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>${preview.map(item => html`<tr><td><strong>${item.registro.fornecedor || '—'}</strong></td><td>${item.registro.titulo}</td><td>${category(item.registro.categoria).label}</td><td>${money(item.registro.valor_acordado)}</td><td><span className=${`method-pill ${receiptMethodKey(item.pagamentos[0]?.forma_pagamento)}`}>${item.pagamentos[0]?.forma_pagamento || 'Não informado'}</span></td><td>${item.pagamentos[0]?.vencimento ? date(item.pagamentos[0].vencimento) : '—'}</td><td><span className=${`status-pill ${item.registro.status}`}><i></i>${RECORD_STATUS[item.registro.status]?.label}</span></td></tr>`)}</tbody></table></div></div>
         ${result && html`<div className="import-result"><span><${Icon} name="party-popper" size=${30}/></span><div><strong>Importação concluída</strong><p><b>${result.criadas}</b> novos, <b>${result.atualizadas}</b> atualizados, <b>${result.arquivadas || 0}</b> arquivados e <b>${result.ignoradas}</b> ignorados.</p>${result.erros?.length ? html`<small>${result.erros.length} linha(s) precisam de revisão.</small>` : html`<small>Todos os dados válidos foram processados.</small>`}</div><button className="button secondary" onClick=${() => context.setView('registros')}>Ver acompanhamentos <${Icon} name="arrow-right"/></button></div>`}
         <div className="import-footer"><div><${Icon} name="info"/><p>Nos modelos oficiais, itens alterados são atualizados e os que saíram da planilha são arquivados com histórico. Importações livres nunca removem registros.</p></div><button className="button primary large" onClick=${runImport} disabled=${importing || !rows.length}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="database-zap"/>`}${importing ? 'Processando planilha...' : `Importar ${int(rows.length)} linhas`}</button></div>
         </div>`}

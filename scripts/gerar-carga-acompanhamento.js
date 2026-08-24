@@ -123,16 +123,24 @@ function inferCategory(value) {
 function inferMethod(value) {
   const text = normalized(value);
   const deposit = /DEPOSITO|DESPOSITO/.test(text);
-  const discount = /DESCONTO|ABATIMENTO/.test(text);
-  if (deposit && discount) return 'Depósito + abatimento em verba';
-  if (deposit) return 'Depósito';
-  if (discount) return 'Abatimento em verba';
-  if (/PIX/.test(text)) return 'PIX';
-  if (/BOLETO/.test(text)) return 'Boleto';
-  if (/TRANSFER/.test(text)) return 'Transferência bancária';
+  const discount = /DESCONTO|ABATIMENTO|BOLETO/.test(text);
+  if (/SOBRA/.test(text)) return 'Sobra Marketing';
   if (/BONIFIC/.test(text)) return 'Bonificação';
-  if (/\d/.test(text)) return 'Nota fiscal / faturamento';
+  if (deposit && discount) return 'Depósito + desconto em boleto';
+  if (deposit) return 'Depósito';
+  if (/PIX|TED|TRANSFER/.test(text)) return 'Depósito';
+  if (discount || /\d/.test(text)) return 'Desconto em boleto';
   return 'Não informado';
+}
+
+function paymentMethodTag(value) {
+  const method = inferMethod(value);
+  if (method === 'Sobra Marketing') return 'recebimento-sobra-marketing';
+  if (method === 'Bonificação') return 'recebimento-bonificacao';
+  if (method === 'Depósito') return 'recebimento-deposito';
+  if (method === 'Depósito + desconto em boleto') return 'recebimento-misto';
+  if (method === 'Desconto em boleto') return 'recebimento-desconto-boleto';
+  return 'recebimento-nao-informado';
 }
 
 function rawTags(value) {
@@ -169,7 +177,7 @@ function specificCostValue(row) {
 function addItem(registro, pagamentos = []) {
   const recordFingerprint = registro.fingerprint || fingerprint(
     registro.controle, registro.ano_referencia, registro.titulo, registro.fornecedor,
-    registro.data_inicio, registro.origem_importacao, registro.linha_origem,
+    registro.data_inicio, registro.origem_importacao, registro.referencia,
   );
   const normalizedRecord = {
     controle: 'marketing', ano_referencia: 2026, fornecedor: '', fornecedor_codigo: '',
@@ -183,7 +191,7 @@ function addItem(registro, pagamentos = []) {
     parcela: index + 1, descricao: `Movimento ${index + 1}`, valor_previsto: 0, valor_pago: 0,
     vencimento: '', pago_em: '', status: 'previsto', forma_pagamento: '', favorecido: '',
     numero_documento: '', observacoes: '', ...payment,
-    fingerprint: payment.fingerprint || fingerprint(recordFingerprint, index + 1, payment.descricao, payment.vencimento),
+    fingerprint: payment.fingerprint || fingerprint(recordFingerprint, payment.descricao, payment.vencimento, payment.favorecido),
   }));
   items.push({ registro: normalizedRecord, pagamentos: normalizedPayments });
   return normalizedRecord;
@@ -203,7 +211,37 @@ function extractNoteSupplier(note, knownSuppliers) {
 }
 
 function loadWorkbook(fileName) {
-  return XLSX.readFile(path.join(sourceDir, fileName), { cellFormula: true, cellDates: true });
+  return XLSX.readFile(path.join(sourceDir, fileName), { cellFormula: true, cellDates: true, cellStyles: true, bookFiles: true });
+}
+
+function workbookFileText(workbook, filePath) {
+  const content = workbook?.files?.[filePath]?.content;
+  if (typeof content === 'string') return content;
+  if (content instanceof Uint8Array || Buffer.isBuffer(content)) return Buffer.from(content).toString('utf8');
+  return '';
+}
+
+function worksheetXmlPath(workbook, sheetName) {
+  const sheet = workbook?.Workbook?.Sheets?.find(item => item.name === sheetName);
+  const relationshipId = sheet?.id;
+  const relationships = workbookFileText(workbook, 'xl/_rels/workbook.xml.rels');
+  if (relationshipId && relationships) {
+    const relation = relationships.match(new RegExp(`<Relationship\\b(?=[^>]*\\bId=["']${relationshipId}["'])[^>]*/>`, 'i'))?.[0];
+    const target = relation?.match(/\bTarget=["']([^"']+)["']/i)?.[1];
+    if (target) return target.startsWith('/') ? target.slice(1) : `xl/${target.replace(/^\.\//, '')}`;
+  }
+  const index = workbook.SheetNames.indexOf(sheetName);
+  return index >= 0 ? `xl/worksheets/sheet${index + 1}.xml` : '';
+}
+
+function planningSourceStatus(workbook, cellReference) {
+  const xml = workbookFileText(workbook, worksheetXmlPath(workbook, 'Planejamento'));
+  const cellTag = xml.match(new RegExp(`<c\\b(?=[^>]*\\br=["']${cellReference}["'])[^>]*>`, 'i'))?.[0] || '';
+  const styleIndex = Number(cellTag.match(/\bs=["'](\d+)["']/i)?.[1]);
+  const style = Number.isInteger(styleIndex) ? workbook?.Styles?.CellXf?.[styleIndex] : null;
+  const fontIndex = Number(style?.fontId ?? style?.fontid);
+  const color = Number.isInteger(fontIndex) ? workbook?.Styles?.Fonts?.[fontIndex]?.color : null;
+  return /FF0000$/i.test(String(color?.rgb || '')) ? 'realizado' : 'previsto';
 }
 
 function parseSupplierWorkbook(fileName, year) {
@@ -231,9 +269,10 @@ function parseSupplierWorkbook(fileName, year) {
         const rawCategory = String(row[0] ?? '').trim() || 'COTA';
         const supplier = supplierName(row[1]);
         const document = String(row[3] ?? '').trim();
+        const method = inferMethod(document);
         const specific = specificCostValue(row);
         const highlightedValue = specific.value;
-        const recordFingerprint = fingerprint('marketing', 'fornecedores', year, sheetName, line, supplier, rawCategory);
+        const recordFingerprint = fingerprint('marketing', 'fornecedores', year, sheetName, supplier, rawCategory);
         const extraDescription = highlightedValue > 0
           ? ` A fonte destaca ${formatBRL(highlightedValue)} para a ação específica indicada na coluna VALOR.` : '';
         knownSuppliers.add(supplier);
@@ -249,18 +288,18 @@ function parseSupplierWorkbook(fileName, year) {
           referencia: rawCategory, status: 'concluido', prioridade: 'normal',
           data_inicio: isoDate(year, monthIndex, 1), data_fim: monthEnd(year, monthIndex),
           valor_acordado: value, numero_documento: document,
-          tags: ['marketing', 'fornecedores', String(year), label.toLocaleLowerCase('pt-BR'), ...rawTags(rawCategory)],
+          tags: ['marketing', 'fornecedores', String(year), label.toLocaleLowerCase('pt-BR'), paymentMethodTag(document), ...rawTags(rawCategory)],
           observacoes: highlightedValue > 0 ? `Valor específico destacado na planilha: ${formatBRL(highlightedValue)}.` : '',
           origem_importacao: fileName, linha_origem: line, fingerprint: recordFingerprint,
           dados_originais: {
             arquivo: fileName, aba: sheetName, linha: line, campanha: rawCategory,
             fornecedor_original: String(row[1] ?? '').trim(), verba: value, nf: document,
-            valor_especifico: highlightedValue || null,
+            valor_especifico: highlightedValue || null, tipo_recebimento: method,
           },
         }, [{
           parcela: 1, descricao: `Competência ${label} ${year}`, valor_previsto: value, valor_pago: value,
           vencimento: monthEnd(year, monthIndex), pago_em: monthEnd(year, monthIndex), status: 'pago',
-          forma_pagamento: inferMethod(document), favorecido: supplier, numero_documento: document,
+          forma_pagamento: method, favorecido: supplier, numero_documento: document,
           observacoes: 'A fonte informa apenas a competência mensal; a data exata do movimento não foi registrada.',
           fingerprint: fingerprint(recordFingerprint, 'competencia', year, monthIndex + 1),
         }]);
@@ -268,7 +307,7 @@ function parseSupplierWorkbook(fileName, year) {
           const center = costCenterFromCampaign(rawCategory);
           const outsideVerba = /MTRIX|EMITRIX/.test(normalized(rawCategory));
           const legacyOutsideColumn = specific.legacy;
-          const detailFingerprint = fingerprint('marketing', 'centro-custo', year, sheetName, line, supplier, rawCategory, center, specific.columnIndex);
+          const detailFingerprint = fingerprint('marketing', 'centro-custo', year, sheetName, supplier, rawCategory, center);
           addItem({
             controle: 'marketing', ano_referencia: year, fornecedor: supplier, natureza: 'despesa',
             impacta_totais: outsideVerba && !legacyOutsideColumn, categoria: inferCategory(rawCategory),
@@ -283,7 +322,7 @@ function parseSupplierWorkbook(fileName, year) {
             dados_originais: { arquivo:fileName, aba:sheetName, linha: line, campanha:rawCategory, fornecedor_original:String(row[1] ?? '').trim(), verba_recebida:value, valor_centro_custo:highlightedValue, incluido_na_verba:!outsideVerba, coluna_valor:XLSX.utils.encode_col(specific.columnIndex), legado_fora_coluna_valor:legacyOutsideColumn },
           }, [{
             parcela:1, descricao:`Centro de custo — ${label} ${year}`, valor_previsto:highlightedValue, valor_pago:highlightedValue,
-            vencimento:monthEnd(year, monthIndex), pago_em:monthEnd(year, monthIndex), status:'pago', forma_pagamento:inferMethod(document),
+            vencimento:monthEnd(year, monthIndex), pago_em:monthEnd(year, monthIndex), status:'pago', forma_pagamento:method,
             favorecido:supplier, numero_documento:document, observacoes:outsideVerba ? 'Investimento adicional fora da verba.' : 'Detalhamento já incluído na verba recebida.',
             fingerprint:fingerprint(detailFingerprint, 'centro-custo', year, monthIndex + 1),
           }]);
@@ -312,7 +351,7 @@ function parseSupplierWorkbook(fileName, year) {
         data_inicio: monthEnd(year, monthIndex), valor_acordado: noteValue,
         tags: ['marketing', 'pendência', String(year), label.toLocaleLowerCase('pt-BR')], observacoes: note,
         origem_importacao: fileName, linha_origem: line,
-        fingerprint: fingerprint('marketing', 'fornecedores', year, sheetName, line, note),
+        fingerprint: fingerprint('marketing', 'fornecedores', year, sheetName, note),
         dados_originais: { arquivo: fileName, aba: sheetName, linha: line, observacao: note },
       });
     });
@@ -410,22 +449,30 @@ function parseMarcosWorkbook(fileName) {
     const originalHeader = String(planningHeaders[columnIndex] ?? '').trim();
     if (!originalHeader) continue;
     const monthly = Array.from({ length: 12 }, (_, monthIndex) => parseMoney(planningRows[2 + monthIndex]?.[columnIndex]));
+    const sourceStatuses = monthly.map((value, monthIndex) => value > 0
+      ? planningSourceStatus(workbook, XLSX.utils.encode_cell({ r:monthIndex + 2, c:columnIndex })) : 'vazio');
     const total = roundMoney(monthly.reduce((sum, value) => sum + value, 0));
     if (total <= 0) continue;
+    const realizedCount = sourceStatuses.filter(status => status === 'realizado').length;
+    const plannedCount = sourceStatuses.filter(status => status === 'previsto').length;
     const category = PLANNING_CATEGORY[normalized(originalHeader)] || inferCategory(originalHeader);
     const recordFingerprint = fingerprint('marcos', 'planejamento', 2026, originalHeader);
     addItem({
       controle: 'marcos', ano_referencia: 2026, natureza: 'despesa', impacta_totais: true,
       categoria: category, titulo: `Planejamento 2026 — ${originalHeader}`,
       descricao: 'Planejamento anual de investimento do Marketing acompanhado pela Presidência.',
-      referencia: originalHeader, status: 'em_andamento', data_inicio: '2026-01-01', data_fim: '2026-12-31',
+      referencia: originalHeader, status: plannedCount ? 'em_andamento' : 'concluido', data_inicio: '2026-01-01', data_fim: '2026-12-31',
       valor_acordado: total, centro_custo: 'Marketing', tags: ['marcos', 'planejamento', 'despesa', '2026', normalized(originalHeader).toLocaleLowerCase('pt-BR')],
+      observacoes: `${realizedCount} competência(s) já realizada(s) em vermelho e ${plannedCount} ainda prevista(s) em preto na fonte.`,
       origem_importacao: fileName, linha_origem: 2, fingerprint: recordFingerprint,
-      dados_originais: { arquivo: fileName, aba: 'Planejamento', coluna: XLSX.utils.encode_col(columnIndex), categoria_original: originalHeader, valores_mensais: monthly },
-    }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(({ value }) => value > 0).map(({ value, monthIndex }, index) => ({
+      dados_originais: { arquivo: fileName, aba: 'Planejamento', coluna: XLSX.utils.encode_col(columnIndex), categoria_original: originalHeader, valores_mensais: monthly, status_mensais: sourceStatuses },
+    }, monthly.map((value, monthIndex) => ({ value, monthIndex, sourceStatus:sourceStatuses[monthIndex] })).filter(({ value }) => value > 0).map(({ value, monthIndex, sourceStatus }, index) => ({
       parcela: index + 1, descricao: `${originalHeader} — ${MONTHS[monthIndex][1]} 2026`,
-      valor_previsto: value, valor_pago: 0, vencimento: monthEnd(2026, monthIndex), pago_em: '', status: 'previsto',
-      forma_pagamento: 'Não informado', observacoes: 'Valor planejado. A passagem do mês não realiza a despesa; a baixa depende de gasto real vinculado ou conferência.',
+      valor_previsto: value, valor_pago: sourceStatus === 'realizado' ? value : 0, vencimento: monthEnd(2026, monthIndex),
+      pago_em: sourceStatus === 'realizado' ? monthEnd(2026, monthIndex) : '', status: sourceStatus === 'realizado' ? 'pago' : 'previsto',
+      forma_pagamento: 'Não informado', observacoes: sourceStatus === 'realizado'
+        ? 'Valor realizado: a célula está vermelha na planilha oficial.'
+        : 'Valor previsto: a célula está preta na planilha oficial. A passagem do mês não realiza a despesa.',
       fingerprint: fingerprint(recordFingerprint, 'planejamento', monthIndex + 1),
     })));
     importedRows += 1;
@@ -458,6 +505,18 @@ function addExecutiveIndicator(fileName, title, value, key) {
 
 function detailRecord({ fileName, sheetName, title, nature, category, value, lines, status = 'em_andamento', reference = '', startDate = '', observations = '' }) {
   const recordFingerprint = fingerprint('marcos', 'detalhamento', 2026, sheetName, title);
+  const identityCounts = new Map();
+  const payments = lines.filter(line => line.value > 0).map((line, index) => {
+    const identity = normalized([line.description, line.due, line.favored].join('|'));
+    const occurrence = (identityCounts.get(identity) || 0) + 1;
+    identityCounts.set(identity, occurrence);
+    return {
+      parcela: index + 1, descricao: line.description || `Item ${index + 1}`, valor_previsto: line.value,
+      valor_pago: line.status === 'pago' ? line.value : 0, vencimento: line.due || '', pago_em: line.status === 'pago' ? (line.paidAt || line.due || '') : '',
+      status: line.status || 'previsto', forma_pagamento: line.method || 'Não informado', favorecido: line.favored || '',
+      observacoes: line.observations || '', fingerprint: fingerprint(recordFingerprint, line.description, line.due, line.favored, occurrence),
+    };
+  });
   addItem({
     controle: 'marcos', ano_referencia: 2026, natureza: nature, impacta_totais: false,
     categoria: category, titulo: title, descricao: 'Detalhamento operacional preservado da aba específica do controle MKTG 2026.',
@@ -465,12 +524,7 @@ function detailRecord({ fileName, sheetName, title, nature, category, value, lin
     centro_custo: 'Marketing', tags: ['marcos', 'detalhamento', '2026', normalized(sheetName).toLocaleLowerCase('pt-BR')],
     observacoes: observations, origem_importacao: fileName, fingerprint: recordFingerprint,
     dados_originais: { arquivo: fileName, aba: sheetName, linhas: lines },
-  }, lines.filter(line => line.value > 0).map((line, index) => ({
-    parcela: index + 1, descricao: line.description || `Item ${index + 1}`, valor_previsto: line.value,
-    valor_pago: line.status === 'pago' ? line.value : 0, vencimento: line.due || '', pago_em: line.status === 'pago' ? (line.paidAt || line.due || '') : '',
-    status: line.status || 'previsto', forma_pagamento: line.method || 'Não informado', favorecido: line.favored || '',
-    observacoes: line.observations || '', fingerprint: fingerprint(recordFingerprint, index + 1, line.description),
-  })));
+  }, payments);
 }
 
 function rowsFromSheet(workbook, sheetName) {
@@ -550,6 +604,9 @@ function parseDetailSheets(workbook, fileName) {
   let cardDate = '';
   const cardLines = [];
   card.forEach(row => {
+    if (row[0] instanceof Date && !Number.isNaN(row[0].getTime())) {
+      cardDate = row[0].toISOString().slice(0, 10);
+    }
     if (typeof row[0] === 'number' && row[0] > 20000) {
       const parsed = XLSX.SSF.parse_date_code(row[0]);
       if (parsed) cardDate = `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
@@ -583,6 +640,29 @@ create temporary table tmp_acompanhamento_seed (item jsonb not null);
 
 insert into tmp_acompanhamento_seed(item)
 select value from jsonb_array_elements($pmg_seed$${seedJson}$pmg_seed$::jsonb);
+
+-- Migra a identidade das cargas anteriores antes do upsert. A correspondência
+-- semântica preserva o ID, o histórico e os vínculos mesmo após mover linhas.
+update public.acompanhamento_registros existente
+set fingerprint = seed.item -> 'registro' ->> 'fingerprint',
+    atualizado_em = now()
+from tmp_acompanhamento_seed seed
+where existente.arquivado_em is null
+  and existente.fingerprint is distinct from seed.item -> 'registro' ->> 'fingerprint'
+  and coalesce(existente.dados_originais ->> 'arquivo', existente.origem_importacao, '') = coalesce(seed.item -> 'registro' -> 'dados_originais' ->> 'arquivo', seed.item -> 'registro' ->> 'origem_importacao', '')
+  and coalesce(existente.dados_originais ->> 'aba', '') = coalesce(seed.item -> 'registro' -> 'dados_originais' ->> 'aba', '')
+  and coalesce(existente.fornecedor, '') = coalesce(seed.item -> 'registro' ->> 'fornecedor', '')
+  and existente.categoria = seed.item -> 'registro' ->> 'categoria'
+  and existente.natureza = seed.item -> 'registro' ->> 'natureza'
+  and (
+    (coalesce(seed.item -> 'registro' ->> 'fornecedor', '') <> '' and coalesce(seed.item -> 'registro' ->> 'categoria', 'outro') <> 'pendencia')
+    or (existente.titulo = seed.item -> 'registro' ->> 'titulo' and coalesce(existente.descricao, '') = coalesce(seed.item -> 'registro' ->> 'descricao', ''))
+  )
+  and coalesce(existente.centro_custo, '') = coalesce(seed.item -> 'registro' ->> 'centro_custo', '')
+  and not exists (
+    select 1 from public.acompanhamento_registros atual
+    where atual.fingerprint = seed.item -> 'registro' ->> 'fingerprint' and atual.arquivado_em is null
+  );
 
 insert into public.acompanhamento_registros (
   controle, ano_referencia, fornecedor, fornecedor_codigo, natureza, impacta_totais,
@@ -640,6 +720,28 @@ do update set
   linha_origem = excluded.linha_origem,
   dados_originais = excluded.dados_originais,
   atualizado_em = now();
+
+-- O mesmo princípio é aplicado aos movimentos gerados pela planilha. Não são
+-- considerados pagamentos manuais, que não possuem fingerprint PMG.
+update public.acompanhamento_pagamentos existente
+set fingerprint = pagamento ->> 'fingerprint',
+    atualizado_em = now()
+from tmp_acompanhamento_seed seed
+join public.acompanhamento_registros registro
+  on registro.fingerprint = seed.item -> 'registro' ->> 'fingerprint'
+  and registro.arquivado_em is null
+cross join lateral jsonb_array_elements(coalesce(seed.item -> 'pagamentos', '[]'::jsonb)) pagamento
+where existente.registro_id = registro.id
+  and existente.fingerprint like 'pmg-%'
+  and existente.fingerprint is distinct from pagamento ->> 'fingerprint'
+  and coalesce(existente.descricao, '') = coalesce(pagamento ->> 'descricao', '')
+  and coalesce(existente.vencimento::text, '') = coalesce(pagamento ->> 'vencimento', '')
+  and coalesce(existente.favorecido, '') = coalesce(pagamento ->> 'favorecido', '')
+  and existente.parcela = greatest(coalesce((pagamento ->> 'parcela')::integer, 1), 1)
+  and not exists (
+    select 1 from public.acompanhamento_pagamentos atual
+    where atual.registro_id = registro.id and atual.fingerprint = pagamento ->> 'fingerprint'
+  );
 
 insert into public.acompanhamento_pagamentos (
   registro_id, parcela, descricao, valor_previsto, valor_pago, vencimento, pago_em,
@@ -792,14 +894,14 @@ function buildFinalCheck() {
   return `-- PMG CONNECT — CONFERENCIA FINAL DA CARGA HISTORICA
 select
   count(*) as acompanhamentos_carregados,
-  case when count(*) = 1182 then 'OK' else 'CONFERIR: esperado 1182' end as resultado
+  case when count(*) = 1335 then 'OK' else 'CONFERIR: esperado 1335' end as resultado
 from public.acompanhamento_registros
 where arquivado_em is null
   and dados_originais ->> 'arquivo' in ('Fornecedores 2024.xlsx', 'Fornecedores 2025.xlsx', 'Fornecedores 2026.xlsx', 'MKTG 2026.xlsx');
 
 select
   count(*) as movimentos_carregados,
-  case when count(*) = 1554 then 'OK' else 'CONFERIR: esperado 1554' end as resultado
+  case when count(*) = 1707 then 'OK' else 'CONFERIR: esperado 1707' end as resultado
 from public.acompanhamento_pagamentos pagamento
 join public.acompanhamento_registros registro on registro.id = pagamento.registro_id
 where registro.arquivado_em is null
@@ -827,9 +929,11 @@ function buildReport(payload, marketingMonthly2026, marcosMonthly2026) {
   }).join('\n');
   const discrepancyRows = reconciliation.filter(item => Math.abs(item.difference) >= 0.01)
     .map(item => `| ${item.source} | ${item.period} | ${formatBRL(item.expected)} | ${formatBRL(item.found)} | ${formatBRL(item.difference)} |`).join('\n') || '| — | — | — | — | Nenhuma |';
+  const planningPayments = payload.items.filter(item => item.registro.tags?.includes('planejamento')).flatMap(item => item.pagamentos);
+  const realizedPlanning = planningPayments.filter(payment => payment.status === 'pago');
   return `# Relatório de consolidação das planilhas
 
-Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
+Gerado em 24/08/2026 para a Central de Acompanhamento do PMG Connect.
 
 ## Fontes processadas
 
@@ -842,6 +946,8 @@ ${sourceSummary.map(source => `- **${source.file}**: ${source.importedRows} linh
 ${summaryRows}
 
 Os registros marcados como detalhamento preservam linhas de eventos, cartões e patrocínios, mas não duplicam os totais do planejamento.
+
+No Planejamento 2026, **${realizedPlanning.length} competências** em fonte vermelha foram reconhecidas como realizadas (${formatBRL(realizedPlanning.reduce((total, payment) => total + payment.valor_pago, 0))}). As células pretas continuam previstas.
 
 ## Conciliação de recebimentos de fornecedores — 2026
 
@@ -865,6 +971,8 @@ As abas com total sem divergência também foram validadas, mas foram omitidas d
 - Valores zerados não viraram receita ou pagamento.
 - Observações de pendência foram preservadas como acompanhamentos de prioridade alta.
 - A coluna **VALOR** das planilhas de 2025 e 2026 foi preservada em “dados originais” como detalhamento da verba total.
+- A coluna **NF** preserva o texto original e classifica o recebimento em desconto em boleto, depósito, bonificação ou sobra Marketing; combinações continuam identificadas como mistas.
+- Fonte vermelha no Planejamento significa realizado; fonte preta significa previsto. A passagem do mês, sozinha, não baixa nenhum valor.
 - Competências mensais sem data exata usam o último dia do mês apenas como referência contábil, com observação explícita no lançamento.
 - Previsões, receitas, despesas e indicadores executivos permanecem separados.
 - Abas de eventos e projetos foram preservadas como detalhamento sem duplicar o planejamento anual nos indicadores.
@@ -880,7 +988,7 @@ async function main() {
   ];
   const marcos = parseMarcosWorkbook('MKTG 2026.xlsx');
   const payload = {
-    version: '3.8.0', generated_at: '2026-08-19T12:00:00-03:00',
+    version: '3.9.0', generated_at: '2026-08-24T12:00:00-03:00',
     source_files: SOURCE_FILES.map(([file, control, year]) => ({ file, control, year })),
     summary: sourceSummary, reconciliation, items,
   };

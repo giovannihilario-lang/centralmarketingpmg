@@ -1,6 +1,6 @@
 # Relatório de consolidação das planilhas
 
-Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
+Gerado em 24/08/2026 para a Central de Acompanhamento do PMG Connect.
 
 ## Fontes processadas
 
@@ -25,6 +25,8 @@ Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
 | Marketing | 2026 | receita | 247 | R$ 3.975.734,02 |
 
 Os registros marcados como detalhamento preservam linhas de eventos, cartões e patrocínios, mas não duplicam os totais do planejamento.
+
+No Planejamento 2026, **73 competências** em fonte vermelha foram reconhecidas como realizadas (R$ 1.740.817,68). As células pretas continuam previstas.
 
 ## Conciliação de recebimentos de fornecedores — 2026
 
@@ -59,6 +61,8 @@ As abas com total sem divergência também foram validadas, mas foram omitidas d
 - Valores zerados não viraram receita ou pagamento.
 - Observações de pendência foram preservadas como acompanhamentos de prioridade alta.
 - A coluna **VALOR** das planilhas de 2025 e 2026 foi preservada em “dados originais” como detalhamento da verba total.
+- A coluna **NF** preserva o texto original e classifica o recebimento em desconto em boleto, depósito, bonificação ou sobra Marketing; combinações continuam identificadas como mistas.
+- Fonte vermelha no Planejamento significa realizado; fonte preta significa previsto. A passagem do mês, sozinha, não baixa nenhum valor.
 - Competências mensais sem data exata usam o último dia do mês apenas como referência contábil, com observação explícita no lançamento.
 - Previsões, receitas, despesas e indicadores executivos permanecem separados.
 - Abas de eventos e projetos foram preservadas como detalhamento sem duplicar o planejamento anual nos indicadores.

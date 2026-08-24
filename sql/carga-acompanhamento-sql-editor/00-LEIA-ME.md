@@ -28,4 +28,4 @@ O arquivo integral ultrapassa o limite de tamanho do editor. Use estes lotes men
 
 3. Execute `07-99-CONFERENCIA-FINAL.sql`.
 
-Todos os lotes são idempotentes: se um deles falhar por conexão, ele pode ser executado novamente. O maior lote possui 215.0 KB.
+Todos os lotes são idempotentes: se um deles falhar por conexão, ele pode ser executado novamente. O maior lote possui 217.8 KB.
