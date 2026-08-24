@@ -666,7 +666,7 @@
                 <input id="itemRecurringEnabled" type="checkbox">
               </label>
               <div id="itemRecurrenceFields" class="recurrence-fields hidden">
-                <div class="recurrence-explainer"><i data-lucide="sparkles"></i><div><strong>Uma ocorrência por dia</strong><p>Concluir a demanda de hoje não encerra a série. No próximo dia válido ela aparece novamente.</p></div></div>
+                <div class="recurrence-explainer"><i data-lucide="sparkles"></i><div><strong>Uma ou várias ocorrências por dia</strong><p>Por padrão a rotina acontece uma vez em cada dia válido. Ative vários horários quando a mesma demanda precisar voltar mais de uma vez no mesmo dia.</p></div></div>
                 <div class="form-grid three">
                   <label class="field"><span>Repetir</span><select id="itemRecurrenceFrequency"><option value="dias_uteis" selected>Dias úteis</option><option value="diaria">Todos os dias</option><option value="semanal">Semanal</option><option value="personalizada">Dias específicos</option><option value="mensal">Mensal</option></select></label>
                   <label class="field"><span>Começa em</span><input id="itemRecurrenceStart" type="date"></label>
@@ -679,7 +679,17 @@
                   <label class="field"><span>Horário do popup diário</span><input id="itemRecurrenceAlertTime" type="time" value="09:00"></label>
                   <label class="recurrence-alert-toggle"><input id="itemRecurrenceDailyAlert" type="checkbox" checked><span><strong>Popup + som diariamente</strong><small>O responsável recebe um alerta importante no horário programado.</small></span></label>
                 </div>
-                <div class="recurrence-note"><i data-lucide="info"></i><span>O horário de conclusão/prazo de cada ocorrência continua sendo o campo <strong>Horário</strong> acima. Em demandas recorrentes, o campo de data de prazo é substituído pela agenda da série.</span></div>
+                <label class="recurrence-multi-toggle">
+                  <span class="recurrence-multi-icon"><i data-lucide="clock-4"></i></span>
+                  <span><strong>Mais de uma vez por dia</strong><small>Adicione outros horários para a mesma rotina voltar novamente no mesmo dia.</small></span>
+                  <input id="itemRecurrenceMultiDaily" type="checkbox">
+                </label>
+                <div id="itemRecurrenceMultiFields" class="recurrence-multi-fields hidden">
+                  <div class="recurrence-multi-head"><div><strong>Horários adicionais</strong><small>O primeiro horário continua sendo o campo <b>Horário</b> acima. Cada linha abaixo cria outra ocorrência no mesmo dia.</small></div><button id="itemRecurrenceAddTime" type="button" class="btn soft recurrence-add-time"><i data-lucide="plus"></i>Adicionar horário</button></div>
+                  <div id="itemRecurrenceExtraTimes" class="recurrence-extra-times"></div>
+                  <div class="recurrence-multi-note"><i data-lucide="info"></i><span>Você pode usar até 8 horários por dia. Cada ocorrência é concluída separadamente e mantém o mesmo responsável, prioridade, briefing e dias da semana.</span></div>
+                </div>
+                <div class="recurrence-note"><i data-lucide="info"></i><span>O horário de conclusão/prazo da primeira ocorrência continua sendo o campo <strong>Horário</strong> acima. Em demandas recorrentes, o campo de data de prazo é substituído pela agenda da série.</span></div>
               </div>
             </section>
           </div>

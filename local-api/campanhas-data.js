@@ -1432,6 +1432,14 @@ export default async function handler(req, res) {
       return res.status(200).json({ ...publicStatus(), context: state.context });
     }
 
+    if (resource === 'representantes') {
+      if (!state.context) return res.status(202).json(publicStatus());
+      return res.status(200).json({
+        ...publicStatus(),
+        representatives: Array.isArray(state.context.representatives) ? state.context.representatives : [],
+      });
+    }
+
     if (resource === 'diagnostico') {
       const result = await withSqlSessionRecovery('diagnostico', async () => {
         const pool = await getPool();

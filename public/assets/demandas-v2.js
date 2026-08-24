@@ -3750,17 +3750,67 @@ function renderAcademyAttendance(){
   }).join('')}`;
 }
 
-async function academyLocalApiRequest(resource){
-  const isLoopback=location.protocol==='http:'&&location.port==='3001'&&['localhost','127.0.0.1'].includes(location.hostname);
-  const base=isLoopback?'/api':String(localStorage.getItem('pmg_campaigns_sql_base')||window.PMG_SQL_API_BASE||'http://localhost:3001/api').replace(/\/$/,'');
-  const url=`${base}/campanhas-data?recurso=${encodeURIComponent(resource)}`;
-  const headers={};if(state.session?.access_token)headers.Authorization=`Bearer ${state.session.access_token}`;
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
+async function academyCampaignContextCache(){
   try{
-    const options={headers,cache:'no-store',signal:controller.signal,credentials:isLoopback?'same-origin':'omit'};
-    if(!isLoopback){options.mode='cors';options.targetAddressSpace='loopback';}
-    const response=await fetch(url,options),raw=await response.text();let data={};try{data=raw?JSON.parse(raw):{};}catch(_){throw new Error(`A API local respondeu sem JSON (HTTP ${response.status}).`);}
+    return await new Promise((resolve)=>{
+      const request=indexedDB.open('pmg_campanhas_db',2);
+      request.onerror=()=>resolve(null);
+      request.onupgradeneeded=()=>{try{request.transaction.abort();}catch(_){}resolve(null);};
+      request.onsuccess=()=>{
+        const database=request.result;
+        if(!database.objectStoreNames.contains('config')){database.close();return resolve(null);}
+        const tx=database.transaction('config','readonly');
+        const get=tx.objectStore('config').get('commercial-context-v6');
+        get.onerror=()=>{database.close();resolve(null);};
+        get.onsuccess=()=>{const row=get.result;database.close();resolve(row?.context||null);};
+      };
+    });
+  }catch(_){return null;}
+}
+async function restoreAcademyRepresentativesFromCampaignCache(){
+  const context=await academyCampaignContextCache();
+  const reps=Array.isArray(context?.representatives)?context.representatives:[];
+  if(!reps.length)return false;
+  state.academyRepresentatives=reps;
+  state.academyRepresentativesLoaded=true;
+  try{localStorage.setItem(ACADEMY_REP_CACHE_KEY,JSON.stringify({date:todayKey(),items:reps,source:'campanhas-indexeddb'}));}catch(_){}
+  return true;
+}
+async function academyLocalApiRequest(resource){
+  const pageLoopback=location.protocol==='http:'&&location.port==='3001'&&['localhost','127.0.0.1'].includes(location.hostname);
+  const configured=String(localStorage.getItem('pmg_campaigns_sql_base')||window.PMG_SQL_API_BASE||'http://localhost:3001/api').replace(/\/$/,'');
+  const base=pageLoopback?'/api':configured;
+  const url=`${base}/campanhas-data?recurso=${encodeURIComponent(resource)}&_=${Date.now()}`;
+  const resolved=(()=>{try{return new URL(url,location.href);}catch(_){return null;}})();
+  const sameOrigin=Boolean(resolved&&resolved.origin===location.origin);
+  const loopback=Boolean(resolved&&['localhost','127.0.0.1'].includes(resolved.hostname));
+  const privateLan=Boolean(resolved&&/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(resolved.hostname));
+  let headers={};
+  try{
+    if(window.PMGConnectAuth?.isLocalApiUrl?.(url))headers=await window.PMGConnectAuth.authorizationHeaders(headers);
+  }catch(_){}
+  if(!headers.Authorization&&state.session?.access_token)headers.Authorization=`Bearer ${state.session.access_token}`;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+  try{
+    const options={headers,cache:'no-store',signal:controller.signal,credentials:sameOrigin?'same-origin':'omit'};
+    if(!sameOrigin)options.mode='cors';
+    if(!sameOrigin&&loopback)options.targetAddressSpace='loopback';
+    if(!sameOrigin&&privateLan)options.targetAddressSpace='local';
+    let response;
+    try{response=await fetch(url,options);}catch(firstError){
+      if(!pageLoopback&&loopback&&resolved?.hostname==='localhost'){
+        const retryUrl=url.replace('://localhost:', '://127.0.0.1:');
+        try{response=await fetch(retryUrl,{...options,targetAddressSpace:'loopback'});}catch(_){throw firstError;}
+      }else throw firstError;
+    }
+    const raw=await response.text();let data={};try{data=raw?JSON.parse(raw):{};}catch(_){throw new Error(`A API local respondeu sem JSON (HTTP ${response.status}).`);}
     return{response,data};
+  }catch(error){
+    if(controller.signal.aborted){const timeoutError=new Error('A API local demorou para responder.');timeoutError.code='LOCAL_API_TIMEOUT';throw timeoutError;}
+    let permission='';
+    if(!pageLoopback&&navigator.permissions?.query){try{const result=await navigator.permissions.query({name:'loopback-network'});permission=result?.state||'';}catch(_){} }
+    const networkError=new Error(permission==='denied'?'O acesso ao computador local está bloqueado para o PMG Connect. Libere “Acesso à rede local” nas permissões do site.':permission==='prompt'?'O navegador ainda não autorizou o PMG Connect a acessar o servidor local. Autorize “Acesso à rede local” quando solicitado.':`O navegador não conseguiu acessar o servidor local${error?.message?`: ${error.message}`:''}.`);
+    networkError.code='LOCAL_API_NETWORK';networkError.cause=error;throw networkError;
   }finally{clearTimeout(timer);}
 }
 function restoreAcademyRepresentativeCache(){
@@ -3770,26 +3820,42 @@ function restoreAcademyRepresentativeCache(){
 }
 async function loadAcademyRepresentatives({force=false,silent=false}={}){
   if(!force&&restoreAcademyRepresentativeCache()){renderAcademyAttendance();refreshIcons();return true;}
-  const status=$('academyRepresentativesStatus');if(status)status.textContent='Consultando contexto comercial…';
+  if(!force&&await restoreAcademyRepresentativesFromCampaignCache()){
+    renderAcademyAttendance();refreshIcons();
+    const status=$('academyRepresentativesStatus');if(status)status.textContent=`${academyRepresentativeCatalog().length} representantes · cache do Campanhas`;
+    return true;
+  }
+  const status=$('academyRepresentativesStatus');if(status)status.textContent='Consultando representantes do contexto comercial…';
   try{
-    let {response,data}=await academyLocalApiRequest('contexto');
-    if(response.status===202||!data?.context){
+    let {response,data}=await academyLocalApiRequest('representantes');
+    if(response.status===202||data?.ready===false){
       await academyLocalApiRequest('contexto-preparar');
-      if(!silent)toast('O contexto comercial está sendo preparado no servidor local. Tente atualizar os representantes novamente em instantes.');
+      if(await restoreAcademyRepresentativesFromCampaignCache()){
+        renderAcademyAttendance();refreshIcons();
+        if(status)status.textContent=`${academyRepresentativeCatalog().length} representantes · último contexto do Campanhas`;
+        return true;
+      }
+      if(!silent)toast('O contexto comercial está sendo preparado no servidor local.');
       if(status)status.textContent='Contexto comercial preparando';
       return false;
     }
-    if(!response.ok)throw new Error(data?.erro||`Falha HTTP ${response.status}`);
-    const reps=Array.isArray(data.context.representatives)?data.context.representatives:[];
+    if(!response.ok)throw new Error(data?.erro||data?.message||`Falha HTTP ${response.status}`);
+    const reps=Array.isArray(data.representatives)?data.representatives:[];
     state.academyRepresentatives=reps;state.academyRepresentativesLoaded=true;
-    try{localStorage.setItem(ACADEMY_REP_CACHE_KEY,JSON.stringify({date:todayKey(),items:reps}));}catch(_){}
+    try{localStorage.setItem(ACADEMY_REP_CACHE_KEY,JSON.stringify({date:todayKey(),items:reps,source:'api-local'}));}catch(_){}
     renderAcademyAttendance();refreshIcons();
     if(!silent)toast(`${reps.length} representantes carregados do contexto do Campanhas.`);
     return true;
   }catch(error){
     console.warn('[Academia representantes]',error);
+    if(await restoreAcademyRepresentativesFromCampaignCache()){
+      renderAcademyAttendance();refreshIcons();
+      if(status)status.textContent=`${academyRepresentativeCatalog().length} representantes · cache do Campanhas`;
+      if(!silent)toast('Servidor local indisponível agora. Usando a última lista válida do Campanhas.');
+      return true;
+    }
     if(status)status.textContent='Falha ao consultar representantes';
-    if(!silent)toast(error?.name==='AbortError'?'A API local demorou para responder. Abra o PMG Connect pelo servidor local e tente novamente.':`Não foi possível carregar representantes: ${error.message}`,'error');
+    if(!silent)toast(`Não foi possível carregar representantes: ${error.message}`,'error');
     return false;
   }
 }
@@ -5139,6 +5205,80 @@ function startRecurrenceProcessorV36() {
   }, 60000);
 }
 
+function recurrenceMinutesV382(value) {
+  const [hours, minutes] = String(value || '00:00').split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+function recurrenceTimeFromMinutesV382(value) {
+  const total = ((Number(value) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
+}
+function suggestedExtraRecurrenceTimeV382() {
+  const existing = [
+    $('itemDueTime')?.value || '17:00',
+    ...$$('#itemRecurrenceExtraTimes [data-recurrence-extra-due]').map(input => input.value).filter(Boolean)
+  ];
+  const last = existing[existing.length - 1] || '09:00';
+  for (const offset of [180, 240, 120, 300, 60]) {
+    const candidate = recurrenceTimeFromMinutesV382(recurrenceMinutesV382(last) + offset);
+    if (!existing.includes(candidate)) return candidate;
+  }
+  return '12:00';
+}
+function addRecurrenceExtraTimeV382(dueTime = '', alertTime = '') {
+  const container = $('itemRecurrenceExtraTimes');
+  if (!container) return;
+  if (container.querySelectorAll('.recurrence-extra-time-row').length >= 7) return toast('O limite é de 8 horários por dia.', 'error');
+  const due = dueTime || suggestedExtraRecurrenceTimeV382();
+  const alert = alertTime || due;
+  const row = document.createElement('div');
+  row.className = 'recurrence-extra-time-row';
+  row.innerHTML = `<label class="field"><span>Horário da ocorrência</span><input type="time" value="${escapeHtml(due)}" data-recurrence-extra-due required></label><label class="field"><span>Popup desta ocorrência</span><input type="time" value="${escapeHtml(alert)}" data-recurrence-extra-alert required></label><button type="button" class="icon-btn subtle recurrence-remove-time" data-remove-recurrence-time title="Remover horário" aria-label="Remover horário"><i data-lucide="trash-2"></i></button>`;
+  container.appendChild(row);
+  refreshIcons();
+}
+function syncMultiDailyRecurrenceUIV382({ ensureRow = true } = {}) {
+  const enabled = Boolean($('itemRecurrenceMultiDaily')?.checked);
+  $('itemRecurrenceMultiFields')?.classList.toggle('hidden', !enabled);
+  if (enabled && ensureRow && !$('itemRecurrenceExtraTimes')?.children.length) addRecurrenceExtraTimeV382();
+  refreshIcons();
+}
+function resetMultiDailyRecurrenceV382(preset = {}) {
+  const toggle = $('itemRecurrenceMultiDaily');
+  const container = $('itemRecurrenceExtraTimes');
+  if (!toggle || !container) return;
+  container.innerHTML = '';
+  const schedules = Array.isArray(preset.recurrenceTimes) ? preset.recurrenceTimes : [];
+  toggle.checked = schedules.length > 1 || Boolean(preset.recurrenceMultiDaily);
+  if (schedules.length > 1) schedules.slice(1,8).forEach(item => addRecurrenceExtraTimeV382(item?.due || item?.time || '', item?.alert || item?.due || item?.time || ''));
+  syncMultiDailyRecurrenceUIV382({ ensureRow: toggle.checked });
+}
+function recurrenceSchedulesV382() {
+  const baseDue = $('itemDueTime')?.value || '17:00';
+  const baseAlert = $('itemRecurrenceAlertTime')?.value || '09:00';
+  const schedules = [{ due: baseDue, alert: baseAlert }];
+  if ($('itemRecurrenceMultiDaily')?.checked) {
+    $$('#itemRecurrenceExtraTimes .recurrence-extra-time-row').forEach(row => {
+      schedules.push({
+        due: row.querySelector('[data-recurrence-extra-due]')?.value || '',
+        alert: row.querySelector('[data-recurrence-extra-alert]')?.value || ''
+      });
+    });
+    if (schedules.length < 2) throw new Error('Adicione pelo menos um horário adicional para repetir mais de uma vez por dia.');
+  }
+  if (schedules.length > 8) throw new Error('Use no máximo 8 horários por dia.');
+  for (const schedule of schedules) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.due)) throw new Error('Confira os horários das ocorrências.');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.alert)) throw new Error('Confira os horários dos popups.');
+  }
+  const seen = new Set();
+  for (const schedule of schedules) {
+    if (seen.has(schedule.due)) throw new Error(`O horário ${schedule.due} está repetido. Cada ocorrência precisa de um horário diferente.`);
+    seen.add(schedule.due);
+  }
+  return schedules.sort((a,b) => a.due.localeCompare(b.due));
+}
+
 function syncCreateRecurrenceUI() {
   const enabled = Boolean($('itemRecurringEnabled')?.checked);
   $('itemRecurrenceFields')?.classList.toggle('hidden', !enabled);
@@ -5163,6 +5303,7 @@ openQuickAdd = function openQuickAddRecurring(type = 'demanda', preset = {}) {
     if ($('itemRecurrenceAlertTime')) $('itemRecurrenceAlertTime').value = preset.recurrenceAlertTime || '09:00';
     if ($('itemRecurrenceDailyAlert')) $('itemRecurrenceDailyAlert').checked = preset.recurrenceDailyAlert !== false;
     setWeekdays('itemRecurrenceWeekdays', preset.recurrenceWeekdays || [1,2,3,4,5]);
+    resetMultiDailyRecurrenceV382(preset);
     syncCreateRecurrenceUI();
   }
 };
@@ -5182,36 +5323,42 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
   const assigneeIds = selectedFormAssigneeIdsV37('item');
   const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
   if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
-  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
-    p_titulo: $('itemTitle').value.trim(),
-    p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: priority,
-    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
-    p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
-    p_tamanho: $('itemSize').value,
-    p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
-    p_alerta_para_todos: alertAll,
-    p_projeto: $('itemProject')?.value.trim() || null,
-    p_checklist: checklistFromText($('itemChecklist')?.value || ''),
-    p_dependencias: selectedValues($('itemDependencies')),
-    p_frequencia: frequency,
-    p_dias_semana: weekdays,
-    p_data_inicio: start,
-    p_data_fim: end,
-    p_horario_prazo: $('itemDueTime').value || '17:00',
-    p_horario_alerta: $('itemRecurrenceAlertTime').value || '09:00',
-    p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
-  });
-  if (error) throw error;
-  if (recurringId && state.multiAssigneeReady) {
-    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
-      p_recorrencia_id: recurringId,
-      p_responsaveis: assigneeIds,
-      p_modo: responsibilityMode,
-      p_aplicar_ocorrencias: true
+  const schedules = recurrenceSchedulesV382();
+  const createdIds = [];
+  for (const schedule of schedules) {
+    const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
+      p_titulo: $('itemTitle').value.trim(),
+      p_descricao: $('itemDescription').value.trim() || null,
+      p_prioridade: priority,
+      p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+      p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+      p_tamanho: $('itemSize').value,
+      p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
+      p_alerta_para_todos: alertAll,
+      p_projeto: $('itemProject')?.value.trim() || null,
+      p_checklist: checklistFromText($('itemChecklist')?.value || ''),
+      p_dependencias: selectedValues($('itemDependencies')),
+      p_frequencia: frequency,
+      p_dias_semana: weekdays,
+      p_data_inicio: start,
+      p_data_fim: end,
+      p_horario_prazo: schedule.due,
+      p_horario_alerta: schedule.alert,
+      p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
     });
-    if (assigneeError) throw assigneeError;
+    if (error) throw error;
+    if (recurringId) createdIds.push(recurringId);
+    if (recurringId && state.multiAssigneeReady) {
+      const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+        p_recorrencia_id: recurringId,
+        p_responsaveis: assigneeIds,
+        p_modo: responsibilityMode,
+        p_aplicar_ocorrencias: true
+      });
+      if (assigneeError) throw assigneeError;
+    }
   }
+  state.lastRecurringCreatedCountV382 = createdIds.length;
   await loadRecurringV36();
 };
 
@@ -5673,6 +5820,24 @@ renderGlobalSearch = function renderGlobalSearchRecurringIntegrated() {
 
 function bindRecurringV36Events() {
   $('itemRecurringEnabled')?.addEventListener('change', syncCreateRecurrenceUI);
+  $('itemRecurrenceMultiDaily')?.addEventListener('change', () => syncMultiDailyRecurrenceUIV382());
+  $('itemRecurrenceAddTime')?.addEventListener('click', () => addRecurrenceExtraTimeV382());
+  $('itemRecurrenceExtraTimes')?.addEventListener('click', event => {
+    const remove = event.target.closest('[data-remove-recurrence-time]');
+    if (!remove) return;
+    remove.closest('.recurrence-extra-time-row')?.remove();
+    if ($('itemRecurrenceMultiDaily')?.checked && !$('itemRecurrenceExtraTimes')?.children.length) addRecurrenceExtraTimeV382();
+  });
+  $('itemRecurrenceExtraTimes')?.addEventListener('change', event => {
+    const dueInput = event.target.closest('[data-recurrence-extra-due]');
+    if (!dueInput) return;
+    const row = dueInput.closest('.recurrence-extra-time-row');
+    const alertInput = row?.querySelector('[data-recurrence-extra-alert]');
+    if (alertInput && (!alertInput.dataset.touched || !alertInput.value)) alertInput.value = dueInput.value;
+  });
+  $('itemRecurrenceExtraTimes')?.addEventListener('input', event => {
+    if (event.target.matches('[data-recurrence-extra-alert]')) event.target.dataset.touched = '1';
+  });
   $('itemRecurrenceFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('item'));
   $('recurrenceEditFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('edit'));
   $('recurrenceForm')?.addEventListener('submit', saveRecurrenceSeriesV36);

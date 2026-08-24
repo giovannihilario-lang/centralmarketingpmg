@@ -5139,6 +5139,80 @@ function startRecurrenceProcessorV36() {
   }, 60000);
 }
 
+function recurrenceMinutesV382(value) {
+  const [hours, minutes] = String(value || '00:00').split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+function recurrenceTimeFromMinutesV382(value) {
+  const total = ((Number(value) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
+}
+function suggestedExtraRecurrenceTimeV382() {
+  const existing = [
+    $('itemDueTime')?.value || '17:00',
+    ...$$('#itemRecurrenceExtraTimes [data-recurrence-extra-due]').map(input => input.value).filter(Boolean)
+  ];
+  const last = existing[existing.length - 1] || '09:00';
+  for (const offset of [180, 240, 120, 300, 60]) {
+    const candidate = recurrenceTimeFromMinutesV382(recurrenceMinutesV382(last) + offset);
+    if (!existing.includes(candidate)) return candidate;
+  }
+  return '12:00';
+}
+function addRecurrenceExtraTimeV382(dueTime = '', alertTime = '') {
+  const container = $('itemRecurrenceExtraTimes');
+  if (!container) return;
+  if (container.querySelectorAll('.recurrence-extra-time-row').length >= 7) return toast('O limite é de 8 horários por dia.', 'error');
+  const due = dueTime || suggestedExtraRecurrenceTimeV382();
+  const alert = alertTime || due;
+  const row = document.createElement('div');
+  row.className = 'recurrence-extra-time-row';
+  row.innerHTML = `<label class="field"><span>Horário da ocorrência</span><input type="time" value="${escapeHtml(due)}" data-recurrence-extra-due required></label><label class="field"><span>Popup desta ocorrência</span><input type="time" value="${escapeHtml(alert)}" data-recurrence-extra-alert required></label><button type="button" class="icon-btn subtle recurrence-remove-time" data-remove-recurrence-time title="Remover horário" aria-label="Remover horário"><i data-lucide="trash-2"></i></button>`;
+  container.appendChild(row);
+  refreshIcons();
+}
+function syncMultiDailyRecurrenceUIV382({ ensureRow = true } = {}) {
+  const enabled = Boolean($('itemRecurrenceMultiDaily')?.checked);
+  $('itemRecurrenceMultiFields')?.classList.toggle('hidden', !enabled);
+  if (enabled && ensureRow && !$('itemRecurrenceExtraTimes')?.children.length) addRecurrenceExtraTimeV382();
+  refreshIcons();
+}
+function resetMultiDailyRecurrenceV382(preset = {}) {
+  const toggle = $('itemRecurrenceMultiDaily');
+  const container = $('itemRecurrenceExtraTimes');
+  if (!toggle || !container) return;
+  container.innerHTML = '';
+  const schedules = Array.isArray(preset.recurrenceTimes) ? preset.recurrenceTimes : [];
+  toggle.checked = schedules.length > 1 || Boolean(preset.recurrenceMultiDaily);
+  if (schedules.length > 1) schedules.slice(1,8).forEach(item => addRecurrenceExtraTimeV382(item?.due || item?.time || '', item?.alert || item?.due || item?.time || ''));
+  syncMultiDailyRecurrenceUIV382({ ensureRow: toggle.checked });
+}
+function recurrenceSchedulesV382() {
+  const baseDue = $('itemDueTime')?.value || '17:00';
+  const baseAlert = $('itemRecurrenceAlertTime')?.value || '09:00';
+  const schedules = [{ due: baseDue, alert: baseAlert }];
+  if ($('itemRecurrenceMultiDaily')?.checked) {
+    $$('#itemRecurrenceExtraTimes .recurrence-extra-time-row').forEach(row => {
+      schedules.push({
+        due: row.querySelector('[data-recurrence-extra-due]')?.value || '',
+        alert: row.querySelector('[data-recurrence-extra-alert]')?.value || ''
+      });
+    });
+    if (schedules.length < 2) throw new Error('Adicione pelo menos um horário adicional para repetir mais de uma vez por dia.');
+  }
+  if (schedules.length > 8) throw new Error('Use no máximo 8 horários por dia.');
+  for (const schedule of schedules) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.due)) throw new Error('Confira os horários das ocorrências.');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.alert)) throw new Error('Confira os horários dos popups.');
+  }
+  const seen = new Set();
+  for (const schedule of schedules) {
+    if (seen.has(schedule.due)) throw new Error(`O horário ${schedule.due} está repetido. Cada ocorrência precisa de um horário diferente.`);
+    seen.add(schedule.due);
+  }
+  return schedules.sort((a,b) => a.due.localeCompare(b.due));
+}
+
 function syncCreateRecurrenceUI() {
   const enabled = Boolean($('itemRecurringEnabled')?.checked);
   $('itemRecurrenceFields')?.classList.toggle('hidden', !enabled);
@@ -5163,6 +5237,7 @@ openQuickAdd = function openQuickAddRecurring(type = 'demanda', preset = {}) {
     if ($('itemRecurrenceAlertTime')) $('itemRecurrenceAlertTime').value = preset.recurrenceAlertTime || '09:00';
     if ($('itemRecurrenceDailyAlert')) $('itemRecurrenceDailyAlert').checked = preset.recurrenceDailyAlert !== false;
     setWeekdays('itemRecurrenceWeekdays', preset.recurrenceWeekdays || [1,2,3,4,5]);
+    resetMultiDailyRecurrenceV382(preset);
     syncCreateRecurrenceUI();
   }
 };
@@ -5182,36 +5257,42 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
   const assigneeIds = selectedFormAssigneeIdsV37('item');
   const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
   if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
-  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
-    p_titulo: $('itemTitle').value.trim(),
-    p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: priority,
-    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
-    p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
-    p_tamanho: $('itemSize').value,
-    p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
-    p_alerta_para_todos: alertAll,
-    p_projeto: $('itemProject')?.value.trim() || null,
-    p_checklist: checklistFromText($('itemChecklist')?.value || ''),
-    p_dependencias: selectedValues($('itemDependencies')),
-    p_frequencia: frequency,
-    p_dias_semana: weekdays,
-    p_data_inicio: start,
-    p_data_fim: end,
-    p_horario_prazo: $('itemDueTime').value || '17:00',
-    p_horario_alerta: $('itemRecurrenceAlertTime').value || '09:00',
-    p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
-  });
-  if (error) throw error;
-  if (recurringId && state.multiAssigneeReady) {
-    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
-      p_recorrencia_id: recurringId,
-      p_responsaveis: assigneeIds,
-      p_modo: responsibilityMode,
-      p_aplicar_ocorrencias: true
+  const schedules = recurrenceSchedulesV382();
+  const createdIds = [];
+  for (const schedule of schedules) {
+    const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
+      p_titulo: $('itemTitle').value.trim(),
+      p_descricao: $('itemDescription').value.trim() || null,
+      p_prioridade: priority,
+      p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+      p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+      p_tamanho: $('itemSize').value,
+      p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
+      p_alerta_para_todos: alertAll,
+      p_projeto: $('itemProject')?.value.trim() || null,
+      p_checklist: checklistFromText($('itemChecklist')?.value || ''),
+      p_dependencias: selectedValues($('itemDependencies')),
+      p_frequencia: frequency,
+      p_dias_semana: weekdays,
+      p_data_inicio: start,
+      p_data_fim: end,
+      p_horario_prazo: schedule.due,
+      p_horario_alerta: schedule.alert,
+      p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
     });
-    if (assigneeError) throw assigneeError;
+    if (error) throw error;
+    if (recurringId) createdIds.push(recurringId);
+    if (recurringId && state.multiAssigneeReady) {
+      const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+        p_recorrencia_id: recurringId,
+        p_responsaveis: assigneeIds,
+        p_modo: responsibilityMode,
+        p_aplicar_ocorrencias: true
+      });
+      if (assigneeError) throw assigneeError;
+    }
   }
+  state.lastRecurringCreatedCountV382 = createdIds.length;
   await loadRecurringV36();
 };
 
@@ -5673,6 +5754,24 @@ renderGlobalSearch = function renderGlobalSearchRecurringIntegrated() {
 
 function bindRecurringV36Events() {
   $('itemRecurringEnabled')?.addEventListener('change', syncCreateRecurrenceUI);
+  $('itemRecurrenceMultiDaily')?.addEventListener('change', () => syncMultiDailyRecurrenceUIV382());
+  $('itemRecurrenceAddTime')?.addEventListener('click', () => addRecurrenceExtraTimeV382());
+  $('itemRecurrenceExtraTimes')?.addEventListener('click', event => {
+    const remove = event.target.closest('[data-remove-recurrence-time]');
+    if (!remove) return;
+    remove.closest('.recurrence-extra-time-row')?.remove();
+    if ($('itemRecurrenceMultiDaily')?.checked && !$('itemRecurrenceExtraTimes')?.children.length) addRecurrenceExtraTimeV382();
+  });
+  $('itemRecurrenceExtraTimes')?.addEventListener('change', event => {
+    const dueInput = event.target.closest('[data-recurrence-extra-due]');
+    if (!dueInput) return;
+    const row = dueInput.closest('.recurrence-extra-time-row');
+    const alertInput = row?.querySelector('[data-recurrence-extra-alert]');
+    if (alertInput && (!alertInput.dataset.touched || !alertInput.value)) alertInput.value = dueInput.value;
+  });
+  $('itemRecurrenceExtraTimes')?.addEventListener('input', event => {
+    if (event.target.matches('[data-recurrence-extra-alert]')) event.target.dataset.touched = '1';
+  });
   $('itemRecurrenceFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('item'));
   $('recurrenceEditFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('edit'));
   $('recurrenceForm')?.addEventListener('submit', saveRecurrenceSeriesV36);
