@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento V1.6.1 / React + HTM */
+/* PMG Connect — Central de Acompanhamento V1.6.2 / React + HTM */
 (() => {
   'use strict';
 
@@ -422,28 +422,41 @@
     };
   }
 
+  async function fetchPages(makeQuery, maxRows = 50000, pageSize = 1000) {
+    const data = [];
+    for (let from = 0; from < maxRows; from += pageSize) {
+      const to = Math.min(from + pageSize - 1, maxRows - 1);
+      const result = await makeQuery(from, to);
+      if (result.error) return { data, error:result.error };
+      const page = Array.isArray(result.data) ? result.data : [];
+      data.push(...page);
+      if (page.length < pageSize) return { data, error:null };
+    }
+    return { data, error:new Error(`A consulta ultrapassou o limite de ${maxRows} linhas.`) };
+  }
+
   async function fetchAll(db) {
     const queries = await Promise.all([
-      db.from('acompanhamento_painel').select('*').order('atualizado_em', { ascending:false }).limit(5000),
-      db.from('acompanhamento_pagamentos').select('*').order('vencimento', { ascending:true }).limit(10000),
-      db.from('colaboradores').select('id,nome,foto_url,cargo,ativo').eq('ativo', true).order('nome'),
-      db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).limit(5000),
-      db.from('acompanhamento_atividades').select('*').order('criado_em', { ascending:false }).limit(300),
-      db.from('acompanhamento_importacoes').select('*').order('criado_em', { ascending:false }).limit(30),
+      fetchPages((from, to) => db.from('acompanhamento_painel').select('*').order('atualizado_em', { ascending:false }).order('id', { ascending:true }).range(from, to)),
+      fetchPages((from, to) => db.from('acompanhamento_pagamentos').select('*').order('vencimento', { ascending:true }).order('id', { ascending:true }).range(from, to)),
+      fetchPages((from, to) => db.from('colaboradores').select('id,nome,foto_url,cargo,ativo').eq('ativo', true).order('nome').order('id', { ascending:true }).range(from, to), 5000),
+      fetchPages((from, to) => db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).order('id', { ascending:true }).range(from, to)),
+      fetchPages((from, to) => db.from('acompanhamento_atividades').select('*').order('criado_em', { ascending:false }).order('id', { ascending:false }).range(from, to), 10000),
+      fetchPages((from, to) => db.from('acompanhamento_importacoes').select('*').order('criado_em', { ascending:false }).order('id', { ascending:true }).range(from, to), 5000),
     ]);
     const failed = queries.find(result => result.error);
     if (failed) throw failed.error;
     const documentQueries = await Promise.all([
-      db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).limit(500),
-      db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).limit(2000),
+      fetchPages((from, to) => db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).order('id', { ascending:true }).range(from, to), 10000),
+      fetchPages((from, to) => db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).order('id', { ascending:true }).range(from, to), 20000),
     ]);
     const documentFailure = documentQueries.find(result => result.error);
     const documentsSetupMissing = Boolean(documentFailure && isMissingDocumentSetupError(documentFailure.error));
     if (documentFailure && !documentsSetupMissing) throw documentFailure.error;
-    const conferenceQuery = await db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).limit(5000);
+    const conferenceQuery = await fetchPages((from, to) => db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).order('id', { ascending:true }).range(from, to), 10000);
     const conferencesSetupMissing = Boolean(conferenceQuery.error && isMissingConferenceSetupError(conferenceQuery.error));
     if (conferenceQuery.error && !conferencesSetupMissing) throw conferenceQuery.error;
-    const planningActivityQuery = await db.from('acompanhamento_planejamento_atividades').select('*').order('prazo', { ascending:true }).limit(5000);
+    const planningActivityQuery = await fetchPages((from, to) => db.from('acompanhamento_planejamento_atividades').select('*').order('prazo', { ascending:true }).order('id', { ascending:true }).range(from, to), 10000);
     const planningActivitiesSetupMissing = Boolean(planningActivityQuery.error && isMissingPlanningActivitySetupError(planningActivityQuery.error));
     if (planningActivityQuery.error && !planningActivitiesSetupMissing) throw planningActivityQuery.error;
     return {

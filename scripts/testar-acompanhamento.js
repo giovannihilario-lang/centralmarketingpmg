@@ -15,7 +15,7 @@ const operationalSql = fs.readFileSync(path.join(projectRoot, 'sql', '12-CONTROL
 const unifiedSql = fs.readFileSync(path.join(projectRoot, 'sql', '13-CENTRAL-UNIFICADA-V1.6.0.sql'), 'utf8');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(\n    React.createElement(CentralErrorBoundary, null, React.createElement(App))\n  );",
-  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError };',
+  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, fetchPages };',
 );
 
 const noop = () => {};
@@ -44,6 +44,16 @@ for (const missingError of [
   if (!sandbox.__PMG_TEST__.isMissingSetupError(missingError)) throw new Error('Falha ao reconhecer estrutura ausente do banco');
 }
 if (sandbox.__PMG_TEST__.isMissingSetupError({ code:'42501', message:'permission denied' })) throw new Error('Erro de permissão confundido com instalação ausente');
+
+const pageSource = Array.from({ length:2305 }, (_, index) => ({ id:index + 1 }));
+const paged = await sandbox.__PMG_TEST__.fetchPages(
+  async (from, to) => ({ data:pageSource.slice(from, to + 1), error:null }),
+  5000,
+  1000,
+);
+if (paged.error || paged.data.length !== 2305 || paged.data.at(-1)?.id !== 2305) {
+  throw new Error('A paginação não recuperou todos os movimentos além do limite de 1.000 linhas');
+}
 
 const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
 const fingerprints = new Set(snapshot.items.map(item => item.registro.fingerprint));
@@ -166,10 +176,12 @@ if (!ajinomotoMay || Number(ajinomotoMay.registro.valor_acordado) !== 10000 || a
   throw new Error('Regra AJINOMOTO/incentivo maio 2026 não foi preservada');
 }
 
-if (!/acompanhamento\.css\?v=1\.6\.1/.test(html) || !/acompanhamento\.js\?v=1\.6\.1/.test(html)) {
-  throw new Error('A página não referencia a interface V1.6.1');
+if (!/acompanhamento\.css\?v=1\.6\.2/.test(html) || !/acompanhamento\.js\?v=1\.6\.2/.test(html)) {
+  throw new Error('A página não referencia a interface V1.6.2');
 }
 for (const expected of [
+  /async function fetchPages/,
+  /\.range\(from, to\)/,
   /function PlanningActivityBoard/,
   /function PlanningMatrix/,
   /function FinanceWorkspace/,
