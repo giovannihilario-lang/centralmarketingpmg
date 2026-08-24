@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Demandas V3.7.11 / Base íntegra V3.7.4 + V3.7.7–V3.7.10 */
+/* PMG Connect — Central de Demandas V3.8.1 / Base íntegra V3.7.4 + evolução UX V3.8.1 */
 let db = null;
 let VAPID_PUBLIC_KEY = '';
 let publicConfigPromise = null;
@@ -20,7 +20,6 @@ async function initializeSupabaseClient() {
         throw new Error('SUPABASE_URL ou SUPABASE_ANON_KEY não configurada no servidor.');
       }
       VAPID_PUBLIC_KEY = payload.vapidPublicKey || '';
-      state.academyRegistrationWebhookReady = Boolean(payload.academyRegistrationWebhookReady);
       db = supabase.createClient(payload.supabaseUrl, payload.supabaseAnonKey, {
         realtime: { params: { eventsPerSecond: 8 } }
       });
@@ -80,9 +79,6 @@ const VIEW_META = {
   demandas: ['Fluxo de trabalho', 'Demandas'], projetos: ['Planejamento conectado', 'Projetos'], automacoes: ['Rotinas automáticas', 'Automações'], equipe: ['Capacidade do setor', 'Equipe']
 };
 
-const ACADEMY_REGISTRATION_FORMS_URL = 'https://forms.gle/9FANZaCTBquJaRkz7';
-const ACADEMY_REP_CACHE_KEY = 'pmg-academia-representantes-v1';
-
 const state = {
   session: null, me: null, collaborators: [], tasks: [], taskAssignees: [], recurringAssignees: [], multiAssigneeReady: false, authorshipReviews: [], authorshipConfirmations: [], taskExecutors: [], authorshipReady: false, evaluationExecutorIds: [], authorshipPostponed: new Set(), reminders: [], notifications: [], activities: [],
   view: 'hoje', taskView: 'board', smartFilter: '', selectedTask: null, selectedReminder: null,
@@ -92,10 +88,9 @@ const state = {
   teamSearch: '', teamSort: 'risk', teamRiskOnly: false, selectedPersonId: null, personActivities: [],
   assigneePicker: { selectId: null, previewId: null, taskId: null, search: '' }, onboardingStep: 0,
   intrusiveQueue: [], intrusiveActive: null, intrusiveShownIds: new Set(), intrusiveBootstrapped: false,
-  transfers: [], academyReservations: [], academyConfig: null, academyRegistrations: [], academyAttendanceReady: true, v3Ready: true,
+  transfers: [], academyReservations: [], academyConfig: null, v3Ready: true,
   agendaScope: 'mine', agendaPersonFilter: '',
   academyCursor: startOfMonth(new Date()), academySelectedDate: dateKey(new Date()), academyTab: 'calendar', academyImportRows: [], academyImportHeaders: [], academyImportMap: {},
-  academyRepresentatives: [], academyRepresentativesLoaded: false, academyRegistrationWebhookReady: false, academyRegistrationRefreshing: false, academyRegistrationAutoLinking: false, academyRegistrationImportRows: [], academyRegistrationImportHeaders: [], academyRegistrationImportMap: {},
   templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
   monthlyReportData: null, projects: [], automations: [], intelligenceReady: false, selectedProjectId: null, projectSearch: '', projectStatusFilter: '', accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
@@ -1012,14 +1007,6 @@ function renderTaskAvatarFilters() {
 }
 function renderBoard() {
   const tasks = filteredTasks();
-  document.addEventListener('change', event => {
-    const presence=event.target.closest('[data-academy-presence]');
-    if(presence){updateAcademyRegistrationPresence(presence.dataset.academyPresence,Boolean(presence.checked));return;}
-    const repSelect=event.target.closest('[data-academy-rep-select]');
-    if(repSelect){updateAcademyRegistrationRepresentative(repSelect.dataset.academyRepSelect,repSelect.value);return;}
-    const trainingSelect=event.target.closest('[data-academy-training-select]');
-    if(trainingSelect){updateAcademyRegistrationTraining(trainingSelect.dataset.academyTrainingSelect,trainingSelect.value);return;}
-  });
   $$('.kanban-column').forEach(column => {
     const status = column.dataset.status; const items = tasks.filter(task => task.status === status);
     column.querySelector('.kanban-head b').textContent = items.length;
@@ -2515,7 +2502,6 @@ function setupRealtime() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comentarios' }, refreshDebounced)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atividades_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'academia_reservas' }, refreshDebounced)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'academia_inscricoes' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'transferencias_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'dependencias_tarefa' }, refreshDebounced)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'registros_tempo' }, refreshDebounced)
@@ -3254,28 +3240,10 @@ async function loadOperationalV3() {
     state.academyReservations = academyResult.data || [];
     state.academyConfig = configResult.data || null;
     state.v3Ready = true;
-
-    // Inscrições/presenças são uma camada NOVA e independente. A ausência
-    // desta migração nunca derruba reservas, solicitações ou treinamentos.
-    const registrationResult = await db.from('academia_inscricoes').select('*').order('criado_em', { ascending: false }).limit(5000);
-    if (registrationResult.error) {
-      const message = String(registrationResult.error?.message || registrationResult.error || '');
-      if (/academia_inscricoes|does not exist|schema cache/i.test(message)) {
-        state.academyRegistrations = [];
-        state.academyAttendanceReady = false;
-      } else {
-        console.warn('[Academia inscrições]', registrationResult.error);
-        state.academyRegistrations = [];
-        state.academyAttendanceReady = false;
-      }
-    } else {
-      state.academyRegistrations = registrationResult.data || [];
-      state.academyAttendanceReady = true;
-    }
   } catch (error) {
     if (!isV3MissingError(error)) throw error;
     console.warn('[Demandas V3] Migração ainda não disponível:', error);
-    state.transfers = []; state.academyReservations = []; state.academyConfig = null; state.academyRegistrations = []; state.academyAttendanceReady = false; state.v3Ready = false;
+    state.transfers = []; state.academyReservations = []; state.academyConfig = null; state.v3Ready = false;
   }
 }
 
@@ -3409,14 +3377,14 @@ function academyFreeSlots(key) {
 }
 
 function setAcademyTab(tab, render=true) {
-  const allowed=['calendar','trainings','requests','attendance'];
+  const allowed=['calendar','trainings','requests'];
   state.academyTab=allowed.includes(tab)?tab:'calendar';
   document.querySelectorAll('[data-academy-tab]').forEach(button=>{
     const active=button.dataset.academyTab===state.academyTab;
     button.classList.toggle('active',active);
     button.setAttribute('aria-selected',String(active));
   });
-  const panels={calendar:'academyPanelCalendar',trainings:'academyPanelTrainings',requests:'academyPanelRequests',attendance:'academyPanelAttendance'};
+  const panels={calendar:'academyPanelCalendar',trainings:'academyPanelTrainings',requests:'academyPanelRequests'};
   Object.entries(panels).forEach(([key,id])=>$(id)?.classList.toggle('hidden',key!==state.academyTab));
   if(render){renderAcademy();refreshIcons();}
 }
@@ -3441,11 +3409,6 @@ function renderAcademy() {
   const futureTrainingsForTab=trainings.filter(r=>new Date(r.fim_em)>=new Date()).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em));
   if($('academyTrainingTabCount')) $('academyTrainingTabCount').textContent=String(futureTrainingsForTab.length);
   if($('academyRequestTabCount')) { $('academyRequestTabCount').textContent=String(pending.length); $('academyRequestTabCount').classList.toggle('has-items',pending.length>0); }
-  if($('academyAttendanceTabCount')) {
-    const pendingLinks=state.academyRegistrations.filter(item=>!item.vendedor_nome).length;
-    $('academyAttendanceTabCount').textContent=String(state.academyRegistrations.length);
-    $('academyAttendanceTabCount').classList.toggle('has-items',pendingLinks>0);
-  }
   setAcademyTab(state.academyTab,false);
   const thisMonthTrainings=trainings.filter(r=>new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
   const thisMonthReservations=reservations.filter(r=>new Date(r.inicio_em).getMonth()===cursor.getMonth()&&new Date(r.inicio_em).getFullYear()===cursor.getFullYear());
@@ -3482,7 +3445,6 @@ function renderAcademy() {
   const futureTrainings=futureTrainingsForTab;
   if($('academyTrainingCount'))$('academyTrainingCount').textContent=`${futureTrainings.length} programado${futureTrainings.length===1?'':'s'}`;
   if($('academyTrainingList'))$('academyTrainingList').innerHTML=futureTrainings.length?futureTrainings.slice(0,12).map(r=>academyTrainingListCard(r)).join(''):`<div class="empty-state"><i data-lucide="calendar-plus"></i>Nenhum treinamento futuro cadastrado.</div>`;
-  renderAcademyAttendance();
   refreshIcons();
 }
 
@@ -3641,290 +3603,6 @@ async function handleAcademyImportFile(event){const file=event.target.files?.[0]
 function renderAcademyImportPreview(){const rows=state.academyImportRows.slice(0,5);$('academyImportPreview').innerHTML=rows.length?`<div class="academy-import-preview-head"><strong>Prévia</strong><span>${state.academyImportRows.length} linhas no arquivo</span></div>${rows.map((r,i)=>`<div class="academy-import-preview-row"><b>${i+1}</b><span><strong>${escapeHtml(String(academyMapped(r,'titulo')||'Sem título'))}</strong><small>${escapeHtml(String(academyMapped(r,'solicitante')||'Sem solicitante'))} · ${escapeHtml(String(academyMapped(r,'data')||'Sem data'))}</small></span></div>`).join('')}`:'';}
 async function importAcademyFormsRows(){if(!state.academyImportRows.length)return;const required=['titulo','solicitante','data','inicio','fim'];const missing=required.filter(k=>!state.academyImportMap[k]);if(missing.length)return toast('Mapeie título, solicitante, data, início e fim antes de importar.', 'error');setLoading(true);let ok=0,failed=0;try{for(let i=0;i<state.academyImportRows.length;i++){const row=state.academyImportRows[i],date=parseFormsDate(academyMapped(row,'data')),start=parseFormsTime(academyMapped(row,'inicio'),'09:00'),end=parseFormsTime(academyMapped(row,'fim'),'10:00');if(!date){failed++;continue;}const rawKey=String(academyMapped(row,'chave')||'').trim();const key=rawKey||`${fileSafeKey(academyMapped(row,'solicitante'))}:${date}:${start}:${fileSafeKey(academyMapped(row,'titulo'))}`;const participants=parseInt(String(academyMapped(row,'participantes')||'').replace(/\D+/g,''),10);const {error}=await db.rpc('importar_reserva_academia_forms',{p_chave:key,p_titulo:String(academyMapped(row,'titulo')||'').trim(),p_solicitante:String(academyMapped(row,'solicitante')||'').trim(),p_setor:String(academyMapped(row,'setor')||'').trim()||null,p_email:String(academyMapped(row,'email')||'').trim()||null,p_telefone:String(academyMapped(row,'telefone')||'').trim()||null,p_finalidade:String(academyMapped(row,'finalidade')||'').trim()||null,p_inicio_em:localDateTime(date,start),p_fim_em:localDateTime(date,end),p_participantes:Number.isFinite(participants)?participants:null,p_observacoes:String(academyMapped(row,'observacoes')||'').trim()||null,p_payload:row});if(error){console.warn('[Forms import]',error);failed++;}else ok++;}closeModal('academyImportModal');await refreshData();toast(`${ok} solicitação${ok===1?'':'ões'} importada${ok===1?'':'s'}${failed?` · ${failed} ignorada${failed===1?'':'s'} por erro`:''}.`);}finally{setLoading(false);}}
 function fileSafeKey(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60)||'linha';}
-
-/* =========================================================
-   ACADEMIA PMG — INSCRIÇÕES, PRESENÇAS E BÔNUS DE CAMPANHA
-   Fluxo totalmente separado de academia_reservas/forms_url.
-   ========================================================= */
-function academyParticipantNorm(value){return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().replace(/\s+/g,' ');}
-function academySellerIdentity(raw){
-  const text=String(raw||'').trim();
-  const match=text.match(/^(.*?)(?:\s*[-–—]\s*|\s+)(\d{1,10})$/);
-  return match?{raw:text,name:match[1].trim(),code:match[2].trim()}:{raw:text,name:text,code:''};
-}
-function academyRepresentativeCatalog(){
-  return (state.academyRepresentatives||[]).map(rep=>{
-    const identity=academySellerIdentity(rep.name||rep.vendedor||'');
-    return {...rep,rawName:identity.raw,namePart:identity.name,code:identity.code,norm:academyParticipantNorm(identity.name)};
-  }).filter(rep=>rep.rawName);
-}
-function matchAcademyRepresentative(rawName,rawCode=''){
-  const reps=academyRepresentativeCatalog();
-  const code=String(rawCode||'').replace(/\D+/g,'');
-  if(code){const byCode=reps.find(rep=>rep.code===code);if(byCode)return byCode;}
-  const identity=academySellerIdentity(rawName);
-  if(identity.code){const byEmbeddedCode=reps.find(rep=>rep.code===identity.code);if(byEmbeddedCode)return byEmbeddedCode;}
-  const norm=academyParticipantNorm(identity.name);
-  if(!norm)return null;
-  const exact=reps.filter(rep=>rep.norm===norm);
-  return exact.length===1?exact[0]:null;
-}
-function academyTrainingCatalog(){
-  return state.academyReservations.filter(item=>isAcademyTraining(item)&&item.status==='aprovada').sort((a,b)=>new Date(b.inicio_em)-new Date(a.inicio_em));
-}
-function academyTrainingLabel(training){return training?`${formatDate(training.inicio_em)} · ${training.titulo}`:'Sem treinamento vinculado';}
-function academyRegistrationTraining(reg){return academyTrainingCatalog().find(item=>item.id===reg.treinamento_id)||state.academyReservations.find(item=>item.id===reg.treinamento_id)||null;}
-function academyRegistrationRepKey(reg){
-  if(reg?.vendedor_codigo)return `code:${String(reg.vendedor_codigo).trim()}`;
-  if(reg?.vendedor_nome)return `name:${academyParticipantNorm(reg.vendedor_nome)}`;
-  return '';
-}
-function academyAttendanceGroups(rows=state.academyRegistrations){
-  const groups=new Map();
-  rows.forEach(reg=>{
-    const key=academyRegistrationRepKey(reg);if(!key)return;
-    if(!groups.has(key))groups.set(key,{key,code:reg.vendedor_codigo||'',name:reg.vendedor_nome||reg.vendedor_raw||reg.nome_forms||'',trainings:new Map(),presentRows:[]});
-    const group=groups.get(key);
-    if(reg.presente&&reg.treinamento_id){
-      group.trainings.set(reg.treinamento_id,academyRegistrationTraining(reg));
-      group.presentRows.push(reg);
-    }
-  });
-  groups.forEach(group=>{group.presences=group.trainings.size;group.bonus=Math.min(30,group.presences*10);});
-  return groups;
-}
-function academyBonusForRegistration(reg,groups=academyAttendanceGroups()){const key=academyRegistrationRepKey(reg);return key&&groups.get(key)?groups.get(key).bonus:0;}
-function academyAttendanceFilteredRows(){
-  const training=$('academyAttendanceTrainingFilter')?.value||'';
-  const query=academyParticipantNorm($('academyAttendanceSearch')?.value||'');
-  const presence=$('academyAttendancePresenceFilter')?.value||'';
-  const match=$('academyAttendanceMatchFilter')?.value||'';
-  return state.academyRegistrations.filter(reg=>{
-    if(training&&reg.treinamento_id!==training)return false;
-    if(query&&!academyParticipantNorm([reg.nome_forms,reg.email,reg.vendedor_codigo,reg.vendedor_nome,reg.vendedor_raw].join(' ')).includes(query))return false;
-    if(presence==='present'&&!reg.presente)return false;
-    if(presence==='absent'&&reg.presente)return false;
-    if(match==='matched'&&!reg.vendedor_nome)return false;
-    if(match==='pending'&&reg.vendedor_nome)return false;
-    return true;
-  });
-}
-function academyTrainingOptionsHTML(selected='',includeBlank=true){
-  return `${includeBlank?'<option value="">Sem vínculo definido</option>':''}${academyTrainingCatalog().map(item=>`<option value="${item.id}" ${item.id===selected?'selected':''}>${escapeHtml(academyTrainingLabel(item))}</option>`).join('')}`;
-}
-function renderAcademyAttendance(){
-  const box=$('academyAttendanceTable');if(!box)return;
-  renderAcademyRegistrationAutoStatus();
-  const setup=$('academyAttendanceSetupNotice');
-  if(!state.academyAttendanceReady){
-    setup?.classList.remove('hidden');
-    if(setup)setup.innerHTML=`<i data-lucide="database-zap"></i><div><strong>Instalação única para liberar inscrições e presenças.</strong><span>Execute <code>sql/12-ACADEMIA-INSCRICOES-PRESENCAS-V3.8.1.sql</code> no Supabase. Reservas e solicitações continuam funcionando normalmente.</span></div>`;
-  }else setup?.classList.add('hidden');
-
-  const trainingFilter=$('academyAttendanceTrainingFilter');
-  if(trainingFilter){const current=trainingFilter.value;trainingFilter.innerHTML=`<option value="">Todos os treinamentos</option>${academyTrainingCatalog().map(item=>`<option value="${item.id}">${escapeHtml(academyTrainingLabel(item))}</option>`).join('')}`;trainingFilter.value=[...trainingFilter.options].some(o=>o.value===current)?current:'';}
-
-  const rows=academyAttendanceFilteredRows();
-  const groups=academyAttendanceGroups();
-  const totalPresent=state.academyRegistrations.filter(r=>r.presente).length;
-  const matched=state.academyRegistrations.filter(r=>r.vendedor_nome).length;
-  const maxed=[...groups.values()].filter(g=>g.bonus>=30).length;
-  if($('academyAttendanceSummary'))$('academyAttendanceSummary').innerHTML=[
-    ['users-round',state.academyRegistrations.length,'Inscrições importadas'],
-    ['user-check',totalPresent,'Presenças confirmadas'],
-    ['link-2',matched,'Vinculadas ao SQL'],
-    ['badge-percent',[...groups.values()].filter(g=>g.bonus>0).length,'Representantes com bônus'],
-    ['shield-check',maxed,'No teto de 30%']
-  ].map(([icon,value,label])=>`<article><i data-lucide="${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></article>`).join('');
-
-  const reps=academyRepresentativeCatalog();
-  if($('academyRepresentativesStatus'))$('academyRepresentativesStatus').textContent=state.academyRepresentativesLoaded?`${reps.length} representantes do SQL`:'Representantes não carregados';
-  if(!state.academyAttendanceReady){box.innerHTML='<div class="empty-state"><i data-lucide="database"></i>A migração de inscrições ainda não foi instalada.</div>';return;}
-  if(!state.academyRegistrations.length){box.innerHTML='<div class="empty-state"><i data-lucide="user-round-plus"></i>Nenhuma inscrição ainda. Novas respostas do Forms atual entram automaticamente; use “Importar histórico” apenas para arquivos antigos.</div>';return;}
-  if(!rows.length){box.innerHTML='<div class="empty-state"><i data-lucide="search-x"></i>Nenhum participante corresponde aos filtros atuais.</div>';return;}
-
-  const repOptions=(selectedRaw='')=>`<option value="">Pendente de vínculo</option>${reps.map(rep=>`<option value="${escapeHtml(rep.rawName)}" ${rep.rawName===selectedRaw?'selected':''}>${escapeHtml(rep.code?`${rep.namePart} · ${rep.code}`:rep.namePart)}</option>`).join('')}`;
-  box.innerHTML=`<div class="academy-attendance-row head"><span>Participante</span><span>Treinamento</span><span>Representante no SQL</span><span>Presença</span><span>Bônus</span></div>${rows.map(reg=>{
-    const training=academyRegistrationTraining(reg),bonus=academyBonusForRegistration(reg,groups),matched=Boolean(reg.vendedor_nome),selectedRaw=reg.vendedor_raw&&matched?reg.vendedor_raw:(matched?(reg.vendedor_codigo?`${reg.vendedor_nome}-${reg.vendedor_codigo}`:reg.vendedor_nome):'');
-    const matchedCatalog=reps.find(rep=>(reg.vendedor_codigo&&rep.code===String(reg.vendedor_codigo))||(!reg.vendedor_codigo&&academyParticipantNorm(rep.namePart)===academyParticipantNorm(reg.vendedor_nome)));
-    const selectValue=matchedCatalog?.rawName||selectedRaw;
-    return `<article class="academy-attendance-row ${reg.presente?'is-present':''} ${matched?'is-matched':'is-pending'}"><span class="academy-attendee"><strong>${escapeHtml(reg.nome_forms||'Sem nome')}</strong><small>${escapeHtml([reg.email||reg.telefone,academyRegistrationSourceLabel(reg)].filter(Boolean).join(' · '))}</small></span><span class="academy-attendance-training"><select data-academy-training-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${academyTrainingOptionsHTML(reg.treinamento_id||'',true)}</select><small>${training?`${formatDate(training.inicio_em)} · ${academyTrainingCategory(training)}`:'Sem treinamento: não gera bônus'}</small></span><span class="academy-representative-link"><select data-academy-rep-select="${reg.id}" ${!canManageAcademy()?'disabled':''}>${repOptions(selectValue)}</select><small>${matched?`Vinculado${reg.vinculo_status==='automatico'?' automaticamente':''}`:'Não entra no bônus até ser vinculado'}</small></span><span class="academy-presence-cell"><label class="academy-presence-toggle"><input type="checkbox" data-academy-presence="${reg.id}" ${reg.presente?'checked':''} ${!canManageAcademy()?'disabled':''}><span></span><b>${reg.presente?'SIM':'NÃO'}</b></label><small>${reg.presente&&reg.confirmado_em?`Confirmado ${formatDateTime(reg.confirmado_em)}`:'Aguardando confirmação'}</small></span><span class="academy-bonus-cell"><strong>${matched&&bonus?`+${bonus}%`:'0%'}</strong><small>${matched?`${Math.min(3,groups.get(academyRegistrationRepKey(reg))?.presences||0)} de 3 presenças válidas`:'Sem representante'}</small></span></article>`;
-  }).join('')}`;
-}
-
-async function academyLocalApiRequest(resource){
-  const isLoopback=location.protocol==='http:'&&location.port==='3001'&&['localhost','127.0.0.1'].includes(location.hostname);
-  const base=isLoopback?'/api':String(localStorage.getItem('pmg_campaigns_sql_base')||window.PMG_SQL_API_BASE||'http://localhost:3001/api').replace(/\/$/,'');
-  const url=`${base}/campanhas-data?recurso=${encodeURIComponent(resource)}`;
-  const headers={};if(state.session?.access_token)headers.Authorization=`Bearer ${state.session.access_token}`;
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
-  try{
-    const options={headers,cache:'no-store',signal:controller.signal,credentials:isLoopback?'same-origin':'omit'};
-    if(!isLoopback){options.mode='cors';options.targetAddressSpace='loopback';}
-    const response=await fetch(url,options),raw=await response.text();let data={};try{data=raw?JSON.parse(raw):{};}catch(_){throw new Error(`A API local respondeu sem JSON (HTTP ${response.status}).`);}
-    return{response,data};
-  }finally{clearTimeout(timer);}
-}
-function restoreAcademyRepresentativeCache(){
-  if(state.academyRepresentativesLoaded)return true;
-  try{const cached=JSON.parse(localStorage.getItem(ACADEMY_REP_CACHE_KEY)||'null');if(cached?.date===todayKey()&&Array.isArray(cached.items)&&cached.items.length){state.academyRepresentatives=cached.items;state.academyRepresentativesLoaded=true;return true;}}catch(_){}
-  return false;
-}
-async function loadAcademyRepresentatives({force=false,silent=false}={}){
-  if(!force&&restoreAcademyRepresentativeCache()){renderAcademyAttendance();refreshIcons();void autoLinkPendingAcademyRegistrations();return true;}
-  const status=$('academyRepresentativesStatus');if(status)status.textContent='Consultando contexto comercial…';
-  try{
-    let {response,data}=await academyLocalApiRequest('contexto');
-    if(response.status===202||!data?.context){
-      await academyLocalApiRequest('contexto-preparar');
-      if(!silent)toast('O contexto comercial está sendo preparado no servidor local. Tente atualizar os representantes novamente em instantes.');
-      if(status)status.textContent='Contexto comercial preparando';
-      return false;
-    }
-    if(!response.ok)throw new Error(data?.erro||`Falha HTTP ${response.status}`);
-    const reps=Array.isArray(data.context.representatives)?data.context.representatives:[];
-    state.academyRepresentatives=reps;state.academyRepresentativesLoaded=true;
-    try{localStorage.setItem(ACADEMY_REP_CACHE_KEY,JSON.stringify({date:todayKey(),items:reps}));}catch(_){}
-    renderAcademyAttendance();refreshIcons();void autoLinkPendingAcademyRegistrations();
-    if(!silent)toast(`${reps.length} representantes carregados do contexto do Campanhas.`);
-    return true;
-  }catch(error){
-    console.warn('[Academia representantes]',error);
-    if(status)status.textContent='Falha ao consultar representantes';
-    if(!silent)toast(error?.name==='AbortError'?'A API local demorou para responder. Abra o PMG Connect pelo servidor local e tente novamente.':`Não foi possível carregar representantes: ${error.message}`,'error');
-    return false;
-  }
-}
-
-function renderAcademyRegistrationAutoStatus(){
-  const box=$('academyRegistrationAutoStatus');if(!box)return;
-  const ready=Boolean(state.academyRegistrationWebhookReady);
-  box.className=`academy-auto-sync-status ${ready?'is-ready':'is-pending'}`;
-  box.innerHTML=ready
-    ? `<i data-lucide="radio-tower"></i><div><strong>Sincronização automática preparada</strong><span>Quando o conector da planilha de respostas estiver instalado, cada nova inscrição entra aqui automaticamente e aparece via Realtime. O botão “Sincronizar agora” apenas força a atualização da tela.</span></div><b>ONLINE</b>`
-    : `<i data-lucide="plug-zap"></i><div><strong>Falta ativar o conector do Forms</strong><span>Configure <code>ACADEMIA_INSCRICOES_WEBHOOK_SECRET</code> na Vercel e instale o Apps Script incluído em <code>integracoes/google-forms-academia-inscricoes</code>. Isso é separado do Forms de reservas.</span></div><b>CONFIGURAR</b>`;
-}
-function academyRegistrationSourceLabel(reg){
-  const source=reg?.forms_payload?._pmg_source;
-  if(source==='google_forms_automatico')return 'Automático · Google Forms';
-  return 'Histórico importado';
-}
-async function autoLinkPendingAcademyRegistrations(){
-  if(state.academyRegistrationAutoLinking||!state.academyAttendanceReady||!state.academyRepresentativesLoaded||!canManageAcademy())return 0;
-  const pending=state.academyRegistrations.filter(reg=>!reg.vendedor_nome).slice(0,250);
-  if(!pending.length)return 0;
-  state.academyRegistrationAutoLinking=true;let linked=0;
-  try{
-    for(const reg of pending){
-      const match=matchAcademyRepresentative(reg.vendedor_raw||reg.nome_forms,reg.vendedor_codigo||'');
-      if(!match)continue;
-      const {error}=await db.rpc('vincular_inscricao_academia',{p_id:reg.id,p_vendedor_codigo:match.code||null,p_vendedor_nome:match.namePart,p_vendedor_raw:reg.vendedor_raw||reg.nome_forms||match.raw});
-      if(!error){reg.vendedor_codigo=match.code||null;reg.vendedor_nome=match.namePart;reg.vinculo_status='automatico';linked++;}
-    }
-    if(linked){renderAcademyAttendance();refreshIcons();}
-    return linked;
-  }finally{state.academyRegistrationAutoLinking=false;}
-}
-async function refreshAcademyRegistrations({silent=false}={}){
-  if(state.academyRegistrationRefreshing)return;
-  const btn=$('academyRegistrationRefreshBtn');state.academyRegistrationRefreshing=true;
-  if(btn){btn.disabled=true;btn.classList.add('is-loading');}
-  try{
-    const result=await db.from('academia_inscricoes').select('*').order('criado_em',{ascending:false}).limit(5000);
-    if(result.error)throw result.error;
-    state.academyRegistrations=result.data||[];state.academyAttendanceReady=true;
-    if(!state.academyRepresentativesLoaded)await loadAcademyRepresentatives({silent:true});
-    const linked=await autoLinkPendingAcademyRegistrations();
-    renderAcademyAttendance();refreshIcons();
-    if(!silent)toast(`${state.academyRegistrations.length} inscrição${state.academyRegistrations.length===1?'':'ões'} atualizada${state.academyRegistrations.length===1?'':'s'}${linked?` · ${linked} vínculo${linked===1?'':'s'} conciliado${linked===1?'':'s'} automaticamente`:''}.`);
-  }catch(error){
-    console.error('[Academia inscrições refresh]',error);
-    if(!silent)toast(`Não foi possível atualizar as inscrições: ${error.message}`,'error');
-  }finally{
-    state.academyRegistrationRefreshing=false;if(btn){btn.disabled=false;btn.classList.remove('is-loading');}
-  }
-}
-
-function openAcademyRegistrationForms(){window.open(ACADEMY_REGISTRATION_FORMS_URL,'_blank','noopener,noreferrer');}
-async function copyAcademyRegistrationForms(){try{await navigator.clipboard.writeText(ACADEMY_REGISTRATION_FORMS_URL);toast('Link do Forms de inscrição copiado.');}catch(_){toast('Não foi possível copiar automaticamente.','error');}}
-
-const ACADEMY_REGISTRATION_IMPORT_FIELDS=[
-  ['nome','Nome do participante',['nome completo','nome do participante','participante','seu nome','nome']],
-  ['email','E-mail',['e mail','email']],
-  ['telefone','Telefone',['telefone','celular','whatsapp','fone']],
-  ['vendedor','Representante / vendedor',['representante','vendedor','consultor','nome do representante','nome do vendedor']],
-  ['codigo','Código do representante',['codigo do representante','codigo vendedor','codigo do vendedor','id vendedor','id representante']],
-  ['chave','ID / Data da resposta',['id da resposta','response id','data de conclusao','hora de conclusao','timestamp','carimbo de data hora']]
-];
-function autoAcademyRegistrationMap(headers){const normalized=headers.map(h=>[h,normalizeHeader(h)]),map={};ACADEMY_REGISTRATION_IMPORT_FIELDS.forEach(([key,_label,candidates])=>{const found=normalized.find(([,n])=>candidates.some(c=>n===c||n.includes(c)));map[key]=found?.[0]||'';});return map;}
-function academyRegistrationMapped(row,key){const header=state.academyRegistrationImportMap[key];return header?row[header]:'';}
-function academyRegistrationImportSelect(key,label){const value=state.academyRegistrationImportMap[key]||'';return `<label><span>${label}</span><select data-academy-registration-map="${key}"><option value="">Não importar</option>${state.academyRegistrationImportHeaders.map(h=>`<option value="${escapeHtml(h)}" ${h===value?'selected':''}>${escapeHtml(h)}</option>`).join('')}</select></label>`;}
-function renderAcademyRegistrationImportMapping(){
-  const box=$('academyRegistrationImportMapping');if(!box)return;
-  if(!state.academyRegistrationImportHeaders.length){box.classList.add('hidden');return;}
-  box.classList.remove('hidden');box.innerHTML=`<div class="academy-import-map-head"><strong>Mapeamento das inscrições</strong><span>Nome é obrigatório. Representante/código são opcionais e ajudam o vínculo automático.</span></div><div class="academy-import-map-grid">${ACADEMY_REGISTRATION_IMPORT_FIELDS.map(([k,l])=>academyRegistrationImportSelect(k,l)).join('')}</div>`;renderAcademyRegistrationImportPreview();
-}
-function renderAcademyRegistrationImportPreview(){
-  const rows=state.academyRegistrationImportRows.slice(0,5),reps=academyRepresentativeCatalog();
-  const box=$('academyRegistrationImportPreview');if(!box)return;
-  box.innerHTML=rows.length?`<div class="academy-import-preview-head"><strong>Prévia</strong><span>${state.academyRegistrationImportRows.length} respostas · ${reps.length?`${reps.length} representantes disponíveis para conciliação`:'carregue os representantes para conciliar automaticamente'}</span></div>${rows.map((row,i)=>{const name=String(academyRegistrationMapped(row,'nome')||''),seller=String(academyRegistrationMapped(row,'vendedor')||name),code=String(academyRegistrationMapped(row,'codigo')||''),match=matchAcademyRepresentative(seller,code);return `<div class="academy-import-preview-row"><b>${i+1}</b><span><strong>${escapeHtml(name||'Sem nome')}</strong><small>${match?`Será vinculado a ${escapeHtml(match.namePart)}${match.code?` · ${escapeHtml(match.code)}`:''}`:'Vínculo SQL pendente'}</small></span></div>`;}).join('')}`:'';
-}
-async function handleAcademyRegistrationImportFile(event){
-  const file=event.target.files?.[0];if(!file)return;if(!window.XLSX)return toast('Biblioteca de Excel não carregou. Atualize a página.','error');
-  try{const data=await file.arrayBuffer(),workbook=XLSX.read(data,{type:'array',cellDates:true}),sheet=workbook.Sheets[workbook.SheetNames[0]],rows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false});state.academyRegistrationImportRows=rows;state.academyRegistrationImportHeaders=rows.length?Object.keys(rows[0]):[];state.academyRegistrationImportMap=autoAcademyRegistrationMap(state.academyRegistrationImportHeaders);renderAcademyRegistrationImportMapping();$('academyRegistrationImportConfirmBtn').disabled=!rows.length;toast(`${rows.length} inscrição${rows.length===1?'':'ões'} carregada${rows.length===1?'':'s'} para conferência.`);}catch(error){console.error(error);toast('Não foi possível ler o arquivo de inscrições.','error');}
-}
-function openAcademyRegistrationImport(){
-  if(!canManageAcademy())return toast('Você não tem permissão para gerenciar presenças.','error');
-  state.academyRegistrationImportRows=[];state.academyRegistrationImportHeaders=[];state.academyRegistrationImportMap={};
-  $('academyRegistrationImportFile').value='';$('academyRegistrationImportMapping').classList.add('hidden');$('academyRegistrationImportPreview').innerHTML='';$('academyRegistrationImportConfirmBtn').disabled=true;
-  const select=$('academyRegistrationTraining');if(select){select.innerHTML=academyTrainingOptionsHTML('',true);const upcoming=academyTrainingCatalog().filter(item=>new Date(item.fim_em)>=new Date()).sort((a,b)=>new Date(a.inicio_em)-new Date(b.inicio_em))[0];if(upcoming)select.value=upcoming.id;}
-  $('academyRegistrationImportModal').classList.remove('hidden');refreshIcons();
-  if(!state.academyRepresentativesLoaded)void loadAcademyRepresentatives({silent:true});
-}
-async function importAcademyRegistrationRows(){
-  if(!state.academyRegistrationImportRows.length)return;
-  if(!state.academyRegistrationImportMap.nome)return toast('Mapeie a coluna com o nome do participante.','error');
-  const trainingId=$('academyRegistrationTraining').value||null;setLoading(true);let ok=0,failed=0;
-  try{
-    for(let i=0;i<state.academyRegistrationImportRows.length;i++){
-      const row=state.academyRegistrationImportRows[i],name=String(academyRegistrationMapped(row,'nome')||'').trim();if(!name){failed++;continue;}
-      const email=String(academyRegistrationMapped(row,'email')||'').trim(),phone=String(academyRegistrationMapped(row,'telefone')||'').trim(),sellerRaw=String(academyRegistrationMapped(row,'vendedor')||name).trim(),rawCode=String(academyRegistrationMapped(row,'codigo')||'').trim(),match=matchAcademyRepresentative(sellerRaw,rawCode),rawKey=String(academyRegistrationMapped(row,'chave')||'').trim(),key=rawKey||`${trainingId||'sem-treinamento'}:${fileSafeKey(name)}:${fileSafeKey(email||phone||String(i+1))}`;
-      const {error}=await db.rpc('importar_inscricao_academia_forms',{p_chave:key,p_treinamento_id:trainingId,p_nome:name,p_email:email||null,p_telefone:phone||null,p_vendedor_raw:sellerRaw||null,p_vendedor_codigo:match?.code||rawCode.replace(/\D+/g,'')||null,p_vendedor_nome:match?.namePart||null,p_vinculo_status:match?'automatico':'pendente',p_payload:row});
-      if(error){console.warn('[Inscrição Forms]',error);failed++;}else ok++;
-    }
-    closeModal('academyRegistrationImportModal');await loadOperationalV3();state.academyTab='attendance';renderAcademy();toast(`${ok} inscrição${ok===1?'':'ões'} importada${ok===1?'':'s'}${failed?` · ${failed} ignorada${failed===1?'':'s'} por erro`:''}.`);
-  }finally{setLoading(false);}
-}
-async function updateAcademyRegistrationPresence(id,present){
-  if(!canManageAcademy())return;
-  const reg=state.academyRegistrations.find(item=>item.id===id);if(!reg)return;
-  const previous=Boolean(reg.presente);reg.presente=present;reg.confirmado_em=present?new Date().toISOString():null;renderAcademyAttendance();refreshIcons();
-  try{const{error}=await db.rpc('atualizar_presenca_academia',{p_id:id,p_presente:present});if(error)throw error;await loadOperationalV3();renderAcademyAttendance();refreshIcons();toast(present?'Presença confirmada. O bônus foi recalculado.':'Presença removida. O bônus foi recalculado.');}catch(error){reg.presente=previous;renderAcademyAttendance();refreshIcons();toast(errorMessage(error),'error');}
-}
-async function updateAcademyRegistrationRepresentative(id,rawName){
-  if(!canManageAcademy())return;
-  const reg=state.academyRegistrations.find(item=>item.id===id);if(!reg)return;
-  const rep=academyRepresentativeCatalog().find(item=>item.rawName===rawName)||null;
-  try{const{error}=await db.rpc('vincular_inscricao_academia',{p_id:id,p_vendedor_codigo:rep?.code||null,p_vendedor_nome:rep?.namePart||null,p_vendedor_raw:rep?.rawName||reg.vendedor_raw||reg.nome_forms||null});if(error)throw error;reg.vendedor_codigo=rep?.code||null;reg.vendedor_nome=rep?.namePart||null;reg.vendedor_raw=rep?.rawName||reg.vendedor_raw||reg.nome_forms||null;reg.vinculo_status=rep?'manual':'pendente';renderAcademyAttendance();refreshIcons();toast(rep?'Representante vinculado à inscrição.':'Vínculo removido.');}catch(error){toast(errorMessage(error),'error');await loadOperationalV3();renderAcademyAttendance();}
-}
-async function updateAcademyRegistrationTraining(id,trainingId){
-  if(!canManageAcademy())return;
-  const reg=state.academyRegistrations.find(item=>item.id===id);if(!reg)return;
-  const previous=reg.treinamento_id||null;reg.treinamento_id=trainingId||null;renderAcademyAttendance();refreshIcons();
-  try{const{error}=await db.rpc('vincular_treinamento_inscricao_academia',{p_id:id,p_treinamento_id:trainingId||null});if(error)throw error;toast(trainingId?'Treinamento vinculado à inscrição. O bônus foi recalculado.':'Vínculo com treinamento removido.');}catch(error){reg.treinamento_id=previous;renderAcademyAttendance();refreshIcons();toast(errorMessage(error),'error');}
-}
-function exportAcademyAttendanceXlsx(){
-  if(!window.XLSX)return toast('Biblioteca de Excel não carregou. Atualize a página.','error');
-  const reps=academyRepresentativeCatalog();if(!reps.length)return toast('Atualize a lista de representantes do SQL antes de exportar.','error');
-  const groups=academyAttendanceGroups(),allTrainings=academyTrainingCatalog();
-  const summary=reps.map(rep=>{const key=rep.code?`code:${rep.code}`:`name:${academyParticipantNorm(rep.namePart)}`,group=groups.get(key),trainingNames=group?[...group.trainings.values()].map(t=>t?.titulo||'Treinamento').filter(Boolean):[];return{'Código':rep.code||'','Representante':rep.namePart,'Representante SQL':rep.rawName,'Clientes ativos':Number(rep.activeClients||0),'Presenças válidas':group?.presences||0,'Acréscimo crescimento (%)':group?.bonus||0,'Treinamentos confirmados':trainingNames.join(' | ')};});
-  const detail=state.academyRegistrations.map(reg=>{const training=academyRegistrationTraining(reg),key=academyRegistrationRepKey(reg),group=key?groups.get(key):null;return{'Data do treinamento':training?formatDate(training.inicio_em):'','Treinamento':training?.titulo||'Sem vínculo','Participante no Forms':reg.nome_forms||'','E-mail':reg.email||'','Telefone':reg.telefone||'','Código representante':reg.vendedor_codigo||'','Representante':reg.vendedor_nome||'','Presente':reg.presente?'SIM':'NÃO','Bônus total representante (%)':group?.bonus||0,'Status do vínculo':reg.vendedor_nome?(reg.vinculo_status||'vinculado'):'pendente','Confirmado por':reg.confirmado_por?(collaborator(reg.confirmado_por)?.nome||reg.confirmado_por):'','Confirmado em':reg.confirmado_em?formatDateTime(reg.confirmado_em):''};});
-  const wb=XLSX.utils.book_new(),wsSummary=XLSX.utils.json_to_sheet(summary),wsDetail=XLSX.utils.json_to_sheet(detail);
-  wsSummary['!cols']=[{wch:12},{wch:30},{wch:36},{wch:14},{wch:16},{wch:24},{wch:70}];wsDetail['!cols']=[{wch:18},{wch:34},{wch:32},{wch:30},{wch:18},{wch:20},{wch:30},{wch:12},{wch:26},{wch:18},{wch:22},{wch:24},{wch:22}];
-  XLSX.utils.book_append_sheet(wb,wsSummary,'BONUS_CAMPANHAS');XLSX.utils.book_append_sheet(wb,wsDetail,'PRESENCAS');
-  const guide=XLSX.utils.aoa_to_sheet([['REGRA ACADEMIA PMG'],['Cada treinamento distinto com presença confirmada adiciona 10 pontos percentuais ao crescimento da campanha.'],['O bônus máximo por representante é 30%.'],['Inscrições sem representante do SQL ou sem treinamento vinculado não geram bônus.'],[],['Treinamentos cadastrados',allTrainings.length],['Inscrições importadas',state.academyRegistrations.length],['Gerado em',new Date().toLocaleString('pt-BR')]]);guide['!cols']=[{wch:105},{wch:18}];XLSX.utils.book_append_sheet(wb,guide,'LEIA-ME');
-  XLSX.writeFile(wb,`academia-pmg-bonus-campanhas-${todayKey()}.xlsx`);toast('Excel de presença e bônus exportado.');
-}
 
 function monthInputValue(date=new Date()){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;}
 function monthBounds(value){const [y,m]=String(value||monthInputValue()).split('-').map(Number);const start=new Date(y,m-1,1),end=new Date(y,m,1);return{start,end,label:new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(start)};}
@@ -4194,7 +3872,6 @@ function bindEvents() {
       await loadOperationalV3();
       setAcademyTab(tab, false);
       renderAcademy();
-      if(tab==='attendance'&&!state.academyRepresentativesLoaded)void loadAcademyRepresentatives({silent:true});
     } catch (error) {
       console.warn('[Academia refresh]', error);
       setAcademyTab(tab);
@@ -4219,17 +3896,6 @@ function bindEvents() {
   $('academyImportFile')?.addEventListener('change', handleAcademyImportFile);
   $('academyImportMapping')?.addEventListener('change', event => { const select = event.target.closest('[data-academy-map]'); if (!select) return; state.academyImportMap[select.dataset.academyMap] = select.value; renderAcademyImportPreview(); });
   $('academyImportConfirmBtn')?.addEventListener('click', importAcademyFormsRows);
-  $('academyRegistrationFormsBtn')?.addEventListener('click', openAcademyRegistrationForms);
-  $('academyRegistrationCopyBtn')?.addEventListener('click', copyAcademyRegistrationForms);
-  $('academyRegistrationRefreshBtn')?.addEventListener('click',()=>refreshAcademyRegistrations());
-  $('academyRegistrationImportBtn')?.addEventListener('click', openAcademyRegistrationImport);
-  $('academyRepresentativesSyncBtn')?.addEventListener('click', () => loadAcademyRepresentatives({force:true}));
-  $('academyAttendanceExportBtn')?.addEventListener('click', exportAcademyAttendanceXlsx);
-  $('academyRegistrationImportFile')?.addEventListener('change', handleAcademyRegistrationImportFile);
-  $('academyRegistrationImportMapping')?.addEventListener('change', event => { const select=event.target.closest('[data-academy-registration-map]');if(!select)return;state.academyRegistrationImportMap[select.dataset.academyRegistrationMap]=select.value;renderAcademyRegistrationImportPreview(); });
-  $('academyRegistrationImportConfirmBtn')?.addEventListener('click', importAcademyRegistrationRows);
-  ['academyAttendanceTrainingFilter','academyAttendancePresenceFilter','academyAttendanceMatchFilter'].forEach(id => $(id)?.addEventListener('change', () => { renderAcademyAttendance();refreshIcons(); }));
-  $('academyAttendanceSearch')?.addEventListener('input', debounce(() => { renderAcademyAttendance();refreshIcons(); },120));
   ['academyDate','academyStartTime','academyEndTime'].forEach(id => $(id)?.addEventListener('change', updateAcademyConflictPreview));
   $('itemAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'itemAssignee', previewId: 'itemAssigneePreview', jsonInputId: 'itemAssigneesJson', multi: true, title: 'Selecionar responsáveis' }));
   $('editTaskAssigneePickerBtn')?.addEventListener('click', () => openAssigneePicker({ selectId: 'editTaskAssignee', previewId: 'editTaskAssigneePreview', jsonInputId: 'editTaskAssigneesJson', multi: true, title: 'Gerenciar responsáveis' }));
@@ -5192,80 +4858,6 @@ function startRecurrenceProcessorV36() {
   }, 60000);
 }
 
-function recurrenceMinutesV382(value) {
-  const [hours, minutes] = String(value || '00:00').split(':').map(Number);
-  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
-}
-function recurrenceTimeFromMinutesV382(value) {
-  const total = ((Number(value) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
-}
-function suggestedExtraRecurrenceTimeV382() {
-  const existing = [
-    $('itemDueTime')?.value || '17:00',
-    ...$$('#itemRecurrenceExtraTimes [data-recurrence-extra-due]').map(input => input.value).filter(Boolean)
-  ];
-  const last = existing[existing.length - 1] || '09:00';
-  for (const offset of [180, 240, 120, 300, 60]) {
-    const candidate = recurrenceTimeFromMinutesV382(recurrenceMinutesV382(last) + offset);
-    if (!existing.includes(candidate)) return candidate;
-  }
-  return '12:00';
-}
-function addRecurrenceExtraTimeV382(dueTime = '', alertTime = '') {
-  const container = $('itemRecurrenceExtraTimes');
-  if (!container) return;
-  if (container.querySelectorAll('.recurrence-extra-time-row').length >= 7) return toast('O limite é de 8 horários por dia.', 'error');
-  const due = dueTime || suggestedExtraRecurrenceTimeV382();
-  const alert = alertTime || due;
-  const row = document.createElement('div');
-  row.className = 'recurrence-extra-time-row';
-  row.innerHTML = `<label class="field"><span>Horário da ocorrência</span><input type="time" value="${escapeHtml(due)}" data-recurrence-extra-due required></label><label class="field"><span>Popup desta ocorrência</span><input type="time" value="${escapeHtml(alert)}" data-recurrence-extra-alert required></label><button type="button" class="icon-btn subtle recurrence-remove-time" data-remove-recurrence-time title="Remover horário" aria-label="Remover horário"><i data-lucide="trash-2"></i></button>`;
-  container.appendChild(row);
-  refreshIcons();
-}
-function syncMultiDailyRecurrenceUIV382({ ensureRow = true } = {}) {
-  const enabled = Boolean($('itemRecurrenceMultiDaily')?.checked);
-  $('itemRecurrenceMultiFields')?.classList.toggle('hidden', !enabled);
-  if (enabled && ensureRow && !$('itemRecurrenceExtraTimes')?.children.length) addRecurrenceExtraTimeV382();
-  refreshIcons();
-}
-function resetMultiDailyRecurrenceV382(preset = {}) {
-  const toggle = $('itemRecurrenceMultiDaily');
-  const container = $('itemRecurrenceExtraTimes');
-  if (!toggle || !container) return;
-  container.innerHTML = '';
-  const schedules = Array.isArray(preset.recurrenceTimes) ? preset.recurrenceTimes : [];
-  toggle.checked = schedules.length > 1 || Boolean(preset.recurrenceMultiDaily);
-  if (schedules.length > 1) schedules.slice(1,8).forEach(item => addRecurrenceExtraTimeV382(item?.due || item?.time || '', item?.alert || item?.due || item?.time || ''));
-  syncMultiDailyRecurrenceUIV382({ ensureRow: toggle.checked });
-}
-function recurrenceSchedulesV382() {
-  const baseDue = $('itemDueTime')?.value || '17:00';
-  const baseAlert = $('itemRecurrenceAlertTime')?.value || '09:00';
-  const schedules = [{ due: baseDue, alert: baseAlert }];
-  if ($('itemRecurrenceMultiDaily')?.checked) {
-    $$('#itemRecurrenceExtraTimes .recurrence-extra-time-row').forEach(row => {
-      schedules.push({
-        due: row.querySelector('[data-recurrence-extra-due]')?.value || '',
-        alert: row.querySelector('[data-recurrence-extra-alert]')?.value || ''
-      });
-    });
-    if (schedules.length < 2) throw new Error('Adicione pelo menos um horário adicional para repetir mais de uma vez por dia.');
-  }
-  if (schedules.length > 8) throw new Error('Use no máximo 8 horários por dia.');
-  for (const schedule of schedules) {
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.due)) throw new Error('Confira os horários das ocorrências.');
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(schedule.alert)) throw new Error('Confira os horários dos popups.');
-  }
-  const seen = new Set();
-  for (const schedule of schedules) {
-    if (seen.has(schedule.due)) throw new Error(`O horário ${schedule.due} está repetido. Cada ocorrência precisa de um horário diferente.`);
-    seen.add(schedule.due);
-  }
-  return schedules.sort((a,b) => a.due.localeCompare(b.due));
-}
-
 function syncCreateRecurrenceUI() {
   const enabled = Boolean($('itemRecurringEnabled')?.checked);
   $('itemRecurrenceFields')?.classList.toggle('hidden', !enabled);
@@ -5290,7 +4882,6 @@ openQuickAdd = function openQuickAddRecurring(type = 'demanda', preset = {}) {
     if ($('itemRecurrenceAlertTime')) $('itemRecurrenceAlertTime').value = preset.recurrenceAlertTime || '09:00';
     if ($('itemRecurrenceDailyAlert')) $('itemRecurrenceDailyAlert').checked = preset.recurrenceDailyAlert !== false;
     setWeekdays('itemRecurrenceWeekdays', preset.recurrenceWeekdays || [1,2,3,4,5]);
-    resetMultiDailyRecurrenceV382(preset);
     syncCreateRecurrenceUI();
   }
 };
@@ -5310,42 +4901,36 @@ createTaskV2 = async function createTaskWithRecurrenceV36() {
   const assigneeIds = selectedFormAssigneeIdsV37('item');
   const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
   if (responsibilityMode === 'primeiro_cumprir' && assigneeIds.length < 2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
-  const schedules = recurrenceSchedulesV382();
-  const createdIds = [];
-  for (const schedule of schedules) {
-    const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
-      p_titulo: $('itemTitle').value.trim(),
-      p_descricao: $('itemDescription').value.trim() || null,
-      p_prioridade: priority,
-      p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
-      p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
-      p_tamanho: $('itemSize').value,
-      p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
-      p_alerta_para_todos: alertAll,
-      p_projeto: $('itemProject')?.value.trim() || null,
-      p_checklist: checklistFromText($('itemChecklist')?.value || ''),
-      p_dependencias: selectedValues($('itemDependencies')),
-      p_frequencia: frequency,
-      p_dias_semana: weekdays,
-      p_data_inicio: start,
-      p_data_fim: end,
-      p_horario_prazo: schedule.due,
-      p_horario_alerta: schedule.alert,
-      p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
+  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
+    p_titulo: $('itemTitle').value.trim(),
+    p_descricao: $('itemDescription').value.trim() || null,
+    p_prioridade: priority,
+    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+    p_tags: $('itemTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+    p_tamanho: $('itemSize').value,
+    p_estimativa_horas: $('itemEstimate').value ? Number($('itemEstimate').value) : null,
+    p_alerta_para_todos: alertAll,
+    p_projeto: $('itemProject')?.value.trim() || null,
+    p_checklist: checklistFromText($('itemChecklist')?.value || ''),
+    p_dependencias: selectedValues($('itemDependencies')),
+    p_frequencia: frequency,
+    p_dias_semana: weekdays,
+    p_data_inicio: start,
+    p_data_fim: end,
+    p_horario_prazo: $('itemDueTime').value || '17:00',
+    p_horario_alerta: $('itemRecurrenceAlertTime').value || '09:00',
+    p_alerta_diario: Boolean($('itemRecurrenceDailyAlert').checked)
+  });
+  if (error) throw error;
+  if (recurringId && state.multiAssigneeReady) {
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+      p_recorrencia_id: recurringId,
+      p_responsaveis: assigneeIds,
+      p_modo: responsibilityMode,
+      p_aplicar_ocorrencias: true
     });
-    if (error) throw error;
-    if (recurringId) createdIds.push(recurringId);
-    if (recurringId && state.multiAssigneeReady) {
-      const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
-        p_recorrencia_id: recurringId,
-        p_responsaveis: assigneeIds,
-        p_modo: responsibilityMode,
-        p_aplicar_ocorrencias: true
-      });
-      if (assigneeError) throw assigneeError;
-    }
+    if (assigneeError) throw assigneeError;
   }
-  state.lastRecurringCreatedCountV382 = createdIds.length;
   await loadRecurringV36();
 };
 
@@ -5807,24 +5392,6 @@ renderGlobalSearch = function renderGlobalSearchRecurringIntegrated() {
 
 function bindRecurringV36Events() {
   $('itemRecurringEnabled')?.addEventListener('change', syncCreateRecurrenceUI);
-  $('itemRecurrenceMultiDaily')?.addEventListener('change', () => syncMultiDailyRecurrenceUIV382());
-  $('itemRecurrenceAddTime')?.addEventListener('click', () => addRecurrenceExtraTimeV382());
-  $('itemRecurrenceExtraTimes')?.addEventListener('click', event => {
-    const remove = event.target.closest('[data-remove-recurrence-time]');
-    if (!remove) return;
-    remove.closest('.recurrence-extra-time-row')?.remove();
-    if ($('itemRecurrenceMultiDaily')?.checked && !$('itemRecurrenceExtraTimes')?.children.length) addRecurrenceExtraTimeV382();
-  });
-  $('itemRecurrenceExtraTimes')?.addEventListener('change', event => {
-    const dueInput = event.target.closest('[data-recurrence-extra-due]');
-    if (!dueInput) return;
-    const row = dueInput.closest('.recurrence-extra-time-row');
-    const alertInput = row?.querySelector('[data-recurrence-extra-alert]');
-    if (alertInput && (!alertInput.dataset.touched || !alertInput.value)) alertInput.value = dueInput.value;
-  });
-  $('itemRecurrenceExtraTimes')?.addEventListener('input', event => {
-    if (event.target.matches('[data-recurrence-extra-alert]')) event.target.dataset.touched = '1';
-  });
   $('itemRecurrenceFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('item'));
   $('recurrenceEditFrequency')?.addEventListener('change', () => recurrenceFormWeekdayVisibility('edit'));
   $('recurrenceForm')?.addEventListener('submit', saveRecurrenceSeriesV36);
@@ -6010,3 +5577,628 @@ populateRecurrenceAssigneeSelect = function populateRecurrenceAssigneeSelectMult
   populateRecurrenceAssigneeSelectBeforeMultiV37(selected);
   if ($('recurrenceEditAssigneePreview')) renderAssigneePreview('recurrenceEditAssignee','recurrenceEditAssigneePreview');
 };
+
+
+/* =========================================================
+   PMG CONNECT V3.8.1 — UX OPERACIONAL
+   Autoria simples, Minha Mesa, caixa de ação, ações rápidas,
+   visões salvas, @menções, anexos e recorrência multi-horário.
+   ========================================================= */
+VIEW_META.mesa = ['Execução sem ruído', 'Minha Mesa'];
+state.taskAttachmentsV381 = [];
+state.attachmentsReadyV381 = false;
+state.recurrenceGroupsV381 = [];
+state.recurrenceGroupsReadyV381 = false;
+state.recurrenceExtraTimesV381 = [];
+state.recurrenceEditExtraTimesV381 = [];
+state.uxCommandPresetV381 = null;
+
+function normalizeTextV381(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+function uniqueTimesV381(values) {
+  return [...new Set((values || []).map(value => String(value || '').slice(0,5)).filter(value => /^\d{2}:\d{2}$/.test(value)))].sort();
+}
+function taskCanActV381(task) {
+  return Boolean(task && !task.arquivada_em && (isManager() || taskHasAssignee(task, state.me?.id)));
+}
+function taskPrimaryQuickActionV381(task) {
+  if (!task || task.arquivada_em || task.status === 'concluida') return { action:'open', label:'Abrir', icon:'arrow-up-right' };
+  if (taskIsBlocked(task.id)) return { action:'open', label:'Ver bloqueio', icon:'lock-keyhole' };
+  if (task.status === 'nova' && taskCanActV381(task)) return { action:'start', label:'Iniciar', icon:'play' };
+  if (task.status === 'andamento' && taskCanActV381(task)) return { action:'review', label:'Enviar revisão', icon:'scan-eye' };
+  if (task.status === 'revisao' && isManager()) return { action:'evaluate', label:'Validar', icon:'badge-check' };
+  return { action:'open', label:'Abrir', icon:'arrow-up-right' };
+}
+function taskQuickActionsHTMLV381(task, compact = false) {
+  const primary = taskPrimaryQuickActionV381(task);
+  return `<div class="task-quick-actions ${compact ? 'compact' : ''}" aria-label="Ações rápidas">
+    <button type="button" class="task-quick-primary" data-task-quick-action="${primary.action}" data-task-id="${task.id}"><i data-lucide="${primary.icon}"></i><span>${escapeHtml(primary.label)}</span></button>
+    <button type="button" data-task-quick-action="comment" data-task-id="${task.id}" title="Comentar"><i data-lucide="message-circle"></i></button>
+    <button type="button" data-task-quick-action="open" data-task-id="${task.id}" title="Abrir detalhes"><i data-lucide="more-horizontal"></i></button>
+  </div>`;
+}
+
+const taskCardHTMLBeforeUxV381 = taskCardHTML;
+taskCardHTML = function taskCardHTMLUxV381(task) {
+  let html = taskCardHTMLBeforeUxV381(task);
+  const blocked = typeof taskIsBlocked === 'function' && taskIsBlocked(task.id);
+  if (blocked) {
+    const deps = dependenciesForTask(task.id).filter(dependencyIsOpen).map(dep => dependencyTask(dep.depende_de_tarefa_id)).filter(Boolean);
+    const label = deps.length ? `Bloqueada por ${deps[0].titulo}${deps.length > 1 ? ` +${deps.length - 1}` : ''}` : 'Bloqueada por dependência';
+    html = html.replace('<div class="task-progress-meta">', `<div class="task-card-blocker"><i data-lucide="lock-keyhole"></i><span>${escapeHtml(label)}</span></div><div class="task-progress-meta">`)
+      .replace('class="task-card ', 'class="task-card is-blocked ');
+  }
+  return html.replace('</article>', `${taskQuickActionsHTMLV381(task)}</article>`);
+};
+
+async function runTaskQuickActionV381(action, taskId) {
+  const task = state.tasks.find(item => item.id === taskId);
+  if (!task) return;
+  if (action === 'open') return openTask(taskId);
+  if (action === 'comment') {
+    await openTask(taskId);
+    setTimeout(() => $('drawerCommentText')?.focus(), 80);
+    return;
+  }
+  if (action === 'evaluate') return openTaskEvaluation(taskId);
+  if (taskIsBlocked(taskId)) return toast('Esta demanda está bloqueada por outra entrega. Abra os detalhes para ver o que falta.', 'error');
+  if (action === 'start') return updateTaskStatus(taskId, 'andamento');
+  if (action === 'review') return updateTaskStatus(taskId, 'revisao');
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-task-quick-action]');
+  if (!button) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  runTaskQuickActionV381(button.dataset.taskQuickAction, button.dataset.taskId);
+}, true);
+
+/* ---------- Caixa "Precisa da sua ação" ---------- */
+function actionInboxItemsV381() {
+  const items = [];
+  const seen = new Set();
+  const add = (task, kind, title, text, tone, icon, priority = 10) => {
+    if (!task || seen.has(`${task.id}:${kind}`)) return;
+    seen.add(`${task.id}:${kind}`);
+    items.push({ task, kind, title, text, tone, icon, priority });
+  };
+
+  if (state.authorshipReady) {
+    myPendingAuthorshipConfirmationsV372().forEach(row => {
+      const review = (state.authorshipReviews || []).find(item => item.id === row.revisao_id);
+      const task = review ? state.tasks.find(item => item.id === review.tarefa_id) : null;
+      add(task, 'autoria', 'Confirme sua participação', 'Entrega compartilhada aguardando sua confirmação de autoria.', 'purple', 'users-round', 0);
+    });
+  }
+
+  if (isManager()) {
+    state.tasks.filter(task => !task.arquivada_em && task.status === 'revisao' && !['confirmacao_autoria','autoria_contestada'].includes(task.avaliacao_status)).forEach(task =>
+      add(task, 'avaliacao', 'Valide esta entrega', 'A execução terminou e precisa da sua decisão para seguir.', 'purple', 'badge-check', 1));
+    state.tasks.filter(task => !task.arquivada_em && task.status === 'revisao' && task.avaliacao_status === 'autoria_contestada').forEach(task =>
+      add(task, 'contestada', 'Revise os participantes', 'A autoria da entrega foi contestada por alguém do grupo.', 'red', 'message-square-warning', 0));
+  }
+
+  state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida' && taskHasAssignee(task, state.me?.id)).forEach(task => {
+    if (task.avaliacao_status === 'ajustes') add(task, 'ajustes', 'Ajustes solicitados', task.avaliacao_observacao || 'A entrega voltou com ajustes.', 'amber', 'undo-2', 2);
+    if (task.prioridade === 'imediata') add(task, 'imediata', 'Demanda imediata', 'Este item deve entrar na frente da fila.', 'red', 'siren', 1);
+    else if (isOverdue(task)) add(task, 'atrasada', 'Prazo vencido', dueLabel(task), 'red', 'triangle-alert', 3);
+  });
+
+  return items.sort((a,b) => a.priority - b.priority || taskSortByAttention(a.task,b.task)).slice(0,12);
+}
+function renderActionInboxV381() {
+  const list = $('actionInboxList'); if (!list) return;
+  const items = actionInboxItemsV381();
+  $('actionInboxCount').textContent = `${items.length} ${items.length === 1 ? 'ação' : 'ações'}`;
+  list.innerHTML = items.length ? items.map(item => `<button type="button" class="action-inbox-item tone-${item.tone}" data-open-task="${item.task.id}">
+    <span class="action-inbox-icon"><i data-lucide="${item.icon}"></i></span><span class="action-inbox-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.task.titulo)} · ${escapeHtml(item.text)}</small></span><span class="action-inbox-cta">Resolver <i data-lucide="chevron-right"></i></span>
+  </button>`).join('') : `<div class="action-inbox-empty"><span><i data-lucide="circle-check-big"></i></span><div><strong>Nada esperando sua decisão</strong><small>O que depende de você está em dia.</small></div></div>`;
+  refreshIcons();
+}
+const renderTodayBeforeUxV381 = renderToday;
+renderToday = function renderTodayUxV381() {
+  renderTodayBeforeUxV381();
+  renderActionInboxV381();
+};
+
+/* ---------- Minha Mesa ---------- */
+function completedTodayV381(task) {
+  const value = task.concluida_em || (task.status === 'concluida' ? task.atualizado_em : null);
+  return Boolean(value && dateKey(value) === todayKey());
+}
+function deskTaskHTMLV381(task, context = '') {
+  const blocked = taskIsBlocked(task.id);
+  return `<article class="desk-task ${isOverdue(task) ? 'late' : ''} ${blocked ? 'blocked' : ''}" data-open-task="${task.id}">
+    <div class="desk-task-head"><span class="priority-pill ${task.prioridade}">${PRIORITY[task.prioridade]}</span>${isRecurringTask(task) ? recurrenceBadgeHTML(task,true) : ''}<span class="desk-task-due ${dueClass(task)}">${escapeHtml(dueLabel(task))}</span></div>
+    <h3>${escapeHtml(task.titulo)}</h3><p>${escapeHtml(context || task.projeto || (blocked ? 'Aguardando dependência' : STATUS[task.status]?.label || ''))}</p>
+    <div class="desk-task-footer"><span>${taskAssigneeAvatarGroupHTML(task,'xs',3)}${escapeHtml(taskAssigneeShortNames(task))}</span>${task.status !== 'concluida' ? taskQuickActionsHTMLV381(task,true) : '<span class="desk-done-badge"><i data-lucide="check"></i>Feita hoje</span>'}</div>
+  </article>`;
+}
+function renderDeskListV381(id, tasks, emptyText) {
+  const el = $(id); if (!el) return;
+  el.innerHTML = tasks.length ? tasks.map(item => deskTaskHTMLV381(item.task || item, item.context || '')).join('') : `<div class="desk-empty"><i data-lucide="sparkles"></i><span>${escapeHtml(emptyText)}</span></div>`;
+}
+function renderMyDeskV381() {
+  if (!$('viewMesa') || !state.me) return;
+  const active = state.tasks.filter(task => !task.arquivada_em && task.status !== 'concluida');
+  const mine = active.filter(task => taskHasAssignee(task, state.me.id));
+  const pendingConfirmTaskIds = new Set(myPendingAuthorshipConfirmationsV372().map(row => (state.authorshipReviews || []).find(review => review.id === row.revisao_id)?.tarefa_id).filter(Boolean));
+  const managerReviewIds = new Set(isManager() ? active.filter(task => task.status === 'revisao' && !['confirmacao_autoria'].includes(task.avaliacao_status)).map(task => task.id) : []);
+
+  const waiting = mine.filter(task => (task.status === 'revisao' && !pendingConfirmTaskIds.has(task.id) && !managerReviewIds.has(task.id)) || taskIsBlocked(task.id));
+  const waitingIds = new Set(waiting.map(task => task.id));
+  let now = mine.filter(task => !waitingIds.has(task.id) && (pendingConfirmTaskIds.has(task.id) || task.avaliacao_status === 'ajustes' || task.prioridade === 'imediata' || isOverdue(task) || taskDueKey(task) === todayKey()));
+  if (isManager()) now = [...now, ...active.filter(task => managerReviewIds.has(task.id) && !now.some(x => x.id === task.id))];
+  now.sort(taskSortByAttention);
+  const nowIds = new Set(now.map(task => task.id));
+  const next = mine.filter(task => !waitingIds.has(task.id) && !nowIds.has(task.id)).sort(taskSortByAttention).slice(0,20);
+  const done = state.tasks.filter(task => task.status === 'concluida' && !task.arquivada_em && completedTodayV381(task) && taskHasAssignee(task,state.me.id)).sort((a,b)=>new Date(b.concluida_em||b.atualizado_em)-new Date(a.concluida_em||a.atualizado_em));
+
+  renderDeskListV381('deskNow', now, 'Nada urgente na sua frente.');
+  renderDeskListV381('deskNext', next, 'Sua fila seguinte está vazia.');
+  renderDeskListV381('deskWaiting', waiting.map(task => ({task, context: taskIsBlocked(task.id) ? 'Bloqueada por outra entrega' : 'Aguardando revisão ou confirmação'})), 'Nada parado esperando outra pessoa.');
+  renderDeskListV381('deskDone', done, 'Nenhuma conclusão registrada hoje ainda.');
+  $('deskNowCount').textContent = now.length; $('deskNextCount').textContent = next.length; $('deskWaitingCount').textContent = waiting.length; $('deskDoneCount').textContent = done.length;
+  const totalOpen = mine.length;
+  $('deskSummary').innerHTML = `<div class="desk-summary-card"><span><i data-lucide="circle-dot-dashed"></i></span><div><strong>${totalOpen}</strong><small>Abertas</small></div></div><div class="desk-summary-card"><span><i data-lucide="zap"></i></span><div><strong>${now.length}</strong><small>Agora</small></div></div><div class="desk-summary-card"><span><i data-lucide="hourglass"></i></span><div><strong>${waiting.length}</strong><small>Aguardando</small></div></div><div class="desk-summary-card"><span><i data-lucide="circle-check-big"></i></span><div><strong>${done.length}</strong><small>Feitas hoje</small></div></div>`;
+  if ($('navDeskCount')) { $('navDeskCount').textContent = now.length; $('navDeskCount').classList.toggle('hidden', now.length === 0); }
+  refreshIcons();
+}
+const renderAllBeforeUxV381 = renderAll;
+renderAll = function renderAllUxV381() {
+  renderAllBeforeUxV381();
+  renderMyDeskV381();
+  renderSavedTaskViewsV381();
+};
+const switchViewBeforeUxV381 = switchView;
+switchView = function switchViewUxV381(view) {
+  if (view !== 'mesa') return switchViewBeforeUxV381(view);
+  state.view = 'mesa'; renderShell(); renderMyDeskV381();
+  window.scrollTo({ top:0, behavior: state.accessibility.reduceMotion ? 'auto' : 'smooth' }); closeMobileSidebar(); refreshIcons();
+};
+
+/* ---------- Nova demanda: básico primeiro ---------- */
+function setTaskAdvancedV381(open) {
+  const modal = $('quickAddModal'); if (!modal) return;
+  modal.classList.toggle('show-task-advanced', Boolean(open));
+  const btn = $('toggleTaskAdvancedBtn');
+  if (btn) { btn.setAttribute('aria-expanded', String(Boolean(open))); btn.querySelector('strong').textContent = open ? 'Menos opções' : 'Mais opções'; const chevron=btn.querySelector(':scope > i:last-child'); if(chevron) chevron.setAttribute('data-lucide', open ? 'chevron-up' : 'chevron-down'); }
+  refreshIcons();
+}
+const openQuickAddBeforeUxV381 = openQuickAdd;
+openQuickAdd = function openQuickAddUxV381(type='demanda', preset={}) {
+  openQuickAddBeforeUxV381(type,preset);
+  setTaskAdvancedV381(Boolean(preset.recurring));
+  state.recurrenceExtraTimesV381 = [];
+  renderCreateRecurrenceTimesV381();
+};
+
+/* ---------- Recorrência várias vezes ao dia ---------- */
+function renderCreateRecurrenceTimesV381() {
+  const root = $('itemRecurrenceTimesList'); if (!root) return;
+  const primary = String($('itemDueTime')?.value || '17:00').slice(0,5);
+  const extras = uniqueTimesV381(state.recurrenceExtraTimesV381).filter(time => time !== primary);
+  state.recurrenceExtraTimesV381 = extras;
+  root.innerHTML = `<div class="recurrence-time-primary"><span><i data-lucide="clock-3"></i><strong>Ocorrência principal</strong></span><b>${escapeHtml(primary)}</b></div>${extras.map((time,index)=>`<label class="recurrence-time-row"><span><i data-lucide="repeat-2"></i>Outra ocorrência</span><input type="time" value="${time}" data-recurrence-extra-time="${index}"><button type="button" data-remove-recurrence-time="${index}" title="Remover"><i data-lucide="x"></i></button></label>`).join('')}`;
+  refreshIcons();
+}
+function renderEditRecurrenceTimesV381() {
+  const root = $('recurrenceEditTimesList'); if (!root) return;
+  const primary = String($('recurrenceEditDueTime')?.value || '17:00').slice(0,5);
+  const extras = uniqueTimesV381(state.recurrenceEditExtraTimesV381).filter(time => time !== primary);
+  state.recurrenceEditExtraTimesV381 = extras;
+  root.innerHTML = extras.length ? extras.map((time,index)=>`<label class="recurrence-time-row"><span><i data-lucide="repeat-2"></i>Outra ocorrência</span><input type="time" value="${time}" data-recurrence-edit-extra-time="${index}"><button type="button" data-remove-recurrence-edit-time="${index}" title="Remover"><i data-lucide="x"></i></button></label>`).join('') : `<div class="recurrence-time-empty"><i data-lucide="clock"></i>Esta rotina roda uma vez por dia.</div>`;
+  refreshIcons();
+}
+function nextSuggestedTimeV381(times) {
+  const latest = uniqueTimesV381(times).pop() || '09:00';
+  const [h,m] = latest.split(':').map(Number); const total=(h*60+m+240)%(24*60);
+  return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+}
+function createRecurrenceTimesV381() { return uniqueTimesV381([$('itemDueTime')?.value || '17:00', ...state.recurrenceExtraTimesV381]); }
+function editRecurrenceTimesV381() { return uniqueTimesV381([$('recurrenceEditDueTime')?.value || '17:00', ...state.recurrenceEditExtraTimesV381]); }
+function recurrenceGroupRowsForSeriesV381(seriesId) {
+  const row = (state.recurrenceGroupsV381 || []).find(item => item.recorrencia_id === seriesId);
+  return row ? state.recurrenceGroupsV381.filter(item => item.grupo_id === row.grupo_id).sort((a,b)=>Number(a.ordem)-Number(b.ordem)||String(a.horario).localeCompare(String(b.horario))) : [];
+}
+async function loadRecurrenceGroupsV381() {
+  try {
+    const { data, error } = await db.from('demanda_recorrente_grupos_v381').select('*').order('ordem',{ascending:true}).limit(3000);
+    if (error) throw error;
+    state.recurrenceGroupsV381 = data || []; state.recurrenceGroupsReadyV381 = true;
+  } catch (error) {
+    state.recurrenceGroupsV381 = []; state.recurrenceGroupsReadyV381 = false;
+    if (!/demanda_recorrente_grupos_v381|PGRST205|42P01|does not exist|schema cache/i.test(String(error?.message||error))) console.warn('[recorrência multi-horário]',error);
+  }
+}
+const loadAllBeforeUxV381 = loadAll;
+loadAll = async function loadAllUxV381() {
+  await loadAllBeforeUxV381();
+  await loadRecurrenceGroupsV381();
+};
+async function createRecurringSeriesFromFormV381(time) {
+  const frequency = $('itemRecurrenceFrequency').value;
+  const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
+  const start = $('itemRecurrenceStart').value || todayKey();
+  const end = $('itemRecurrenceEnd').value || null;
+  const priority = $('itemPriority').value;
+  const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
+  const assigneeIds = selectedFormAssigneeIdsV37('item');
+  const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
+  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
+    p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
+    p_prioridade: priority, p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+    p_tags: $('itemTags').value.split(',').map(tag=>tag.trim()).filter(Boolean), p_tamanho:$('itemSize').value,
+    p_estimativa_horas:$('itemEstimate').value?Number($('itemEstimate').value):null, p_alerta_para_todos:alertAll,
+    p_projeto:$('itemProject')?.value.trim()||null, p_checklist:checklistFromText($('itemChecklist')?.value||''),
+    p_dependencias:selectedValues($('itemDependencies')), p_frequencia:frequency, p_dias_semana:weekdays,
+    p_data_inicio:start, p_data_fim:end, p_horario_prazo:time,
+    p_horario_alerta: time, p_alerta_diario:Boolean($('itemRecurrenceDailyAlert').checked)
+  });
+  if (error) throw error;
+  if (recurringId && state.multiAssigneeReady) {
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', { p_recorrencia_id:recurringId, p_responsaveis:assigneeIds, p_modo:responsibilityMode, p_aplicar_ocorrencias:true });
+    if (assigneeError) throw assigneeError;
+  }
+  return recurringId;
+}
+const createTaskV2BeforeUxV381 = createTaskV2;
+createTaskV2 = async function createTaskV2UxV381() {
+  if (!$('itemRecurringEnabled')?.checked) return createTaskV2BeforeUxV381();
+  const times = createRecurrenceTimesV381();
+  if (times.length <= 1) return createTaskV2BeforeUxV381();
+  if (!state.recurrenceGroupsReadyV381) throw new Error('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql no Supabase antes de usar vários horários no mesmo dia.');
+  const frequency = $('itemRecurrenceFrequency').value;
+  const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
+  if (['semanal','personalizada'].includes(frequency) && !weekdays.length) throw new Error('Selecione pelo menos um dia da semana.');
+  const start=$('itemRecurrenceStart').value||todayKey(), end=$('itemRecurrenceEnd').value||null;
+  if (end && end < start) throw new Error('A data final não pode ser anterior ao início.');
+  const assigneeIds=selectedFormAssigneeIdsV37('item'), mode=$('itemResponsibilityMode')?.value||'compartilhada';
+  if (mode==='primeiro_cumprir' && assigneeIds.length<2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
+  const ids=[];
+  for (const time of times) ids.push(await createRecurringSeriesFromFormV381(time));
+  const { error: groupError } = await db.rpc('agrupar_recorrencias_v381',{p_recorrencias:ids,p_horarios:times});
+  if (groupError) throw groupError;
+  await loadRecurringV36(); await loadRecurrenceGroupsV381();
+};
+const fillRecurrenceEditorBeforeUxV381 = fillRecurrenceEditor;
+fillRecurrenceEditor = function fillRecurrenceEditorUxV381(series, options={}) {
+  fillRecurrenceEditorBeforeUxV381(series, options);
+  const rows = series?.id ? recurrenceGroupRowsForSeriesV381(series.id) : [];
+  const primary = String($('recurrenceEditDueTime')?.value || '17:00').slice(0,5);
+  state.recurrenceEditExtraTimesV381 = rows.map(row=>String(row.horario).slice(0,5)).filter(time=>time!==primary);
+  renderEditRecurrenceTimesV381();
+};
+function decorateRecurrenceManagerGroupsV381() {
+  if (!state.recurrenceGroupsReadyV381 || !$('recurrenceManagerList')) return;
+  const groups = new Map();
+  state.recurrenceGroupsV381.forEach(row => { if(!groups.has(row.grupo_id)) groups.set(row.grupo_id,[]); groups.get(row.grupo_id).push(row); });
+  groups.forEach(rows => {
+    if (rows.length < 2) return;
+    rows.sort((a,b)=>Number(a.ordem)-Number(b.ordem));
+    const articles = rows.map(row => [...$('recurrenceManagerList').querySelectorAll('.recurrence-manager-item')].find(article => article.querySelector(`[data-edit-recurrence="${row.recorrencia_id}"]`))).filter(Boolean);
+    if (!articles.length) return;
+    const keep=articles[0]; articles.slice(1).forEach(article=>article.remove());
+    const meta=keep.querySelector('.recurrence-manager-item-meta');
+    if(meta){ const timeSpan=[...meta.querySelectorAll('span')].find(span=>span.querySelector('[data-lucide="clock-3"]')); if(timeSpan) timeSpan.innerHTML=`<i data-lucide="clock-3"></i>${rows.map(row=>String(row.horario).slice(0,5)).join(' · ')}`; }
+    keep.querySelector('.recurrence-manager-item-top')?.insertAdjacentHTML('beforeend',`<span class="recurrence-multi-badge"><i data-lucide="copy-plus"></i>${rows.length}x ao dia</span>`);
+  });
+  refreshIcons();
+}
+
+const renderRecurrenceManagerBeforeUxV381 = renderRecurrenceManagerV36;
+renderRecurrenceManagerV36 = function renderRecurrenceManagerUxV381(){ renderRecurrenceManagerBeforeUxV381(); decorateRecurrenceManagerGroupsV381(); };
+
+
+const toggleRecurrenceSeriesBeforeUxV381 = toggleRecurrenceSeriesV36;
+toggleRecurrenceSeriesV36 = async function toggleRecurrenceSeriesUxV381(id, active) {
+  const rows = recurrenceGroupRowsForSeriesV381(id);
+  if (rows.length <= 1) return toggleRecurrenceSeriesBeforeUxV381(id, active);
+  setLoading(true);
+  try {
+    for (const row of rows) {
+      const { error } = await db.rpc('alternar_demanda_recorrente', { p_id: row.recorrencia_id, p_ativa: active });
+      if (error) throw error;
+    }
+    await refreshData();
+    if (state.selectedTask && rows.some(row => row.recorrencia_id === state.selectedTask.recorrencia_id)) await openTask(state.selectedTask.id);
+    renderRecurrenceManagerV36();
+    toast(active ? 'Rotina retomada em todos os horários.' : 'Rotina pausada em todos os horários.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+};
+
+const endRecurrenceSeriesBeforeUxV381 = endRecurrenceSeriesV36;
+endRecurrenceSeriesV36 = async function endRecurrenceSeriesUxV381(id) {
+  const rows = recurrenceGroupRowsForSeriesV381(id);
+  if (rows.length <= 1) return endRecurrenceSeriesBeforeUxV381(id);
+  if (!confirm(`Encerrar esta rotina e seus ${rows.length} horários? O histórico será preservado.`)) return;
+  setLoading(true);
+  try {
+    for (const row of rows) {
+      const { error } = await db.rpc('encerrar_demanda_recorrente', { p_id: row.recorrencia_id });
+      if (error) throw error;
+    }
+    await refreshData();
+    renderRecurrenceManagerV36();
+    if (state.selectedTask && rows.some(row => row.recorrencia_id === state.selectedTask.recorrencia_id)) await openTask(state.selectedTask.id);
+    toast('Rotina encerrada em todos os horários.');
+  } catch (error) { toast(errorMessage(error), 'error'); }
+  finally { setLoading(false); }
+};
+
+async function updateRecurringSeriesFromEditorV381(seriesId, time) {
+  const responsibilityMode = $('recurrenceEditResponsibilityMode')?.value || 'compartilhada';
+  const assignees = selectedFormAssigneeIdsV37('recurrenceEdit');
+  const { error } = await db.rpc('editar_demanda_recorrente_v1', {
+    p_id: seriesId,
+    p_titulo: $('recurrenceEditTitle').value.trim(),
+    p_descricao: $('recurrenceEditDescription').value.trim() || null,
+    p_prioridade: $('recurrenceEditPriority').value,
+    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assignees[0] || null),
+    p_tags: $('recurrenceEditTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+    p_tamanho: $('recurrenceEditSize').value,
+    p_estimativa_horas: $('recurrenceEditEstimate').value ? Number($('recurrenceEditEstimate').value) : null,
+    p_projeto: $('recurrenceEditProject').value.trim() || null,
+    p_checklist: checklistFromText($('recurrenceEditChecklist').value || ''),
+    p_frequencia: $('recurrenceEditFrequency').value,
+    p_dias_semana: selectedWeekdays('recurrenceEditWeekdays'),
+    p_data_inicio: $('recurrenceEditStart').value,
+    p_data_fim: $('recurrenceEditEnd').value || null,
+    p_horario_prazo: time,
+    p_horario_alerta: time === String($('recurrenceEditDueTime').value || '').slice(0,5)
+      ? ($('recurrenceEditAlertTime').value || '09:00')
+      : time,
+    p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
+  });
+  if (error) throw error;
+  if (state.multiAssigneeReady) {
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+      p_recorrencia_id: seriesId,
+      p_responsaveis: assignees,
+      p_modo: responsibilityMode,
+      p_aplicar_ocorrencias: true
+    });
+    if (assigneeError) throw assigneeError;
+  }
+}
+
+async function createRecurringSeriesFromEditorV381(time) {
+  const responsibilityMode = $('recurrenceEditResponsibilityMode')?.value || 'compartilhada';
+  const assignees = selectedFormAssigneeIdsV37('recurrenceEdit');
+  const priority = $('recurrenceEditPriority').value;
+  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
+    p_titulo: $('recurrenceEditTitle').value.trim(),
+    p_descricao: $('recurrenceEditDescription').value.trim() || null,
+    p_prioridade: priority,
+    p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assignees[0] || null),
+    p_tags: $('recurrenceEditTags').value.split(',').map(tag => tag.trim()).filter(Boolean),
+    p_tamanho: $('recurrenceEditSize').value,
+    p_estimativa_horas: $('recurrenceEditEstimate').value ? Number($('recurrenceEditEstimate').value) : null,
+    p_alerta_para_todos: false,
+    p_projeto: $('recurrenceEditProject').value.trim() || null,
+    p_checklist: checklistFromText($('recurrenceEditChecklist').value || ''),
+    p_dependencias: [],
+    p_frequencia: $('recurrenceEditFrequency').value,
+    p_dias_semana: selectedWeekdays('recurrenceEditWeekdays'),
+    p_data_inicio: $('recurrenceEditStart').value,
+    p_data_fim: $('recurrenceEditEnd').value || null,
+    p_horario_prazo: time,
+    p_horario_alerta: time,
+    p_alerta_diario: Boolean($('recurrenceEditDailyAlert').checked)
+  });
+  if (error) throw error;
+  if (recurringId && state.multiAssigneeReady) {
+    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', {
+      p_recorrencia_id: recurringId,
+      p_responsaveis: assignees,
+      p_modo: responsibilityMode,
+      p_aplicar_ocorrencias: true
+    });
+    if (assigneeError) throw assigneeError;
+  }
+  return recurringId;
+}
+
+async function saveRecurrenceGroupV381(event) {
+  const id = $('recurrenceEditId')?.value;
+  const convertTaskId = $('recurrenceConvertTaskId')?.value;
+  const rows = id ? recurrenceGroupRowsForSeriesV381(id) : [];
+  const times = editRecurrenceTimesV381();
+  const needsMultiHandling = !convertTaskId && Boolean(id) && (rows.length > 1 || times.length > 1);
+  if (!needsMultiHandling) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  if (!state.recurrenceGroupsReadyV381) return toast('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql antes de editar vários horários.', 'error');
+  const frequency = $('recurrenceEditFrequency').value;
+  const weekdays = selectedWeekdays('recurrenceEditWeekdays');
+  const start = $('recurrenceEditStart').value;
+  const end = $('recurrenceEditEnd').value || null;
+  const responsibilityMode = $('recurrenceEditResponsibilityMode')?.value || 'compartilhada';
+  const assignees = selectedFormAssigneeIdsV37('recurrenceEdit');
+  if (['semanal','personalizada'].includes(frequency) && !weekdays.length) return toast('Selecione pelo menos um dia da semana.', 'error');
+  if (!start) return toast('Informe quando a recorrência começa.', 'error');
+  if (end && end < start) return toast('A data final não pode ser anterior ao início.', 'error');
+  if (responsibilityMode === 'primeiro_cumprir' && assignees.length < 2) return toast('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.', 'error');
+
+  setLoading(true);
+  try {
+    const existingIds = rows.length ? rows.map(row => row.recorrencia_id) : [id];
+    const finalIds = [];
+    for (let index = 0; index < times.length; index += 1) {
+      const time = times[index];
+      const seriesId = existingIds[index];
+      if (seriesId) {
+        await updateRecurringSeriesFromEditorV381(seriesId, time);
+        finalIds.push(seriesId);
+      } else {
+        finalIds.push(await createRecurringSeriesFromEditorV381(time));
+      }
+    }
+    for (const obsoleteId of existingIds.slice(times.length)) {
+      const { error } = await db.rpc('encerrar_demanda_recorrente', { p_id: obsoleteId });
+      if (error) throw error;
+    }
+    const { error: groupError } = await db.rpc('agrupar_recorrencias_v381', { p_recorrencias: finalIds, p_horarios: times });
+    if (groupError) throw groupError;
+    closeModal('recurrenceModal');
+    await refreshData();
+    renderRecurrenceManagerV36();
+    toast(times.length > 1 ? `Rotina atualizada com ${times.length} horários por dia.` : 'Rotina atualizada para uma ocorrência por dia.');
+  } catch (error) {
+    toast(errorMessage(error), 'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
+/* ---------- Visões salvas de filtros ---------- */
+function savedTaskViewsKeyV381(){ return `pmg-demandas-saved-views:v381:${state.me?.id||'anon'}`; }
+function loadSavedTaskViewsV381(){ try{return JSON.parse(localStorage.getItem(savedTaskViewsKeyV381())||'[]')||[];}catch{return [];} }
+function saveSavedTaskViewsV381(items){ localStorage.setItem(savedTaskViewsKeyV381(),JSON.stringify(items)); }
+function currentTaskViewConfigV381(){ return {search:$('taskSearch')?.value||'',assignee:$('taskAssigneeFilter')?.value||'',project:$('taskProjectFilter')?.value||'',priority:$('taskPriorityFilter')?.value||'',archive:$('taskArchiveFilter')?.value||'ativas',recurrence:$('taskRecurrenceFilter')?.value||'',view:state.taskView||'board'}; }
+function applyTaskViewConfigV381(cfg){ if(!cfg)return; state.smartFilter=''; if($('taskSearch'))$('taskSearch').value=cfg.search||''; if($('taskAssigneeFilter'))$('taskAssigneeFilter').value=cfg.assignee||''; if($('taskProjectFilter'))$('taskProjectFilter').value=cfg.project||''; if($('taskPriorityFilter'))$('taskPriorityFilter').value=cfg.priority||''; if($('taskArchiveFilter'))$('taskArchiveFilter').value=cfg.archive||'ativas'; if($('taskRecurrenceFilter'))$('taskRecurrenceFilter').value=cfg.recurrence||''; state.taskView=cfg.view||'board'; renderDemandas(); }
+function renderSavedTaskViewsV381(){ const select=$('savedTaskViewSelect');if(!select)return;const current=select.value,items=loadSavedTaskViewsV381();select.innerHTML=`<option value="">Visões salvas</option>${items.map(item=>`<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('')}`;if(items.some(i=>i.id===current))select.value=current;$('deleteTaskViewBtn')?.classList.toggle('hidden',!select.value); }
+function saveCurrentTaskViewV381(){ const name=prompt('Nome desta visão:','Minha fila');if(!name?.trim())return;const items=loadSavedTaskViewsV381(),id=`v${Date.now()}`;items.push({id,name:name.trim().slice(0,60),config:currentTaskViewConfigV381()});saveSavedTaskViewsV381(items);renderSavedTaskViewsV381();$('savedTaskViewSelect').value=id;$('deleteTaskViewBtn')?.classList.remove('hidden');toast('Visão de filtros salva.'); }
+function deleteCurrentTaskViewV381(){const select=$('savedTaskViewSelect');if(!select?.value)return;const items=loadSavedTaskViewsV381().filter(i=>i.id!==select.value);saveSavedTaskViewsV381(items);renderSavedTaskViewsV381();toast('Visão salva removida.');}
+
+/* ---------- Ctrl+K com comandos naturais ---------- */
+function personFromTextV381(text){const q=normalizeTextV381(text);return state.collaborators.find(person=>q.includes(normalizeTextV381(person.nome))||q.includes(normalizeTextV381(firstName(person.nome))));}
+const renderGlobalSearchBeforeUxV381 = renderGlobalSearch;
+renderGlobalSearch = function renderGlobalSearchUxV381(){
+  renderGlobalSearchBeforeUxV381();
+  const raw=$('globalSearchInput')?.value.trim()||'', q=normalizeTextV381(raw); if(!q)return;
+  let command=null;
+  if (/^(nova|criar) demanda\b/.test(q)) {
+    const cleaned=raw.replace(/^(nova|criar)\s+demanda\s*/i,'').trim(); const parsed=parseQuickCapture(cleaned||'Nova demanda'); const person=personFromTextV381(cleaned);
+    state.uxCommandPresetV381={type:'new',title:parsed.title,date:parsed.date,time:parsed.time,assigneeId:person?.id||null};
+    command=commandResultHTML('ux-new-task','wand-sparkles',`Criar: ${parsed.title}`,[parsed.date,parsed.time,person?.nome].filter(Boolean).join(' · '));
+  } else if (/^demandas? (do|da|de)\b/.test(q)) {
+    const person=personFromTextV381(raw); if(person){state.uxCommandPresetV381={type:'person',personId:person.id};command=commandResultHTML('ux-person-tasks','user-round-search',`Demandas de ${person.nome}`,'Filtra toda a fila desta pessoa');}
+  } else if (q.includes('minha mesa')) command=commandResultHTML('ux-desk','layout-list','Abrir Minha Mesa','Agora · Depois · Aguardando · Concluído hoje');
+  else if (q.includes('aguardando revisao')||q.includes('para validar')) command=commandResultHTML('ux-review','badge-check','Entregas para validar','Abre as demandas aguardando decisão');
+  if(command)$('globalSearchResults')?.insertAdjacentHTML('afterbegin',`<div class="search-group-label">Entendi seu comando</div>${command}`);refreshIcons();
+};
+const runSearchCommandBeforeUxV381 = runSearchCommand;
+runSearchCommand = function runSearchCommandUxV381(command){
+  if(command==='ux-desk'){closeSearch();return switchView('mesa');}
+  if(command==='ux-review'){closeSearch();return switchView('mesa');}
+  if(command==='ux-person-tasks'){const p=state.uxCommandPresetV381;closeSearch();if(!p?.personId)return;state.smartFilter='';switchView('demandas');$('taskAssigneeFilter').value=p.personId;renderDemandas();return;}
+  if(command==='ux-new-task'){const p=state.uxCommandPresetV381;closeSearch();return openQuickAdd('demanda',{title:p?.title||'',date:p?.date,time:p?.time,assigneeId:p?.assigneeId});}
+  return runSearchCommandBeforeUxV381(command);
+};
+
+/* ---------- @menções em comentários ---------- */
+function mentionedPeopleV381(text){
+  const tokens=[...String(text||'').matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ]+)/g)].map(m=>normalizeTextV381(m[1]));
+  return state.collaborators.filter(person=>tokens.includes(normalizeTextV381(firstName(person.nome))));
+}
+function injectMentionSuggestionsV381(){
+  const form=$('drawerCommentForm');if(!form||form.querySelector('.mention-suggestions-v381'))return;
+  form.insertAdjacentHTML('afterend','<div id="mentionSuggestionsV381" class="mention-suggestions-v381 hidden"></div>');
+  $('drawerCommentText')?.addEventListener('input',event=>renderMentionSuggestionsV381(event.target.value));
+}
+function renderMentionSuggestionsV381(text){
+  const box=$('mentionSuggestionsV381');if(!box)return;const match=String(text||'').match(/(?:^|\s)@([A-Za-zÀ-ÖØ-öø-ÿ]*)$/);if(!match){box.classList.add('hidden');box.innerHTML='';return;}
+  const q=normalizeTextV381(match[1]);const people=state.collaborators.filter(p=>!q||normalizeTextV381(p.nome).includes(q)).slice(0,6);
+  box.innerHTML=people.map(p=>`<button type="button" data-mention-person="${p.id}">${avatarHTML(p,'xs')}<span><strong>${escapeHtml(p.nome)}</strong><small>${escapeHtml(p.cargo||'Marketing')}</small></span></button>`).join('');box.classList.toggle('hidden',!people.length);refreshIcons();
+}
+const addCommentBeforeUxV381 = addComment;
+addComment = async function addCommentUxV381(event){
+  event.preventDefault();const text=$('drawerCommentText')?.value.trim();if(!text)return;
+  const people=mentionedPeopleV381(text);
+  if(!people.length)return addCommentBeforeUxV381(event);
+  try{
+    const {error}=await db.rpc('adicionar_comentario_com_mencoes_v381',{p_tarefa_id:state.selectedTask.id,p_texto:text,p_mencionados:people.map(p=>p.id)});
+    if(error)throw error;await openTask(state.selectedTask.id);await dispatchPendingPush();toast(`Comentário adicionado · ${people.length} menção${people.length===1?'':'ões'}.`);
+  }catch(error){
+    if(/adicionar_comentario_com_mencoes_v381|schema cache|does not exist/i.test(String(error?.message||error))) return addCommentBeforeUxV381(event);
+    toast(errorMessage(error),'error');
+  }
+};
+
+document.addEventListener('click',event=>{
+  const mention=event.target.closest('[data-mention-person]');if(!mention)return;
+  event.preventDefault();const person=collaborator(mention.dataset.mentionPerson),input=$('drawerCommentText');if(!person||!input)return;
+  input.value=input.value.replace(/@([A-Za-zÀ-ÖØ-öø-ÿ]*)$/,`@${firstName(person.nome)} `);input.focus();renderMentionSuggestionsV381(input.value);
+});
+
+/* ---------- Anexos ---------- */
+async function loadTaskAttachmentsV381(taskId){
+  try{const {data,error}=await db.from('tarefa_anexos').select('*').eq('tarefa_id',taskId).order('criado_em',{ascending:false});if(error)throw error;state.taskAttachmentsV381=data||[];state.attachmentsReadyV381=true;}
+  catch(error){state.taskAttachmentsV381=[];state.attachmentsReadyV381=false;if(!/tarefa_anexos|PGRST205|42P01|does not exist|schema cache/i.test(String(error?.message||error)))console.warn('[anexos demandas]',error);}
+}
+function fileSizeLabelV381(bytes){const n=Number(bytes||0);if(!n)return'';if(n<1024)return`${n} B`;if(n<1048576)return`${(n/1024).toFixed(1).replace('.',',')} KB`;return`${(n/1048576).toFixed(1).replace('.',',')} MB`;}
+function injectAttachmentPanelV381(){
+  const root=$('taskDrawerContent'),task=state.selectedTask;if(!root||!task||root.querySelector('.task-attachments-v381'))return;
+  const firstDetail=root.querySelector('.detail-section');
+  const section=document.createElement('section');section.className='detail-section task-attachments-v381';
+  const rows=state.taskAttachmentsV381||[];
+  section.innerHTML=`<div class="detail-section-head"><h3>Anexos</h3><span>${rows.length}</span></div><div class="task-attachment-list">${rows.length?rows.map(item=>`<button type="button" class="task-attachment" data-open-attachment-v381="${item.id}"><span><i data-lucide="paperclip"></i></span><div><strong>${escapeHtml(item.nome)}</strong><small>${escapeHtml([item.mime_type,fileSizeLabelV381(item.tamanho_bytes),relativeTime(item.criado_em)].filter(Boolean).join(' · '))}</small></div><i data-lucide="external-link"></i></button>`).join(''):`<div class="attachment-empty"><i data-lucide="paperclip"></i><span>${state.attachmentsReadyV381?'Nenhum arquivo anexado.':'Execute o SQL V3.8.1 para ativar anexos.'}</span></div>`}</div>${!task.arquivada_em&&state.attachmentsReadyV381?`<label class="attachment-upload-btn"><input id="taskAttachmentInputV381" type="file" hidden><i data-lucide="upload-cloud"></i><span><strong>Anexar arquivo</strong><small>PDF, imagem, planilha, PPTX ou outro material · até 25 MB</small></span></label>`:''}`;
+  root.insertBefore(section,firstDetail||null);$('taskAttachmentInputV381')?.addEventListener('change',uploadTaskAttachmentV381);refreshIcons();
+}
+const openTaskBeforeUxV381 = openTask;
+openTask = async function openTaskUxV381(taskId){await loadTaskAttachmentsV381(taskId);return openTaskBeforeUxV381(taskId);};
+const renderTaskDrawerBeforeUxV381 = renderTaskDrawer;
+renderTaskDrawer = function renderTaskDrawerUxV381(){
+  renderTaskDrawerBeforeUxV381();injectAttachmentPanelV381();injectMentionSuggestionsV381();
+  const task=state.selectedTask;if(task&&!taskIsFirstToCompleteV371(task)){
+    const count=taskAssigneeIds(task).length,section=$('taskDrawerContent')?.querySelector('.task-assignee-section');
+    const eyebrow=section?.querySelector('.task-section-heading .eyebrow'),title=section?.querySelector('.task-section-heading h3');
+    if(eyebrow)eyebrow.textContent=count>1?'Trabalho em conjunto':'Responsabilidade';if(title)title.textContent=count>1?'Quem participa desta entrega':'Responsável pela execução';
+  }
+  refreshIcons();
+};
+async function uploadTaskAttachmentV381(event){
+  const file=event.target.files?.[0],task=state.selectedTask;if(!file||!task)return;if(file.size>25*1024*1024){event.target.value='';return toast('O arquivo precisa ter no máximo 25 MB.','error');}
+  const safe=file.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/-+/g,'-');const path=`${task.id}/${Date.now()}-${safe}`;
+  setLoading(true);try{const {error:uploadError}=await db.storage.from('demandas-anexos').upload(path,file,{upsert:false,contentType:file.type||undefined});if(uploadError)throw uploadError;const {error}=await db.rpc('registrar_anexo_demanda_v381',{p_tarefa_id:task.id,p_nome:file.name,p_caminho:path,p_mime_type:file.type||null,p_tamanho_bytes:file.size});if(error){await db.storage.from('demandas-anexos').remove([path]);throw error;}await openTask(task.id);toast('Arquivo anexado à demanda.');}catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}
+}
+async function openTaskAttachmentV381(id){const item=(state.taskAttachmentsV381||[]).find(row=>row.id===id);if(!item)return;const {data,error}=await db.storage.from('demandas-anexos').createSignedUrl(item.caminho,600);if(error)return toast(errorMessage(error),'error');window.open(data.signedUrl,'_blank','noopener,noreferrer');}
+document.addEventListener('click',event=>{const item=event.target.closest('[data-open-attachment-v381]');if(item){event.preventDefault();openTaskAttachmentV381(item.dataset.openAttachmentV381);}});
+
+/* ---------- Autoria: 1 encerra; 2+ confirmam ---------- */
+const submitTaskEvaluationBeforeUxV381 = submitTaskEvaluation;
+submitTaskEvaluation = async function submitTaskEvaluationUxV381(approved){
+  if(!approved)return submitTaskEvaluationBeforeUxV381(false);
+  const taskId=$('evaluationTaskId').value,note=$('evaluationNote').value.trim();
+  if(!state.authorshipReady)return toast('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql antes de aprovar novas conclusões.','error');
+  const executors=uniqueIdsV37(state.evaluationExecutorIds);if(!executors.length)return toast('Selecione pelo menos uma pessoa que realizou a demanda.','error');
+  setLoading(true);try{
+    const {data,error}=await db.rpc('solicitar_confirmacao_autoria_v1',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});if(error)throw error;
+    closeModal('taskEvaluationModal');await refreshData();await dispatchPendingPush();if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);
+    if(data?.confirmacao_necessaria||executors.length>1)toast(`Entrega validada. ${executors.length} participantes precisam confirmar a autoria.`);
+    else toast('Entrega validada e concluída. Autoria individual registrada sem confirmação extra.');
+  }catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}
+};
+const evaluationPanelHTMLBeforeUxV381 = evaluationPanelHTMLV372;
+evaluationPanelHTMLV372 = function evaluationPanelHTMLUxV381(task,evaluator){
+  return evaluationPanelHTMLBeforeUxV381(task,evaluator)
+    .replace('Confira o resultado e registre quem realmente realizou a entrega. Os executores confirmarão a autoria antes do encerramento.','Confira o resultado e registre quem realizou a entrega. Uma pessoa encerra direto; em trabalho compartilhado, o grupo confirma os participantes.')
+    .replace('Validar e atribuir autoria','Validar entrega')
+    .replace('O gestor registrou quem realizou a entrega. Confira os nomes para a demanda poder ser encerrada.','A entrega foi validada em conjunto. Confira os participantes para que o grupo possa encerrar a demanda.');
+};
+
+/* ---------- Binding V3.8.1 ---------- */
+function bindUxV381Events(){
+  $('globalSearchInput')?.addEventListener('input', debounce(() => renderGlobalSearch(), 140));
+  $('recurrenceForm')?.addEventListener('submit', saveRecurrenceGroupV381, true);
+  $('toggleTaskAdvancedBtn')?.addEventListener('click',()=>setTaskAdvancedV381(!$('quickAddModal')?.classList.contains('show-task-advanced')));
+  $('itemAddRecurrenceTimeBtn')?.addEventListener('click',()=>{state.recurrenceExtraTimesV381.push(nextSuggestedTimeV381(createRecurrenceTimesV381()));renderCreateRecurrenceTimesV381();});
+  $('recurrenceEditAddTimeBtn')?.addEventListener('click',()=>{state.recurrenceEditExtraTimesV381.push(nextSuggestedTimeV381(editRecurrenceTimesV381()));renderEditRecurrenceTimesV381();});
+  $('itemDueTime')?.addEventListener('change',renderCreateRecurrenceTimesV381);
+  $('recurrenceEditDueTime')?.addEventListener('change',renderEditRecurrenceTimesV381);
+  $('saveTaskViewBtn')?.addEventListener('click',saveCurrentTaskViewV381);
+  $('deleteTaskViewBtn')?.addEventListener('click',deleteCurrentTaskViewV381);
+  $('savedTaskViewSelect')?.addEventListener('change',event=>{const item=loadSavedTaskViewsV381().find(row=>row.id===event.target.value);$('deleteTaskViewBtn')?.classList.toggle('hidden',!event.target.value);if(item)applyTaskViewConfigV381(item.config);});
+  $('deskRefreshBtn')?.addEventListener('click',async()=>{setLoading(true);try{await refreshData();toast('Minha Mesa atualizada.');}finally{setLoading(false);}});
+  $('deskNewBtn')?.addEventListener('click',()=>openQuickAdd('demanda'));
+  document.addEventListener('change',event=>{if(event.target.matches('[data-recurrence-extra-time]')){state.recurrenceExtraTimesV381[Number(event.target.dataset.recurrenceExtraTime)]=event.target.value;renderCreateRecurrenceTimesV381();}if(event.target.matches('[data-recurrence-edit-extra-time]')){state.recurrenceEditExtraTimesV381[Number(event.target.dataset.recurrenceEditExtraTime)]=event.target.value;renderEditRecurrenceTimesV381();}});
+  document.addEventListener('click',event=>{const remove=event.target.closest('[data-remove-recurrence-time]');if(remove){state.recurrenceExtraTimesV381.splice(Number(remove.dataset.removeRecurrenceTime),1);renderCreateRecurrenceTimesV381();return;}const removeEdit=event.target.closest('[data-remove-recurrence-edit-time]');if(removeEdit){state.recurrenceEditExtraTimesV381.splice(Number(removeEdit.dataset.removeRecurrenceEditTime),1);renderEditRecurrenceTimesV381();}});
+}
+bindUxV381Events();

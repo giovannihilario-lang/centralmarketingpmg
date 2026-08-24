@@ -76,6 +76,7 @@
       <nav class="side-nav" aria-label="Navegação principal">
         <span class="nav-group">Organização</span>
         <button class="nav-item active" data-view="hoje"><i data-lucide="sun"></i><span>Hoje</span><b id="navTodayCount" class="nav-badge hidden">0</b></button>
+        <button class="nav-item" data-view="mesa"><i data-lucide="layout-list"></i><span>Minha Mesa</span><b id="navDeskCount" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="agenda"><i data-lucide="calendar-days"></i><span>Agenda</span></button>
         <button class="nav-item" data-view="academia"><i data-lucide="presentation"></i><span>Academia PMG</span><b id="navAcademyPending" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="demandas"><i data-lucide="layout-dashboard"></i><span>Demandas</span><b id="navTaskCount" class="nav-badge">0</b></button>
@@ -218,6 +219,14 @@
             <button class="metric-card blue" data-smart-filter="minhas"><span class="metric-icon"><i data-lucide="circle-user-round"></i></span><span><strong id="metricMine">0</strong><small>Minhas demandas</small></span><i data-lucide="chevron-right"></i></button>
           </div>
 
+          <section class="action-inbox card" aria-labelledby="actionInboxTitle">
+            <div class="section-header action-inbox-head">
+              <div><span class="eyebrow">Precisa da sua ação</span><h3 id="actionInboxTitle">Resolva o que está travando o fluxo</h3><p>Só entram aqui itens que exigem uma decisão ou ação sua. Nada de transformar atualização banal em sirene.</p></div>
+              <span id="actionInboxCount" class="soft-count">0 ações</span>
+            </div>
+            <div id="actionInboxList" class="action-inbox-list"></div>
+          </section>
+
           <section class="smart-day card" aria-labelledby="smartDayTitle">
             <div class="section-header smart-day-head">
               <div><span class="eyebrow">Meu Dia inteligente</span><h3 id="smartDayTitle">O que merece atenção, na ordem certa</h3><p>O Connect separa automaticamente urgências, hoje, próximos dias e o que pode esperar.</p></div>
@@ -241,6 +250,20 @@
               <div class="section-header"><div><span class="eyebrow">Equipe</span><h3>Movimentações recentes</h3></div><button class="text-action" data-goto="equipe">Ver equipe</button></div>
               <div id="activityFeed" class="activity-feed"></div>
             </section>
+          </div>
+        </section>
+
+        <section id="viewMesa" class="view" data-page="mesa">
+          <div class="page-toolbar desk-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Execução sem ruído</span><h2>Minha Mesa</h2><p>O que fazer agora, o que vem depois e o que está parado esperando alguém. Sem caça ao card.</p></div>
+            <div class="toolbar-actions"><button id="deskRefreshBtn" class="btn secondary" type="button"><i data-lucide="refresh-cw"></i>Atualizar</button><button id="deskNewBtn" class="btn primary manager-only hidden" type="button"><i data-lucide="plus"></i>Nova demanda</button></div>
+          </div>
+          <div id="deskSummary" class="desk-summary"></div>
+          <div class="desk-board">
+            <section class="desk-column now"><div class="desk-column-head"><span><i data-lucide="zap"></i></span><div><strong>Agora</strong><small>Urgente, atrasada ou para hoje</small></div><b id="deskNowCount">0</b></div><div id="deskNow" class="desk-list"></div></section>
+            <section class="desk-column next"><div class="desk-column-head"><span><i data-lucide="list-todo"></i></span><div><strong>Depois</strong><small>Próximas entregas da sua fila</small></div><b id="deskNextCount">0</b></div><div id="deskNext" class="desk-list"></div></section>
+            <section class="desk-column waiting"><div class="desk-column-head"><span><i data-lucide="hourglass"></i></span><div><strong>Aguardando alguém</strong><small>Revisão, dependência ou confirmação</small></div><b id="deskWaitingCount">0</b></div><div id="deskWaiting" class="desk-list"></div></section>
+            <section class="desk-column done"><div class="desk-column-head"><span><i data-lucide="circle-check-big"></i></span><div><strong>Concluído hoje</strong><small>Seu progresso no dia</small></div><b id="deskDoneCount">0</b></div><div id="deskDone" class="desk-list"></div></section>
           </div>
         </section>
 
@@ -297,7 +320,6 @@
             <button type="button" class="academy-section-tab active" data-academy-tab="calendar" role="tab" aria-selected="true"><i data-lucide="calendar-days"></i><span><strong>Calendário</strong><small>Disponibilidade e ocupações</small></span></button>
             <button type="button" class="academy-section-tab" data-academy-tab="trainings" role="tab" aria-selected="false"><i data-lucide="presentation"></i><span><strong>Treinamentos</strong><small>Cadastrar e gerenciar</small></span><b id="academyTrainingTabCount" class="academy-tab-count">0</b></button>
             <button type="button" class="academy-section-tab" data-academy-tab="requests" role="tab" aria-selected="false"><i data-lucide="inbox"></i><span><strong>Solicitações</strong><small>Pedidos do Forms</small></span><b id="academyRequestTabCount" class="academy-tab-count">0</b></button>
-            <button type="button" class="academy-section-tab" data-academy-tab="attendance" role="tab" aria-selected="false"><i data-lucide="clipboard-check"></i><span><strong>Inscrições e Presenças</strong><small>Treinamentos e bônus</small></span><b id="academyAttendanceTabCount" class="academy-tab-count">0</b></button>
           </nav>
 
           <div id="academyPanelCalendar" class="academy-tab-panel">
@@ -359,50 +381,6 @@
               <div id="academyPendingList" class="academy-pending-list"></div>
             </section>
           </div>
-
-
-          <div id="academyPanelAttendance" class="academy-tab-panel hidden">
-            <section class="academy-attendance-hub card">
-              <div class="academy-attendance-hub-copy">
-                <span class="eyebrow">Treinamentos comerciais</span>
-                <h3>Inscrições, presença e bônus de crescimento</h3>
-                <p>Este fluxo é independente das reservas da Academia. Novas inscrições do Forms entram automaticamente; arquivos antigos podem ser importados uma única vez para compor o histórico.</p>
-                <div class="academy-training-rules">
-                  <span><i data-lucide="badge-plus"></i> +10% por presença</span>
-                  <span><i data-lucide="shield-check"></i> Máximo de 30%</span>
-                  <span><i data-lucide="database"></i> Representantes do Campanhas</span>
-                  <span><i data-lucide="radio"></i> Inscrições automáticas</span>
-                  <span><i data-lucide="file-spreadsheet"></i> Exportação XLSX</span>
-                </div>
-              </div>
-              <div class="academy-attendance-actions">
-                <button id="academyRegistrationFormsBtn" type="button" class="btn secondary"><i data-lucide="external-link"></i>Abrir Forms de inscrição</button>
-                <button id="academyRegistrationCopyBtn" type="button" class="btn secondary"><i data-lucide="copy"></i>Copiar link</button>
-                <button id="academyRegistrationRefreshBtn" type="button" class="btn training"><i data-lucide="refresh-cw"></i>Sincronizar agora</button>
-                <button id="academyRegistrationImportBtn" type="button" class="btn secondary academy-manager-only"><i data-lucide="history"></i>Importar histórico</button>
-                <button id="academyRepresentativesSyncBtn" type="button" class="btn secondary"><i data-lucide="database"></i>Atualizar representantes</button>
-                <button id="academyAttendanceExportBtn" type="button" class="btn primary"><i data-lucide="file-down"></i>Exportar Excel</button>
-              </div>
-            </section>
-
-            <div id="academyAttendanceSetupNotice" class="academy-setup-notice hidden"></div>
-            <div id="academyRegistrationAutoStatus" class="academy-auto-sync-status"></div>
-            <div id="academyAttendanceSummary" class="academy-attendance-summary"></div>
-
-            <section class="academy-attendance-manager card">
-              <div class="section-header academy-attendance-header">
-                <div><span class="eyebrow">Controle de participação</span><h3>Participantes dos treinamentos</h3><p>O bônus considera treinamentos distintos com presença confirmada. Três ou mais presenças ficam travadas em 30%.</p></div>
-                <span id="academyRepresentativesStatus" class="soft-count">Representantes não carregados</span>
-              </div>
-              <div class="academy-attendance-filters">
-                <label class="field"><span>Treinamento</span><select id="academyAttendanceTrainingFilter"><option value="">Todos os treinamentos</option></select></label>
-                <label class="field"><span>Buscar participante</span><div class="search-input"><i data-lucide="search"></i><input id="academyAttendanceSearch" placeholder="Nome, código ou representante"></div></label>
-                <label class="field"><span>Presença</span><select id="academyAttendancePresenceFilter"><option value="">Todos</option><option value="present">Presentes</option><option value="absent">Não confirmados</option></select></label>
-                <label class="field"><span>Vínculo SQL</span><select id="academyAttendanceMatchFilter"><option value="">Todos</option><option value="matched">Vinculados</option><option value="pending">Pendentes</option></select></label>
-              </div>
-              <div id="academyAttendanceTable" class="academy-attendance-table"></div>
-            </section>
-          </div>
         </section>
 
         <section id="viewDemandas" class="view" data-page="demandas">
@@ -418,6 +396,7 @@
             <select id="taskPriorityFilter"><option value="">Todas as prioridades</option><option value="imediata">Imediata</option><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
             <select id="taskArchiveFilter"><option value="ativas">Ativas</option><option value="arquivadas">Arquivadas</option><option value="todas">Todas</option></select>
             <select id="taskRecurrenceFilter" aria-label="Filtrar recorrência"><option value="">Todas</option><option value="recorrentes">Recorrentes</option><option value="nao_recorrentes">Não recorrentes</option></select>
+            <div class="saved-view-control"><select id="savedTaskViewSelect" aria-label="Visões salvas"><option value="">Visões salvas</option></select><button id="saveTaskViewBtn" type="button" class="icon-btn subtle" title="Salvar filtros atuais"><i data-lucide="bookmark-plus"></i></button><button id="deleteTaskViewBtn" type="button" class="icon-btn subtle hidden" title="Excluir visão salva"><i data-lucide="bookmark-x"></i></button></div>
             <div class="segmented" id="taskViewToggle"><button class="active" data-task-view="board" title="Quadro"><i data-lucide="columns-3"></i></button><button data-task-view="list" title="Lista"><i data-lucide="list"></i></button></div>
           </section>
 
@@ -643,15 +622,23 @@
               </div>
             </section>
 
-            <section class="task-config-section compact-config-section">
-              <div class="task-config-heading"><div><span class="eyebrow">Prazo e contexto</span><h3>Quando precisa acontecer</h3></div></div>
-              <div class="form-grid three">
+            <section class="task-config-section compact-config-section essential-task-deadline">
+              <div class="task-config-heading"><div><span class="eyebrow">Quando</span><h3>Defina o prazo da entrega</h3></div></div>
+              <div class="form-grid two">
                 <label class="field"><span>Prazo</span><input id="itemDueDate" type="date"></label>
                 <label class="field"><span>Horário</span><input id="itemDueTime" type="time" value="17:00"></label>
+              </div>
+            </section>
+
+            <button id="toggleTaskAdvancedBtn" class="task-advanced-toggle" type="button" aria-expanded="false"><span><i data-lucide="sliders-horizontal"></i><strong>Mais opções</strong><small>Projeto, checklist, dependências, estimativa, lembretes, tags e recorrência</small></span><i data-lucide="chevron-down"></i></button>
+
+            <section class="task-config-section compact-config-section task-advanced-section">
+              <div class="task-config-heading"><div><span class="eyebrow">Contexto opcional</span><h3>Detalhes para demandas mais complexas</h3></div></div>
+              <div class="form-grid two">
+                <label class="field"><span>Projeto <em>opcional</em></span><input id="itemProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
                 <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="itemEstimate" type="number" min="0" step="0.5" placeholder="2"><span>horas</span></div></label>
               </div>
-              <div class="form-grid three">
-                <label class="field"><span>Projeto <em>opcional</em></span><input id="itemProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
+              <div class="form-grid two">
                 <label class="field"><span>Lembrar</span><select id="itemReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
                 <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
               </div>
@@ -662,14 +649,14 @@
               </div>
             </section>
 
-            <section class="task-config-section task-recurrence-builder">
+            <section class="task-config-section task-recurrence-builder task-advanced-section">
               <label class="recurrence-master-toggle">
                 <span class="recurrence-master-icon"><i data-lucide="repeat-2"></i></span>
                 <span class="recurrence-master-copy"><strong>Demanda recorrente</strong><small>Crie uma rotina que volta sozinha nos dias escolhidos, com histórico por ocorrência.</small></span>
                 <input id="itemRecurringEnabled" type="checkbox">
               </label>
               <div id="itemRecurrenceFields" class="recurrence-fields hidden">
-                <div class="recurrence-explainer"><i data-lucide="sparkles"></i><div><strong>Uma ou várias ocorrências por dia</strong><p>Por padrão a rotina acontece uma vez em cada dia válido. Ative vários horários quando a mesma demanda precisar voltar mais de uma vez no mesmo dia.</p></div></div>
+                <div class="recurrence-explainer"><i data-lucide="sparkles"></i><div><strong>Uma ou várias ocorrências no mesmo dia</strong><p>Você pode repetir a rotina em vários horários. Cada horário vira uma ocorrência independente, com histórico próprio.</p></div></div>
                 <div class="form-grid three">
                   <label class="field"><span>Repetir</span><select id="itemRecurrenceFrequency"><option value="dias_uteis" selected>Dias úteis</option><option value="diaria">Todos os dias</option><option value="semanal">Semanal</option><option value="personalizada">Dias específicos</option><option value="mensal">Mensal</option></select></label>
                   <label class="field"><span>Começa em</span><input id="itemRecurrenceStart" type="date"></label>
@@ -682,17 +669,11 @@
                   <label class="field"><span>Horário do popup diário</span><input id="itemRecurrenceAlertTime" type="time" value="09:00"></label>
                   <label class="recurrence-alert-toggle"><input id="itemRecurrenceDailyAlert" type="checkbox" checked><span><strong>Popup + som diariamente</strong><small>O responsável recebe um alerta importante no horário programado.</small></span></label>
                 </div>
-                <label class="recurrence-multi-toggle">
-                  <span class="recurrence-multi-icon"><i data-lucide="clock-4"></i></span>
-                  <span><strong>Mais de uma vez por dia</strong><small>Adicione outros horários para a mesma rotina voltar novamente no mesmo dia.</small></span>
-                  <input id="itemRecurrenceMultiDaily" type="checkbox">
-                </label>
-                <div id="itemRecurrenceMultiFields" class="recurrence-multi-fields hidden">
-                  <div class="recurrence-multi-head"><div><strong>Horários adicionais</strong><small>O primeiro horário continua sendo o campo <b>Horário</b> acima. Cada linha abaixo cria outra ocorrência no mesmo dia.</small></div><button id="itemRecurrenceAddTime" type="button" class="btn soft recurrence-add-time"><i data-lucide="plus"></i>Adicionar horário</button></div>
-                  <div id="itemRecurrenceExtraTimes" class="recurrence-extra-times"></div>
-                  <div class="recurrence-multi-note"><i data-lucide="info"></i><span>Você pode usar até 8 horários por dia. Cada ocorrência é concluída separadamente e mantém o mesmo responsável, prioridade, briefing e dias da semana.</span></div>
-                </div>
-                <div class="recurrence-note"><i data-lucide="info"></i><span>O horário de conclusão/prazo da primeira ocorrência continua sendo o campo <strong>Horário</strong> acima. Em demandas recorrentes, o campo de data de prazo é substituído pela agenda da série.</span></div>
+                <section class="recurrence-multi-times">
+                  <div class="recurrence-multi-times-head"><div><strong>Horários das ocorrências</strong><small>Para repetir mais de uma vez no mesmo dia, adicione outros horários.</small></div><button id="itemAddRecurrenceTimeBtn" type="button" class="btn soft"><i data-lucide="plus"></i>Adicionar horário</button></div>
+                  <div id="itemRecurrenceTimesList" class="recurrence-time-list"></div>
+                </section>
+                <div class="recurrence-note"><i data-lucide="info"></i><span>O horário de conclusão/prazo de cada ocorrência continua sendo o campo <strong>Horário</strong> acima. Em demandas recorrentes, o campo de data de prazo é substituído pela agenda da série.</span></div>
               </div>
             </section>
           </div>
@@ -770,6 +751,10 @@
             <label class="field"><span>Popup diário</span><input id="recurrenceEditAlertTime" type="time" required></label>
             <label class="recurrence-alert-toggle compact"><input id="recurrenceEditDailyAlert" type="checkbox"><span><strong>Popup + som</strong><small>Alertar a cada ocorrência.</small></span></label>
           </div>
+          <section class="recurrence-multi-times editor">
+            <div class="recurrence-multi-times-head"><div><strong>Outros horários no mesmo dia</strong><small>Séries agrupadas aparecem como uma única rotina operacional.</small></div><button id="recurrenceEditAddTimeBtn" type="button" class="btn soft"><i data-lucide="plus"></i>Adicionar horário</button></div>
+            <div id="recurrenceEditTimesList" class="recurrence-time-list"></div>
+          </section>
         </div>
         <div class="modal-footer recurrence-modal-footer"><button id="recurrencePauseBtn" type="button" class="btn secondary"><i data-lucide="pause"></i>Pausar</button><button id="recurrenceEndBtn" type="button" class="btn danger-soft"><i data-lucide="square"></i>Encerrar série</button><span class="modal-footer-spacer"></span><button type="button" class="btn secondary" data-close-modal="recurrenceModal">Cancelar</button><button type="submit" class="btn primary"><i data-lucide="save"></i>Salvar série</button></div>
       </form>
@@ -1037,7 +1022,7 @@
 
   <div id="taskEvaluationModal" class="modal-layer hidden">
     <div class="modal-card evaluation-modal authorship-evaluation-modal">
-      <div class="modal-head"><div><span class="eyebrow">Validação do gestor</span><h2>Avaliar conclusão</h2><p>Valide a entrega e registre quem realmente realizou o trabalho.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
+      <div class="modal-head"><div><span class="eyebrow">Validação da entrega</span><h2>Avaliar conclusão</h2><p>Valide o resultado e registre quem realmente executou a demanda.</p></div><button class="icon-btn subtle" data-close-modal="taskEvaluationModal"><i data-lucide="x"></i></button></div>
       <form id="taskEvaluationForm">
         <input id="evaluationTaskId" type="hidden">
         <div class="modal-body">
@@ -1059,7 +1044,7 @@
             <div id="evaluationExecutorList" class="evaluation-executor-list"></div>
             <div class="evaluation-authorship-info">
               <i data-lucide="shield-check"></i>
-              <span>O gestor propõe a autoria. Apenas executores com papel de gestor recebem o popup de confirmação. Colaboradores escolhidos entram na autoria sem precisar responder.</span>
+              <span>Uma pessoa encerra direto após a validação. Se duas ou mais pessoas participaram, todos os executores selecionados confirmam a autoria antes do encerramento.</span>
             </div>
           </section>
 
@@ -1067,7 +1052,7 @@
 
           <div class="evaluation-choice-grid">
             <button id="evaluationRejectBtn" type="button" class="evaluation-choice reject"><i data-lucide="undo-2"></i><span><strong>Devolver para ajustes</strong><small>Volta para Em andamento e cancela qualquer confirmação de autoria pendente.</small></span></button>
-            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="users-round"></i><span><strong>Validar e pedir confirmação</strong><small>Envia um popup para cada executor selecionado confirmar a autoria.</small></span></button>
+            <button id="evaluationApproveBtn" type="button" class="evaluation-choice approve"><i data-lucide="users-round"></i><span><strong>Validar entrega</strong><small>Com um executor, encerra agora. Com dois ou mais, inicia a confirmação coletiva.</small></span></button>
           </div>
         </div>
       </form>
@@ -1078,14 +1063,14 @@
     <div class="modal-card authorship-confirmation-modal">
       <div class="authorship-confirmation-accent"></div>
       <div class="modal-head">
-        <div><span class="eyebrow">Confirmação de autoria</span><h2 id="authorshipConfirmationTitle">Você participou desta entrega?</h2><p>O gestor validou a demanda e registrou os executores abaixo.</p></div>
+        <div><span class="eyebrow">Entrega compartilhada</span><h2 id="authorshipConfirmationTitle">Confirme quem participou desta entrega</h2><p>A entrega foi validada e, por ter mais de um executor, precisa da confirmação do grupo.</p></div>
       </div>
       <div class="modal-body">
         <input id="authorshipConfirmationReviewId" type="hidden">
         <div id="authorshipConfirmationTask" class="authorship-confirmation-task"></div>
 
         <section class="authorship-confirmation-executors">
-          <div class="authorship-confirmation-section-title"><span><i data-lucide="users-round"></i>Executores registrados pelo gestor</span><strong id="authorshipConfirmationCount">0 pessoas</strong></div>
+          <div class="authorship-confirmation-section-title"><span><i data-lucide="users-round"></i>Participantes registrados na entrega</span><strong id="authorshipConfirmationCount">0 pessoas</strong></div>
           <div id="authorshipConfirmationPeople" class="authorship-confirmation-people"></div>
         </section>
 
@@ -1197,23 +1182,6 @@
         <div id="academyImportPreview" class="academy-import-preview"></div>
       </div>
       <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyImportModal">Cancelar</button><button id="academyImportConfirmBtn" class="btn primary" type="button" disabled><i data-lucide="upload"></i>Importar solicitações</button></div>
-    </div>
-  </div>
-
-
-  <div id="academyRegistrationImportModal" class="modal-layer hidden">
-    <div class="modal-card academy-import-modal">
-      <div class="modal-head"><div><span class="eyebrow">Histórico de treinamentos</span><h2>Importar inscrições antigas</h2><p>Use XLSX/CSV de Forms antigos. As novas respostas do Forms atual entram pelo conector automático e este fluxo não altera reservas ou solicitações.</p></div><button class="icon-btn subtle" data-close-modal="academyRegistrationImportModal"><i data-lucide="x"></i></button></div>
-      <div class="modal-body">
-        <div class="academy-registration-import-target">
-          <label class="field"><span>Treinamento deste arquivo</span><select id="academyRegistrationTraining"><option value="">Sem vínculo definido</option></select></label>
-          <div class="settings-note"><i data-lucide="circle-help"></i><span>Selecione o treinamento cadastrado na Academia. Se deixar sem vínculo, a inscrição poderá ser vinculada depois, mas não contará para o bônus enquanto estiver sem treinamento.</span></div>
-        </div>
-        <label class="academy-file-drop"><input id="academyRegistrationImportFile" type="file" accept=".xlsx,.xls,.csv"><i data-lucide="users-round"></i><span><strong>Selecionar arquivo histórico</strong><small>XLSX, XLS ou CSV de qualquer Forms antigo</small></span></label>
-        <div id="academyRegistrationImportMapping" class="academy-import-mapping hidden"></div>
-        <div id="academyRegistrationImportPreview" class="academy-import-preview"></div>
-      </div>
-      <div class="modal-footer"><button type="button" class="btn secondary" data-close-modal="academyRegistrationImportModal">Cancelar</button><button id="academyRegistrationImportConfirmBtn" class="btn training" type="button" disabled><i data-lucide="history"></i>Importar histórico</button></div>
     </div>
   </div>
 
