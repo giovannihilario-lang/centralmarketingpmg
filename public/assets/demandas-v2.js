@@ -359,7 +359,7 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
-  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'Execute o SQL 12-CONFIRMACAO-AUTORIA-V3-7-2.sql no Supabase para ativar a confirmação de autoria.';
+  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql no Supabase para ativar a confirmação de autoria.';
   if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'Execute o SQL 11-MODO-RESPONSABILIDADE-V3-7-1.sql no Supabase para ativar Compartilhada / Primeiro a cumprir.';
   if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
@@ -3279,7 +3279,7 @@ async function submitTaskEvaluation(approved) {
   }
 
   if (approved) {
-    if (!state.authorshipReady) return toast('Execute o SQL 12-CONFIRMACAO-AUTORIA-V3-7-2.sql antes de aprovar novas conclusões.', 'error');
+    if (!state.authorshipReady) return toast('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql antes de aprovar novas conclusões.', 'error');
     const executors = uniqueIdsV37(state.evaluationExecutorIds);
     if (!executors.length) return toast('Selecione pelo menos uma pessoa que realizou a demanda.', 'error');
   }
