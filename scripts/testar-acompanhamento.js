@@ -14,7 +14,7 @@ const html = fs.readFileSync(path.join(projectRoot, 'public', 'acompanhamento.ht
 const operationalSql = fs.readFileSync(path.join(projectRoot, 'sql', '12-CONTROLES-OPERACIONAIS-V1.4.0.sql'), 'utf8');
 const unifiedSql = fs.readFileSync(path.join(projectRoot, 'sql', '13-CENTRAL-UNIFICADA-V1.6.0.sql'), 'utf8');
 const testable = original.replace(
-  "ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);",
+  "ReactDOM.createRoot(document.getElementById('root')).render(\n    React.createElement(CentralErrorBoundary, null, React.createElement(App))\n  );",
   'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError };',
 );
 
@@ -23,6 +23,7 @@ const sandbox = {
   console, XLSX, Intl, Date, URLSearchParams, crypto: webcrypto,
   setTimeout, clearTimeout, requestAnimationFrame: callback => callback(Date.now()), cancelAnimationFrame: noop,
   React: {
+    Component: class { constructor(props) { this.props = props; } },
     createElement: noop, useCallback: value => value, useEffect: noop, useMemo: callback => callback(),
     useRef: value => ({ current:value }), useState: value => [value, noop],
   },
@@ -165,8 +166,8 @@ if (!ajinomotoMay || Number(ajinomotoMay.registro.valor_acordado) !== 10000 || a
   throw new Error('Regra AJINOMOTO/incentivo maio 2026 não foi preservada');
 }
 
-if (!/acompanhamento\.css\?v=1\.6\.0/.test(html) || !/acompanhamento\.js\?v=1\.6\.0/.test(html)) {
-  throw new Error('A página não referencia a interface V1.6.0');
+if (!/acompanhamento\.css\?v=1\.6\.1/.test(html) || !/acompanhamento\.js\?v=1\.6\.1/.test(html)) {
+  throw new Error('A página não referencia a interface V1.6.1');
 }
 for (const expected of [
   /function PlanningActivityBoard/,
@@ -178,6 +179,9 @@ for (const expected of [
   /Planejamento, recebimentos e execução/,
   /Recebido lançado\./,
   /Data, forma e documento são obrigatórios/,
+  /class CentralErrorBoundary extends React\.Component/,
+  /const tagList = record =>/,
+  /data-error-boundary/,
 ]) {
   if (!expected.test(original)) throw new Error(`Controle operacional ausente: ${expected}`);
 }

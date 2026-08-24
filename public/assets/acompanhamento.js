@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento V1.6 / React + HTM */
+/* PMG Connect — Central de Acompanhamento V1.6.1 / React + HTM */
 (() => {
   'use strict';
 
@@ -118,8 +118,19 @@
   const money = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0);
   const compactMoney = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
   const int = value => new Intl.NumberFormat('pt-BR').format(Number(value) || 0);
-  const date = value => value ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${String(value).slice(0, 10)}T12:00:00`)) : 'Sem data';
-  const dateTime = value => value ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '';
+  const validDate = value => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+  const date = value => {
+    const parsed = validDate(value ? `${String(value).slice(0, 10)}T12:00:00` : null);
+    return parsed ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(parsed) : 'Sem data';
+  };
+  const dateTime = value => {
+    const parsed = validDate(value);
+    return parsed ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(parsed) : '';
+  };
   const monthLabel = value => new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(value).replace('.', '');
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -128,7 +139,21 @@
   const category = value => CATEGORIES[value] || { label: value || 'Outro', icon: 'shapes', tone: 'slate' };
   const uniq = values => [...new Set(values.filter(Boolean))];
   const sum = (rows, getter) => rows.reduce((total, item) => total + Number(getter(item) || 0), 0);
-  const hasTag = (record, tag) => (record?.tags || []).some(item => normalize(item) === normalize(tag));
+  const tagList = record => {
+    const value = record?.tags;
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value !== 'string') return [];
+    const text = value.trim();
+    if (!text) return [];
+    if (text.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed.filter(Boolean);
+      } catch (_) {}
+    }
+    return text.replace(/^\{|\}$/g, '').split(',').map(item => item.replace(/^"|"$/g, '').trim()).filter(Boolean);
+  };
+  const hasTag = (record, tag) => tagList(record).some(item => normalize(item) === normalize(tag));
   const workflow = record => {
     if (record?.categoria === 'pendencia' || hasTag(record, 'haver')) return { key:'pending', label:'Pendência', icon:'triangle-alert' };
     if (hasTag(record, 'planejamento')) return { key:'planning', label:'Planejamento', icon:'target' };
@@ -455,6 +480,40 @@
     return /acompanhamento_|does not exist|schema cache|could not find|not found|PGRST205|42P01|404/i.test(details);
   }
 
+  class CentralErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { error:null };
+    }
+
+    static getDerivedStateFromError(error) {
+      return { error };
+    }
+
+    componentDidCatch(error, info) {
+      console.error('[PMG Central] Falha de renderização protegida:', error, info);
+    }
+
+    render() {
+      if (!this.state.error) return this.props.children;
+      const create = React.createElement;
+      const message = String(this.state.error?.message || 'Falha inesperada ao montar a interface.');
+      return create('div', { className:'fatal-screen recovery-screen', 'data-error-boundary':'central' },
+        create('div', { className:'fatal-card recovery-card' },
+          create('span', { className:'fatal-icon recovery-mark', 'aria-hidden':'true' }, '!'),
+          create('p', { className:'eyebrow' }, 'Recuperação automática'),
+          create('h1', null, 'A Central encontrou um dado incompatível'),
+          create('p', null, 'Nada foi apagado. Atualize a página para tentar novamente; se continuar, envie o código abaixo para o suporte.'),
+          create('code', { className:'recovery-code' }, message.slice(0, 280)),
+          create('div', { className:'fatal-actions' },
+            create('button', { className:'button primary', onClick:() => location.reload() }, 'Atualizar página'),
+            create('a', { className:'button secondary', href:'/central.html' }, 'Voltar ao início')
+          )
+        )
+      );
+    }
+  }
+
   function App() {
     const [view, setView] = useState('dashboard');
     const [mobileNav, setMobileNav] = useState(false);
@@ -551,7 +610,7 @@
       return data.records.filter(record => {
         if (year !== 'todos' && String(record.ano_referencia) !== String(year)) return false;
         if (!needle) return true;
-        return normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, category(record.categoria).label, record.status, ...(record.tags || [])].join(' ')).includes(needle);
+        return normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, category(record.categoria).label, record.status, ...tagList(record)].join(' ')).includes(needle);
       });
     }, [data.records, year, search]);
 
@@ -685,7 +744,7 @@
     const [activeIndex, setActiveIndex] = useState(0);
     const input = useRef(null);
     const needle = normalize(query);
-    const results = needle ? context.allRecords.filter(record => normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, ...(record.tags || [])].join(' ')).includes(needle)).slice(0, 7) : [];
+    const results = needle ? context.allRecords.filter(record => normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, ...tagList(record)].join(' ')).includes(needle)).slice(0, 7) : [];
     const commands = [
       { label:'Abrir visão geral', detail:'Resumo executivo', icon:'layout-dashboard', action:() => context.setView('dashboard') },
       { label:'Abrir Planejamento PMG', detail:'Previsto x realizado de 2026', icon:'target', action:() => context.setView('planejamento') },
@@ -740,7 +799,7 @@
     const activeRecords = records.filter(item => !['cancelado'].includes(item.status));
     const impactRecords = activeRecords.filter(item => item.impacta_totais !== false && item.natureza !== 'indicador');
     const indicators = activeRecords.filter(item => item.natureza === 'indicador');
-    const indicator = tag => indicators.find(item => (item.tags || []).includes(tag))?.valor_acordado;
+    const indicator = tag => indicators.find(item => hasTag(item, tag))?.valor_acordado;
     const annualForecast = sum(impactRecords.filter(item => item.natureza === 'receita' && item.categoria !== 'pendencia' && hasTag(item, 'previsão')), item => item.valor_acordado);
     const annualPlan = sum(impactRecords.filter(item => item.natureza === 'despesa' && hasTag(item, 'planejamento')), item => item.valor_acordado);
     const receivedFromSuppliers = sum(impactRecords.filter(item => item.natureza === 'receita' && hasTag(item, 'fornecedores')), item => item.total_pago || 0);
@@ -1216,7 +1275,7 @@
       <${Field} label="Valor acordado"><div className="money-input"><span>R$</span><input name="valor_acordado" inputMode="decimal" defaultValue=${record.valor_acordado || ''} placeholder="0,00"/></div></${Field}>
       <${Field} label="Centro de custo *"><input name="centro_custo" defaultValue=${record.centro_custo || ''} placeholder="Ex.: Cota, Incentivo, MTRIX, Evento..." required/></${Field}>
       <${Field} label="Documento / pedido"><input name="numero_documento" defaultValue=${record.numero_documento || ''} placeholder="NF, pedido, contrato..."/></${Field}>
-      <${Field} label="Tags" hint="separe por vírgula"><input name="tags" defaultValue=${(record.tags || []).join(', ')} placeholder="diretoria, cota, 2026"/></${Field}>
+      <${Field} label="Tags" hint="separe por vírgula"><input name="tags" defaultValue=${tagList(record).join(', ')} placeholder="diretoria, cota, 2026"/></${Field}>
       </div></div><div className="form-section"><div className="form-section-title"><span>03</span><div><strong>Contato e observações</strong><small>Informações para ninguém depender de mensagem antiga</small></div></div><div className="form-grid">
       <${Field} label="Nome do contato"><input name="contato_nome" defaultValue=${record.contato_nome || ''}/></${Field}>
       <${Field} label="E-mail"><input name="contato_email" type="email" defaultValue=${record.contato_email || ''}/></${Field}>
@@ -1815,5 +1874,7 @@
       <div className="import-history"><div className="panel-heading compact"><div><span className="eyebrow">Rastreabilidade</span><h2>Importações recentes</h2></div></div>${context.imports.length ? context.imports.slice(0, 5).map(item => html`<div className="import-history-row"><span><${Icon} name="file-check-2"/></span><div><strong>${item.nome_arquivo}</strong><small>${item.controle === 'marcos' ? 'Planejamento e metas' : 'Recebimentos e fornecedores'} · ${item.ano_referencia || 'Vários anos'} · ${dateTime(item.criado_em)}</small></div><b>${int(item.linhas_criadas + item.linhas_atualizadas)} processados</b></div>`) : html`<${MiniEmpty} icon="history" title="Nenhuma importação registrada" text="O histórico dos arquivos enviados aparecerá aqui."/>`}</div></section>`;
   }
 
-  ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    React.createElement(CentralErrorBoundary, null, React.createElement(App))
+  );
 })();
