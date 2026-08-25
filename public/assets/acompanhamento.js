@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento V1.9.1 / React + HTM */
+/* PMG Connect — Central de Acompanhamento V1.9.2 / React + HTM */
 (() => {
   'use strict';
 
@@ -658,24 +658,63 @@
     async function quickTogglePaid(payment, record) {
       if (!payment || !record || saving) return false;
       const willPay = payment.status !== 'pago';
+      const expectedStatus = willPay ? 'pago' : 'previsto';
       const patch = {
-        status:willPay ? 'pago' : 'previsto',
-        valor_pago:willPay ? Number(payment.valor_previsto || 0) : 0,
+        status:expectedStatus,
+        valor_pago:willPay ? Number(payment.valor_previsto || record.valor_acordado || 0) : 0,
         pago_em:willPay ? todayKey() : ''
       };
       const previous = { ...payment };
-      // Feedback otimista: a confirmação aparece na mesma hora. Se o banco recusar,
-      // a linha volta ao estado anterior e o erro real aparece no toast.
-      setData(current => ({ ...current, payments:current.payments.map(item => item.id === payment.id ? { ...item, ...patch } : item) }));
+      const optimistic = { ...payment, ...patch };
+
+      // V1.9.2: a UI só considera a operação concluída depois de confirmar o valor
+      // persistido no banco. Isso evita o falso positivo "Pagamento confirmado" que
+      // voltava para Pendente logo após o reload.
+      setData(current => ({ ...current, payments:current.payments.map(item => item.id === payment.id ? optimistic : item) }));
       setSaving(true);
       try {
-        await rpcPayment(payment, record.id, patch);
-        if (!DEMO_MODE) await reload(true);
-        notify(willPay ? 'Pagamento confirmado.' : 'Confirmação desfeita.');
+        let persisted = null;
+        if (DEMO_MODE) {
+          persisted = optimistic;
+        } else {
+          const { data:toggleData, error:toggleError } = await client.rpc('confirmar_pagamento_acompanhamento_v1', {
+            p_pagamento_id:payment.id,
+            p_registro_id:record.id,
+            p_confirmado:willPay
+          });
+
+          if (toggleError) {
+            const missingDedicatedRpc = /confirmar_pagamento_acompanhamento_v1|PGRST202|schema cache|could not find the function/i.test([
+              toggleError.message, toggleError.details, toggleError.hint, toggleError.code
+            ].filter(Boolean).join(' '));
+            if (!missingDedicatedRpc) throw toggleError;
+
+            // Compatibilidade com bancos que ainda não receberam o hotfix V1.9.2.
+            await rpcPayment(payment, record.id, patch);
+          } else if (toggleData && typeof toggleData === 'object') {
+            persisted = Array.isArray(toggleData) ? toggleData[0] : toggleData;
+          }
+
+          const { data:verified, error:verifyError } = await client
+            .from('acompanhamento_pagamentos')
+            .select('*')
+            .eq('id', payment.id)
+            .eq('registro_id', record.id)
+            .single();
+          if (verifyError) throw verifyError;
+          persisted = verified || persisted;
+
+          if (!persisted || persisted.status !== expectedStatus) {
+            throw new Error('O banco não confirmou a mudança de status. Execute uma vez o SQL 12-HOTFIX-CONFIRMACAO-PAGAMENTO-V1.9.2.sql no Supabase e tente novamente.');
+          }
+        }
+
+        setData(current => ({ ...current, payments:current.payments.map(item => item.id === payment.id ? { ...item, ...persisted } : item) }));
+        notify(willPay ? 'Pagamento confirmado e lançado na Receita.' : 'Pagamento reaberto e removido da Receita.');
         return true;
       } catch (quickError) {
         setData(current => ({ ...current, payments:current.payments.map(item => item.id === previous.id ? previous : item) }));
-        notify(quickError.message || 'Não foi possível confirmar este pagamento.', 'error');
+        notify(quickError.message || 'Não foi possível alterar este pagamento.', 'error');
         return false;
       } finally { setSaving(false); }
     }
