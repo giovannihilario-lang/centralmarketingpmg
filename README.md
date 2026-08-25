@@ -1,10 +1,7 @@
-# Aplicação do patch V1.6.0
+# Hotfix Confirmação V1.9.3
 
-Copie o conteúdo deste ZIP sobre a raiz do projeto PMG Connect V1.5.0 e permita substituir os arquivos existentes.
+Este patch corrige o caso em que `Confirmar pagamento` mostrava sucesso mas a linha permanecia pendente após o reload.
 
-Arquivos alterados:
-- `public/assets/acompanhamento.css`
-- `public/assets/acompanhamento.js`
-- cópia espelhada correspondente em `public/public/assets/`
+O SQL deve ser executado uma vez no Supabase. Ao final, a consulta de diagnóstico deve mostrar a função `confirmar_pagamento_acompanhamento_v1` com os argumentos `p_pagamento_id uuid, p_registro_id uuid, p_confirmado boolean`.
 
-Não há migration SQL nesta versão.
+Depois do deploy, uma confirmação bem-sucedida exibe a mensagem `Pagamento confirmado e lançado na Receita.`. Se ainda aparecer apenas `Pagamento confirmado.`, o navegador ou o deploy ainda está servindo o JavaScript antigo.

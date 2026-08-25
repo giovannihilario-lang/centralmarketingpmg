@@ -656,64 +656,82 @@
     }
 
     async function quickTogglePaid(payment, record) {
-      if (!payment || !record || saving) return false;
-      const willPay = payment.status !== 'pago';
+      if (!record || saving) return false;
+      const willPay = payment?.status !== 'pago';
       const expectedStatus = willPay ? 'pago' : 'previsto';
-      const patch = {
+      const monthIndex = sourceMonthIndex(record);
+      const temporaryId = payment?.id || `optimistic-payment-${record.id}`;
+      const optimistic = {
+        ...(payment || {}),
+        id:temporaryId,
+        registro_id:record.id,
+        parcela:Number(payment?.parcela || 1),
+        descricao:payment?.descricao || `${record.referencia || record.fornecedor || 'Lançamento'} — ${OFFICIAL_MONTHS[monthIndex][1]} ${record.ano_referencia}`,
+        valor_previsto:Number(payment?.valor_previsto || record.valor_acordado || 0),
+        valor_pago:willPay ? Number(payment?.valor_previsto || record.valor_acordado || 0) : 0,
+        vencimento:payment?.vencimento || officialMonthEnd(Number(record.ano_referencia || 2026), monthIndex),
+        pago_em:willPay ? todayKey() : '',
         status:expectedStatus,
-        valor_pago:willPay ? Number(payment.valor_previsto || record.valor_acordado || 0) : 0,
-        pago_em:willPay ? todayKey() : ''
+        numero_documento:payment?.numero_documento || record.numero_documento || '',
+        favorecido:payment?.favorecido || record.fornecedor || ''
       };
-      const previous = { ...payment };
-      const optimistic = { ...payment, ...patch };
+      const previousPayments = data.payments;
 
-      // V1.9.2: a UI só considera a operação concluída depois de confirmar o valor
-      // persistido no banco. Isso evita o falso positivo "Pagamento confirmado" que
-      // voltava para Pendente logo após o reload.
-      setData(current => ({ ...current, payments:current.payments.map(item => item.id === payment.id ? optimistic : item) }));
+      // V1.9.3: criação e confirmação usam a MESMA RPC. Se a linha ainda não tem
+      // pagamento, a função cria o registro e já o devolve confirmado. Isso elimina
+      // o antigo caminho paralelo que mostrava sucesso e depois sumia no reload.
+      setData(current => ({
+        ...current,
+        payments:payment?.id
+          ? current.payments.map(item => item.id === payment.id ? optimistic : item)
+          : [...current.payments, optimistic]
+      }));
       setSaving(true);
       try {
-        let persisted = null;
-        if (DEMO_MODE) {
-          persisted = optimistic;
-        } else {
+        let persisted = optimistic;
+        if (!DEMO_MODE) {
           const { data:toggleData, error:toggleError } = await client.rpc('confirmar_pagamento_acompanhamento_v1', {
-            p_pagamento_id:payment.id,
+            p_pagamento_id:payment?.id || null,
             p_registro_id:record.id,
             p_confirmado:willPay
           });
 
           if (toggleError) {
-            const missingDedicatedRpc = /confirmar_pagamento_acompanhamento_v1|PGRST202|schema cache|could not find the function/i.test([
-              toggleError.message, toggleError.details, toggleError.hint, toggleError.code
-            ].filter(Boolean).join(' '));
-            if (!missingDedicatedRpc) throw toggleError;
-
-            // Compatibilidade com bancos que ainda não receberam o hotfix V1.9.2.
-            await rpcPayment(payment, record.id, patch);
-          } else if (toggleData && typeof toggleData === 'object') {
-            persisted = Array.isArray(toggleData) ? toggleData[0] : toggleData;
+            const details = [toggleError.message, toggleError.details, toggleError.hint, toggleError.code].filter(Boolean).join(' · ');
+            const missingDedicatedRpc = /confirmar_pagamento_acompanhamento_v1|PGRST202|schema cache|could not find the function/i.test(details);
+            if (missingDedicatedRpc) throw new Error('O Supabase ainda está com a versão antiga da função de confirmação. Execute o SQL 13-HOTFIX-CONFIRMACAO-PAGAMENTO-V1.9.3.sql e atualize a página.');
+            throw new Error(details || 'O Supabase recusou a confirmação do pagamento.');
           }
+
+          persisted = Array.isArray(toggleData) ? toggleData[0] : toggleData;
+          const persistedId = persisted?.id || payment?.id;
+          if (!persistedId) throw new Error('O Supabase não devolveu o pagamento criado.');
 
           const { data:verified, error:verifyError } = await client
             .from('acompanhamento_pagamentos')
             .select('*')
-            .eq('id', payment.id)
+            .eq('id', persistedId)
             .eq('registro_id', record.id)
             .single();
           if (verifyError) throw verifyError;
           persisted = verified || persisted;
 
           if (!persisted || persisted.status !== expectedStatus) {
-            throw new Error('O banco não confirmou a mudança de status. Execute uma vez o SQL 12-HOTFIX-CONFIRMACAO-PAGAMENTO-V1.9.2.sql no Supabase e tente novamente.');
+            throw new Error('O banco não confirmou a mudança de status do pagamento.');
           }
         }
 
-        setData(current => ({ ...current, payments:current.payments.map(item => item.id === payment.id ? { ...item, ...persisted } : item) }));
+        setData(current => ({
+          ...current,
+          payments:current.payments
+            .filter(item => item.id !== temporaryId && (!payment?.id || item.id !== payment.id))
+            .concat(persisted)
+        }));
+        await reload(true);
         notify(willPay ? 'Pagamento confirmado e lançado na Receita.' : 'Pagamento reaberto e removido da Receita.');
         return true;
       } catch (quickError) {
-        setData(current => ({ ...current, payments:current.payments.map(item => item.id === previous.id ? previous : item) }));
+        setData(current => ({ ...current, payments:previousPayments }));
         notify(quickError.message || 'Não foi possível alterar este pagamento.', 'error');
         return false;
       } finally { setSaving(false); }
@@ -1121,7 +1139,7 @@
             <td className="supplier-sheet-cell"><${EditableSheetCell} value=${row.record.fornecedor || ''} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/></td>
             <td className="money-col unified-value-cell"><${EditableSheetCell} type="money" value=${row.record.valor_acordado} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td>
             <td><${EditableSheetCell} value=${row.payment?.numero_documento || row.record.numero_documento || ''} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td>
-            <td><button disabled=${context.saving} className=${`one-click-status ${isPaid ? 'paid' : 'open'} ${context.saving ? 'busy' : ''}`} onClick=${async () => { if (row.payment) return context.quickTogglePaid(row.payment,row.record); return context.quickUpsertPayment(row.record,null,sheetMonth,row.record.valor_acordado,{status:'pago',syncRecordTotal:false,fingerprintLabel:'competencia',observacoes:'Pagamento confirmado pela Planilha de Pagamentos.',message:'Pagamento confirmado.'}); }} title=${isPaid ? 'Clique para desfazer a confirmação' : 'Confirmar pagamento e lançar na Receita Anual'}><${Icon} name=${context.saving ? 'loader-circle' : (isPaid ? 'badge-check' : 'circle-dollar-sign')}/><span>${isPaid ? 'Confirmado' : 'Confirmar pagamento'}</span></button></td>
+            <td><button disabled=${context.saving} className=${`one-click-status ${isPaid ? 'paid' : 'open'} ${context.saving ? 'busy' : ''}`} onClick=${() => context.quickTogglePaid(row.payment,row.record)} title=${isPaid ? 'Clique para desfazer a confirmação' : 'Confirmar pagamento e lançar na Receita Anual'}><${Icon} name=${context.saving ? 'loader-circle' : (isPaid ? 'badge-check' : 'circle-dollar-sign')}/><span>${isPaid ? 'Confirmado' : 'Confirmar pagamento'}</span></button></td>
             <td><button className="sheet-open-row" onClick=${() => context.openRecord(row.record)} title="Abrir detalhes"><${Icon} name="more-horizontal"/></button></td>
           </tr>`;
         }) : html`<tr className="sheet-empty-row"><td colSpan="6"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>Esta competência ainda está vazia. Você pode criar a primeira linha sem esperar uma nova planilha cair do céu.</p><button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button></div></td></tr>`}
