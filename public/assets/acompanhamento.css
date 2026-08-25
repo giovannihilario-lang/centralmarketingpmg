@@ -814,3 +814,169 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   .sheet-command-row{align-items:flex-start;flex-direction:column}.compact-stats{width:100%;overflow-x:auto}.compact-stats>span{min-width:125px}.annual-workbook-tabs{min-width:920px}.payments-fullscreen-card .spreadsheet-scroll{max-height:none}.bulk-actions-v2{left:8px!important;right:8px!important;max-width:none;overflow-x:auto;justify-content:flex-start!important}.bulk-actions-v2>div{position:sticky;left:0;background:#123b26}
   .supplier-month-grid{grid-template-columns:repeat(3,1fr)}.supplier-drawer-kpis{grid-template-columns:1fr}.supplier-drawer-kpis>div{padding:9px 14px}
 }
+
+/* =========================================================
+   UX V2.1.1 — LEGIBILIDADE GLOBAL
+   Fontes maiores sem sacrificar a leitura em 100% de zoom.
+   ========================================================= */
+body{font-size:14px;line-height:1.45}
+
+/* Navegação e topo */
+.side-brand strong{font-size:15px!important}
+.side-brand span{font-size:10.5px!important;letter-spacing:1.15px!important}
+.side-spotlight small,.side-label{font-size:10.5px!important}
+.side-spotlight strong{font-size:12.5px!important}
+.side-link{font-size:13.5px!important;min-height:42px}
+.side-link em{font-size:10.5px!important;min-width:22px;height:21px}
+.side-footer strong{font-size:12.5px!important}
+.side-footer span{font-size:10.5px!important}
+.topbar-title span,.ac-app.sheet-mode .topbar-title>span,.ac-app.sheet-mode .topbar-title>div>span{font-size:10.5px!important}
+.topbar-title h1,.ac-app.sheet-mode .topbar-title h1{font-size:19px!important}
+.global-search input,.compact-search input{font-size:12.5px!important}
+.global-search kbd{font-size:10px!important}
+.command-trigger>span small{font-size:10px!important}
+.command-trigger>span b{font-size:12px!important}
+
+/* Controles */
+.button{font-size:12.5px!important}
+.button.small{font-size:11.5px!important}
+.button.large{font-size:13.5px!important}
+.text-button{font-size:11.5px!important}
+.segmented button{font-size:11.5px!important}
+.result-count{font-size:11.5px!important}
+.year-select select,.compact-select select{font-size:11.5px!important}
+.eyebrow{font-size:10.5px!important}
+.live-chip{font-size:10px!important}
+.panel-heading h2{font-size:17px!important}
+.panel-heading p{font-size:12px!important;line-height:1.5}
+
+/* Cabeçalhos das planilhas */
+.ac-app.sheet-mode .sheet-titlebar h2,.sheet-titlebar h2{font-size:clamp(21px,1.55vw,27px)!important}
+.ac-app.sheet-mode .sheet-titlebar p,.sheet-titlebar p{font-size:12.5px!important;line-height:1.45!important}
+.sheet-density-toggle{font-size:12px!important}
+.sheet-stats small,.planning-summary-line small{font-size:10.5px!important;letter-spacing:.045em!important}
+.sheet-stats strong,.planning-summary-line strong{font-size:clamp(16px,1.2vw,20px)!important}
+.sheet-ux-hint span{font-size:10.5px!important;min-height:34px!important}
+.active-sheet-filters button{font-size:11px!important;min-height:33px}
+
+/* Timeline mensal */
+.workbook-tabs button>span,.annual-workbook-tabs button>span{font-size:11px!important}
+.workbook-tabs button>span em,.annual-workbook-tabs button>span em{font-size:8.5px!important}
+.workbook-tabs button>strong,.annual-workbook-tabs button>strong{font-size:11.5px!important}
+.workbook-tabs button small,.annual-workbook-tabs button>small{font-size:9.5px!important}
+.annual-timeline b{font-size:11px!important}
+.annual-timeline em{font-size:9px!important}
+.annual-timeline strong{font-size:16px!important}
+.annual-timeline small{font-size:9.5px!important}
+
+/* Planilha de pagamentos */
+.live-sheet,.payment-live-sheet{font-size:12.5px!important}
+.live-sheet thead th,.payment-live-sheet thead th{font-size:11px!important;letter-spacing:.035em!important}
+.live-sheet tfoot th{font-size:11.5px!important}
+.sheet-cell-editable{font-size:12.5px!important;min-height:42px}
+.sheet-editing input{font-size:12.5px!important}
+.one-click-status,.status-simple{font-size:11.5px!important;min-height:36px!important;min-width:116px!important}
+.status-simple .status-dot{font-size:17px!important}
+.sheet-cell-state small{font-size:9.5px!important}
+.specific-value::after{font-size:7.5px!important}
+.sheet-section-heading>div span{font-size:10px!important}
+.sheet-section-heading h3{font-size:15px!important}
+.sheet-section-heading button,.resolve-one-click{font-size:10.5px!important}
+.pendency-sheet-list article small{font-size:10.5px!important}
+.sheet-footnote{font-size:10.5px!important;line-height:1.5}
+
+/* Modo compacto continua compacto, mas não microscópico */
+.payment-sheet-view.density-compact .sheet-cell-editable{font-size:11.5px!important}
+.payment-sheet-view.density-compact .one-click-status{font-size:10.8px!important}
+
+/* Planejamento e Receita */
+.planning-live-sheet thead th,.revenue-live-sheet thead th{font-size:10.5px!important;line-height:1.2!important}
+.planning-live-sheet tbody th{font-size:11px!important}
+.planning-live-sheet tbody th small{font-size:8.5px!important}
+.planning-live-sheet tbody td,.revenue-live-sheet td{font-size:11px!important}
+.planning-live-sheet .row-total,.revenue-live-sheet .row-total,.balance-cell{font-size:11.5px!important}
+.revenue-live-sheet .supplier-col button{font-size:11.5px!important}
+.revenue-progress b{font-size:10px!important}
+.budget-title{font-size:11px!important}
+.budget-cell span,.budget-cell strong{font-size:11px!important}
+
+/* Dashboard principal */
+.executive-copy p{font-size:13px!important}
+.executive-flow small{font-size:10px!important}
+.executive-flow .confirmed em{font-size:11px!important}
+.executive-metrics small{font-size:10px!important}
+.executive-metrics strong{font-size:19px!important}
+.executive-metrics p{font-size:11px!important}
+.overview-kicker{font-size:10px!important}
+.overview-hero p{font-size:12.5px!important}
+.overview-balance small{font-size:10px!important}
+.overview-balance span{font-size:10px!important}
+.overview-metric small{font-size:9.5px!important}
+.overview-metric strong{font-size:20px!important}
+.overview-metric p{font-size:10.5px!important}
+.overview-panel-head>div>span{font-size:9.5px!important}
+.overview-panel-head h3{font-size:17px!important}
+.overview-panel-head p{font-size:11px!important}
+.overview-panel-head>button{font-size:10.5px!important}
+.attention-item strong{font-size:11.5px!important}
+.attention-item small{font-size:10px!important}
+.month-health-grid span{font-size:9.5px!important}
+.month-health-grid strong{font-size:15px!important}
+.month-health-grid small{font-size:9.5px!important}
+.top-supplier-list>div>b,.top-supplier-list.interactive>button>b{font-size:10px!important}
+.top-supplier-list>div>span>strong,.top-supplier-list.interactive>button>span strong{font-size:11.5px!important}
+.top-supplier-list small,.top-supplier-list.interactive>button>small{font-size:10.5px!important}
+.overview-shortcuts strong{font-size:12px!important}
+.overview-shortcuts small{font-size:10.5px!important}
+.overview-empty{font-size:11px!important}
+
+/* Fornecedores e drawer */
+.supplier-card-foot,.supplier-card-foot b{font-size:10.5px!important}
+.supplier-drawer-identity small{font-size:10px!important}
+.supplier-drawer-identity h2{font-size:22px!important}
+.supplier-drawer-identity p{font-size:11px!important}
+.supplier-drawer-kpis small{font-size:10px!important}
+.supplier-drawer-kpis strong{font-size:16px!important}
+.supplier-drawer>nav button{font-size:11.5px!important}
+.supplier-month-grid span{font-size:9.5px!important}
+.supplier-month-grid strong{font-size:14px!important}
+.supplier-month-grid small{font-size:9.5px!important}
+.supplier-primary-action strong{font-size:12.5px!important}
+.supplier-primary-action small{font-size:10px!important}
+.supplier-payment-list strong,.supplier-history-list strong{font-size:11.5px!important}
+.supplier-payment-list small,.supplier-history-list small{font-size:10px!important}
+.supplier-payment-list b,.supplier-history-list b{font-size:11.5px!important}
+
+/* Mensagens e utilitários */
+.ac-toast p{font-size:11.5px!important;line-height:1.45!important}
+.nature-pill,.detail-pill{font-size:9.5px!important}
+.impact-toggle b{font-size:11px!important}
+.official-detection p{font-size:11px!important}
+.official-stats span{font-size:10px!important}
+.official-ok,.official-warning{font-size:10.5px!important}
+.load-more{font-size:11px!important}
+
+/* Telas largas: preserva 100% de zoom sem voltar a 6–8px */
+@media (min-width:1450px){
+  .planning-live-sheet thead th:not(.sticky-first):not(.total-head){font-size:9.5px!important;padding-inline:4px!important}
+  .planning-live-sheet tbody td{font-size:10.5px!important}
+  .revenue-live-sheet thead th{font-size:9.5px!important;padding-inline:3px!important}
+  .revenue-live-sheet td{font-size:10.5px!important}
+}
+
+/* Notebook: nenhuma informação essencial abaixo de ~10px */
+@media (max-width:1449px){
+  .planning-live-sheet thead th,.revenue-live-sheet thead th{font-size:10px!important}
+  .planning-live-sheet tbody td,.revenue-live-sheet td{font-size:10.8px!important}
+}
+
+/* Mobile: prioriza leitura em vez de miniaturizar */
+@media (max-width:900px){
+  .topbar-title h1,.ac-app.sheet-mode .topbar-title h1{font-size:17px!important}
+  .sheet-titlebar h2,.ac-app.sheet-mode .sheet-titlebar h2{font-size:20px!important}
+  .sheet-titlebar p,.ac-app.sheet-mode .sheet-titlebar p{font-size:12px!important}
+  .live-sheet{font-size:12px!important}
+  .live-sheet thead th{font-size:10.5px!important}
+  .sheet-cell-editable{font-size:12px!important}
+  .annual-timeline b{font-size:10.5px!important}.annual-timeline small{font-size:9px!important}
+}
