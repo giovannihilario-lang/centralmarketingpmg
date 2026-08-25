@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.2.2 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.3.1 / React + HTM */
 (() => {
   'use strict';
 
@@ -11,14 +11,13 @@
     pagamentos: { label: 'Pagamentos', eyebrow: 'Fornecedores · mês a mês', icon: 'table-2' },
     planejamento: { label: 'Planejamento PMG', eyebrow: 'Matriz oficial · 2026', icon: 'target' },
     receita: { label: 'Receita anual', eyebrow: 'Previsão e pagamentos por fornecedor', icon: 'landmark' },
-    fornecedores: { label: 'Fornecedores', eyebrow: 'Histórico consolidado', icon: 'building-2' },
     documentos: { label: 'Documentos', eyebrow: 'Leitura e conferência', icon: 'scan-line' },
     importar: { label: 'Atualizar planilhas', eyebrow: 'Importação das fontes oficiais', icon: 'file-spreadsheet' },
     fechamento: { label: 'Conferência mensal', eyebrow: 'Assinaturas e divergências', icon: 'badge-check' },
     registros: { label: 'Base completa', eyebrow: 'Registros técnicos', icon: 'rows-3' },
     financeiro: { label: 'Agenda financeira', eyebrow: 'Parcelas e previsões', icon: 'wallet-cards' },
   };
-  const NAV_VIEW_KEYS = ['dashboard', 'pagamentos', 'planejamento', 'receita', 'fornecedores', 'documentos', 'importar'];
+  const NAV_VIEW_KEYS = ['dashboard', 'pagamentos', 'planejamento', 'receita', 'documentos', 'importar'];
 
   const CATEGORIES = {
     cota_anual: { label: 'Cota anual', icon: 'badge-dollar-sign', tone: 'emerald' },
@@ -948,7 +947,7 @@
         <div className="ac-main">
           <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context} openCommand=${() => setCommandOpen(true)}/>
           <main className="ac-content">
-            ${!['dashboard','pagamentos','documentos','planejamento','receita','fechamento','fornecedores'].includes(view) && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
+            ${!['dashboard','pagamentos','documentos','planejamento','receita','fechamento'].includes(view) && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
             ${setupMissing ? html`<${SetupState}/>` : html`
               <div className="view-stage" key=${view}>
                 ${view === 'dashboard' && html`<${OverviewDashboard} context=${context}/>`}
@@ -958,7 +957,6 @@
                 ${view === 'fechamento' && html`<${ClosingView} context=${context}/>`}
                 ${view === 'registros' && html`<${RecordsView} context=${context}/>`}
                 ${view === 'financeiro' && html`<${FinanceView} context=${context}/>`}
-                ${view === 'fornecedores' && html`<${SuppliersView} context=${context}/>`}
                 ${view === 'documentos' && window.PMGDocumentModule?.DocumentInbox && html`<${window.PMGDocumentModule.DocumentInbox} context=${context}/>`}
                 ${view === 'documentos' && !window.PMGDocumentModule?.DocumentInbox && html`<${MiniEmpty} icon="scan-line" title="Módulo de documentos indisponível" text="Atualize a página para carregar a Caixa de Entrada."/>`}
                 ${view === 'importar' && html`<${ImportView} context=${context} defaultControl=${control} defaultYear=${year}/>`}
@@ -1005,7 +1003,7 @@
             <span className="side-label">Visão geral</span>
             ${['dashboard'].map(key => { const item = VIEWS[key]; return html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b></button>`; })}
             <span className="side-label">Planilhas vivas</span>
-            ${['pagamentos','planejamento','receita','fornecedores'].map(key => { const item = VIEWS[key]; return html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b></button>`; })}
+            ${['pagamentos','planejamento','receita'].map(key => { const item = VIEWS[key]; return html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b></button>`; })}
             <span className="side-label">Ferramentas</span>
             ${['documentos','importar'].map(key => { const item = VIEWS[key]; return html`<button key=${key} className=${`side-link ${view === key ? 'active' : ''}`} onClick=${() => navigate(key)}><span><${Icon} name=${item.icon}/></span><b>${item.label}</b>${key === 'documentos' && pendingDocuments > 0 ? html`<em>${pendingDocuments}</em>` : null}</button>`; })}
             <span className="side-label">PMG Connect</span>
@@ -1058,7 +1056,6 @@
       { label:'Planilha de pagamentos', detail:'Abrir mês, editar e confirmar', icon:'table-2', action:() => context.setView('pagamentos') },
       { label:'Planejamento PMG', detail:'Matriz oficial mês a mês', icon:'target', action:() => context.setView('planejamento') },
       { label:'Receita anual', detail:'Previsão x confirmado por fornecedor', icon:'landmark', action:() => context.setView('receita') },
-      { label:'Fornecedores', detail:'Histórico consolidado', icon:'building-2', action:() => context.setView('fornecedores') },
       { label:'Atualizar planilhas', detail:'Importar as fontes oficiais', icon:'file-up', action:() => context.setView('importar') },
     ];
     const items = needle ? queryItems : commands.map(item => ({ ...item, type:'command' }));
@@ -1257,7 +1254,7 @@
         </article>
 
         <article className="overview-panel annual-timeline-panel"><div className="overview-panel-head"><div><span>COMPETÊNCIAS</span><h3>Janeiro → Dezembro</h3><p>Estado e confirmação do ano inteiro sem trocar de zoom.</p></div></div><div className="annual-timeline">${monthly.map(item=>html`<button className=${`${item.state} ${item.active?'active':''}`} onClick=${() => context.navigatePayments({year,month:item.index})} title=${item.amount?`${money(item.confirmed)} confirmado de ${money(item.amount)}`:'Sem dados'}><span><b>${item.label.slice(0,3)}</b><em>${item.active?'Agora':item.state==='complete'?'Fechado':item.state==='partial'?'Parcial':item.state==='pending'?'Pendente':'—'}</em></span><strong>${item.amount?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.count?`${item.confirmedCount}/${item.count} linhas`:'sem dados'}</small></button>`)}</div></article>
-        <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Clique para abrir o painel lateral do parceiro.</p></div><button onClick=${() => context.setView('fornecedores')}>Ver todos <${Icon} name="arrow-up-right"/></button></div><div className="top-supplier-list interactive">${topSuppliers.length?topSuppliers.map((item,index)=>html`<button onClick=${() => context.openSupplier(item.name)}><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small><${Icon} name="chevron-right"/></button>`):html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
+        <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Clique em um parceiro para abrir os detalhes sem sair do Dashboard.</p></div></div><div className="top-supplier-list interactive">${topSuppliers.length?topSuppliers.map((item,index)=>html`<button onClick=${() => context.openSupplier(item.name)}><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small><${Icon} name="chevron-right"/></button>`):html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
       </div>
 
     </section>`;
@@ -1574,13 +1571,6 @@
     return html`<section className="finance-section"><div className="finance-hero"><div><span className="eyebrow light">Radar financeiro PMG</span><h2>O futuro dos pagamentos,<br/>sem surpresa no vencimento.</h2><p>Acompanhe previsões, aprovações e baixas em uma linha do tempo única.</p></div><div className="finance-hero-numbers"><span><small>Em aberto</small><strong>${money(due)}</strong></span><span><small>Realizado</small><strong>${money(paid)}</strong></span><span className=${overdue.length ? 'danger' : ''}><small>Atrasados</small><strong>${int(overdue.length)}</strong></span></div><div className="finance-orbit"><i></i><i></i><span><${Icon} name="wallet-cards" size=${32}/></span></div></div>
       <div className="view-tools finance-tools"><div><span className="eyebrow">Agenda de parcelas</span><h2>${int(filtered.length)} lançamentos encontrados</h2></div><div className="view-tools-actions"><label className="compact-select"><${Icon} name="calendar"/><select value=${month} onChange=${e => setMonth(e.target.value)}><option value="todos">Todos os meses</option>${months.map(item => html`<option value=${item}>${new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric' }).format(new Date(`${item}-01T12:00:00`))}</option>`)}</select></label><label className="compact-select"><${Icon} name="circle-dollar-sign"/><select value=${paymentStatus} onChange=${e => setPaymentStatus(e.target.value)}><option value="abertos">Somente em aberto</option><option value="todos">Todos os lançamentos</option>${Object.entries(PAYMENT_STATUS).map(([key, item]) => html`<option value=${key}>${item.label}</option>`)}</select></label><button className="button primary" onClick=${() => newPayment(null)}><${Icon} name="plus"/>Nova parcela</button></div></div>
       <div className="payment-timeline">${filtered.length ? filtered.map(payment => { const record = recordMap[payment.registro_id]; const overdueItem = isOverdue(payment); return html`<article key=${payment.id} className=${`payment-row ${overdueItem ? 'overdue' : ''} ${payment.status}`} onClick=${() => record && openRecord(record)}><div className="payment-date"><b>${payment.vencimento ? payment.vencimento.slice(8, 10) : '—'}</b><span>${payment.vencimento ? monthLabel(new Date(`${payment.vencimento}T12:00:00`)) : 'sem data'}</span></div><span className="payment-line"><i></i></span><div className="payment-main"><div><span className=${`payment-status ${overdueItem ? 'atrasado' : payment.status}`}><${Icon} name=${overdueItem ? 'triangle-alert' : PAYMENT_STATUS[payment.status]?.icon || 'clock'}/>${overdueItem ? 'Atrasado' : PAYMENT_STATUS[payment.status]?.label || payment.status}</span><h3>${record?.fornecedor || record?.titulo || 'Acompanhamento'}</h3><p>${payment.descricao || `Parcela ${payment.parcela}`} · ${record?.titulo || ''}</p></div><div className="payment-amount"><strong>${money(payment.valor_previsto)}</strong><span>${payment.forma_pagamento || 'Forma a definir'}</span></div><button className="row-action" onClick=${event => { event.stopPropagation(); context.editPayment(payment); }}><${Icon} name="pencil"/></button></div></article>`; }) : html`<div className="large-empty"><span><${Icon} name="calendar-check-2" size=${34}/></span><h3>Nenhuma parcela nesta seleção</h3><p>Cadastre uma previsão para preencher a agenda.</p></div>`}</div></section>`;
-  }
-
-  function SuppliersView({ context }) {
-    const { records }=context;
-    const suppliers=useMemo(()=>{ const map=new Map(); records.forEach(record=>{ const name=record.fornecedor||'Sem fornecedor'; const current=map.get(name)||{name,records:[],value:0,paid:0,overdue:0,categories:new Set()}; current.records.push(record); if(record.impacta_totais!==false&&record.natureza!=='indicador'){current.value+=Number(record.valor_acordado||0); if(isSupplierRevenueRecord(record)&&Number(record.ano_referencia)>=2026){const monthIndex=sourceMonthIndex(record);const payment=supplierRowPayment(context.payments,record,Number(record.ano_referencia),monthIndex);if(supplierRowConfirmed(record,payment))current.paid+=supplierConfirmedValue(record,payment);}else current.paid+=Number(record.total_pago||0);} current.overdue+=Number(record.pagamentos_atrasados||0);current.categories.add(record.categoria);map.set(name,current); }); return [...map.values()].sort((a,b)=>b.paid-a.paid||b.value-a.value); },[records,context.payments]);
-    useLucide([suppliers.length]);
-    return html`<section className="suppliers-section suppliers-v2"><div className="view-tools"><div className="view-tools-copy"><span className="eyebrow">Relacionamento comercial</span><h2>Fornecedores</h2><p>Cada parceiro abre num painel lateral, sem tirar você da página.</p></div><div className="supplier-summary"><span><b>${int(suppliers.length)}</b> parceiros</span><span><b>${money(sum(suppliers,item=>item.paid))}</b> confirmados</span></div></div><div className="supplier-grid">${suppliers.map((supplier,index)=>{const progress=supplier.value?Math.min(100,supplier.paid/supplier.value*100):0;return html`<button key=${supplier.name} className="supplier-card supplier-card-button" style=${{'--delay':`${Math.min(index,12)*35}ms`}} onClick=${()=>context.openSupplier(supplier.name)}><div className="supplier-card-head"><span className="supplier-initial">${supplier.name.charAt(0)}</span><div><h3>${supplier.name}</h3><p>${int(supplier.records.length)} lançamentos · ${int(supplier.categories.size)} categorias</p></div><span className="supplier-open-icon"><${Icon} name="panel-right-open"/></span></div><div className="supplier-money"><span><small>Acompanhado</small><strong>${money(supplier.value)}</strong></span><span><small>Confirmado</small><strong>${money(supplier.paid)}</strong></span></div><div className="supplier-progress"><i style=${{width:`${progress}%`}}></i></div><div className="supplier-card-foot"><span>${Math.round(progress)}% realizado</span><b>Ver histórico <${Icon} name="arrow-right"/></b></div></button>`;})}</div></section>`;
   }
 
   function SupplierDrawer({ supplier, context, onClose }) {

@@ -1674,3 +1674,60 @@ body{font-size:14px!important}
   .annual-workbook-tabs,.annual-timeline{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .supplier-grid{grid-template-columns:1fr!important}
 }
+
+
+/* =========================================================
+   UX V2.3.1 — HOTFIX PAGAMENTOS + REMOÇÃO DA ABA FORNECEDORES
+   Corrige o deslocamento relativo dos meses causado pelo top
+   herdado de .workbook-tabs em sheet-mode. Esse deslocamento
+   criava espaço vazio e fazia os cards de resumo sobreporem a
+   faixa mensal. A ordem visual volta a seguir o fluxo normal.
+   ========================================================= */
+.ac-app.sheet-mode .payment-sheet-view{
+  min-height:0!important;
+  gap:10px!important;
+  align-content:start!important;
+}
+.ac-app.sheet-mode .payment-sheet-view>.sheet-titlebar{
+  margin:0!important;
+}
+.ac-app.sheet-mode .payment-sheet-view>.annual-workbook-tabs{
+  position:relative!important;
+  top:0!important;
+  left:auto!important;
+  right:auto!important;
+  z-index:1!important;
+  transform:none!important;
+  margin:0!important;
+  min-height:77px!important;
+  height:auto!important;
+  align-self:stretch!important;
+  overflow:visible!important;
+}
+.ac-app.sheet-mode .payment-sheet-view>.annual-workbook-tabs button{
+  position:relative!important;
+  top:0!important;
+  transform:none!important;
+}
+.ac-app.sheet-mode .payment-sheet-view>.sheet-command-row{
+  position:relative!important;
+  top:0!important;
+  z-index:2!important;
+  margin:0!important;
+  transform:none!important;
+}
+.ac-app.sheet-mode .payment-sheet-view>.payments-fullscreen-card{
+  margin:0!important;
+  position:relative!important;
+  z-index:1!important;
+}
+@media (max-width:1180px){
+  .ac-app.sheet-mode .payment-sheet-view>.annual-workbook-tabs{
+    min-height:148px!important;
+  }
+}
+@media (max-width:780px){
+  .ac-app.sheet-mode .payment-sheet-view>.annual-workbook-tabs{
+    min-height:auto!important;
+  }
+}
