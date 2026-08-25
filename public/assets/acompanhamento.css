@@ -1867,3 +1867,19 @@ body{font-size:14px!important}
   .planning-missing .button{grid-column:1/-1}
 }
 @media(max-width:560px){.planning-fronts-grid{grid-template-columns:1fr}}
+
+
+/* V2.3.6 — Planejamento: previsto x pago conforme cor da fonte oficial */
+.planning-summary-line{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+.planning-summary-line>span.paid::before{background:#d93a32!important}
+.planning-summary-line>span.paid strong{color:#b62f29!important}
+.planning-summary-line>span.pending::before{background:#d8a12f!important}
+.planning-summary-line>span.pending strong{color:#8e6410!important}
+.planning-fronts-grid>button>div em{display:block;margin-top:2px;font:800 10.5px Inter,sans-serif;color:#c43b34;font-style:normal}
+.planning-live-sheet tbody td.has-value .sheet-cell-editable{color:#253b2e!important;font-weight:750!important}
+.planning-live-sheet tbody td.planning-paid-cell{background:#fff5f4!important}
+.planning-live-sheet tbody td.planning-paid-cell .sheet-cell-editable{color:#d32929!important;font-weight:850!important}
+.planning-live-sheet tbody td.planning-planned-cell .sheet-cell-editable{color:#26382d!important;font-weight:750!important}
+.planning-live-sheet tbody td.planning-paid-cell:hover{background:#ffebe9!important}
+@media(max-width:900px){.planning-summary-line{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.planning-summary-line{grid-template-columns:1fr!important}}

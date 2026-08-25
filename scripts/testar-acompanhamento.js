@@ -92,8 +92,13 @@ const planning = snapshot.items.filter(item => {
 });
 const planningPayments = planning.flatMap(item => item.pagamentos || []);
 const planningPaid = planningPayments.filter(payment => payment.status === 'pago' || Number(payment.valor_pago || 0) > 0);
-if (planning.length !== 15 || planningPayments.length !== 104 || planningPaid.length !== 0) {
+if (planning.length !== 15 || planningPayments.length !== 104 || planningPaid.length !== 73) {
   throw new Error(`Planejamento 2026 divergente: ${planning.length} frentes / ${planningPayments.length} parcelas / ${planningPaid.length} baixas automáticas`);
+}
+
+const planningPaidTotal = planningPaid.reduce((total, payment) => total + Number(payment.valor_pago || 0), 0);
+if (Math.abs(planningPaidTotal - 1740817.68) > 0.01) {
+  throw new Error(`Planejamento 2026 pago divergente: ${planningPaidTotal}; esperado 1740817.68`);
 }
 const planningTotal = planning.reduce((total, item) => total + Number(item.registro?.valor_acordado || 0), 0);
 if (Math.abs(planningTotal - 2610377.68) > 0.01) {

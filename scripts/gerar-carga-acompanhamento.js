@@ -203,7 +203,7 @@ function extractNoteSupplier(note, knownSuppliers) {
 }
 
 function loadWorkbook(fileName) {
-  return XLSX.readFile(path.join(sourceDir, fileName), { cellFormula: true, cellDates: true });
+  return XLSX.readFile(path.join(sourceDir, fileName), { cellFormula: true, cellDates: true, cellStyles: true, bookFiles: true });
 }
 
 function parseSupplierWorkbook(fileName, year) {
@@ -332,6 +332,36 @@ function cellValue(sheet, address) {
   return sheet[address]?.v ?? null;
 }
 
+
+function workbookXmlText(workbook, filePath) {
+  const content = workbook?.files?.[filePath]?.content;
+  if (!content) return '';
+  return Buffer.isBuffer(content) ? content.toString('utf8') : Buffer.from(content).toString('utf8');
+}
+
+function planningPaidMask(workbook) {
+  const stylesXml = workbookXmlText(workbook, 'xl/styles.xml');
+  const sheetMeta = workbook?.Workbook?.Sheets?.find(item => normalized(item?.name) === 'PLANEJAMENTO');
+  const sheetXml = workbookXmlText(workbook, `xl/worksheets/sheet${sheetMeta?.sheetId || 1}.xml`);
+  if (!stylesXml || !sheetXml) return null;
+  const fontsBlock = stylesXml.match(/<fonts[^>]*>([\s\S]*?)<\/fonts>/i)?.[1] || '';
+  const fonts = fontsBlock.match(/<font[\s\S]*?<\/font>/gi) || [];
+  const redFontIds = new Set(fonts.map((font,index) => /<color[^>]*rgb=["'](?:FF)?FF0000["']/i.test(font) ? index : -1).filter(index => index >= 0));
+  const xfsBlock = stylesXml.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/i)?.[1] || '';
+  const xfs = xfsBlock.match(/<xf\b[^>]*\/?>/gi) || [];
+  const redStyleIds = new Set(xfs.map((xf,index) => { const fontId = Number(xf.match(/fontId=["'](\d+)["']/i)?.[1] ?? -1); return redFontIds.has(fontId) ? index : -1; }).filter(index => index >= 0));
+  const mask = Array.from({ length: 15 }, () => Array(12).fill(false));
+  const cellRe = /<c\b[^>]*r=["']([B-P])(\d+)["'][^>]*s=["'](\d+)["'][^>]*>/gi;
+  let match;
+  while ((match = cellRe.exec(sheetXml))) {
+    const columnIndex = match[1].charCodeAt(0) - 66;
+    const monthIndex = Number(match[2]) - 3;
+    const styleId = Number(match[3]);
+    if (columnIndex >= 0 && columnIndex < 15 && monthIndex >= 0 && monthIndex < 12 && redStyleIds.has(styleId)) mask[columnIndex][monthIndex] = true;
+  }
+  return mask;
+}
+
 function parseMarcosWorkbook(fileName) {
   const workbook = loadWorkbook(fileName);
   let importedRows = 0;
@@ -406,6 +436,7 @@ function parseMarcosWorkbook(fileName) {
   const planning = workbook.Sheets.Planejamento;
   const planningRows = XLSX.utils.sheet_to_json(planning, { header: 1, defval: null, raw: true, blankrows: false });
   const planningHeaders = planningRows[1];
+  const planningPaid = planningPaidMask(workbook);
   for (let columnIndex = 1; columnIndex <= 15; columnIndex += 1) {
     const originalHeader = String(planningHeaders[columnIndex] ?? '').trim();
     if (!originalHeader) continue;
@@ -421,11 +452,12 @@ function parseMarcosWorkbook(fileName) {
       referencia: originalHeader, status: 'em_andamento', data_inicio: '2026-01-01', data_fim: '2026-12-31',
       valor_acordado: total, centro_custo: 'Marketing', tags: ['marcos', 'planejamento', 'despesa', '2026', normalized(originalHeader).toLocaleLowerCase('pt-BR')],
       origem_importacao: fileName, linha_origem: 2, fingerprint: recordFingerprint,
-      dados_originais: { arquivo: fileName, aba: 'Planejamento', coluna: XLSX.utils.encode_col(columnIndex), categoria_original: originalHeader, valores_mensais: monthly },
+      dados_originais: { arquivo: fileName, aba: 'Planejamento', coluna: XLSX.utils.encode_col(columnIndex), categoria_original: originalHeader, valores_mensais: monthly, pagos_mensais: Array.from({ length: 12 }, (_, monthIndex) => monthly[monthIndex] > 0 && Boolean(planningPaid?.[columnIndex - 1]?.[monthIndex])) },
     }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(({ value }) => value > 0).map(({ value, monthIndex }, index) => ({
       parcela: index + 1, descricao: `${originalHeader} — ${MONTHS[monthIndex][1]} 2026`,
-      valor_previsto: value, valor_pago: 0, vencimento: monthEnd(2026, monthIndex), pago_em: '', status: 'previsto',
-      forma_pagamento: 'Não informado', observacoes: 'Valor planejado. A passagem do mês não realiza a despesa; a baixa depende de gasto real vinculado ou conferência.',
+      valor_previsto: value, valor_pago: planningPaid?.[columnIndex - 1]?.[monthIndex] ? value : 0, vencimento: monthEnd(2026, monthIndex),
+      pago_em: planningPaid?.[columnIndex - 1]?.[monthIndex] ? monthEnd(2026, monthIndex) : '', status: planningPaid?.[columnIndex - 1]?.[monthIndex] ? 'pago' : 'previsto',
+      forma_pagamento: 'Não informado', observacoes: planningPaid?.[columnIndex - 1]?.[monthIndex] ? 'Marcado em vermelho na fonte oficial: tratado como já pago.' : 'Valor planejado ainda não marcado como pago na fonte oficial.',
       fingerprint: fingerprint(recordFingerprint, 'planejamento', monthIndex + 1),
     })));
     importedRows += 1;

@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.3.1 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.3.6 / React + HTM */
 (() => {
   'use strict';
 
@@ -109,6 +109,8 @@
   const monthLabel = value => new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(value).replace('.', '');
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const OFFICIAL_PLANNING_2026 = Object.freeze({"promocoes":{"label":"Promoções","monthly":[0,3586.9,2449.35,57135,2103,0,0,3489.75,0,4000,0,3000],"paid":[false,true,true,true,true,false,false,true,false,false,false,false]},"catalogo fold":{"label":"Catálogo/ fold","monthly":[0,0,0,5000,0,5000,5000,0,0,0,0,0],"paid":[false,false,false,false,false,false,false,false,false,false,false,false]},"podcast":{"label":"PodCast","monthly":[0,0,0,0,32000,0,0,0,0,0,0,0],"paid":[false,false,false,false,false,false,false,false,false,false,false,false]},"funcionario mes":{"label":"Funcionário/mês","monthly":[2640,2640,2640,2639.4,2640,2640,2640,2640,2640,2640,2640,2640],"paid":[true,true,true,true,true,true,true,true,false,false,false,false]},"boletim":{"label":"Boletim","monthly":[0,0,5000,0,0,5200,0,7000,7000,7000,0,7000],"paid":[false,false,true,false,false,true,false,false,false,false,false,false]},"feiras eventos":{"label":"Feiras/ eventos","monthly":[0,0,0,239873.27,0,816400.56,495000,0,45000,0,0,0],"paid":[false,false,false,true,false,true,false,false,false,false,false,false]},"google":{"label":"Google","monthly":[6000,0,0,0,6000,0,0,0,6000,0,0,6000],"paid":[true,false,false,false,true,false,false,false,false,false,false,false]},"edm":{"label":"EDM²","monthly":[1750,1750,1750,1750,1750,1750,1750,1750,1750,1750,1750,1750],"paid":[true,true,true,true,true,true,true,true,false,false,false,false]},"videos pmg":{"label":"Vídeos PMG","monthly":[0,0,7000,0,0,0,0,7000,0,0,4000,0],"paid":[false,false,true,false,false,false,false,true,false,false,false,false]},"brindes":{"label":"Brindes","monthly":[0,0,0,9000,0,0,0,20000,0,0,0,0],"paid":[false,false,false,false,false,false,false,false,false,false,false,false]},"graac aacd":{"label":"GRAAC / AACD","monthly":[14805.71,13245,15927.38,15245,16958.73,14760.81,15145.56,13245,3000,3000,3000,3000],"paid":[true,true,true,true,true,true,true,true,true,true,true,true]},"ifb":{"label":"IFB","monthly":[6604,6604,6604,6604,6604,6604,6604,6604,6604,6604,6604,6604],"paid":[true,true,true,true,true,true,true,true,true,true,true,true]},"abad":{"label":"ABAD","monthly":[440,440,440,17440,440,440,440,440,440,440,440,440],"paid":[true,true,true,true,true,true,true,true,true,true,true,true]},"diversos":{"label":"Diversos","monthly":[427.77,1642.14,8464.28,1674.7,25038.36,10134.46,3348.37,5000,5000,5000,5000,5000],"paid":[true,true,true,true,true,true,true,false,false,false,false,false]},"convencao":{"label":"Convenção","monthly":[0,0,260869.18,0,0,0,0,0,0,0,160000,0],"paid":[false,false,true,false,false,false,false,false,false,false,false,false]}});
   const safeFileName = value => normalize(value).replace(/\s+/g, '-').slice(0, 80) || 'arquivo';
   const todayKey = () => new Date().toISOString().slice(0, 10);
   const isOverdue = payment => payment.status !== 'pago' && payment.status !== 'cancelado' && payment.vencimento && payment.vencimento < todayKey();
@@ -1415,15 +1417,41 @@
     const planning = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.natureza === 'despesa' && hasTag(record, 'planejamento') && record.status !== 'cancelado')
       .sort((a,b) => String(a.dados_originais?.coluna || 'Z').localeCompare(String(b.dados_originais?.coluna || 'Z')) || String(a.referencia).localeCompare(String(b.referencia),'pt-BR'));
     const paymentMap = useMemo(() => { const map = new Map(); context.payments.forEach(payment => { const record = planning.find(item => item.id === payment.registro_id); if (!record) return; const idx = Math.max(0, Number(String(payment.vencimento || '').slice(5,7) || 1)-1); map.set(`${record.id}|${idx}`, payment); }); return map; }, [context.payments, planning.length]);
-    const sourcePlanningValue = (record, monthIndex) => Number(record?.dados_originais?.valores_mensais?.[monthIndex] || 0);
+    const planningName = record => record.referencia || String(record.titulo || '').replace(/^Planejamento 2026\s*—\s*/i,'') || 'Frente';
+    const planningSourceMeta = record => {
+      const candidates = [record?.dados_originais?.categoria_original, record?.referencia, planningName(record)];
+      for (const candidate of candidates) {
+        const fallback = OFFICIAL_PLANNING_2026[normalize(candidate)];
+        if (fallback) return fallback;
+      }
+      return null;
+    };
+    const sourcePlanningValue = (record, monthIndex) => {
+      const stored = record?.dados_originais?.valores_mensais;
+      if (Array.isArray(stored) && stored.some(value => Number(value || 0) > 0)) return Number(stored[monthIndex] || 0);
+      return Number(planningSourceMeta(record)?.monthly?.[monthIndex] || 0);
+    };
+    const sourcePlanningPaid = (record, monthIndex) => {
+      const stored = record?.dados_originais?.pagos_mensais;
+      if (Array.isArray(stored) && stored.length >= 12) return Boolean(stored[monthIndex]);
+      return Boolean(planningSourceMeta(record)?.paid?.[monthIndex]);
+    };
     const planningCellValue = (record, monthIndex) => {
       const payment = paymentMap.get(`${record.id}|${monthIndex}`);
       return payment ? Number(payment.valor_previsto || 0) : sourcePlanningValue(record, monthIndex);
     };
+    const planningCellPaid = (record, monthIndex) => {
+      const payment = paymentMap.get(`${record.id}|${monthIndex}`);
+      if (payment && (payment.status === 'pago' || Number(payment.valor_pago || 0) > 0)) return true;
+      return sourcePlanningPaid(record, monthIndex);
+    };
     const monthTotals = OFFICIAL_MONTHS.map((_,monthIndex) => sum(planning, record => planningCellValue(record, monthIndex)));
     const columnTotals = planning.map(record => sum(OFFICIAL_MONTHS, (_, monthIndex) => planningCellValue(record, monthIndex)));
-    const grandTotal = sum(columnTotals, value => value); const currentMonth = new Date().getFullYear() === 2026 ? new Date().getMonth() : -1;
-    const planningName = record => record.referencia || String(record.titulo || '').replace(/^Planejamento 2026\s*—\s*/i,'') || 'Frente';
+    const paidColumnTotals = planning.map(record => sum(OFFICIAL_MONTHS, (_, monthIndex) => planningCellPaid(record, monthIndex) ? planningCellValue(record, monthIndex) : 0));
+    const grandTotal = sum(columnTotals, value => value);
+    const paidTotal = sum(paidColumnTotals, value => value);
+    const remainingTotal = Math.max(0, grandTotal - paidTotal);
+    const currentMonth = new Date().getFullYear() === 2026 ? new Date().getMonth() : -1;
     const jumpToPlanningColumn = index => {
       const scroller = planningScrollRef.current; if (!scroller) return;
       const target = scroller.querySelectorAll('.planning-live-sheet thead th')[index + 1]; if (!target) return;
@@ -1432,13 +1460,13 @@
     useLucide([planning.length, context.saving]);
     return html`<section className="spreadsheet-view planning-sheet-view">
       <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na fonte oficial. Clique, edite e acompanhe o total sem perder o contexto." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar fonte</button>`}/>
-      <div className="planning-summary-line"><span><small>Frentes</small><strong>${planning.length}</strong></span><span><small>Total planejado</small><strong>${money(grandTotal)}</strong></span><span><small>Mês atual</small><strong>${currentMonth >= 0 ? OFFICIAL_MONTHS[currentMonth][1] : '2026'}</strong></span></div>
-      ${planning.length ? html`<section className="planning-fronts-panel"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Clique em uma frente para ir direto à coluna</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])}</small></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. Reimporte o MKTG 2026 para restaurar a matriz.</p></div><button className="button primary" onClick=${()=>context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar MKTG 2026</button></div>`}
+      <div className="planning-summary-line"><span><small>Frentes</small><strong>${planning.length}</strong></span><span><small>Total planejado</small><strong>${money(grandTotal)}</strong></span><span className="paid"><small>Já pago</small><strong>${money(paidTotal)}</strong></span><span className="pending"><small>A pagar</small><strong>${money(remainingTotal)}</strong></span></div>
+      ${planning.length ? html`<section className="planning-fronts-panel"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Vermelho = já pago na planilha oficial</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])} planejado</small><em>${money(paidColumnTotals[index])} pago</em></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. Reimporte o MKTG 2026 para restaurar a matriz.</p></div><button className="button primary" onClick=${()=>context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar MKTG 2026</button></div>`}
       ${planning.length ? html`<${EasySheetNavigator} scrollRef=${planningScrollRef} focusSelector=".planning-live-sheet .total-head" focusLabel="Ir ao total"/>` : null}
       ${planning.length ? html`<article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll assisted-scroll" ref=${planningScrollRef}><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${planningName(record)}>${planningName(record)}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
-        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); return html`<td className=${value ? 'has-value' : 'blank-value'} title=${payment ? 'Valor salvo no sistema' : (value ? 'Valor original do MKTG 2026' : '')}><${EditableSheetCell} type="money" value=${value} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
+        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Já pago segundo o MKTG 2026' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><${EditableSheetCell} type="money" value=${value} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
       </tbody><tfoot><tr><th className="sticky-first">Total</th>${columnTotals.map(value => html`<th>${money(value)}</th>`)}<th>${money(grandTotal)}</th></tr></tfoot></table></div></article>` : null}
-      ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Os valores iniciais vêm da aba Planejamento do MKTG 2026. Editar uma célula salva a nova previsão no sistema, sem marcar gasto como realizado.</span></div>` : null}
+      ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Os valores vêm da aba Planejamento do MKTG 2026. Valores em vermelho na fonte oficial são tratados como já pagos; valores escuros continuam apenas previstos.</span></div>` : null}
     </section>`;
   }
 
@@ -2038,6 +2066,42 @@
     }, items);
   }
 
+
+  function workbookXmlText(workbook, path) {
+    const content = workbook?.files?.[path]?.content;
+    if (!content) return '';
+    if (typeof content === 'string') return content;
+    try { return new TextDecoder('utf-8').decode(content); } catch (_) { return String(content || ''); }
+  }
+
+  function planningPaidMaskFromWorkbook(workbook) {
+    try {
+      const stylesXml = workbookXmlText(workbook, 'xl/styles.xml');
+      const sheetMeta = workbook?.Workbook?.Sheets?.find(item => normalize(item?.name) === 'planejamento');
+      const sheetPath = `xl/worksheets/sheet${sheetMeta?.sheetId || 1}.xml`;
+      const sheetXml = workbookXmlText(workbook, sheetPath);
+      if (!stylesXml || !sheetXml) return null;
+      const fontsBlock = stylesXml.match(/<fonts[^>]*>([\s\S]*?)<\/fonts>/i)?.[1] || '';
+      const fonts = fontsBlock.match(/<font[\s\S]*?<\/font>/gi) || [];
+      const redFontIds = new Set(fonts.map((font,index) => /<color[^>]*rgb=["'](?:FF)?FF0000["']/i.test(font) ? index : -1).filter(index => index >= 0));
+      const xfsBlock = stylesXml.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/i)?.[1] || '';
+      const xfs = xfsBlock.match(/<xf\b[^>]*\/?>/gi) || [];
+      const redStyleIds = new Set(xfs.map((xf,index) => { const fontId = Number(xf.match(/fontId=["'](\d+)["']/i)?.[1] ?? -1); return redFontIds.has(fontId) ? index : -1; }).filter(index => index >= 0));
+      if (!redStyleIds.size) return null;
+      const mask = Array.from({ length:15 }, () => Array(12).fill(false));
+      const cellRe = /<c\b[^>]*r=["']([B-P])(\d+)["'][^>]*s=["'](\d+)["'][^>]*>/gi;
+      let match;
+      while ((match = cellRe.exec(sheetXml))) {
+        const columnIndex = match[1].charCodeAt(0) - 66;
+        const rowNumber = Number(match[2]);
+        const monthIndex = rowNumber - 3;
+        const styleId = Number(match[3]);
+        if (columnIndex >= 0 && columnIndex < 15 && monthIndex >= 0 && monthIndex < 12 && redStyleIds.has(styleId)) mask[columnIndex][monthIndex] = true;
+      }
+      return mask;
+    } catch (_) { return null; }
+  }
+
   function parseOfficialMarcosWorkbook(fileName, workbook) {
     if (!workbook.Sheets.RECEITA || !workbook.Sheets.Planejamento) return null;
     const canonicalFile = 'MKTG 2026.xlsx'; const items = [];
@@ -2078,9 +2142,11 @@
         fingerprint:fingerprint([recordFingerprint, 'recebimento', monthIndex + 1]) }))));
     });
     const planningRows = XLSX.utils.sheet_to_json(workbook.Sheets.Planejamento, { header:1, defval:null, raw:true, blankrows:false });
+    const planningPaidMask = planningPaidMaskFromWorkbook(workbook);
     for (let columnIndex = 1; columnIndex <= 15; columnIndex += 1) {
       const header = String(planningRows[1]?.[columnIndex] ?? '').trim(); if (!header) continue;
       const monthly = Array.from({ length:12 }, (_, index) => officialMoney(planningRows[2 + index]?.[columnIndex]));
+      const paidMonthly = Array.from({ length:12 }, (_, index) => monthly[index] > 0 && Boolean(planningPaidMask?.[columnIndex - 1]?.[index] ?? OFFICIAL_PLANNING_2026[normalize(header)]?.paid?.[index]));
       const total = sum(monthly, value => value); if (total <= 0) continue;
       const recordFingerprint = fingerprint(['marcos', 'planejamento', 2026, header]);
       items.push(officialItem({
@@ -2088,11 +2154,11 @@
         descricao:'Planejamento anual de investimento do Marketing acompanhado pela Presidência.', referencia:header, status:'em_andamento',
         data_inicio:'2026-01-01', data_fim:'2026-12-31', valor_acordado:total, centro_custo:'Marketing', tags:['marcos', 'planejamento', 'despesa', '2026', normalize(header)],
         origem_importacao:canonicalFile, linha_origem:2, fingerprint:recordFingerprint,
-        dados_originais:{ arquivo:canonicalFile, aba:'Planejamento', coluna:XLSX.utils.encode_col(columnIndex), categoria_original:header, valores_mensais:monthly },
+        dados_originais:{ arquivo:canonicalFile, aba:'Planejamento', coluna:XLSX.utils.encode_col(columnIndex), categoria_original:header, valores_mensais:monthly, pagos_mensais:paidMonthly },
       }, monthly.map((value, monthIndex) => ({ value, monthIndex })).filter(item => item.value > 0).map(({ value, monthIndex }, index) => ({
-        parcela:index + 1, descricao:`${header} — ${OFFICIAL_MONTHS[monthIndex][1]} 2026`, valor_previsto:value, valor_pago:0,
-        vencimento:officialMonthEnd(2026, monthIndex), pago_em:'', status:'previsto', forma_pagamento:'Não informado',
-        observacoes:'Valor planejado. A passagem do mês não realiza a despesa; o realizado depende da confirmação do pagamento.',
+        parcela:index + 1, descricao:`${header} — ${OFFICIAL_MONTHS[monthIndex][1]} 2026`, valor_previsto:value, valor_pago:paidMonthly[monthIndex] ? value : 0,
+        vencimento:officialMonthEnd(2026, monthIndex), pago_em:paidMonthly[monthIndex] ? officialMonthEnd(2026, monthIndex) : '', status:paidMonthly[monthIndex] ? 'pago' : 'previsto', forma_pagamento:'Não informado',
+        observacoes:paidMonthly[monthIndex] ? 'Marcado em vermelho na fonte oficial: tratado como já pago.' : 'Valor planejado ainda não marcado como pago na fonte oficial.',
         fingerprint:fingerprint([recordFingerprint, 'planejamento', monthIndex + 1])
       }))));
     }
@@ -2159,7 +2225,7 @@
       if (!nextFile) return;
       if (!/\.(xlsx|xls|xlsm|csv)$/i.test(nextFile.name)) return context.notify('Envie um arquivo Excel ou CSV.', 'error');
       try {
-        const buffer = await nextFile.arrayBuffer(); const workbook = XLSX.read(buffer, { type:'array', cellDates:true });
+        const buffer = await nextFile.arrayBuffer(); const workbook = XLSX.read(buffer, { type:'array', cellDates:true, cellStyles:true, bookFiles:true });
         workbookRef.current = workbook; setFile(nextFile); setSheets(workbook.SheetNames);
         const detected = parseOfficialWorkbook(nextFile.name, workbook);
         if (detected) {
