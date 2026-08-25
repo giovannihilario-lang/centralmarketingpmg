@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.1.0 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.2.0 / React + HTM */
 (() => {
   'use strict';
 
@@ -153,8 +153,8 @@
     if (/video/.test(text)) return 'videos pmg';
     if (/brinde/.test(text)) return 'brindes';
     if (/graac|aacd/.test(text)) return 'graac aacd';
-    if (/ifb/.test(text)) return 'ifb';
-    if (/abad/.test(text)) return 'abad';
+    if (/\bifb\b/.test(text)) return 'ifb';
+    if (/\babad\b/.test(text)) return 'abad';
     if (/convencao/.test(text)) return 'convencao';
     if (/diverso|outro/.test(text)) return 'diversos';
     return '';
@@ -1022,7 +1022,7 @@
     const meta = VIEWS[view];
     useLucide([view]);
     const documentView = view === 'documentos';
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Pendentes, NF, fornecedor...</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button><button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="search"/><span><b>Busca rápida</b><small>Fornecedor, NF, pendentes...</small></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button><button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
   }
 
   function CommandPalette({ context, onClose }) {
@@ -1171,9 +1171,9 @@
       </header>
 
       <div className="executive-metrics">
-        <button onClick=${() => context.setView('receita')}><span className="metric-glyph green"><${Icon} name="badge-dollar-sign"/></span><div><small>PREVISÃO ANUAL</small><strong>${money(forecastRevenue)}</strong><p>MKTG 2026</p></div><${Icon} name="arrow-up-right"/></button>
-        <button onClick=${() => context.setView('receita')}><span className="metric-glyph dark"><${Icon} name="circle-check-big"/></span><div><small>RECEITA CONFIRMADA</small><strong>${money(received)}</strong><p>${Math.round(realizationPct)}% do previsto</p></div><${Icon} name="arrow-up-right"/></button>
         <button onClick=${() => context.navigatePayments({year,month:currentMonth,pending:true})}><span className="metric-glyph amber"><${Icon} name="circle-dollar-sign"/></span><div><small>A CONFIRMAR</small><strong>${money(toReceiveAmount)}</strong><p>${openRows.length} linhas pendentes no ano</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.navigatePayments({year,month:currentMonth})}><span className="metric-glyph green"><${Icon} name="calendar-check"/></span><div><small>CONFIRMADO EM ${OFFICIAL_MONTHS[currentMonth][1].toUpperCase()}</small><strong>${money(currentConfirmedAmount)}</strong><p>${currentConfirmed.length} pagamento(s) confirmado(s)</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.setView('receita')}><span className="metric-glyph dark"><${Icon} name="trending-down"/></span><div><small>ABAIXO DA PREVISÃO</small><strong>${int(belowSuppliers.length)}</strong><p>${aboveSuppliers.length} fornecedor(es) acima</p></div><${Icon} name="arrow-up-right"/></button>
         <button onClick=${() => context.setView('planejamento')}><span className="metric-glyph violet"><${Icon} name="target"/></span><div><small>INVESTIMENTO PREVISTO</small><strong>${money(forecastInvestment)}</strong><p>Saldo previsto ${money(forecastBalance)}</p></div><${Icon} name="arrow-up-right"/></button>
       </div>
 
@@ -1188,7 +1188,7 @@
         <article className="overview-panel annual-timeline-panel"><div className="overview-panel-head"><div><span>COMPETÊNCIAS</span><h3>Janeiro → Dezembro</h3><p>Estado e confirmação do ano inteiro sem trocar de zoom.</p></div></div><div className="annual-timeline">${monthly.map(item=>html`<button className=${`${item.state} ${item.active?'active':''}`} onClick=${() => context.navigatePayments({year,month:item.index})} title=${item.amount?`${money(item.confirmed)} confirmado de ${money(item.amount)}`:'Sem dados'}><span><b>${item.label.slice(0,3)}</b><em>${item.active?'Agora':item.state==='complete'?'Fechado':item.state==='partial'?'Parcial':item.state==='pending'?'Pendente':'—'}</em></span><strong>${item.amount?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.count?`${item.confirmedCount}/${item.count} linhas`:'sem dados'}</small></button>`)}</div></article>
         <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Clique para abrir o painel lateral do parceiro.</p></div><button onClick=${() => context.setView('fornecedores')}>Ver todos <${Icon} name="arrow-up-right"/></button></div><div className="top-supplier-list interactive">${topSuppliers.length?topSuppliers.map((item,index)=>html`<button onClick=${() => context.openSupplier(item.name)}><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small><${Icon} name="chevron-right"/></button>`):html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
       </div>
-      <div className="overview-shortcuts"><button onClick=${() => context.navigatePayments({year,month:currentMonth})}><span><${Icon} name="table-2"/></span><div><strong>Pagamentos</strong><small>Editar e confirmar em um clique</small></div><${Icon} name="arrow-right"/></button><button onClick=${() => context.setView('planejamento')}><span><${Icon} name="target"/></span><div><strong>Planejamento</strong><small>Matriz mensal das 15 frentes</small></div><${Icon} name="arrow-right"/></button><button onClick=${() => context.setView('receita')}><span><${Icon} name="landmark"/></span><div><strong>Receita anual</strong><small>Previsão x confirmado</small></div><${Icon} name="arrow-right"/></button></div>
+
     </section>`;
   }
 
@@ -1416,7 +1416,7 @@
 
     useLucide([forecasts.length, context.saving, context.conferences?.length]);
     return html`<section className="spreadsheet-view revenue-sheet-view">
-      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Receita" title="PAGAMENTOS FORNECEDORES 2026" subtitle="Previsão vem do MKTG. Os meses são calculados automaticamente pela Planilha de Pagamentos: confirmou o pagamento, entrou na Receita." actions=${html`<span className="closed-year-chip"><small>Fechado 2025</small><strong>${money(closed2025Total)}</strong></span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Atualizar fonte</button>`}/>
+      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Receita" title="RECEITA ANUAL 2026" subtitle="Previsão vem do MKTG. O realizado vem dos pagamentos confirmados, sem dupla digitação." actions=${html`<span className="closed-year-chip"><small>Fechado 2025</small><strong>${money(closed2025Total)}</strong></span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Atualizar fonte</button>`}/>
       <section className="budget-strip"><div className="budget-title"><span>PREVISÃO ORÇAMENTÁRIA</span><small>Visão anual antes da matriz</small></div><div className="budget-cell investment"><span>PREV. INVESTIMENTO</span><strong>${money(forecastInvestment)}</strong></div><div className="budget-cell revenue"><span>PREV. RECEITA</span><strong>${money(forecastRevenue)}</strong></div><div className="budget-cell balance"><span>PREV. SALDO</span><strong>${money(forecastBalance)}</strong></div></section>
 
       <div className="revenue-rule-strip">
