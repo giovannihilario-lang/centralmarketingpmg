@@ -1211,3 +1211,110 @@ body{background:var(--ux22-canvas)}
   .top-supplier-list.interactive{grid-template-columns:1fr!important}
   .budget-title{align-items:flex-start!important;flex-direction:column!important;gap:2px}
 }
+
+/* =========================================================
+   UX V2.2.1 — LEGIBILIDADE REAL DAS MATRIZES
+   Prioriza leitura em 100% de zoom. Receita/Planejamento
+   podem rolar horizontalmente em vez de miniaturizar texto.
+   ========================================================= */
+
+/* Receita anual: parar de espremer a matriz */
+.ac-app.sheet-mode .revenue-sheet-view{gap:12px!important}
+.ac-app.sheet-mode .revenue-sheet-view .sheet-titlebar{min-height:92px!important;padding:14px 16px!important}
+.ac-app.sheet-mode .revenue-sheet-view .sheet-titlebar h2{font-size:26px!important;letter-spacing:-.035em!important}
+.ac-app.sheet-mode .revenue-sheet-view .sheet-titlebar p{font-size:13px!important;max-width:820px!important;line-height:1.45!important}
+.ac-app.sheet-mode .revenue-sheet-view .closed-year-chip{height:48px!important;min-width:146px!important;padding:7px 12px!important;border-radius:11px!important}
+.ac-app.sheet-mode .revenue-sheet-view .closed-year-chip small{font-size:10px!important;letter-spacing:.04em!important}
+.ac-app.sheet-mode .revenue-sheet-view .closed-year-chip strong{font-size:13px!important;margin-top:2px!important}
+
+/* Previsão orçamentária realmente legível */
+.ac-app.sheet-mode .revenue-sheet-view .budget-strip{padding:12px!important;gap:10px!important;border-radius:14px!important}
+.ac-app.sheet-mode .revenue-sheet-view .budget-title{min-height:40px!important;padding:0 4px 7px!important}
+.ac-app.sheet-mode .revenue-sheet-view .budget-title span{font-size:12px!important;letter-spacing:.03em!important}
+.ac-app.sheet-mode .revenue-sheet-view .budget-title small{font-size:11px!important}
+.ac-app.sheet-mode .revenue-sheet-view .budget-cell{min-height:76px!important;padding:12px 16px!important;align-items:flex-start!important;justify-content:center!important;flex-direction:column!important;gap:5px!important}
+.ac-app.sheet-mode .revenue-sheet-view .budget-cell span{font-size:11px!important;letter-spacing:.035em!important}
+.ac-app.sheet-mode .revenue-sheet-view .budget-cell strong{font-size:21px!important;line-height:1.1!important}
+
+/* Confirmado / A receber */
+.ac-app.sheet-mode .revenue-sheet-view .revenue-rule-strip{gap:10px!important;margin:0!important}
+.ac-app.sheet-mode .revenue-sheet-view .revenue-rule-strip>button{min-height:86px!important;padding:14px 16px 13px 19px!important;border-radius:12px!important}
+.ac-app.sheet-mode .revenue-sheet-view .revenue-rule-strip>button small{font-size:11px!important}
+.ac-app.sheet-mode .revenue-sheet-view .revenue-rule-strip>button strong{font-size:20px!important;margin-top:4px!important}
+.ac-app.sheet-mode .revenue-sheet-view .revenue-rule-strip>button em{font-size:11px!important;margin-top:5px!important}
+
+/* A matriz usa largura natural. Melhor scroll do que fonte microscópica. */
+.ac-app.sheet-mode .revenue-card{border-radius:13px!important;overflow:hidden!important}
+.ac-app.sheet-mode .revenue-card .spreadsheet-scroll{overflow:auto!important;scrollbar-gutter:stable!important}
+.ac-app.sheet-mode .revenue-card .spreadsheet-scroll::-webkit-scrollbar{height:12px;width:12px}
+.ac-app.sheet-mode .revenue-card .spreadsheet-scroll::-webkit-scrollbar-thumb{background:#b8c8bd;border:3px solid #f4f7f5;border-radius:999px}
+.ac-app.sheet-mode .revenue-card .spreadsheet-scroll::-webkit-scrollbar-track{background:#f4f7f5}
+.ac-app.sheet-mode .revenue-live-sheet{table-layout:fixed!important;width:2050px!important;min-width:2050px!important;font-size:12px!important}
+.ac-app.sheet-mode .revenue-live-sheet thead th{height:48px!important;padding:0 7px!important;font-size:11px!important;line-height:1.18!important;letter-spacing:.025em!important;white-space:normal!important}
+.ac-app.sheet-mode .revenue-live-sheet tbody tr{height:48px!important}
+.ac-app.sheet-mode .revenue-live-sheet tbody td,.ac-app.sheet-mode .revenue-live-sheet tbody th{height:48px!important;font-size:12px!important}
+.ac-app.sheet-mode .revenue-live-sheet .supplier-col{width:220px!important;min-width:220px!important;max-width:220px!important}
+.ac-app.sheet-mode .revenue-live-sheet .supplier-col button{height:48px!important;padding:0 12px!important;font-size:12.5px!important;line-height:1.25!important}
+.ac-app.sheet-mode .revenue-live-sheet .supplier-col button svg{width:14px!important;flex:0 0 auto!important}
+.ac-app.sheet-mode .revenue-live-sheet .forecast-col{width:126px!important;min-width:126px!important;max-width:126px!important}
+.ac-app.sheet-mode .revenue-live-sheet .forecast-col .sheet-cell-editable{font-size:12px!important;font-weight:800!important}
+.ac-app.sheet-mode .revenue-live-sheet thead th:not(.supplier-col):not(.forecast-col):not(.total-head):not(.balance-head):not(:last-child){width:101px!important;min-width:101px!important}
+.ac-app.sheet-mode .revenue-live-sheet .total-head,.ac-app.sheet-mode .revenue-live-sheet .row-total{width:126px!important;min-width:126px!important;max-width:126px!important;font-size:12px!important}
+.ac-app.sheet-mode .revenue-live-sheet .balance-head,.ac-app.sheet-mode .revenue-live-sheet .balance-cell{width:170px!important;min-width:170px!important;max-width:170px!important}
+.ac-app.sheet-mode .revenue-live-sheet th:last-child,.ac-app.sheet-mode .revenue-live-sheet td:last-child{width:82px!important;min-width:82px!important;max-width:82px!important}
+.ac-app.sheet-mode .revenue-live-sheet .derived-revenue-cell{height:48px!important;padding:0 12px 0 6px!important;font-size:11.5px!important;line-height:1.1!important}
+.ac-app.sheet-mode .revenue-live-sheet .derived-revenue-cell i{right:6px!important;width:6px!important;height:6px!important}
+.ac-app.sheet-mode .revenue-live-sheet .balance-cell{padding:6px 10px!important;font-size:11.5px!important;line-height:1.18!important}
+.ac-app.sheet-mode .revenue-live-sheet .balance-cell .variance-value{font-size:12px!important}
+.ac-app.sheet-mode .revenue-live-sheet .balance-cell small{font-size:9.5px!important;margin-top:3px!important}
+.ac-app.sheet-mode .revenue-live-sheet .revenue-progress{width:62px!important;height:28px!important;border-radius:8px!important}
+.ac-app.sheet-mode .revenue-live-sheet .revenue-progress b{font-size:10.5px!important}
+.ac-app.sheet-mode .revenue-live-sheet tfoot th{height:50px!important;padding:0 7px!important;font-size:10.5px!important;line-height:1.2!important;white-space:normal!important}
+
+/* Duas colunas de referência fixas durante o scroll */
+.ac-app.sheet-mode .revenue-live-sheet .supplier-col{position:sticky!important;left:0!important;z-index:8!important;background:#fff!important;box-shadow:1px 0 0 #d8e2db!important}
+.ac-app.sheet-mode .revenue-live-sheet thead .supplier-col{z-index:14!important;background:#dfe8e2!important}
+.ac-app.sheet-mode .revenue-live-sheet tfoot .sticky-first{z-index:12!important;background:#e6efe9!important}
+.ac-app.sheet-mode .revenue-live-sheet .forecast-col{position:sticky!important;left:220px!important;z-index:7!important;background:#f7faf8!important;box-shadow:2px 0 0 rgba(63,98,75,.09)!important}
+.ac-app.sheet-mode .revenue-live-sheet thead .forecast-col{z-index:13!important;background:#e6ede8!important}
+.ac-app.sheet-mode .revenue-live-sheet tfoot th:nth-child(2){position:sticky!important;left:220px!important;z-index:11!important;background:#e6efe9!important}
+
+/* Leitura por linha e por mês */
+.ac-app.sheet-mode .revenue-live-sheet tbody tr:nth-child(even) td:not(.forecast-col):not(.balance-cell),
+.ac-app.sheet-mode .revenue-live-sheet tbody tr:nth-child(even) th.supplier-col{background-color:#fbfcfb!important}
+.ac-app.sheet-mode .revenue-live-sheet tbody tr:hover td,
+.ac-app.sheet-mode .revenue-live-sheet tbody tr:hover th{box-shadow:inset 0 1px #cfe0d4,inset 0 -1px #cfe0d4}
+.ac-app.sheet-mode .revenue-live-sheet .current-month-col{background:#eef7f1!important;box-shadow:inset 1px 0 #c5decf,inset -1px 0 #c5decf!important}
+.ac-app.sheet-mode .revenue-live-sheet thead .current-month-col{background:#d8eadf!important;color:#1d6339!important}
+.ac-app.sheet-mode .revenue-live-sheet tfoot .current-month-col{background:#dcebe1!important}
+.ac-app.sheet-mode .revenue-footnote{font-size:11.5px!important;min-height:50px!important;padding:11px 14px!important}
+
+/* Planejamento: mesma regra, leitura antes de compressão */
+.ac-app.sheet-mode .planning-live-sheet{table-layout:fixed!important;width:1900px!important;min-width:1900px!important}
+.ac-app.sheet-mode .planning-live-sheet thead th{height:60px!important;font-size:10.5px!important;line-height:1.18!important;padding:5px!important}
+.ac-app.sheet-mode .planning-live-sheet tbody td,.ac-app.sheet-mode .planning-live-sheet tbody th{height:46px!important}
+.ac-app.sheet-mode .planning-live-sheet tbody th{font-size:11.5px!important}
+.ac-app.sheet-mode .planning-live-sheet .sheet-cell-editable{font-size:11.5px!important;height:45px!important}
+.ac-app.sheet-mode .planning-live-sheet .row-total{font-size:11.5px!important}
+.ac-app.sheet-mode .planning-live-sheet tfoot th{height:48px!important;font-size:10px!important}
+
+/* Notebook: mantém o tamanho da fonte e deixa a tabela rolar */
+@media(max-width:1450px){
+  .ac-app.sheet-mode .revenue-live-sheet{width:2050px!important;min-width:2050px!important}
+  .ac-app.sheet-mode .revenue-live-sheet thead th{font-size:10.8px!important}
+  .ac-app.sheet-mode .revenue-live-sheet tbody td,.ac-app.sheet-mode .revenue-live-sheet tbody th{font-size:11.8px!important}
+  .ac-app.sheet-mode .planning-live-sheet{width:1900px!important;min-width:1900px!important}
+  .ac-app.sheet-mode .planning-live-sheet thead th{font-size:10.2px!important}
+}
+
+@media(max-width:900px){
+  .ac-app.sheet-mode .revenue-sheet-view .budget-strip{grid-template-columns:1fr!important;margin-inline:0!important;width:100%!important}
+  .ac-app.sheet-mode .revenue-sheet-view .budget-cell{grid-column:1!important;min-height:68px!important}
+  .ac-app.sheet-mode .revenue-sheet-view .budget-cell strong{font-size:19px!important}
+  .ac-app.sheet-mode .revenue-live-sheet{width:2050px!important;min-width:2050px!important}
+  .ac-app.sheet-mode .revenue-live-sheet .supplier-col{width:200px!important;min-width:200px!important;max-width:200px!important}
+  .ac-app.sheet-mode .revenue-live-sheet .forecast-col{left:200px!important}
+  .ac-app.sheet-mode .revenue-live-sheet tfoot th:nth-child(2){left:200px!important}
+}
+.ac-app.sheet-mode .revenue-live-sheet tfoot th:nth-child(2){width:126px!important;min-width:126px!important;max-width:126px!important}
+.ac-app.sheet-mode .revenue-live-sheet td.current-month-col .derived-revenue-cell{box-shadow:inset 1px 0 #c5decf,inset -1px 0 #c5decf!important}
