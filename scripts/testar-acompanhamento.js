@@ -50,7 +50,7 @@ const expectedCounts = {
   'Fornecedores 2024.xlsx': { records:430, payments:426 },
   'Fornecedores 2025.xlsx': { records:524, payments:523 },
   'Fornecedores 2026.xlsx': { records:271, payments:270 },
-  'MKTG 2026.xlsx': { records:110, payments:488 },
+  'MKTG 2026.xlsx': { records:100, payments:384 },
 };
 
 for (const fileName of cases) {
@@ -82,9 +82,9 @@ for (const fileName of cases) {
 }
 
 
-if (snapshot.items.length !== 1335) throw new Error(`Carga consolidada: ${snapshot.items.length} registros; esperado 1335`);
+if (snapshot.items.length !== 1325) throw new Error(`Carga consolidada: ${snapshot.items.length} registros; esperado 1325`);
 const allPayments = snapshot.items.flatMap(item => item.pagamentos || []);
-if (allPayments.length !== 1707) throw new Error(`Carga consolidada: ${allPayments.length} movimentos; esperado 1707`);
+if (allPayments.length !== 1603) throw new Error(`Carga consolidada: ${allPayments.length} movimentos; esperado 1603`);
 
 const planning = snapshot.items.filter(item => {
   const record = item.registro || {};

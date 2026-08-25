@@ -457,6 +457,7 @@ function addExecutiveIndicator(fileName, title, value, key) {
 }
 
 function detailRecord({ fileName, sheetName, title, nature, category, value, lines, status = 'em_andamento', reference = '', startDate = '', observations = '' }) {
+  if ((!Array.isArray(lines) || !lines.length) && !(Number(value) > 0)) return;
   const recordFingerprint = fingerprint('marcos', 'detalhamento', 2026, sheetName, title);
   addItem({
     controle: 'marcos', ano_referencia: 2026, natureza: nature, impacta_totais: false,
@@ -474,7 +475,8 @@ function detailRecord({ fileName, sheetName, title, nature, category, value, lin
 }
 
 function rowsFromSheet(workbook, sheetName) {
-  return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: null, raw: true, blankrows: false });
+  const sheet = workbook.Sheets[sheetName];
+  return sheet ? XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true, blankrows: false }) : [];
 }
 
 function parseDetailSheets(workbook, fileName) {
