@@ -1188,7 +1188,7 @@
     useLucide([state.overflow, state.progress, state.atStart, state.atEnd]);
     if (!state.overflow) return null;
     return html`<div className="easy-sheet-nav" role="group" aria-label="Controles para mover a tabela para os lados">
-      <div className="easy-sheet-nav-copy"><span><${Icon} name="move-horizontal"/></span><div><strong>Mover a tabela</strong><small>Use os botões ou arraste a barra. Não precisa diminuir o zoom.</small></div></div>
+      <div className="easy-sheet-nav-copy"><span><${Icon} name="move-horizontal"/></span><div><strong>Navegar pelas colunas</strong><small>Use Voltar e Avançar. A barra também move a tabela.</small></div></div>
       <div className="easy-sheet-nav-controls">
         <button type="button" className="edge" onClick=${() => go('start')} disabled=${state.atStart} title="Voltar ao começo"><${Icon} name="chevrons-left"/><span>Início</span></button>
         <button type="button" className="step" onClick=${() => move(-1)} disabled=${state.atStart}><${Icon} name="chevron-left"/><span>Voltar</span></button>
@@ -1350,7 +1350,7 @@
       datasets[datasets.length - 1].backgroundColor = gradient;
       chartRef.current = new Chart(canvas.current, { type:'line', data:{ labels:months.map(month => monthLabel(month)), datasets }, options:{ responsive:true, maintainAspectRatio:false, animation:{ duration:900, easing:'easeOutQuart' }, interaction:{ intersect:false, mode:'index' },
         plugins:{ legend:{ position:'top', align:'end', labels:{ usePointStyle:true, pointStyle:'circle', boxWidth:7, boxHeight:7, color:'#607267', font:{ family:'Inter', weight:600 } } }, tooltip:{ backgroundColor:'#102d1d', padding:12, cornerRadius:10, callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } },
-        scales:{ x:{ grid:{ display:false }, border:{ display:false }, ticks:{ color:'#87988e', font:{ family:'Inter', size:11 } } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.07)' }, ticks:{ color:'#87988e', font:{ family:'Inter', size:10 }, callback:value => compactMoney(value) } } } } });
+        scales:{ x:{ grid:{ display:false }, border:{ display:false }, ticks:{ color:'#87988e', font:{ family:'Inter', size:11 } } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.07)' }, ticks:{ color:'#87988e', font:{ family:'Inter', size:12 }, callback:value => compactMoney(value) } } } } });
       return () => chartRef.current?.destroy();
     }, [payments, records]);
     return html`<div className="cashflow-canvas"><canvas ref=${canvas}></canvas></div>`;
@@ -1430,7 +1430,7 @@
       chartRef.current = new Chart(canvas.current, { type:'line', data:{ labels:OFFICIAL_MONTHS.map(([, label]) => label.slice(0,3)), datasets:[
         { label:'2025', data:series[2025], borderColor:'#9ca9a0', backgroundColor:'rgba(156,169,160,.08)', tension:.32, fill:false, pointRadius:3, borderWidth:2 },
         { label:'2026', data:series[2026], borderColor:'#2a7e4e', backgroundColor:'rgba(42,126,78,.10)', tension:.32, fill:true, pointRadius:3, borderWidth:2.5 },
-      ]}, options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false }, onClick:(_,elements) => { const point=elements?.[0]; if(point) context.navigatePayments({ year:2026, month:point.index }); }, onHover:(event,elements) => { if(event?.native?.target) event.native.target.style.cursor = elements?.length ? 'pointer' : 'default'; }, plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:7, font:{ family:'Inter', size:10 } } }, tooltip:{ callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } }, scales:{ x:{ grid:{ display:false }, border:{ display:false } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.06)' }, ticks:{ callback:value => compactMoney(value) } } } } });
+      ]}, options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false }, onClick:(_,elements) => { const point=elements?.[0]; if(point) context.navigatePayments({ year:2026, month:point.index }); }, onHover:(event,elements) => { if(event?.native?.target) event.native.target.style.cursor = elements?.length ? 'pointer' : 'default'; }, plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:7, font:{ family:'Inter', size:12 } } }, tooltip:{ callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } }, scales:{ x:{ grid:{ display:false }, border:{ display:false } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.06)' }, ticks:{ font:{ family:'Inter', size:11 }, callback:value => compactMoney(value) } } } } });
       return () => chartRef.current?.destroy();
     }, [series]);
     return html`<div className="revenue-chart"><canvas ref=${canvas}></canvas></div>`;

@@ -1417,3 +1417,260 @@ body{background:var(--ux22-canvas)}
   .easy-sheet-nav-controls button.focus{grid-column:1/-1}
   .easy-sheet-nav-controls button.edge{display:none}
 }
+
+
+/* =========================================================
+   PMG CONNECT — UX V2.3.0 · REVISÃO GERAL DE LAYOUT
+   Uma única linguagem visual para Dashboard + Planilhas.
+   Foco: legibilidade, hierarquia, área útil e operação simples.
+   ========================================================= */
+:root{
+  --ux23-canvas:#f3f6f4;
+  --ux23-surface:#ffffff;
+  --ux23-surface-soft:#f8faf9;
+  --ux23-line:#dce5df;
+  --ux23-line-strong:#cbd8cf;
+  --ux23-ink:#183222;
+  --ux23-text:#3f5648;
+  --ux23-muted:#75847b;
+  --ux23-green:#236a40;
+  --ux23-green-2:#2f8251;
+  --ux23-green-soft:#edf7f1;
+  --ux23-amber:#a97319;
+  --ux23-amber-soft:#fff7e7;
+  --ux23-danger:#9d4b45;
+  --ux23-danger-soft:#fff2ef;
+  --ux23-shadow:0 10px 28px rgba(14,53,31,.065);
+  --ux23-shadow-hover:0 16px 38px rgba(14,53,31,.10);
+  --ux23-radius:14px;
+}
+
+html,body{background:var(--ux23-canvas)!important;color:var(--ux23-text)!important}
+body{font-size:14px!important}
+.ambient{display:none!important}
+
+/* --- Estrutura geral: menos moldura, mais conteúdo --- */
+.ac-sidebar{width:242px!important;background:linear-gradient(180deg,#0b2616 0%,#0e301c 62%,#0a2314 100%)!important;box-shadow:10px 0 28px rgba(7,27,16,.12)!important}
+.ac-main{margin-left:242px!important}
+.side-brand{height:74px!important;padding-inline:16px!important}
+.side-logo{width:40px!important;height:40px!important;border-radius:11px!important}
+.side-brand strong{font-size:14px!important}
+.side-brand span{font-size:10px!important;letter-spacing:1.15px!important}
+.side-spotlight{margin:14px 10px 6px!important;padding:11px 12px!important;border-radius:12px!important}
+.side-spotlight small{font-size:10px!important}.side-spotlight strong{font-size:12px!important}
+.side-nav{padding:8px 10px 18px!important}
+.side-label{padding:13px 10px 6px!important;font-size:10px!important;letter-spacing:1.05px!important}
+.side-link{min-height:43px!important;padding:7px 9px!important;border-radius:10px!important;font-size:13px!important;gap:10px!important}
+.side-link>span{width:31px!important;height:31px!important}.side-link svg{width:17px!important;height:17px!important}
+.side-link:hover{transform:none!important;background:rgba(255,255,255,.075)!important}
+.side-footer{padding:12px!important}.side-footer strong{font-size:12px!important}.side-footer span{font-size:10px!important}
+
+.ac-topbar{height:72px!important;padding:0 24px!important;background:rgba(250,252,250,.96)!important;border-bottom:1px solid var(--ux23-line)!important;box-shadow:0 2px 10px rgba(15,53,31,.025)!important}
+.topbar-title span{font-size:10px!important}.topbar-title h1{font-size:19px!important;letter-spacing:-.02em!important}
+.topbar-actions{gap:8px!important}.global-search{height:42px!important;border-radius:11px!important}.global-search input{font-size:12.5px!important}
+.button{min-height:42px!important;height:42px!important;font-size:12px!important;border-radius:10px!important}
+.ac-content{max-width:1700px!important;padding:24px 28px 64px!important;margin-inline:auto!important}
+.view-stage{width:100%}
+
+/* Planilhas usam a largura inteira, mas preservam leitura */
+.ac-app.sheet-mode{--sidebar:224px!important}
+.ac-app.sheet-mode .ac-sidebar{width:224px!important}.ac-app.sheet-mode .ac-main{margin-left:224px!important}
+.ac-app.sheet-mode .ac-topbar{height:66px!important;padding-inline:18px!important}
+.ac-app.sheet-mode .ac-content{max-width:none!important;padding:12px 14px 34px!important;margin:0!important}
+.ac-app.sheet-mode .spreadsheet-view{gap:10px!important}
+
+/* --- Cabeçalhos de página: simples e consistentes --- */
+.sheet-titlebar,.view-tools{
+  border:1px solid var(--ux23-line)!important;
+  background:var(--ux23-surface)!important;
+  border-radius:var(--ux23-radius)!important;
+  box-shadow:none!important;
+}
+.sheet-titlebar{min-height:88px!important;padding:15px 17px!important;position:relative!important;top:auto!important;z-index:auto!important}
+.sheet-titlebar::after{display:none!important}
+.sheet-titlebar>div:first-child>span,.eyebrow{font-size:10px!important;letter-spacing:.9px!important;color:#4b795d!important}
+.sheet-titlebar h2{font-size:25px!important;line-height:1.12!important;margin:4px 0 4px!important;letter-spacing:-.035em!important}
+.sheet-titlebar p{font-size:13px!important;line-height:1.45!important;color:var(--ux23-muted)!important;margin:0!important}
+.sheet-title-actions{gap:7px!important;align-items:center!important;flex-wrap:wrap!important;justify-content:flex-end!important}
+.sheet-select,.sheet-filter-button,.sheet-help,.sheet-density-toggle{height:40px!important;border-radius:10px!important;font-size:11.5px!important}
+.sheet-select>span{font-size:9.5px!important}.sheet-select select{font-size:12px!important}
+.sheet-help{font-size:11.5px!important}
+
+.view-tools{min-height:96px!important;padding:16px 18px!important;margin-bottom:12px!important;align-items:center!important}
+.view-tools-copy h2,.view-tools>div:first-child h2{font-size:25px!important;letter-spacing:-.035em!important}
+.view-tools-copy p{font-size:12.5px!important;line-height:1.45!important;margin-top:5px!important}
+
+/* --- Dashboard: hierarquia clara, sem estética de landing page --- */
+.ux-dashboard-v2{max-width:none!important;gap:12px!important}
+.executive-hero{
+  min-height:210px!important;
+  grid-template-columns:minmax(0,1.02fr) minmax(520px,.98fr)!important;
+  gap:24px!important;
+  padding:25px 27px!important;
+  border-radius:18px!important;
+  background:linear-gradient(122deg,#103521 0%,#194d30 100%)!important;
+  box-shadow:0 14px 34px rgba(12,50,29,.14)!important;
+}
+.executive-copy h2{font-size:clamp(28px,2.15vw,38px)!important;line-height:1.06!important;margin:7px 0 8px!important;max-width:650px!important}
+.executive-copy p{font-size:13px!important;line-height:1.55!important;max-width:610px!important}
+.executive-actions{margin-top:17px!important;gap:8px!important}
+.executive-actions .button{min-height:43px!important}
+.executive-flow{align-self:stretch!important;padding:18px!important;border-radius:14px!important;background:rgba(255,255,255,.095)!important;border:1px solid rgba(255,255,255,.13)!important}
+.executive-flow small{font-size:10px!important}.executive-flow strong{font-size:20px!important}.executive-flow em{font-size:10px!important}
+
+.executive-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important}
+.executive-metrics>button{
+  min-height:108px!important;padding:16px!important;border:1px solid var(--ux23-line)!important;border-radius:14px!important;
+  background:#fff!important;box-shadow:none!important;grid-template-columns:42px minmax(0,1fr) 16px!important;
+}
+.executive-metrics>button:hover{transform:none!important;border-color:#bdd0c4!important;box-shadow:var(--ux23-shadow)!important}
+.metric-glyph{width:42px!important;height:42px!important;border-radius:11px!important}
+.executive-metrics small{font-size:10.5px!important}.executive-metrics strong{font-size:20px!important}.executive-metrics p{font-size:11.5px!important;line-height:1.35!important}
+
+.dashboard-grid-v2{grid-template-columns:minmax(0,1.7fr) minmax(360px,.75fr)!important;gap:10px!important;align-items:start!important}
+.overview-panel{border:1px solid var(--ux23-line)!important;border-radius:14px!important;box-shadow:none!important;background:#fff!important;overflow:hidden!important}
+.overview-panel-head{min-height:76px!important;padding:16px 17px 10px!important}
+.overview-panel-head>div>span{font-size:10px!important}.overview-panel-head h3{font-size:17px!important}.overview-panel-head p{font-size:11.5px!important;line-height:1.4!important}
+.overview-evolution{min-height:360px!important}.overview-evolution .revenue-chart{height:276px!important;padding:0 15px 14px!important}
+.attention-v2{min-height:0!important;height:auto!important}
+.attention-v2 .attention-item{min-height:78px!important;margin:0 12px 8px!important;border-radius:11px!important;padding:11px 12px!important}
+.attention-item:hover{transform:none!important}
+.attention-item strong{font-size:12.5px!important}.attention-item small{font-size:11px!important;line-height:1.35!important}
+.annual-timeline-panel,.overview-suppliers{grid-column:1/-1!important}
+
+/* Meses: 12 em linha em monitor grande, quebra em blocos em notebook. Sem scroll escondido. */
+.annual-timeline{display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;gap:5px!important;padding:0 14px 14px!important}
+.annual-timeline button{min-height:82px!important;padding:9px 8px!important;border-radius:10px!important}
+.annual-timeline b{font-size:11px!important}.annual-timeline strong{font-size:15px!important}.annual-timeline small{font-size:10px!important}
+
+/* Ranking: cards compactos, não um mosaico de caixas vazias */
+.top-supplier-list.interactive{grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:7px!important;padding:0 14px 14px!important}
+.top-supplier-list.interactive>button{min-height:92px!important;padding:12px!important;background:#fafcfb!important;border:1px solid var(--ux23-line)!important;border-radius:11px!important}
+.top-supplier-list.interactive>button:hover{transform:none!important;background:#f4f9f6!important;border-color:#c7d8cd!important}
+.top-supplier-list.interactive>button>span strong{font-size:12px!important}.top-supplier-list.interactive>button>small{font-size:11px!important}
+
+/* --- Pagamentos: meses como painel, sem carrossel microscópico --- */
+.annual-workbook-tabs{
+  position:relative!important;top:auto!important;z-index:auto!important;
+  display:grid!important;grid-template-columns:repeat(12,minmax(0,1fr))!important;
+  width:100%!important;min-width:0!important;gap:4px!important;padding:5px!important;margin:0!important;
+  border:1px solid var(--ux23-line)!important;border-radius:12px!important;background:#eef3f0!important;overflow:visible!important;
+}
+.annual-workbook-tabs button{min-width:0!important;height:67px!important;padding:8px 6px!important;border-radius:8px!important}
+.annual-workbook-tabs button span{font-size:11px!important}.annual-workbook-tabs button strong{font-size:12px!important}.annual-workbook-tabs button small{font-size:9px!important}
+.annual-workbook-tabs button.active{background:var(--ux23-green)!important;color:#fff!important;box-shadow:none!important}
+.annual-workbook-tabs button.active small,.annual-workbook-tabs button.active span{color:#fff!important}
+
+.sheet-command-row{align-items:stretch!important;gap:8px!important;margin:0!important}
+.compact-stats,.sheet-stats{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:7px!important;width:100%!important;overflow:visible!important}
+.compact-stats>span,.sheet-stats>span,.planning-summary-line>span{min-width:0!important;min-height:66px!important;padding:10px 12px!important;border:1px solid var(--ux23-line)!important;border-radius:10px!important;background:#fff!important}
+.sheet-stats small,.planning-summary-line small{font-size:10px!important}.sheet-stats strong,.planning-summary-line strong{font-size:18px!important}
+.active-sheet-filters{align-self:center!important}
+.active-sheet-filters button{height:34px!important;font-size:10.5px!important}
+
+.payments-fullscreen-card{border-radius:12px!important}
+.payment-live-sheet{font-size:12.5px!important}
+.payment-live-sheet thead th{height:45px!important;font-size:10.5px!important;letter-spacing:.04em!important}
+.payment-live-sheet tbody td,.payment-live-sheet tbody th{height:49px!important}
+.payment-live-sheet .sheet-cell-editable{height:46px!important;font-size:12.5px!important;padding-inline:9px!important}
+.payment-live-sheet .one-click-status{height:34px!important;font-size:11.5px!important;padding-inline:10px!important}
+.payment-live-sheet tbody tr:hover{box-shadow:inset 3px 0 0 #8db49b!important}
+
+/* --- Navegador horizontal: grande, mas sem virar um segundo cabeçalho --- */
+.easy-sheet-nav{
+  top:68px!important;min-height:58px!important;padding:7px 9px!important;margin:0!important;border-radius:11px!important;
+  border:1px solid var(--ux23-line-strong)!important;box-shadow:0 7px 20px rgba(17,56,34,.08)!important;background:rgba(255,255,255,.98)!important;
+}
+.easy-sheet-nav-copy{min-width:185px!important}.easy-sheet-nav-copy>span{width:34px!important;height:34px!important}.easy-sheet-nav-copy strong{font-size:12.5px!important}.easy-sheet-nav-copy small{font-size:10.5px!important}
+.easy-sheet-nav-controls{gap:5px!important}.easy-sheet-nav-controls button{min-height:40px!important;font-size:11.5px!important;padding-inline:10px!important}
+.easy-sheet-nav-controls button.step{min-width:92px!important}.easy-sheet-nav-controls button.edge{min-width:72px!important}.easy-sheet-nav-controls button.focus{min-width:105px!important}
+.easy-sheet-slider{max-width:300px!important}.easy-sheet-slider b{font-size:10px!important}
+.assisted-scroll::-webkit-scrollbar{height:16px!important}.assisted-scroll{scrollbar-color:#668d76 #e7eee9!important}
+
+/* --- Planejamento: tabela legível e resumo mais útil --- */
+.planning-summary-line{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important}
+.ac-app.sheet-mode .planning-live-sheet{width:1950px!important;min-width:1950px!important}
+.ac-app.sheet-mode .planning-live-sheet thead th{height:62px!important;font-size:11px!important;line-height:1.2!important}
+.ac-app.sheet-mode .planning-live-sheet tbody td,.ac-app.sheet-mode .planning-live-sheet tbody th{height:49px!important}
+.ac-app.sheet-mode .planning-live-sheet tbody th{font-size:12px!important}
+.ac-app.sheet-mode .planning-live-sheet .sheet-cell-editable{height:48px!important;font-size:12px!important}
+.ac-app.sheet-mode .planning-live-sheet .row-total{font-size:12px!important}
+.ac-app.sheet-mode .planning-live-sheet tfoot th{height:50px!important;font-size:10.5px!important}
+.planning-live-sheet thead th{background:#2b7350!important;color:#fff!important}.planning-live-sheet thead th:first-child{background:#e7ece9!important;color:#294234!important}.planning-live-sheet thead .total-head{background:#dce6df!important;color:#294234!important}
+.planning-live-sheet tbody td.has-value .sheet-cell-editable{color:#824640!important}.planning-live-sheet tbody tr:hover td,.planning-live-sheet tbody tr:hover th{background:#f4f8f5!important}
+
+/* --- Receita anual: leitura executiva no topo + matriz robusta --- */
+.ac-app.sheet-mode .revenue-sheet-view{gap:10px!important}
+.ac-app.sheet-mode .revenue-sheet-view .sheet-titlebar{min-height:92px!important}
+.budget-strip{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important;padding:9px!important;border:1px solid var(--ux23-line)!important;border-radius:12px!important;background:#fff!important}
+.budget-title{grid-column:1/-1!important;min-height:34px!important;padding:0 2px 5px!important;display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:space-between!important}
+.budget-title span{font-size:11px!important}.budget-title small{font-size:10.5px!important}
+.budget-cell{min-height:72px!important;padding:12px 14px!important;border-radius:10px!important;align-items:flex-start!important;justify-content:center!important;flex-direction:column!important;gap:5px!important}
+.budget-cell span{font-size:10px!important}.budget-cell strong{font-size:20px!important}
+.revenue-rule-strip{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important;margin:0!important}
+.revenue-rule-strip>button{min-height:78px!important;padding:12px 14px 12px 18px!important}.revenue-rule-strip>button small{font-size:10.5px!important}.revenue-rule-strip>button strong{font-size:19px!important}.revenue-rule-strip>button em{font-size:10.5px!important}
+.ac-app.sheet-mode .revenue-live-sheet{width:2100px!important;min-width:2100px!important;font-size:12.5px!important}
+.ac-app.sheet-mode .revenue-live-sheet thead th{height:50px!important;font-size:11.2px!important}
+.ac-app.sheet-mode .revenue-live-sheet tbody td,.ac-app.sheet-mode .revenue-live-sheet tbody th{height:50px!important;font-size:12.3px!important}
+.ac-app.sheet-mode .revenue-live-sheet .supplier-col{width:230px!important;min-width:230px!important;max-width:230px!important}
+.ac-app.sheet-mode .revenue-live-sheet .supplier-col button{height:50px!important;font-size:12.7px!important;padding-inline:12px!important}
+.ac-app.sheet-mode .revenue-live-sheet .forecast-col{left:230px!important;width:132px!important;min-width:132px!important;max-width:132px!important}
+.ac-app.sheet-mode .revenue-live-sheet tfoot th:nth-child(2){left:230px!important;width:132px!important;min-width:132px!important;max-width:132px!important}
+.ac-app.sheet-mode .revenue-live-sheet thead th:not(.supplier-col):not(.forecast-col):not(.total-head):not(.balance-head):not(:last-child){width:102px!important;min-width:102px!important}
+.ac-app.sheet-mode .revenue-live-sheet .total-head,.ac-app.sheet-mode .revenue-live-sheet .row-total{width:132px!important;min-width:132px!important}
+.ac-app.sheet-mode .revenue-live-sheet .balance-head,.ac-app.sheet-mode .revenue-live-sheet .balance-cell{width:175px!important;min-width:175px!important}
+.ac-app.sheet-mode .revenue-live-sheet .derived-revenue-cell{height:49px!important;font-size:11.8px!important}
+.ac-app.sheet-mode .revenue-live-sheet .balance-cell .variance-value{font-size:12.3px!important}.ac-app.sheet-mode .revenue-live-sheet .balance-cell small{font-size:9.8px!important}
+.ac-app.sheet-mode .revenue-live-sheet .revenue-progress{height:29px!important;width:64px!important}.ac-app.sheet-mode .revenue-live-sheet .revenue-progress b{font-size:10.8px!important}
+.revenue-footnote,.sheet-footnote{font-size:11.5px!important;line-height:1.45!important;min-height:48px!important;padding:10px 12px!important}
+
+/* --- Fornecedores: distribuição consistente, sem cartões muito estreitos --- */
+.supplier-summary{gap:7px!important}.supplier-summary span{font-size:11px!important;padding:10px 12px!important}
+.supplier-grid{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))!important;gap:10px!important}
+.supplier-card{min-height:210px!important;padding:16px!important;border:1px solid var(--ux23-line)!important;border-radius:13px!important;box-shadow:none!important}
+.supplier-card:hover{transform:none!important;border-color:#c1d3c7!important;box-shadow:var(--ux23-shadow)!important}
+.supplier-card-head h3{font-size:15px!important}.supplier-card-head p{font-size:11px!important}
+.supplier-money{margin-top:16px!important}.supplier-money small{font-size:10px!important}.supplier-money strong{font-size:15px!important}
+.supplier-card-foot{font-size:10.5px!important}
+
+/* Drawer: mais fácil de ler e clicar */
+.supplier-drawer{width:min(560px,94vw)!important}
+.supplier-drawer header{padding:20px!important}.supplier-drawer-identity h2{font-size:22px!important}.supplier-drawer-identity p{font-size:11.5px!important}
+.supplier-drawer-kpis{gap:7px!important;padding:0 16px 14px!important}.supplier-drawer-kpis>div{min-height:76px!important;padding:12px!important}.supplier-drawer-kpis small{font-size:9.5px!important}.supplier-drawer-kpis strong{font-size:16px!important}
+.supplier-drawer nav button{min-height:42px!important;font-size:11.5px!important}
+.supplier-payment-list button{min-height:62px!important}.supplier-payment-list strong{font-size:11.8px!important}.supplier-payment-list small{font-size:10.3px!important}
+
+/* Estados e interações: discretos, previsíveis */
+.sheet-cell-editable:hover{background:#f1f6f3!important}.sheet-cell-editable:focus-visible{outline:3px solid rgba(47,130,81,.18)!important;outline-offset:-2px!important}
+.one-click-status:hover,.sheet-filter-button:hover,.sheet-density-toggle:hover{transform:none!important}
+*:focus-visible{scroll-margin:100px}
+
+/* Responsividade racional: quebra grids antes de esmagar fontes */
+@media(max-width:1550px){
+  .executive-hero{grid-template-columns:1fr!important}.executive-flow{max-width:none!important}
+  .annual-timeline{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+  .annual-workbook-tabs{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+  .top-supplier-list.interactive{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:1250px){
+  .ac-sidebar{width:220px!important}.ac-main{margin-left:220px!important}.ac-app.sheet-mode .ac-sidebar{width:205px!important}.ac-app.sheet-mode .ac-main{margin-left:205px!important}
+  .executive-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .dashboard-grid-v2{grid-template-columns:1fr!important}.overview-suppliers,.annual-timeline-panel{grid-column:auto!important}
+  .top-supplier-list.interactive{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .easy-sheet-nav{align-items:flex-start!important;flex-direction:column!important}.easy-sheet-nav-controls{width:100%!important;justify-content:flex-start!important}.easy-sheet-slider{max-width:none!important}
+}
+@media(max-width:900px){
+  .ac-sidebar{width:280px!important}.ac-main,.ac-app.sheet-mode .ac-main{margin-left:0!important}.ac-content,.ac-app.sheet-mode .ac-content{padding:14px 12px 42px!important}
+  .sheet-titlebar{align-items:flex-start!important;flex-direction:column!important;gap:12px!important}.sheet-title-actions{width:100%!important;justify-content:flex-start!important}
+  .annual-workbook-tabs{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .annual-timeline{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .executive-metrics{grid-template-columns:1fr!important}.top-supplier-list.interactive{grid-template-columns:1fr!important}
+  .budget-strip{grid-template-columns:1fr!important}.budget-cell{grid-column:1!important}.revenue-rule-strip{grid-template-columns:1fr!important}
+  .compact-stats,.sheet-stats,.planning-summary-line{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .easy-sheet-nav-controls{display:grid!important;grid-template-columns:1fr 1fr!important}.easy-sheet-slider{grid-column:1/-1!important}.easy-sheet-nav-controls .focus{grid-column:1/-1!important}.easy-sheet-nav-controls .edge{display:none!important}
+}
+@media(max-width:560px){
+  .compact-stats,.sheet-stats,.planning-summary-line{grid-template-columns:1fr!important}
+  .annual-workbook-tabs,.annual-timeline{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .supplier-grid{grid-template-columns:1fr!important}
+}
