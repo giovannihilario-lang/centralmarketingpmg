@@ -379,6 +379,7 @@
       db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).limit(5000),
       db.from('acompanhamento_atividades').select('*').order('criado_em', { ascending:false }).limit(300),
       db.from('acompanhamento_importacoes').select('*').order('criado_em', { ascending:false }).limit(30),
+      db.from('acompanhamento_registros').select('id,pagamento_confirmado,pagamento_confirmado_em,pagamento_confirmado_por').limit(5000),
     ]);
     const failed = queries.find(result => result.error);
     if (failed) throw failed.error;
@@ -392,8 +393,10 @@
     const conferenceQuery = await db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).limit(5000);
     const conferencesSetupMissing = Boolean(conferenceQuery.error && isMissingConferenceSetupError(conferenceQuery.error));
     if (conferenceQuery.error && !conferencesSetupMissing) throw conferenceQuery.error;
+    const confirmationMap = new Map((queries[6].data || []).map(item => [item.id, item]));
+    const records = (queries[0].data || []).map(record => ({ ...record, ...(confirmationMap.get(record.id) || {}) }));
     return {
-      records:queries[0].data || [], payments:queries[1].data || [], collaborators:queries[2].data || [],
+      records, payments:queries[1].data || [], collaborators:queries[2].data || [],
       attachments:queries[3].data || [], activities:queries[4].data || [], imports:queries[5].data || [],
       conferences:conferencesSetupMissing ? [] : (conferenceQuery.data || []), conferencesSetupMissing,
       documents:documentsSetupMissing ? [] : (documentQueries[0].data || []),
@@ -471,11 +474,17 @@
     const rowKey = normalize(rowConferenceKey(record));
     return (conferences || []).find(item => String(item.competencia || '').startsWith(key) && normalize(item.fornecedor) === rowKey) || null;
   };
-  const supplierRevenueStage = (payment, record, conferences, year = Number(record?.ano_referencia || 0), monthIndex = sourceMonthIndex(record)) => {
-    // V1.9: pagamento confirmado é o único estado financeiro oficial.
-    // A conferência deixou de ser uma segunda etapa para a Receita.
-    return payment?.status === 'pago' ? 'confirmado' : 'a_receber';
+  const supplierRowConfirmed = (record, payment = null) => {
+    // V1.9.5: a confirmação de 2026+ pertence à própria linha do acompanhamento.
+    // Pagamentos ficam como histórico/compatibilidade, não como fonte de verdade visual.
+    if (Number(record?.ano_referencia || 0) >= 2026 && typeof record?.pagamento_confirmado === 'boolean') return record.pagamento_confirmado;
+    return payment?.status === 'pago';
   };
+  const supplierConfirmedValue = (record, payment = null) => supplierRowConfirmed(record, payment)
+    ? Number(record?.valor_acordado || 0)
+    : 0;
+  const supplierRevenueStage = (payment, record, conferences, year = Number(record?.ano_referencia || 0), monthIndex = sourceMonthIndex(record)) =>
+    supplierRowConfirmed(record, payment) ? 'confirmado' : 'a_receber';
 
   function App() {
     const [view, setView] = useState('dashboard');
@@ -496,6 +505,7 @@
     const [toast, setToast] = useState(null);
     const [saving, setSaving] = useState(false);
     const subscriptionRef = useRef(null);
+    const reloadSeqRef = useRef(0);
 
     const notify = useCallback((message, tone = 'success') => {
       setToast({ message, tone, id:Date.now() });
@@ -504,16 +514,22 @@
 
     const reload = useCallback(async (quiet = false) => {
       if (!client || DEMO_MODE) return;
+      const requestSeq = ++reloadSeqRef.current;
       if (!quiet) setLoading(true);
       try {
-        setData(await fetchAll(client));
+        const nextData = await fetchAll(client);
+        if (requestSeq !== reloadSeqRef.current) return;
+        setData(nextData);
         setError(null); setSetupMissing(false);
       } catch (fetchError) {
+        if (requestSeq !== reloadSeqRef.current) return;
         const missing = isMissingSetupError(fetchError);
         if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:true, documents:[], documentItems:[], documentsSetupMissing:true });
         setSetupMissing(missing);
         setError(fetchError);
-      } finally { if (!quiet) setLoading(false); }
+      } finally {
+        if (requestSeq === reloadSeqRef.current && !quiet) setLoading(false);
+      }
     }, [client]);
 
     useEffect(() => {
@@ -671,81 +687,83 @@
 
     async function quickTogglePaid(payment, record) {
       if (!record || saving) return false;
-      const willPay = payment?.status !== 'pago';
+      const willPay = !supplierRowConfirmed(record, payment);
       const expectedStatus = willPay ? 'pago' : 'previsto';
       const monthIndex = sourceMonthIndex(record);
       const temporaryId = payment?.id || `optimistic-payment-${record.id}`;
-      const optimistic = {
+      const optimisticPayment = {
         ...(payment || {}),
-        id:temporaryId,
-        registro_id:record.id,
-        parcela:Number(payment?.parcela || 1),
+        id:temporaryId, registro_id:record.id, parcela:Number(payment?.parcela || 1),
         descricao:payment?.descricao || `${record.referencia || record.fornecedor || 'Lançamento'} — ${OFFICIAL_MONTHS[monthIndex][1]} ${record.ano_referencia}`,
         valor_previsto:Number(payment?.valor_previsto || record.valor_acordado || 0),
         valor_pago:willPay ? Number(payment?.valor_previsto || record.valor_acordado || 0) : 0,
         vencimento:payment?.vencimento || officialMonthEnd(Number(record.ano_referencia || 2026), monthIndex),
-        pago_em:willPay ? todayKey() : '',
-        status:expectedStatus,
+        pago_em:willPay ? todayKey() : '', status:expectedStatus,
         numero_documento:payment?.numero_documento || record.numero_documento || '',
         favorecido:payment?.favorecido || record.fornecedor || ''
       };
-      const previousPayments = data.payments;
+      const previousData = data;
+      const optimisticRecord = {
+        ...record,
+        pagamento_confirmado:willPay,
+        pagamento_confirmado_em:willPay ? todayKey() : null
+      };
 
-      // V1.9.3: criação e confirmação usam a MESMA RPC. Se a linha ainda não tem
-      // pagamento, a função cria o registro e já o devolve confirmado. Isso elimina
-      // o antigo caminho paralelo que mostrava sucesso e depois sumia no reload.
+      // V1.9.5: a linha é a fonte de verdade. Atualizamos linha + pagamento juntos,
+      // mas o botão nunca mais depende de reencontrar um movimento financeiro.
       setData(current => ({
         ...current,
+        records:current.records.map(item => item.id === record.id ? { ...item, ...optimisticRecord } : item),
         payments:payment?.id
-          ? current.payments.map(item => item.id === payment.id ? optimistic : item)
-          : [...current.payments, optimistic]
+          ? current.payments.map(item => item.id === payment.id ? optimisticPayment : item)
+          : [...current.payments, optimisticPayment]
       }));
       setSaving(true);
       try {
-        let persisted = optimistic;
+        let persistedPayment = payment || optimisticPayment;
+        let persistedRecord = optimisticRecord;
         if (!DEMO_MODE) {
-          const { data:toggleData, error:toggleError } = await client.rpc('confirmar_pagamento_acompanhamento_v1', {
-            p_pagamento_id:payment?.id || null,
+          const { data:toggleData, error:toggleError } = await client.rpc('confirmar_pagamento_linha_v1', {
             p_registro_id:record.id,
             p_confirmado:willPay
           });
-
           if (toggleError) {
             const details = [toggleError.message, toggleError.details, toggleError.hint, toggleError.code].filter(Boolean).join(' · ');
-            const missingDedicatedRpc = /confirmar_pagamento_acompanhamento_v1|PGRST202|schema cache|could not find the function/i.test(details);
-            if (missingDedicatedRpc) throw new Error('O Supabase ainda está com a versão antiga da função de confirmação. Execute o SQL 13-HOTFIX-CONFIRMACAO-PAGAMENTO-V1.9.3.sql e atualize a página.');
-            throw new Error(details || 'O Supabase recusou a confirmação do pagamento.');
+            const missingRpc = /confirmar_pagamento_linha_v1|PGRST202|schema cache|could not find the function|pagamento_confirmado/i.test(details);
+            if (missingRpc) throw new Error('Falta instalar a confirmação direta da linha. Execute o SQL 14-HOTFIX-STATUS-NA-LINHA-V1.9.5.sql no Supabase e atualize a página.');
+            throw new Error(details || 'O Supabase recusou a confirmação.');
           }
 
-          persisted = Array.isArray(toggleData) ? toggleData[0] : toggleData;
-          const persistedId = persisted?.id || payment?.id;
-          if (!persistedId) throw new Error('O Supabase não devolveu o pagamento criado.');
+          const payload = Array.isArray(toggleData) ? toggleData[0] : toggleData;
+          if (payload?.pagamento) persistedPayment = payload.pagamento;
+          if (payload?.registro) persistedRecord = { ...record, ...payload.registro };
 
-          const { data:verified, error:verifyError } = await client
-            .from('acompanhamento_pagamentos')
-            .select('*')
-            .eq('id', persistedId)
-            .eq('registro_id', record.id)
+          // Verificação independente: lemos a PRÓPRIA linha, que é a fonte de verdade.
+          const { data:verifiedRecord, error:verifyError } = await client
+            .from('acompanhamento_registros')
+            .select('id,pagamento_confirmado,pagamento_confirmado_em,pagamento_confirmado_por')
+            .eq('id', record.id)
             .single();
           if (verifyError) throw verifyError;
-          persisted = verified || persisted;
-
-          if (!persisted || persisted.status !== expectedStatus) {
-            throw new Error('O banco não confirmou a mudança de status do pagamento.');
+          if (Boolean(verifiedRecord?.pagamento_confirmado) !== willPay) {
+            throw new Error('O banco não persistiu o status da linha.');
           }
+          persistedRecord = { ...record, ...verifiedRecord };
         }
 
         setData(current => ({
           ...current,
+          records:current.records.map(item => item.id === record.id ? { ...item, ...persistedRecord } : item),
           payments:current.payments
             .filter(item => item.id !== temporaryId && (!payment?.id || item.id !== payment.id))
-            .concat(persisted)
+            .concat(persistedPayment?.id ? [persistedPayment] : [])
         }));
-        await reload(true);
         notify(willPay ? 'Pagamento confirmado e lançado na Receita.' : 'Pagamento reaberto e removido da Receita.');
         return true;
       } catch (quickError) {
-        setData(current => ({ ...current, payments:previousPayments }));
+        // Invalida qualquer reload disparado durante a tentativa e restaura o snapshot.
+        reloadSeqRef.current += 1;
+        setData(previousData);
         notify(quickError.message || 'Não foi possível alterar este pagamento.', 'error');
         return false;
       } finally { setSaving(false); }
@@ -1022,7 +1040,7 @@
       const payment = supplierRowPayment(context.payments, record, year, monthIndex);
       const stage = supplierRevenueStage(payment, record, context.conferences, year, monthIndex);
       const expected = Number(payment?.valor_previsto || record.valor_acordado || 0);
-      const value = payment?.status === 'pago' ? paymentValue(payment) : expected;
+      const value = stage === 'confirmado' ? supplierConfirmedValue(record, payment) : expected;
       return { record, payment, monthIndex, stage, value, expected };
     });
 
@@ -1109,12 +1127,12 @@
       return { record, payment, detailRecord, detailPayment };
     }).sort((a,b) => Number(a.record.linha_origem || 9999) - Number(b.record.linha_origem || 9999) || String(a.record.fornecedor).localeCompare(String(b.record.fornecedor),'pt-BR'));
     if (needle) rows = rows.filter(row => normalize([row.record.fornecedor,row.record.referencia,row.record.numero_documento,row.record.titulo].join(' ')).includes(needle));
-    if (onlyPending) rows = rows.filter(row => row.payment?.status !== 'pago');
+    if (onlyPending) rows = rows.filter(row => !supplierRowConfirmed(row.record, row.payment));
 
     const monthTotal = sum(rows, row => row.record.valor_acordado);
-    const confirmedRows = rows.filter(row => row.payment?.status === 'pago');
+    const confirmedRows = rows.filter(row => supplierRowConfirmed(row.record, row.payment));
     const confirmedCount = confirmedRows.length;
-    const confirmedAmount = sum(confirmedRows, row => Number(row.payment?.valor_pago || row.payment?.valor_previsto || row.record.valor_acordado || 0));
+    const confirmedAmount = sum(confirmedRows, row => supplierConfirmedValue(row.record, row.payment));
     const pendingAmount = Math.max(0, monthTotal - confirmedAmount);
     const pendingRecords = context.allRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear) && record.categoria === 'pendencia' && record.status !== 'cancelado' && (!record.data_inicio || String(record.data_inicio).startsWith(currentKey)));
     const monthLabelLong = OFFICIAL_MONTHS[sheetMonth]?.[1] || '';
@@ -1147,7 +1165,7 @@
 
       <article className="spreadsheet-card"><div className="spreadsheet-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>NF</th><th>STATUS</th><th></th></tr></thead><tbody>
         ${rows.length ? rows.map((row,index) => {
-          const isPaid = row.payment?.status === 'pago';
+          const isPaid = supplierRowConfirmed(row.record, row.payment);
           return html`<tr key=${row.record.id} className=${isPaid ? 'signed-row' : ''} style=${{ '--row-delay':`${Math.min(index,35)*18}ms` }}>
             <td><${EditableSheetCell} value=${row.record.referencia || 'COTA'} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td>
             <td className="supplier-sheet-cell"><${EditableSheetCell} value=${row.record.fornecedor || ''} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/></td>
@@ -1265,7 +1283,7 @@
         const monthIndex = sourceMonthIndex(record);
         const payment = supplierRowPayment(context.payments, record, year, monthIndex);
         if (supplierRevenueStage(payment, record, context.conferences, year, monthIndex) !== 'confirmado') return;
-        values[year][monthIndex] += paymentValue(payment);
+        values[year][monthIndex] += supplierConfirmedValue(record, payment);
       });
       return values;
     }, [context.allRecords, context.payments, context.conferences]);
@@ -1297,7 +1315,7 @@
         const row = map.get(key) || { months:OFFICIAL_MONTHS.map(() => ({ confirmed:0, open:0, confirmedCount:0, openCount:0 })) };
         const cell = row.months[monthIndex];
         const expected = Number(payment?.valor_previsto || record.valor_acordado || 0);
-        if (stage === 'confirmado') { cell.confirmed += paymentValue(payment); cell.confirmedCount += 1; }
+        if (stage === 'confirmado') { cell.confirmed += supplierConfirmedValue(record, payment); cell.confirmedCount += 1; }
         else { cell.open += expected; cell.openCount += 1; }
         map.set(key,row);
       });
@@ -1430,7 +1448,7 @@
           if (isSupplierRevenueRecord(record) && Number(record.ano_referencia) >= 2026) {
             const monthIndex = sourceMonthIndex(record);
             const payment = supplierRowPayment(context.payments, record, Number(record.ano_referencia), monthIndex);
-            if (supplierRevenueStage(payment, record, context.conferences, Number(record.ano_referencia), monthIndex) === 'confirmado') current.paid += paymentValue(payment);
+            if (supplierRevenueStage(payment, record, context.conferences, Number(record.ano_referencia), monthIndex) === 'confirmado') current.paid += supplierConfirmedValue(record, payment);
           } else current.paid += Number(record.total_pago || 0);
         }
         current.overdue += Number(record.pagamentos_atrasados || 0);
