@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.2.0 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.2.2 / React + HTM */
 (() => {
   'use strict';
 
@@ -1129,6 +1129,77 @@
     return html`<div className="sheet-titlebar"><div><span>${kicker}</span><h2>${title}</h2><p>${subtitle}</p></div><div className="sheet-title-actions">${actions}</div></div>`;
   }
 
+
+  function EasySheetNavigator({ scrollRef, focusSelector = '', focusLabel = '' }) {
+    const [state, setState] = useState({ overflow:false, progress:0, atStart:true, atEnd:true });
+    const sync = useCallback(() => {
+      const el = scrollRef?.current;
+      if (!el) return;
+      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+      const left = Math.max(0, el.scrollLeft);
+      setState({
+        overflow:max > 8,
+        progress:max ? Math.round((left / max) * 100) : 0,
+        atStart:left <= 4,
+        atEnd:left >= max - 4,
+      });
+    }, [scrollRef]);
+
+    useEffect(() => {
+      const el = scrollRef?.current;
+      if (!el) return undefined;
+      sync();
+      const onScroll = () => sync();
+      el.addEventListener('scroll', onScroll, { passive:true });
+      const resize = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(sync) : null;
+      resize?.observe(el);
+      window.addEventListener('resize', sync);
+      return () => { el.removeEventListener('scroll', onScroll); resize?.disconnect(); window.removeEventListener('resize', sync); };
+    }, [scrollRef, sync]);
+
+    const move = direction => {
+      const el = scrollRef?.current;
+      if (!el) return;
+      const step = Math.max(360, Math.round(el.clientWidth * .68));
+      el.scrollBy({ left:direction * step, behavior:'smooth' });
+    };
+    const go = where => {
+      const el = scrollRef?.current;
+      if (!el) return;
+      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+      el.scrollTo({ left:where === 'end' ? max : 0, behavior:'smooth' });
+    };
+    const setProgress = event => {
+      const el = scrollRef?.current;
+      if (!el) return;
+      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+      el.scrollLeft = max * (Number(event.currentTarget.value) / 100);
+    };
+    const focus = () => {
+      const el = scrollRef?.current;
+      const target = focusSelector ? el?.querySelector(focusSelector) : null;
+      if (!el || !target) return;
+      const viewport = el.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
+      const stickySpace = Math.min(360, Math.round(el.clientWidth * .26));
+      el.scrollTo({ left:Math.max(0, el.scrollLeft + rect.left - viewport.left - stickySpace), behavior:'smooth' });
+    };
+
+    useLucide([state.overflow, state.progress, state.atStart, state.atEnd]);
+    if (!state.overflow) return null;
+    return html`<div className="easy-sheet-nav" role="group" aria-label="Controles para mover a tabela para os lados">
+      <div className="easy-sheet-nav-copy"><span><${Icon} name="move-horizontal"/></span><div><strong>Mover a tabela</strong><small>Use os botões ou arraste a barra. Não precisa diminuir o zoom.</small></div></div>
+      <div className="easy-sheet-nav-controls">
+        <button type="button" className="edge" onClick=${() => go('start')} disabled=${state.atStart} title="Voltar ao começo"><${Icon} name="chevrons-left"/><span>Início</span></button>
+        <button type="button" className="step" onClick=${() => move(-1)} disabled=${state.atStart}><${Icon} name="chevron-left"/><span>Voltar</span></button>
+        <label className="easy-sheet-slider"><span className="sr-only">Posição horizontal da tabela</span><input type="range" min="0" max="100" step="1" value=${state.progress} onInput=${setProgress} aria-label="Mover tabela horizontalmente"/><b>${state.progress}%</b></label>
+        <button type="button" className="step" onClick=${() => move(1)} disabled=${state.atEnd}><span>Avançar</span><${Icon} name="chevron-right"/></button>
+        ${focusSelector && html`<button type="button" className="focus" onClick=${focus}><${Icon} name=${focusLabel.toLowerCase().includes('mês') ? 'calendar-days' : 'sigma'}/><span>${focusLabel}</span></button>`}
+        <button type="button" className="edge" onClick=${() => go('end')} disabled=${state.atEnd} title="Ir ao final"><span>Fim</span><${Icon} name="chevrons-right"/></button>
+      </div>
+    </div>`;
+  }
+
   function OverviewDashboard({ context }) {
     const now = new Date();
     const year = context.allRecords.some(record => Number(record.ano_referencia) === 2026) ? 2026 : Math.max(...context.allRecords.map(record => Number(record.ano_referencia) || 0), now.getFullYear());
@@ -1237,7 +1308,7 @@
 
       <div className="sheet-command-row"><div className="sheet-stats compact-stats"><span className="stat-total"><small>Total</small><strong>${money(monthTotal)}</strong></span><span className="stat-confirmed-value"><small>Confirmado</small><strong>${money(confirmedAmount)}</strong></span><span className="stat-pending-value"><small>Pendente</small><strong>${money(pendingAmount)}</strong></span><span className=${`stat-signed ${confirmedCount===rows.length&&rows.length?'ok':''}`}><small>Status</small><strong>${confirmedCount}/${rows.length}</strong></span></div><div className="active-sheet-filters">${supplierDrill&&html`<button onClick=${()=>setSupplierDrill('')}><${Icon} name="building-2"/>${supplierDrill}<${Icon} name="x"/></button>`}${onlyPending&&html`<button onClick=${()=>setOnlyPending(false)}><${Icon} name="filter"/>Só pendentes<${Icon} name="x"/></button>`}</div></div>
 
-      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas visíveis" checked=${rows.length>0&&rows.every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>NF</th><th>STATUS</th><th></th></tr></thead><tbody>
+      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll assisted-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas visíveis" checked=${rows.length>0&&rows.every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>NF</th><th>STATUS</th><th></th></tr></thead><tbody>
         ${rows.length?rows.map((row,index)=>{const isPaid=supplierRowConfirmed(row.record,row.payment);return html`<tr key=${row.record.id} className=${`${isPaid?'signed-row':''} ${selectedRows.has(row.record.id)?'selected-row':''}`} style=${{'--row-delay':`${Math.min(index,35)*12}ms`}}><td className="select-col"><input type="checkbox" checked=${selectedRows.has(row.record.id)} onChange=${()=>toggleSelected(row.record.id)}/></td><td><${EditableSheetCell} value=${row.record.referencia||'COTA'} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td><td className="supplier-sheet-cell"><div className="supplier-edit-wrap"><${EditableSheetCell} value=${row.record.fornecedor||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/><button className="supplier-peek" title="Ver fornecedor" onClick=${()=>context.openSupplier(row.record.fornecedor)}><${Icon} name="panel-right-open"/></button></div></td><td className="money-col unified-value-cell"><${EditableSheetCell} type="money" value=${row.record.valor_acordado} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td><td><${EditableSheetCell} value=${row.payment?.numero_documento||row.record.numero_documento||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td><td><button disabled=${context.saving} className=${`one-click-status status-simple ${isPaid?'paid':'open'}`} onClick=${()=>context.quickTogglePaid(row.payment,row.record)} title=${isPaid?'Clique para desfazer':'Confirmar e lançar na Receita'}><span className="status-dot">${isPaid?'✓':'○'}</span><span>${isPaid?'Confirmado':'Pendente'}</span></button></td><td><button className="sheet-open-row" onClick=${()=>context.openRecord(row.record)} title="Mais detalhes"><${Icon} name="more-horizontal"/></button></td></tr>`;}) : html`<tr className="sheet-empty-row"><td colSpan="7"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>${supplierDrill?'Retire o filtro do fornecedor ou escolha outro mês.':'Crie a primeira linha diretamente por aqui.'}</p><button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button></div></td></tr>`}
       </tbody><tfoot><tr><th></th><th colSpan="2">TOTAL</th><th className="money-col">${money(monthTotal)}</th><th></th><th>${confirmedCount} confirmados</th><th></th></tr></tfoot></table></div></article>
 
@@ -1320,6 +1391,7 @@
   }
 
   function PlanningView({ context }) {
+    const planningScrollRef = useRef(null);
     const planning = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marcos' && record.natureza === 'despesa' && hasTag(record, 'planejamento') && record.status !== 'cancelado')
       .sort((a,b) => String(a.dados_originais?.coluna || 'Z').localeCompare(String(b.dados_originais?.coluna || 'Z')) || String(a.referencia).localeCompare(String(b.referencia),'pt-BR'));
     const paymentMap = useMemo(() => { const map = new Map(); context.payments.forEach(payment => { const record = planning.find(item => item.id === payment.registro_id); if (!record) return; const idx = Math.max(0, Number(String(payment.vencimento || '').slice(5,7) || 1)-1); map.set(`${record.id}|${idx}`, payment); }); return map; }, [context.payments, planning.length]);
@@ -1330,7 +1402,8 @@
     return html`<section className="spreadsheet-view planning-sheet-view">
       <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na fonte oficial. Clique, edite e acompanhe o total sem perder o contexto." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar fonte</button>`}/>
       <div className="planning-summary-line"><span><small>Frentes</small><strong>${planning.length}</strong></span><span><small>Total planejado</small><strong>${money(grandTotal)}</strong></span><span><small>Mês atual</small><strong>${currentMonth >= 0 ? OFFICIAL_MONTHS[currentMonth][1] : '2026'}</strong></span></div>
-      <article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll"><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${record.referencia || record.titulo}>${record.referencia || record.titulo.replace(/^Planejamento 2026\s*—\s*/i,'')}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
+      <${EasySheetNavigator} scrollRef=${planningScrollRef} focusSelector=".planning-live-sheet .total-head" focusLabel="Ir ao total"/>
+      <article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll assisted-scroll" ref=${planningScrollRef}><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${record.referencia || record.titulo}>${record.referencia || record.titulo.replace(/^Planejamento 2026\s*—\s*/i,'')}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
         ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = Number(payment?.valor_previsto || 0); return html`<td className=${value ? 'has-value' : 'blank-value'}><${EditableSheetCell} type="money" value=${value} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
       </tbody><tfoot><tr><th className="sticky-first">Total</th>${columnTotals.map(value => html`<th>${money(value)}</th>`)}<th>${money(grandTotal)}</th></tr></tfoot></table></div></article>
       <div className="sheet-footnote"><${Icon} name="info"/><span>Valores do Planejamento são previsão. Editar uma célula altera o planejamento, mas não marca gasto como realizado.</span></div>
@@ -1364,6 +1437,7 @@
   }
 
   function RevenueView({ context }) {
+    const revenueScrollRef = useRef(null);
     const forecasts = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marcos' && record.natureza === 'receita' && record.fornecedor && hasTag(record,'previsão') && hasTag(record,'fornecedor') && record.status !== 'cancelado')
       .sort((a,b) => Number(a.linha_origem || 9999) - Number(b.linha_origem || 9999) || String(a.fornecedor).localeCompare(String(b.fornecedor),'pt-BR'));
 
@@ -1425,7 +1499,8 @@
         <button className="open" onClick=${() => context.navigatePayments({ year:2026, month:new Date().getMonth(), pending:true })}><i></i><small>A receber</small><strong>${money(totalOpen)}</strong><em>Aguardando confirmação</em></button>
       </div>
 
-      <article className="spreadsheet-card revenue-card"><div className="spreadsheet-scroll"><table className="live-sheet revenue-live-sheet"><thead><tr><th className="sticky-first supplier-col">FORNECEDORES</th><th className="forecast-col">PREVISÃO</th>${OFFICIAL_MONTHS.map(([,label], monthIndex) => html`<th className=${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}>${label.toUpperCase()}</th>`)}<th className="total-head">TOTAL</th><th className="balance-head">DIFERENÇA VS. PREVISÃO</th><th>%</th></tr></thead><tbody>
+      <${EasySheetNavigator} scrollRef=${revenueScrollRef} focusSelector=".revenue-live-sheet thead .current-month-col" focusLabel="Mês atual"/>
+      <article className="spreadsheet-card revenue-card"><div className="spreadsheet-scroll assisted-scroll" ref=${revenueScrollRef}><table className="live-sheet revenue-live-sheet"><thead><tr><th className="sticky-first supplier-col">FORNECEDORES</th><th className="forecast-col">PREVISÃO</th>${OFFICIAL_MONTHS.map(([,label], monthIndex) => html`<th className=${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}>${label.toUpperCase()}</th>`)}<th className="total-head">TOTAL</th><th className="balance-head">DIFERENÇA VS. PREVISÃO</th><th>%</th></tr></thead><tbody>
         ${rowData.map(row => html`<tr><th className="sticky-first supplier-col"><button onClick=${() => context.openSupplier(row.record.fornecedor)}>${row.record.fornecedor}<${Icon} name="panel-right-open"/></button></th><td className="forecast-col"><${EditableSheetCell} type="money" value=${row.forecast} onSave=${value => context.quickUpdateRecord(row.record,{ valor_acordado:value },'Previsão atualizada.')}/></td>${row.months.map((value,monthIndex) => {
           const item = row.monthStatus[monthIndex]; const state = cellState(item); const label = OFFICIAL_MONTHS[monthIndex][1];
           return html`<td className=${`derived-revenue-td ${state} ${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}`}><button className="derived-revenue-cell" title=${cellTitle(item,label)} onClick=${() => context.navigatePayments({ year:2026, month:monthIndex, supplier:row.record.fornecedor })}><span>${value ? money(value) : '—'}</span><i></i></button></td>`;
