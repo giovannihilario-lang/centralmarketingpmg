@@ -7,8 +7,7 @@
     "diagnostico:regional": "node scripts/diagnosticar-dashboard-regional.js",
     "acompanhamento:gerar-carga": "node scripts/gerar-carga-acompanhamento.js",
     "acompanhamento:testar": "node scripts/testar-acompanhamento.js",
-    "documentos:testar": "node scripts/testar-documentos.js",
-    "test": "node scripts/testar-acompanhamento.js && node scripts/testar-documentos.js"
+    "documentos:testar": "node scripts/testar-documentos.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

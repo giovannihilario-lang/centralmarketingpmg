@@ -375,32 +375,12 @@ begin
   if not exists (select 1 from public.acompanhamento_registros r where r.id = p_registro_id and r.arquivado_em is null) then
     raise exception 'Acompanhamento nao encontrado';
   end if;
-  if v_status = 'pago' and nullif(trim(p_dados ->> 'fingerprint'), '') is null then
-    if nullif(p_dados ->> 'pago_em', '') is null then raise exception 'Informe a data realizada para confirmar a baixa'; end if;
-    if coalesce(nullif(trim(p_dados ->> 'forma_pagamento'), ''), 'Não informado') = 'Não informado' then raise exception 'Informe a forma de pagamento para confirmar a baixa'; end if;
-    if nullif(trim(p_dados ->> 'numero_documento'), '') is null then raise exception 'Informe o documento ou NF para confirmar a baixa'; end if;
-  end if;
 
   if v_id is null and nullif(trim(p_dados ->> 'fingerprint'), '') is not null then
     select ap.id into v_id
     from public.acompanhamento_pagamentos ap
     where ap.registro_id = p_registro_id
       and ap.fingerprint = nullif(trim(p_dados ->> 'fingerprint'), '')
-    limit 1;
-    if v_id is not null then v_novo := false; end if;
-  end if;
-
-  -- Migra o movimento gerado por versões antigas da carga sem trocar seu ID.
-  -- A identidade usa descrição, vencimento e favorecido, não a posição da linha.
-  if v_id is null and nullif(trim(p_dados ->> 'fingerprint'), '') is not null then
-    select ap.id into v_id
-    from public.acompanhamento_pagamentos ap
-    where ap.registro_id = p_registro_id
-      and ap.fingerprint like 'pmg-%'
-      and coalesce(ap.descricao, '') = coalesce(nullif(trim(p_dados ->> 'descricao'), ''), '')
-      and coalesce(ap.vencimento::text, '') = coalesce(nullif(p_dados ->> 'vencimento', ''), '')
-      and coalesce(ap.favorecido, '') = coalesce(nullif(trim(p_dados ->> 'favorecido'), ''), '')
-    order by (ap.parcela = greatest(coalesce(nullif(p_dados ->> 'parcela', '')::integer, 1), 1)) desc, ap.atualizado_em desc
     limit 1;
     if v_id is not null then v_novo := false; end if;
   end if;
@@ -439,7 +419,6 @@ begin
       favorecido = nullif(trim(p_dados ->> 'favorecido'), ''),
       numero_documento = nullif(trim(p_dados ->> 'numero_documento'), ''),
       observacoes = nullif(trim(p_dados ->> 'observacoes'), ''),
-      fingerprint = coalesce(nullif(trim(p_dados ->> 'fingerprint'), ''), fingerprint),
       atualizado_por = v_ator
     where id = v_id and registro_id = p_registro_id;
     if not found then raise exception 'Pagamento nao encontrado'; end if;
@@ -553,32 +532,6 @@ begin
       where r.fingerprint = nullif(v_registro ->> 'fingerprint', '')
         and r.arquivado_em is null
       limit 1;
-
-      -- Compatibilidade com as cargas anteriores, cujos fingerprints incluíam
-      -- o número físico da linha. A identidade oficial passa a ser semântica:
-      -- arquivo/aba + fornecedor + categoria + natureza do detalhamento.
-      if v_existente is null and coalesce(v_registro -> 'dados_originais' ->> 'aba', '') <> '' then
-        select r.id into v_existente
-        from public.acompanhamento_registros r
-        where r.arquivado_em is null
-          and r.controle = p_controle
-          and r.ano_referencia = coalesce((v_registro ->> 'ano_referencia')::integer, p_ano)
-          and coalesce(r.dados_originais ->> 'arquivo', r.origem_importacao, '') = coalesce(v_registro -> 'dados_originais' ->> 'arquivo', p_nome_arquivo, '')
-          and coalesce(r.dados_originais ->> 'aba', '') = coalesce(v_registro -> 'dados_originais' ->> 'aba', '')
-          and coalesce(r.fornecedor, '') = coalesce(nullif(trim(v_registro ->> 'fornecedor'), ''), '')
-          and r.categoria = coalesce(nullif(trim(v_registro ->> 'categoria'), ''), 'outro')
-          and r.natureza = coalesce(nullif(trim(v_registro ->> 'natureza'), ''), 'neutro')
-          and (
-            (coalesce(nullif(trim(v_registro ->> 'fornecedor'), ''), '') <> '' and coalesce(nullif(trim(v_registro ->> 'categoria'), ''), 'outro') <> 'pendencia')
-            or (r.titulo = trim(v_registro ->> 'titulo') and coalesce(r.descricao, '') = coalesce(nullif(trim(v_registro ->> 'descricao'), ''), ''))
-          )
-          and ('centro-custo' = any(coalesce(r.tags, '{}'::text[]))) = exists (
-            select 1 from jsonb_array_elements_text(coalesce(v_registro -> 'tags', '[]'::jsonb)) tag where tag = 'centro-custo'
-          )
-          and coalesce(r.centro_custo, '') = coalesce(nullif(trim(v_registro ->> 'centro_custo'), ''), '')
-        order by r.atualizado_em desc
-        limit 1;
-      end if;
 
       v_id := public.salvar_acompanhamento_v1(v_existente, v_registro);
       if v_existente is null then v_criadas := v_criadas + 1;

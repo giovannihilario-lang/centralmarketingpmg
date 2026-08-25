@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Demandas V3.8.1 / Base íntegra V3.7.4 + evolução UX V3.8.1 */
+/* PMG Connect — Central de Demandas V3.8.5 / Base íntegra V3.7.4 + UX V3.8.1 + autoria robusta V3.8.5 */
 let db = null;
 let VAPID_PUBLIC_KEY = '';
 let publicConfigPromise = null;
@@ -94,6 +94,9 @@ const state = {
   templates: [], dependencies: [], timeEntries: [], monthlyClosures: [], v4Ready: true, activeTimerTick: null,
   monthlyReportData: null, projects: [], automations: [], intelligenceReady: false, selectedProjectId: null, projectSearch: '', projectStatusFilter: '', accessibility: { scale: 'large', theme: 'light', contrast: false, reduceMotion: false }
 };
+
+state.authorshipBackendVersionV385 = '';
+state.authorshipLastErrorV385 = null;
 
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -370,14 +373,18 @@ function toast(message, type = 'success') {
 }
 function errorMessage(error) {
   const message = error?.message || error?.details || String(error || 'Erro inesperado');
-  if (/solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message)) return 'A confirmação compartilhada ainda não está disponível. Execute o SQL 15-HOTFIX-AUTORIA-V3-8-4.sql no Supabase e atualize a página.';
-  if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'Execute o SQL 11-MODO-RESPONSABILIDADE-V3-7-1.sql no Supabase para ativar Compartilhada / Primeiro a cumprir.';
-  if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'Execute o SQL 10-MULTIPLOS-RESPONSAVEIS-V3-7.sql no Supabase para ativar múltiplos responsáveis.';
+  const code = String(error?.code || '');
+  const authorshipRef = /solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|pmg_autoria_snapshot_v385|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message);
+  const authorshipMissing = authorshipRef && (['PGRST202','PGRST205','42P01','42883'].includes(code) || /could not find the function|does not exist|schema cache/i.test(message));
+  if (authorshipMissing) return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase e atualize a página.';
+  if (authorshipRef && code === '42501') return 'Sua sessão não recebeu permissão para a autoria compartilhada. Saia do PMG Connect, entre novamente e atualize a página. O erro técnico foi registrado no console.';
+  if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
+  if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
   if (/alterar_urgencia_tarefa_v1/i.test(message)) {
-    return 'A função de alteração rápida de urgência ainda não foi instalada. Execute sql/09-GESTOR-ALTERAR-URGENCIA-V3-6-3.sql no Supabase.';
+    return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
   }
   if (/demandas_recorrentes|recorrencia_id|processar_recorrencias_demanda|converter_tarefa_em_recorrente|transferir_demanda_recorrente/i.test(message)) {
-    return 'A estrutura de Demandas Recorrentes ainda não está completa. Execute sql/DEMANDAS-RECORRENTES-V3-6-2-COMPLETO.sql no Supabase.';
+    return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
   }
   if (/academia_reservas|transferencias_tarefa|criar_tarefa_v3|editar_tarefa_v3|avaliar_conclusao|transferir_tarefa/i.test(message)) {
     return 'A migração Demandas V3 ainda não foi executada no Supabase. Rode sql/demandas_v3_operacao.sql.';
@@ -723,6 +730,14 @@ async function initializeUser() {
   if (!needsProfile) setTimeout(() => maybeOpenOnboarding(), 420);
   setTimeout(() => queueUnreadIntrusiveNotifications(), 900);
   setTimeout(() => maybeShowAuthorshipConfirmationV372(), 1250);
+  setTimeout(async () => {
+    if (state.authorshipReady) return;
+    await loadAuthorshipV372();
+    if (state.authorshipReady) {
+      renderAll();
+      maybeShowAuthorshipConfirmationV372();
+    }
+  }, 2200);
 }
 async function loadAll() {
   await Promise.all([loadCollaborators(), loadTasks(), loadReminders(), loadNotifications(), loadActivities(), loadOperationalV3(), loadProductivityV4(), loadIntelligenceV5()]);
@@ -1928,7 +1943,7 @@ async function saveEditedTask(event) {
         if (assigneeError) throw assigneeError;
       }
     } else if (desiredAssignee !== originalAssignee) {
-      if (!desiredAssignee) throw new Error('Execute o SQL de múltiplos responsáveis para remover todos os responsáveis.');
+      if (!desiredAssignee) throw new Error('A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.');
       const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável principal alterado durante a edição da demanda.' });
       if (transferError) throw transferError;
     }
@@ -2979,9 +2994,46 @@ function moveOnboarding(direction) {
    ========================================================= */
 function isMissingAuthorshipSchemaV372(error) {
   const text = String(error?.message || error?.details || error || '');
-  return /tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores|PGRST205|42P01|does not exist/i.test(text);
+  const code = String(error?.code || '');
+  return ['PGRST202','PGRST205','42P01','42883'].includes(code)
+    || /could not find the function|does not exist|schema cache/i.test(text);
+}
+function authorshipSnapshotMissingV385(error) {
+  const text = String(error?.message || error?.details || error || '');
+  const code = String(error?.code || '');
+  return ['PGRST202','42883'].includes(code)
+    || (/pmg_autoria_snapshot_v385/i.test(text) && /could not find|does not exist|schema cache/i.test(text));
+}
+function applyAuthorshipSnapshotV385(payload) {
+  const data = payload && typeof payload === 'object' ? payload : {};
+  state.authorshipReviews = Array.isArray(data.revisoes) ? data.revisoes : [];
+  state.authorshipConfirmations = Array.isArray(data.confirmacoes) ? data.confirmacoes : [];
+  state.taskExecutors = Array.isArray(data.executores) ? data.executores : [];
+  state.authorshipReady = Boolean(data.ok !== false);
+  state.authorshipBackendVersionV385 = String(data.versao || '3.8.5');
+  state.authorshipLastErrorV385 = null;
 }
 async function loadAuthorshipV372() {
+  state.authorshipLastErrorV385 = null;
+
+  // V3.8.5: fonte preferencial. O snapshot é SECURITY DEFINER e não depende
+  // dos SELECTs diretos do navegador, que eram a origem dos falsos avisos de
+  // "execute o SQL" mesmo quando as tabelas já existiam no Supabase.
+  try {
+    const snapshot = await db.rpc('pmg_autoria_snapshot_v385');
+    if (!snapshot.error && snapshot.data && snapshot.data.ok !== false) {
+      applyAuthorshipSnapshotV385(snapshot.data);
+      return;
+    }
+    if (snapshot.error && !authorshipSnapshotMissingV385(snapshot.error)) {
+      console.warn('[autoria V3.8.5 snapshot]', snapshot.error);
+    }
+  } catch (snapshotError) {
+    if (!authorshipSnapshotMissingV385(snapshotError)) console.warn('[autoria V3.8.5 snapshot]', snapshotError);
+  }
+
+  // Compatibilidade com bancos que já receberam o SQL 15, mas ainda não o 16.
+  // Se isso funcionar, o módulo segue disponível e não bloqueia o usuário.
   try {
     const [reviewResult, confirmationResult, executorResult] = await Promise.all([
       db.from('tarefa_autoria_revisoes').select('*').order('criado_em', { ascending:false }).limit(1800),
@@ -2994,12 +3046,15 @@ async function loadAuthorshipV372() {
     state.authorshipConfirmations = confirmationResult.data || [];
     state.taskExecutors = executorResult.data || [];
     state.authorshipReady = true;
+    state.authorshipBackendVersionV385 = 'compat-15';
+    return;
   } catch (error) {
-    if (!isMissingAuthorshipSchemaV372(error)) console.warn('[autoria da entrega]', error);
     state.authorshipReviews = [];
     state.authorshipConfirmations = [];
     state.taskExecutors = [];
     state.authorshipReady = false;
+    state.authorshipLastErrorV385 = error;
+    console.warn('[autoria V3.8.5 indisponível]', error);
   }
 }
 function taskFinalExecutorIdsV372(taskOrId) {
@@ -3222,7 +3277,11 @@ async function respondAuthorshipConfirmationV372(confirm) {
     else toast('Contestação enviada ao gestor. A demanda continuará em revisão.');
     setTimeout(maybeShowAuthorshipConfirmationV372, 500);
   } catch (error) {
-    toast(errorMessage(error),'error');
+    console.error('[autoria V3.8.5 resposta]', error);
+    const friendly = errorMessage(error);
+    const raw = String(error?.message || error?.details || '').trim();
+    const code = String(error?.code || '').trim();
+    toast(friendly === raw || !raw ? friendly : `${friendly}${code && !friendly.includes(code) ? ` · ${code}` : ''}`, 'error');
   } finally {
     setLoading(false);
   }
@@ -3290,7 +3349,7 @@ async function submitTaskEvaluation(approved) {
   }
 
   if (approved) {
-    if (!state.authorshipReady) return toast('Execute o SQL 15-HOTFIX-AUTORIA-V3-8-4.sql antes de validar uma entrega compartilhada.', 'error');
+    if (!state.authorshipReady) return toast('A autoria compartilhada não respondeu. Atualize a página. Se persistir, execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.', 'error');
     const executors = uniqueIdsV37(state.evaluationExecutorIds);
     if (!executors.length) return toast('Selecione pelo menos uma pessoa que realizou a demanda.', 'error');
   }
@@ -4899,7 +4958,7 @@ openQuickAdd = function openQuickAddRecurring(type = 'demanda', preset = {}) {
 const createTaskBeforeRecurringV36 = createTaskV2;
 createTaskV2 = async function createTaskWithRecurrenceV36() {
   if (!$('itemRecurringEnabled')?.checked) return createTaskBeforeRecurringV36();
-  if (!state.recurrenceReady) throw new Error('Execute o SQL de Demandas Recorrentes V3.6.2 no Supabase antes de criar uma recorrência.');
+  if (!state.recurrenceReady) throw new Error('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase antes de criar uma recorrência.');
   const frequency = $('itemRecurrenceFrequency').value;
   const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
   if (['semanal','personalizada'].includes(frequency) && !weekdays.length) throw new Error('Selecione pelo menos um dia da semana.');
@@ -5557,7 +5616,7 @@ loadAll = async function loadAllMultiAssigneeV37() {
 };
 async function updateTaskAssigneesV37(taskId, ids) {
   if (!isManager()) return toast('Somente gestores podem alterar os responsáveis da demanda.','error');
-  if (!state.multiAssigneeReady) return toast('Execute o SQL de múltiplos responsáveis no Supabase.','error');
+  if (!state.multiAssigneeReady) return toast('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.','error');
   setLoading(true);
   try {
     const { error } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: uniqueIdsV37(ids) });
@@ -5571,7 +5630,7 @@ async function updateTaskAssigneesV37(taskId, ids) {
 }
 async function updateRecurringAssigneesV37(recurringId, ids) {
   if (!isManager()) return toast('Somente gestores podem alterar responsáveis da recorrência.','error');
-  if (!state.multiAssigneeReady) return toast('Execute o SQL de múltiplos responsáveis no Supabase.','error');
+  if (!state.multiAssigneeReady) return toast('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.','error');
   setLoading(true);
   try {
     const { error } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: recurringId, p_responsaveis: uniqueIdsV37(ids), p_aplicar_ocorrencias: true });
@@ -5861,7 +5920,7 @@ createTaskV2 = async function createTaskV2UxV381() {
   if (!$('itemRecurringEnabled')?.checked) return createTaskV2BeforeUxV381();
   const times = createRecurrenceTimesV381();
   if (times.length <= 1) return createTaskV2BeforeUxV381();
-  if (!state.recurrenceGroupsReadyV381) throw new Error('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql no Supabase antes de usar vários horários no mesmo dia.');
+  if (!state.recurrenceGroupsReadyV381) throw new Error('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase antes de usar vários horários no mesmo dia.');
   const frequency = $('itemRecurrenceFrequency').value;
   const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
   if (['semanal','personalizada'].includes(frequency) && !weekdays.length) throw new Error('Selecione pelo menos um dia da semana.');
@@ -6025,7 +6084,7 @@ async function saveRecurrenceGroupV381(event) {
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
-  if (!state.recurrenceGroupsReadyV381) return toast('Execute o SQL 13-DEMANDAS-UX-V3-8-1.sql antes de editar vários horários.', 'error');
+  if (!state.recurrenceGroupsReadyV381) return toast('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase antes de editar vários horários.', 'error');
   const frequency = $('recurrenceEditFrequency').value;
   const weekdays = selectedWeekdays('recurrenceEditWeekdays');
   const start = $('recurrenceEditStart').value;
@@ -6150,7 +6209,7 @@ function injectAttachmentPanelV381(){
   const firstDetail=root.querySelector('.detail-section');
   const section=document.createElement('section');section.className='detail-section task-attachments-v381';
   const rows=state.taskAttachmentsV381||[];
-  section.innerHTML=`<div class="detail-section-head"><h3>Anexos</h3><span>${rows.length}</span></div><div class="task-attachment-list">${rows.length?rows.map(item=>`<button type="button" class="task-attachment" data-open-attachment-v381="${item.id}"><span><i data-lucide="paperclip"></i></span><div><strong>${escapeHtml(item.nome)}</strong><small>${escapeHtml([item.mime_type,fileSizeLabelV381(item.tamanho_bytes),relativeTime(item.criado_em)].filter(Boolean).join(' · '))}</small></div><i data-lucide="external-link"></i></button>`).join(''):`<div class="attachment-empty"><i data-lucide="paperclip"></i><span>${state.attachmentsReadyV381?'Nenhum arquivo anexado.':'Execute o SQL V3.8.1 para ativar anexos.'}</span></div>`}</div>${!task.arquivada_em&&state.attachmentsReadyV381?`<label class="attachment-upload-btn"><input id="taskAttachmentInputV381" type="file" hidden><i data-lucide="upload-cloud"></i><span><strong>Anexar arquivo</strong><small>PDF, imagem, planilha, PPTX ou outro material · até 25 MB</small></span></label>`:''}`;
+  section.innerHTML=`<div class="detail-section-head"><h3>Anexos</h3><span>${rows.length}</span></div><div class="task-attachment-list">${rows.length?rows.map(item=>`<button type="button" class="task-attachment" data-open-attachment-v381="${item.id}"><span><i data-lucide="paperclip"></i></span><div><strong>${escapeHtml(item.nome)}</strong><small>${escapeHtml([item.mime_type,fileSizeLabelV381(item.tamanho_bytes),relativeTime(item.criado_em)].filter(Boolean).join(' · '))}</small></div><i data-lucide="external-link"></i></button>`).join(''):`<div class="attachment-empty"><i data-lucide="paperclip"></i><span>${state.attachmentsReadyV381?'Nenhum arquivo anexado.':'Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql para ativar anexos.'}</span></div>`}</div>${!task.arquivada_em&&state.attachmentsReadyV381?`<label class="attachment-upload-btn"><input id="taskAttachmentInputV381" type="file" hidden><i data-lucide="upload-cloud"></i><span><strong>Anexar arquivo</strong><small>PDF, imagem, planilha, PPTX ou outro material · até 25 MB</small></span></label>`:''}`;
   root.insertBefore(section,firstDetail||null);$('taskAttachmentInputV381')?.addEventListener('change',uploadTaskAttachmentV381);refreshIcons();
 }
 const openTaskBeforeUxV381 = openTask;
@@ -6199,14 +6258,14 @@ submitTaskEvaluation = async function submitTaskEvaluationUxV384(approved){
     return;
   }
 
-  if(!state.authorshipReady)return toast('Execute o SQL 15-HOTFIX-AUTORIA-V3-8-4.sql antes de validar uma entrega compartilhada.','error');
+  if(!state.authorshipReady)return toast('A autoria compartilhada não respondeu. Atualize a página. Se persistir, execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.','error');
 
   setLoading(true);try{
     const {data,error}=await db.rpc('solicitar_confirmacao_autoria_v1',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});if(error)throw error;
     closeModal('taskEvaluationModal');await refreshData();await dispatchPendingPush();if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);
     if(data?.confirmacao_necessaria||executors.length>1)toast(`Entrega validada. ${executors.length} participantes precisam confirmar a autoria.`);
     else toast('Entrega validada e concluída. Autoria individual registrada sem confirmação extra.');
-  }catch(error){toast(errorMessage(error),'error');}finally{setLoading(false);}
+  }catch(error){console.error('[autoria V3.8.5 validação]',error);toast(errorMessage(error),'error');}finally{setLoading(false);}
 };
 const evaluationPanelHTMLBeforeUxV381 = evaluationPanelHTMLV372;
 evaluationPanelHTMLV372 = function evaluationPanelHTMLUxV381(task,evaluator){

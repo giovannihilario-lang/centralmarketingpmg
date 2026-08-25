@@ -1,0 +1,188 @@
+0000000000000000000000000000000000000000 be10b025fba73821c07ebbd1f6560d4110e7bb1c Marketing PMG. <MARKETING@pama.local> 1782820759 -0300	commit (initial): Primeiro commit
+be10b025fba73821c07ebbd1f6560d4110e7bb1c be10b025fba73821c07ebbd1f6560d4110e7bb1c Marketing PMG. <MARKETING@pama.local> 1782820762 -0300	Branch: renamed refs/heads/master to refs/heads/main
+be10b025fba73821c07ebbd1f6560d4110e7bb1c c445d8deb3d5caf4550d7ef393b59f43b704cc82 Marketing PMG. <MARKETING@pama.local> 1782821012 -0300	commit: Adiciona cron de notificacao de debitos
+c445d8deb3d5caf4550d7ef393b59f43b704cc82 895b0ac58b4198b5eda2c459f1e66e96e1b1a31a Marketing PMG. <MARKETING@pama.local> 1782821420 -0300	commit: Adiciona type module no package.json
+895b0ac58b4198b5eda2c459f1e66e96e1b1a31a b164009fb0d3f6b6defc1d116d2402c788b527eb Marketing PMG. <MARKETING@pama.local> 1782821539 -0300	commit: Corrige formato do vapid subject
+b164009fb0d3f6b6defc1d116d2402c788b527eb 4b4f8ecfa24926507f2441c7cb4e671e195aba3f Marketing PMG. <MARKETING@pama.local> 1782821997 -0300	commit: Adiciona botao de ativar notificacoes push
+4b4f8ecfa24926507f2441c7cb4e671e195aba3f 85a130a6ff8d61cc604ad399fae88cb53c42a977 Marketing PMG. <MARKETING@pama.local> 1782822227 -0300	commit: Corrige escopo da funcao ativarNotificacoes e botao aninhado
+85a130a6ff8d61cc604ad399fae88cb53c42a977 c027812aaa5d44051aa2a8e430eed0d24d9b0d21 Marketing PMG. <MARKETING@pama.local> 1782822646 -0300	commit: Mostra erro real ao salvar subscricao push
+c027812aaa5d44051aa2a8e430eed0d24d9b0d21 d46f6cfaca09e895873e822458305d4011247d74 Marketing PMG. <MARKETING@pama.local> 1782823002 -0300	commit: Adiciona conteudo do service worker sw.js
+d46f6cfaca09e895873e822458305d4011247d74 e9910e18cc15929df99bb9397f01267be9b14a1b Marketing PMG. <MARKETING@pama.local> 1782841225 -0300	commit: sla mano
+e9910e18cc15929df99bb9397f01267be9b14a1b 061a879ffac89ad6a9eecd367a58ae57d15713d1 Marketing PMG. <MARKETING@pama.local> 1782841388 -0300	commit: AAAAAAAAAAAAA
+061a879ffac89ad6a9eecd367a58ae57d15713d1 fa4febbc4da0e4e6b8af3d649c9a8c269946214d Marketing PMG. <MARKETING@pama.local> 1782841930 -0300	commit: AAAAAAAAAAAAA
+fa4febbc4da0e4e6b8af3d649c9a8c269946214d 937acb3d1b7999e68509c6104136761e207a736e Marketing PMG. <MARKETING@pama.local> 1782842774 -0300	commit: AAAAAAAAAAAAA
+937acb3d1b7999e68509c6104136761e207a736e 7ec4a641c7510cbe32d64449ebc21c1187fae41e Marketing PMG. <MARKETING@pama.local> 1782842912 -0300	commit: teste
+7ec4a641c7510cbe32d64449ebc21c1187fae41e 22f6c10fd7689bbc1f52696da32b682a27583ea6 Marketing PMG. <MARKETING@pama.local> 1782843063 -0300	commit: tudo como era antes
+22f6c10fd7689bbc1f52696da32b682a27583ea6 4ae44fc9868c72b871ff390105681e9db60940e1 Marketing PMG. <MARKETING@pama.local> 1782844625 -0300	commit: slug.html: stream 100k+ rows via column projection + batched cursor fetch
+4ae44fc9868c72b871ff390105681e9db60940e1 6be6aa28405f91199e58f9cd23f201a6f22f4459 Marketing PMG. <MARKETING@pama.local> 1782844838 -0300	commit: slug.html: fix column name sub_grupo in WANTED_COLS
+6be6aa28405f91199e58f9cd23f201a6f22f4459 ab6ff0c13a70e5e50970c874222382851d90d500 Marketing PMG. <MARKETING@pama.local> 1782845633 -0300	commit: add central marketing hub page and set marketing login redirect
+ab6ff0c13a70e5e50970c874222382851d90d500 e9910e18cc15929df99bb9397f01267be9b14a1b Marketing PMG. <MARKETING@pama.local> 1782845963 -0300	reset: moving to e9910e1
+e9910e18cc15929df99bb9397f01267be9b14a1b e7c57b84a23112b133a182511e4f4f9eac070a86 Marketing PMG. <MARKETING@pama.local> 1782846341 -0300	commit: recreate central.html with full tool cards and navigation
+e7c57b84a23112b133a182511e4f4f9eac070a86 d347388e96363743ec229f1d19bbb7c445c4b1d8 Marketing PMG. <MARKETING@pama.local> 1782846425 -0300	commit (merge): tudo como era antes
+d347388e96363743ec229f1d19bbb7c445c4b1d8 3d9a85784103261d091ed2be3a4f4e60f17a6d72 Marketing PMG. <MARKETING@pama.local> 1782846476 -0300	pull origin main: Merge made by the 'ort' strategy.
+3d9a85784103261d091ed2be3a4f4e60f17a6d72 fd2fdc4c9e4af0377cb808dd76bfea799a610a3e Marketing PMG. <MARKETING@pama.local> 1782846912 -0300	commit: fix marketing fallback redirect to central.html
+fd2fdc4c9e4af0377cb808dd76bfea799a610a3e 520c243f6730b5adbc69b0c3e90d8514a92ecf5c Marketing PMG. <MARKETING@pama.local> 1782847041 -0300	commit: aiaiai
+520c243f6730b5adbc69b0c3e90d8514a92ecf5c 6342695719bbf65f74014f0a71470e6c8d525656 Marketing PMG. <MARKETING@pama.local> 1782849061 -0300	commit: aiaiai
+6342695719bbf65f74014f0a71470e6c8d525656 036c135ec0187cf523cf210a07b5abd67889e18e Marketing PMG. <MARKETING@pama.local> 1782849255 -0300	commit: latitude
+036c135ec0187cf523cf210a07b5abd67889e18e 896c763f5b39eb9d29b61e79d8ab4b9733e2d764 Marketing PMG. <MARKETING@pama.local> 1782850848 -0300	commit: corrigindo tudo sefoda
+896c763f5b39eb9d29b61e79d8ab4b9733e2d764 16c7b5221542059f5eb3aea725ea17c6cb21fc22 Marketing PMG. <MARKETING@pama.local> 1782851104 -0300	commit: corrigindo tudo sefoda agora vai
+16c7b5221542059f5eb3aea725ea17c6cb21fc22 a12ec34749aff62030428a7be77c778ebfc6673a Marketing PMG. <MARKETING@pama.local> 1782906037 -0300	commit: Adição do interno PMG
+a12ec34749aff62030428a7be77c778ebfc6673a d94a6bbbbdab1a8c006b3e73c6a3cb15e60cdfc6 Marketing PMG. <MARKETING@pama.local> 1782906765 -0300	commit: Adição do interno PMG
+d94a6bbbbdab1a8c006b3e73c6a3cb15e60cdfc6 827af079383c1fd322ff9c549a59cd731092b89d Marketing PMG. <MARKETING@pama.local> 1782907603 -0300	commit: Mudança do interno pmg
+827af079383c1fd322ff9c549a59cd731092b89d 13527ea5eafc32acd799534839d604d318268b4a Marketing PMG. <MARKETING@pama.local> 1782907740 -0300	commit: Mudança do interno pmg
+13527ea5eafc32acd799534839d604d318268b4a 11b12970b807d9565bca97d9487d2c4e6389b9a9 Marketing PMG. <MARKETING@pama.local> 1782909292 -0300	commit: Mudança definitva
+11b12970b807d9565bca97d9487d2c4e6389b9a9 89c0a1300d9572249a47452e255ae0141bb5ac8a Marketing PMG. <MARKETING@pama.local> 1782910243 -0300	commit: Mudança definitva de verdade agora
+89c0a1300d9572249a47452e255ae0141bb5ac8a 6ea14d308491b359667260c25e8a9a357771f81e Marketing PMG. <MARKETING@pama.local> 1782912294 -0300	commit: implementação mapa regional PMG
+6ea14d308491b359667260c25e8a9a357771f81e dea926de9b81ab7695413a4375a310d7854fae8b Marketing PMG. <MARKETING@pama.local> 1782912405 -0300	commit: implementação mapa regional PMG
+dea926de9b81ab7695413a4375a310d7854fae8b bc39bcb25884b34adcf3dc3a54596c9f8f615edd Marketing PMG. <MARKETING@pama.local> 1782912926 -0300	commit: implementação mapa regional PMG
+bc39bcb25884b34adcf3dc3a54596c9f8f615edd e95afb06d4ed05c21a30852febe2dfc51e0bdfd9 Marketing PMG. <MARKETING@pama.local> 1782913275 -0300	commit: implementação mapa regional PMG
+e95afb06d4ed05c21a30852febe2dfc51e0bdfd9 593bfe45c0b0b3907b44a21cd0c86dff8aef4b3c Marketing PMG. <MARKETING@pama.local> 1782914044 -0300	commit: implementação mapa regional PMG
+593bfe45c0b0b3907b44a21cd0c86dff8aef4b3c 0002e1832840f2d7a252bc5ab8ab97c69e7105d3 Marketing PMG. <MARKETING@pama.local> 1782914610 -0300	commit: implementação mapa regional PMG - filtros melhores
+0002e1832840f2d7a252bc5ab8ab97c69e7105d3 2f4841b8ce31f755819c26727f8fff9bc7f30687 Marketing PMG. <MARKETING@pama.local> 1782914836 -0300	commit: implementação mapa regional PMG - filtros melhores
+2f4841b8ce31f755819c26727f8fff9bc7f30687 69dcf39f5c8c65b122f9ee0b9e1e31f8ce981902 Marketing PMG. <MARKETING@pama.local> 1782915108 -0300	commit: implementação mapa regional PMG - filtros melhores
+69dcf39f5c8c65b122f9ee0b9e1e31f8ce981902 6c834a7f8983b52712957a395cb06bf429ede0fc Marketing PMG. <MARKETING@pama.local> 1782916480 -0300	commit: corrigindo tudo sefoda agora vai
+6c834a7f8983b52712957a395cb06bf429ede0fc 6a4fc3922a754d0e7dde22d6bd8beeb1d7e859ad Marketing PMG. <MARKETING@pama.local> 1782917167 -0300	commit: corrigindo tudo sefoda agora vai
+6a4fc3922a754d0e7dde22d6bd8beeb1d7e859ad b4739b07e62a95e2c9b36bb728e8463cf2a39dd5 Marketing PMG. <MARKETING@pama.local> 1782925109 -0300	commit: corrigindo tudo sefoda agora vai
+b4739b07e62a95e2c9b36bb728e8463cf2a39dd5 debe57917a23f9ef770f0918d4837128372b00fd Marketing PMG. <MARKETING@pama.local> 1782925210 -0300	commit: corrigindo tudo sefoda agora vai
+debe57917a23f9ef770f0918d4837128372b00fd 62e7b008ac6e88de1e0f55943ad7887ea65522ff Marketing PMG. <MARKETING@pama.local> 1782925869 -0300	commit: corrigindo tudo sefoda agora vai
+62e7b008ac6e88de1e0f55943ad7887ea65522ff d3f528beebd05933a6535b7d4471184e2830ebc5 Marketing PMG. <MARKETING@pama.local> 1782927871 -0300	commit: acelerando o mapa site
+d3f528beebd05933a6535b7d4471184e2830ebc5 1a980a70d49f5aa9804cd3affe7c04b93666aa31 Marketing PMG. <MARKETING@pama.local> 1782937476 -0300	commit: acelerando o mapa site
+1a980a70d49f5aa9804cd3affe7c04b93666aa31 4a1c4d1d6b87e468ff5ce27ef72337c084797cdf Marketing PMG. <MARKETING@pama.local> 1782938099 -0300	commit: acelerando o mapa site
+4a1c4d1d6b87e468ff5ce27ef72337c084797cdf a7d0a57c853f5eaa0fc49d7e11249a129555bca2 Marketing PMG. <MARKETING@pama.local> 1782994362 -0300	commit: acelerando o mapa site
+a7d0a57c853f5eaa0fc49d7e11249a129555bca2 4fc22c93f6f095c8b0716b12cf9830e6558650c6 Marketing PMG. <MARKETING@pama.local> 1782994391 -0300	commit: acelerando o mapa site
+4fc22c93f6f095c8b0716b12cf9830e6558650c6 8264285a1a391ddb4a50240f2d6dc87705d9ca96 Marketing PMG. <MARKETING@pama.local> 1783096109 -0300	commit: melhorando central
+8264285a1a391ddb4a50240f2d6dc87705d9ca96 202a6977026fee4c50e97cd3b12fae8b11485746 Marketing PMG. <MARKETING@pama.local> 1783096269 -0300	commit: melhorando central
+202a6977026fee4c50e97cd3b12fae8b11485746 255c546bbc81e25a1c503830040610dc8423595a Marketing PMG. <MARKETING@pama.local> 1783096507 -0300	commit: melhorando central
+255c546bbc81e25a1c503830040610dc8423595a d03c38bc79816a9c53a214ff5c75be91e52b3679 Marketing PMG. <MARKETING@pama.local> 1783096569 -0300	commit: melhorando central
+d03c38bc79816a9c53a214ff5c75be91e52b3679 679957f80636ee67ad18194579745a491421d2b0 Marketing PMG. <MARKETING@pama.local> 1783096680 -0300	commit: melhorando central
+679957f80636ee67ad18194579745a491421d2b0 d37e00f1d1fae38e32c39fe668eb4f964f9c1246 Marketing PMG. <MARKETING@pama.local> 1783100298 -0300	commit: novo supabase
+d37e00f1d1fae38e32c39fe668eb4f964f9c1246 83b1f7839c6e1f2d2fa4ccb4aa968f4ca86913e5 Marketing PMG. <MARKETING@pama.local> 1783100922 -0300	commit: novo supabase
+83b1f7839c6e1f2d2fa4ccb4aa968f4ca86913e5 d47f21961d95ae0ac3127f355150dd667f338425 Marketing PMG. <MARKETING@pama.local> 1783336100 -0300	commit: novo supabase
+d47f21961d95ae0ac3127f355150dd667f338425 08dc3c6f09ec7385a323901d62c53e11b0a36d3d Marketing PMG. <MARKETING@pama.local> 1783336506 -0300	commit: novo supabase
+08dc3c6f09ec7385a323901d62c53e11b0a36d3d 6b8c74556ac429f6314a5acf7ea29e25c20c8a5f Marketing PMG. <MARKETING@pama.local> 1783337538 -0300	commit: vamo que vamooo
+6b8c74556ac429f6314a5acf7ea29e25c20c8a5f 0faf6edc5c7bef96e6546037f65d5d9b32355ca6 Marketing PMG. <MARKETING@pama.local> 1783338304 -0300	commit: vamo que vamooo
+0faf6edc5c7bef96e6546037f65d5d9b32355ca6 f507065f4fc7e85c569c82dde516ce7dc83070df Marketing PMG. <MARKETING@pama.local> 1783339109 -0300	commit: opaaa
+f507065f4fc7e85c569c82dde516ce7dc83070df 011f6c1984c9b8a88e0b33933beef396684966b0 Marketing PMG. <MARKETING@pama.local> 1783362352 -0300	commit: campanhas de incentivo
+011f6c1984c9b8a88e0b33933beef396684966b0 ace093d74438a11f85f313ff03729031f4be2508 Marketing PMG. <MARKETING@pama.local> 1783363673 -0300	commit: campanhas de incentivo
+ace093d74438a11f85f313ff03729031f4be2508 fd962afa7e81996e53d71f1ffec1a7f1c7c882ab Marketing PMG. <MARKETING@pama.local> 1785934188 -0300	commit: Adiciona módulo de demandas ao PMG Connect
+fd962afa7e81996e53d71f1ffec1a7f1c7c882ab fc843e9d0bfade043907c6f66e7d7b202b3b7767 Marketing PMG. <MARKETING@pama.local> 1785934840 -0300	commit: Reduz funções serverless para o limite da Vercel Hobby
+fc843e9d0bfade043907c6f66e7d7b202b3b7767 6e697506d385fe0746899b518c4e688098908fcb Marketing PMG. <MARKETING@pama.local> 1785935504 -0300	commit: Corrige API do dashboard regional na Vercel
+6e697506d385fe0746899b518c4e688098908fcb d2fac524889a122304ad05b291b156a0c3d39aee Marketing PMG. <MARKETING@pama.local> 1785935900 -0300	commit: Corrige API local do dashboard regional
+d2fac524889a122304ad05b291b156a0c3d39aee dac5635333eb36cb5e16d8297ae4b16107c982fe Marketing PMG. <MARKETING@pama.local> 1785936091 -0300	commit: Separa APIs locais das funções da Vercel
+dac5635333eb36cb5e16d8297ae4b16107c982fe 962de196e88a3ddedcbc658bc2bb626559fc5caa Marketing PMG. <MARKETING@pama.local> 1785940085 -0300	commit: Atualiza Central de Demandas para V2
+962de196e88a3ddedcbc658bc2bb626559fc5caa 36a15adb2a080e9af9f4533bea0104a6fded8868 Marketing PMG. <MARKETING@pama.local> 1785946935 -0300	commit: Separa APIs locais das funções da Vercel
+36a15adb2a080e9af9f4533bea0104a6fded8868 5f88619d5a078d595694cd301d9942e2441ce05f Marketing PMG. <MARKETING@pama.local> 1785947295 -0300	commit: Separa APIs locais das funções da Vercel
+5f88619d5a078d595694cd301d9942e2441ce05f 620acb3772ba75f2cb68e5ef6ba6a68b87a8db38 Marketing PMG. <MARKETING@pama.local> 1785950808 -0300	commit: Separa APIs locais das funções da Vercel
+620acb3772ba75f2cb68e5ef6ba6a68b87a8db38 7471a851d75b86c6f86fae1de990fefd338f1cbf Marketing PMG. <MARKETING@pama.local> 1785951979 -0300	commit: Corrige inicialização da função do Demandas
+7471a851d75b86c6f86fae1de990fefd338f1cbf 247e93f1eb7c67f9880de862189d096d13596b54 Marketing PMG. <MARKETING@pama.local> 1785953433 -0300	commit: Melhora visão gerencial da equipe no Demandas
+247e93f1eb7c67f9880de862189d096d13596b54 f92ffc8c1b088e7f26e68641acf7d1ccb36d2427 Marketing PMG. <MARKETING@pama.local> 1785953625 -0300	commit: Remove credenciais do versionamento
+f92ffc8c1b088e7f26e68641acf7d1ccb36d2427 e2174ce7a330b7b993cc3cec2d9bd3715ce5d155 Marketing PMG. <MARKETING@pama.local> 1785962227 -0300	commit: Adiciona avatares funcionais na central de demandas
+e2174ce7a330b7b993cc3cec2d9bd3715ce5d155 777bde5ef62684bae8665f6b3bd0b6286d2a4a68 Marketing PMG. <MARKETING@pama.local> 1785962385 -0300	commit: Atualiza Campanhas V2 e reorganiza APIs locais
+777bde5ef62684bae8665f6b3bd0b6286d2a4a68 27206db1caddba016fad2390e664b98d7619b636 Marketing PMG. <MARKETING@pama.local> 1785962630 -0300	rebase (finish): refs/heads/main onto 986a7373514f7d59f868a5cb6e65d8c87a5514b7
+27206db1caddba016fad2390e664b98d7619b636 51f0d0956fe3311e4ed7f214f67459e15e2b8bec Marketing PMG. <MARKETING@pama.local> 1786014865 -0300	commit: atualizando aba de campanhas
+51f0d0956fe3311e4ed7f214f67459e15e2b8bec 55d94b523042c5052b21986496f5b4855a1b43f8 Marketing PMG. <MARKETING@pama.local> 1786015652 -0300	commit: Adiciona botão de logout na Central de Demandas
+55d94b523042c5052b21986496f5b4855a1b43f8 c9a27eedce44789b4f8b44631da5478f41bbccf4 Marketing PMG. <MARKETING@pama.local> 1786015875 -0300	commit: Adiciona botão logout e outras fita
+c9a27eedce44789b4f8b44631da5478f41bbccf4 faf9387e00355480b5d0c7b26a53f19fa9fbfe34 Marketing PMG. <MARKETING@pama.local> 1786017509 -0300	commit: Adiciona menu de usuário e logout no Demandas
+faf9387e00355480b5d0c7b26a53f19fa9fbfe34 c146c678d5ec8eb5d03af55406970a0937f678a9 Marketing PMG. <MARKETING@pama.local> 1786018628 -0300	commit: Integra campanhas ao SQL Server Power BI
+c146c678d5ec8eb5d03af55406970a0937f678a9 b56084f6b11dc831a3a1b95689c343a8febb8c35 Marketing PMG. <MARKETING@pama.local> 1786018758 -0300	commit: Melhora status responsáveis e avatares nas demandas
+b56084f6b11dc831a3a1b95689c343a8febb8c35 be7b564135eb9d593f47212bab73369b0ef15d7a Marketing PMG. <MARKETING@pama.local> 1786020263 -0300	commit: Adiciona tutorial inicial e reinicia Central de Demandas
+be7b564135eb9d593f47212bab73369b0ef15d7a 6d1fc8b2837a68c8e9421cf9438512f1ece4c185 Marketing PMG. <MARKETING@pama.local> 1786021397 -0300	commit: Amplia e diferencia tutoriais de gestor e colaborador
+6d1fc8b2837a68c8e9421cf9438512f1ece4c185 d4ff2d0d4794038b5d97928c6f841a1829f5269f Marketing PMG. <MARKETING@pama.local> 1786022263 -0300	commit: Corrige modulo SQL de campanhas
+d4ff2d0d4794038b5d97928c6f841a1829f5269f 9afc614b71b3aea7d8e035705b2c6290aab95a3e Marketing PMG. <MARKETING@pama.local> 1786025109 -0300	commit: Remove escrita no Supabase das campanhas
+9afc614b71b3aea7d8e035705b2c6290aab95a3e e73d2d79e37c3c9fd495845b97d993ccdec41602 Marketing PMG. <MARKETING@pama.local> 1786025853 -0300	commit: Corrige API e busca de fornecedores das campanhas
+e73d2d79e37c3c9fd495845b97d993ccdec41602 dd13cdcb67c68f87a944cf62cf8c6317d974203c Marketing PMG. <MARKETING@pama.local> 1786026556 -0300	commit: Alinha campanhas ao dashboard regional
+dd13cdcb67c68f87a944cf62cf8c6317d974203c cfea6bf5c9f1c3f2af2ba0f7a474b6ed1db34b8f Marketing PMG. <MARKETING@pama.local> 1786027138 -0300	commit: Otimiza abertura da nova campanha
+cfea6bf5c9f1c3f2af2ba0f7a474b6ed1db34b8f 4bf19578f4adcafe33fee1b61a015d87f1798413 Marketing PMG. <MARKETING@pama.local> 1786027631 -0300	commit: Corrige travamento ao abrir nova campanha
+4bf19578f4adcafe33fee1b61a015d87f1798413 2e845d00c55ca922945b76bdb935a85847ffc7a4 Marketing PMG. <MARKETING@pama.local> 1786033130 -0300	commit: Otimiza campanhas no padrão dashboard regional
+2e845d00c55ca922945b76bdb935a85847ffc7a4 fb477259908d4e9681f19917281056dd1d7267bf Marketing PMG. <MARKETING@pama.local> 1786035365 -0300	commit: Reconstrói campanhas com carregamento rápido e cache SQL
+fb477259908d4e9681f19917281056dd1d7267bf f0f49cf837f611e526ed537564c2694377ad5b5c Marketing PMG. <MARKETING@pama.local> 1786035615 -0300	commit: Corrige layout da página de campanhas
+f0f49cf837f611e526ed537564c2694377ad5b5c 7ed92ab784b86738d2510cca9d61697591f0f36b Marketing PMG. <MARKETING@pama.local> 1786041789 -0300	commit: Amplia interface e adiciona alertas invasivos
+7ed92ab784b86738d2510cca9d61697591f0f36b 2170966552fc97382de0fcd2542806392ace33c8 Marketing PMG. <MARKETING@pama.local> 1786043142 -0300	commit: Corrige períodos fixos de seis segundas-feiras
+2170966552fc97382de0fcd2542806392ace33c8 c9d04b3af0a5725a1c29b8d6d5366046ea8a9642 Marketing PMG. <MARKETING@pama.local> 1786044359 -0300	commit: Corrige loading do contexto local
+c9d04b3af0a5725a1c29b8d6d5366046ea8a9642 6d8471dda0d3af780b8a34f9cf5ae60e8d0218de Marketing PMG. <MARKETING@pama.local> 1786046348 -0300	commit: Solicita permissão de rede local no Chrome
+6d8471dda0d3af780b8a34f9cf5ae60e8d0218de 80aa888ebbb872899c38ef53708080bf81c809c8 Marketing PMG. <MARKETING@pama.local> 1786047572 -0300	commit: Solicita permissão de rede local no Chrome
+80aa888ebbb872899c38ef53708080bf81c809c8 f381c326e8afc630b20cb6c2ac787659fef1e4eb Marketing PMG. <MARKETING@pama.local> 1786129586 -0300	commit: Evita atualização automática do contexto de campanhas
+f381c326e8afc630b20cb6c2ac787659fef1e4eb 2ee10913320521d7187238945fc343422758c6ee Marketing PMG. <MARKETING@pama.local> 1786131019 -0300	commit: Corrige acesso loopback do modulo campanhas
+2ee10913320521d7187238945fc343422758c6ee 20d6d2b58b99f3de3571b822b2619eb641c5766e Marketing PMG. <MARKETING@pama.local> 1786133596 -0300	commit: Atualiza modulo de campanhas
+20d6d2b58b99f3de3571b822b2619eb641c5766e b82158eb66b394e43edaa5acc0ab6fe18bf130e4 Marketing PMG. <MARKETING@pama.local> 1786451824 -0300	commit: feat: adiciona filtro de cidade e destaca filtros do dashboard regional
+b82158eb66b394e43edaa5acc0ab6fe18bf130e4 ff19123782192ca4241a88f78c2228a7d14149a0 Marketing PMG. <MARKETING@pama.local> 1786452059 -0300	commit: feat: adiciona filtro de cidade e destaca filtros do dashboard regional
+ff19123782192ca4241a88f78c2228a7d14149a0 1c0bd60816351dedb84d77cb0c8890edf71a03e5 Marketing PMG. <MARKETING@pama.local> 1786452229 -0300	rebase (finish): refs/heads/main onto 708a07f58169dc8db9457782ca4ce59c62099058
+1c0bd60816351dedb84d77cb0c8890edf71a03e5 760a2d9a265554fbc72b0c55c2de577082f23f09 Marketing PMG. <MARKETING@pama.local> 1786464367 -0300	commit: Corrige fidelidade e diagnostico SQL das campanhas
+760a2d9a265554fbc72b0c55c2de577082f23f09 9ce3131d9a6ccabd85c333c0de2e3de3c42c923b Marketing PMG. <MARKETING@pama.local> 1786468157 -0300	commit: fix: evita falso erro de conexao com API local
+9ce3131d9a6ccabd85c333c0de2e3de3c42c923b 64f5b6a56e2798588091d741a6351eba07323c9f Marketing PMG. <MARKETING@pama.local> 1786469619 -0300	commit: Corrige base coletiva historica das campanhas
+64f5b6a56e2798588091d741a6351eba07323c9f 318fa40ebdea5e802f46ed31be1d4559f048ffa2 Marketing PMG. <MARKETING@pama.local> 1786469795 -0300	commit: Corrige base coletiva historica das campanhas
+318fa40ebdea5e802f46ed31be1d4559f048ffa2 0f7c46202ca845dc4096a59a48a98008894e6917 Marketing PMG. <MARKETING@pama.local> 1786471896 -0300	commit: fix: corrige API local e restaura dashboard regional
+0f7c46202ca845dc4096a59a48a98008894e6917 53fccae0b2e9c5eaadcf2b0ab45d360af9b924e3 Marketing PMG. <MARKETING@pama.local> 1786473318 -0300	commit: fix: adiciona filtro de produto e corrige campanhas
+53fccae0b2e9c5eaadcf2b0ab45d360af9b924e3 69ef8e22e9caf799af7c001d79040518f105dd9c Marketing PMG. <MARKETING@pama.local> 1786474382 -0300	commit: fix: corrige import sql no filtro de produtos
+69ef8e22e9caf799af7c001d79040518f105dd9c d5883a8783be15a16203b54d049324d25b872d07 Marketing PMG. <MARKETING@pama.local> 1786474534 -0300	commit: fix: corrige agrupamento de UF no dashboard regional
+d5883a8783be15a16203b54d049324d25b872d07 c2b5e08609583468e990cfa47fa7c7b6030dde5a Marketing PMG. <MARKETING@pama.local> 1786475180 -0300	commit: Adiciona beneficio de primeira compra Fortunata
+c2b5e08609583468e990cfa47fa7c7b6030dde5a 37de7dbb3f5ec1366c696db79aee3878665c198a Marketing PMG. <MARKETING@pama.local> 1786543715 -0300	commit: Melhora periodos formulario e apuracao de campanhas
+37de7dbb3f5ec1366c696db79aee3878665c198a 8a7ecaf058b8236453336b33c157933bd130f853 Marketing PMG. <MARKETING@pama.local> 1786543955 -0300	commit: Melhora periodos formulario e apuracao de campanhas
+8a7ecaf058b8236453336b33c157933bd130f853 253f708007892ad4871a80a417d3a1b5cd33a3aa Marketing PMG. <MARKETING@pama.local> 1786544308 -0300	commit: Redesenha resultados e classificacao da performance
+253f708007892ad4871a80a417d3a1b5cd33a3aa e01d7215627c9e581beab06deafde3a6072c50f4 Marketing PMG. <MARKETING@pama.local> 1786544986 -0300	commit: Centraliza tela de resultados da campanha
+e01d7215627c9e581beab06deafde3a6072c50f4 9a118207b9fb6ba9906f6d0730068cd66fc03adc Marketing PMG. <MARKETING@pama.local> 1786546428 -0300	commit: VOU FICAR CARECA
+9a118207b9fb6ba9906f6d0730068cd66fc03adc e1f95fc2148988e10ce5ab9387f4d3216a6d1bb5 Marketing PMG. <MARKETING@pama.local> 1786547877 -0300	commit: Refaz dark mode e adiciona toggle de tema
+e1f95fc2148988e10ce5ab9387f4d3216a6d1bb5 62829dc43ee03f4c4b292eca1de3a42b9c972145 Marketing PMG. <MARKETING@pama.local> 1786554262 -0300	commit: Corrige layout e adiciona produtividade V3.4 nas demandas
+62829dc43ee03f4c4b292eca1de3a42b9c972145 734be765c10095bfb38b6bee66333085f0275031 Marketing PMG. <MARKETING@pama.local> 1786557258 -0300	commit: Corrige dependencias do Supabase na API de Demandas
+734be765c10095bfb38b6bee66333085f0275031 e745c9545cebfca608b8f7bb4c97b8b6b31dd7f4 Marketing PMG. <MARKETING@pama.local> 1786557965 -0300	commit: Corrige aprovacao automatica da Academia PMG
+e745c9545cebfca608b8f7bb4c97b8b6b31dd7f4 b7ee0ad661cab6ae0d4cbf3f458441735d13f420 Marketing PMG. <MARKETING@pama.local> 1786560646 -0300	commit: Adiciona aba de treinamentos na Academia PMG
+b7ee0ad661cab6ae0d4cbf3f458441735d13f420 3945139aef32727710e711e42f84bfa4a369334e Marketing PMG. <MARKETING@pama.local> 1786561424 -0300	commit: Refaz completamente o dark mode do PMG Connect
+3945139aef32727710e711e42f84bfa4a369334e dbe47a94ec7994041ee73f5bbc631aa079904437 Marketing PMG. <MARKETING@pama.local> 1786562747 -0300	commit: Corrige estabilidade de layout modais e popups
+dbe47a94ec7994041ee73f5bbc631aa079904437 fc0ec514111dbbe1bbda1da86b65fac171596abe Marketing PMG. <MARKETING@pama.local> 1786562864 -0300	commit: AGORA VAI PORRA
+fc0ec514111dbbe1bbda1da86b65fac171596abe e90df9b193fa6c435306073454741edc99c68a90 Marketing PMG. <MARKETING@pama.local> 1786563257 -0300	commit: Atualiza Central de Demandas e Academia PMG
+e90df9b193fa6c435306073454741edc99c68a90 5a651f139e1344ab256a3cb464a8071511161a09 Marketing PMG. <MARKETING@pama.local> 1786563837 -0300	commit: Corrige definitivamente contraste e dark mode da Central
+5a651f139e1344ab256a3cb464a8071511161a09 8ed366aa67a19848e3f060f785851622d30db58f Marketing PMG. <MARKETING@pama.local> 1786565917 -0300	commit: Adiciona gestao inteligente ao PMG Connect
+8ed366aa67a19848e3f060f785851622d30db58f dbc13ee81127243146187c2b166316c6aa0843b1 Marketing PMG. <MARKETING@pama.local> 1786566651 -0300	commit: Corrige cards verticais da Academia PMG
+dbc13ee81127243146187c2b166316c6aa0843b1 15f4afd588a81323e60d39797b1207f1e94d6534 Marketing PMG. <MARKETING@pama.local> 1786619063 -0300	commit: Adiciona favicon do PMG Connect
+15f4afd588a81323e60d39797b1207f1e94d6534 4e7c1a37ad6025ff3e8a2836ee4615e1fab99a97 Marketing PMG. <MARKETING@pama.local> 1786619316 -0300	commit: Corrige caminho do favicon do PMG Connect
+4e7c1a37ad6025ff3e8a2836ee4615e1fab99a97 abbe7d819e20e8c05ee50318778cfed2ffbcf0d3 Marketing PMG. <MARKETING@pama.local> 1786619445 -0300	commit: Corrige caminho do favicon do PMG Connect
+abbe7d819e20e8c05ee50318778cfed2ffbcf0d3 1959cf6d4cb23181e9ab07a65ff6ffd400d602be Marketing PMG. <MARKETING@pama.local> 1786620713 -0300	commit: Corrige cards verticais da Academia PMG
+1959cf6d4cb23181e9ab07a65ff6ffd400d602be 251f406193dded3f15cbc9438399f9be7938f8ed Marketing PMG. <MARKETING@pama.local> 1786622863 -0300	commit: Corrige TUDO!
+251f406193dded3f15cbc9438399f9be7938f8ed 4534bec92fc1592e5bd2db072cb7e1d719d2b5d3 Marketing PMG. <MARKETING@pama.local> 1786623077 -0300	commit: Corrige TUDO!
+4534bec92fc1592e5bd2db072cb7e1d719d2b5d3 4e406c3ec4177b8a5afb245c01e2558b55797c22 Marketing PMG. <MARKETING@pama.local> 1786640639 -0300	commit: Corrige favicon da Central de Demandas
+4e406c3ec4177b8a5afb245c01e2558b55797c22 e88505287843261f28f8be543845904541457f35 Marketing PMG. <MARKETING@pama.local> 1786641367 -0300	commit: refactor: unifica auth, reforca seguranca e padroniza o PMG Connect
+e88505287843261f28f8be543845904541457f35 ef575bf9591e46f026b0af2775bd44224dc85553 Marketing PMG. <MARKETING@pama.local> 1786641417 -0300	commit: refactor: unifica auth, reforca seguranca e padroniza o PMG Connect
+ef575bf9591e46f026b0af2775bd44224dc85553 b14f5fea674a8a0046b3ec1fb156a4424ec6173d Marketing PMG. <MARKETING@pama.local> 1786643328 -0300	commit: bota tudo q se foda
+b14f5fea674a8a0046b3ec1fb156a4424ec6173d 9530507e1663ea8767db299268783ceb7232167c Marketing PMG. <MARKETING@pama.local> 1786651059 -0300	commit: Corrige popup invasivo preso ao viewport
+9530507e1663ea8767db299268783ceb7232167c e2ab5c0cc1a9393dcc6ff0a41adc5165bf28435c Marketing PMG. <MARKETING@pama.local> 1786711327 -0300	commit: Recupera automaticamente sessoes SQL expiradas
+e2ab5c0cc1a9393dcc6ff0a41adc5165bf28435c cd60328febab76b2f684eded9c31d8ce9c9e8c36 Marketing PMG. <MARKETING@pama.local> 1786712304 -0300	commit: Corrige solicitacoes e permissoes da Academia PMG
+cd60328febab76b2f684eded9c31d8ce9c9e8c36 b4709936aa846cf292cfacbeff79e2b61d26b213 Marketing PMG. <MARKETING@pama.local> 1786714278 -0300	commit: Corrige ponte de autenticacao das campanhas locais
+b4709936aa846cf292cfacbeff79e2b61d26b213 bdbc2a47bb3df82de8e5ac083d78c2c8695765e2 Marketing PMG. <MARKETING@pama.local> 1786714837 -0300	commit: Corrige chamada da API local em mesma origem
+bdbc2a47bb3df82de8e5ac083d78c2c8695765e2 ee98aa57af00becd7fefeab60b28dbb30fdd5db1 Marketing PMG. <MARKETING@pama.local> 1786719219 -0300	commit: Mantem sessao das campanhas com refresh automatico
+ee98aa57af00becd7fefeab60b28dbb30fdd5db1 6a48b118d501b083b574f86690162e1ba474969a Marketing PMG. <MARKETING@pama.local> 1786729507 -0300	commit: Adiciona demandas recorrentes ao PMG Connect
+6a48b118d501b083b574f86690162e1ba474969a 1c5545d3ec2bc05eb3222664c8c8d24d6e2338e1 Marketing PMG. <MARKETING@pama.local> 1786729962 -0300	commit: Corrige login principal do PMG Connect
+1c5545d3ec2bc05eb3222664c8c8d24d6e2338e1 9894cb977fd2667c00c7363c37e04777fc62ddd4 Marketing PMG. <MARKETING@pama.local> 1786731219 -0300	commit: Integra demandas recorrentes em todo o PMG Connect
+9894cb977fd2667c00c7363c37e04777fc62ddd4 cd0d209dfa5792610225fda439d088a241e0f5ec Marketing PMG. <MARKETING@pama.local> 1786738810 -0300	commit: Permite gestor alterar urgencia das demandas
+cd0d209dfa5792610225fda439d088a241e0f5ec f20153c91caa99d983a6e519b78dba1b703a23c8 Marketing PMG. <MARKETING@pama.local> 1786967636 -0300	commit: Corrige limite de produtos do gerador de catalogo
+f20153c91caa99d983a6e519b78dba1b703a23c8 76adbf4acbb1e1b8e814f8dd3b36fa5a1cee515d Marketing PMG. <MARKETING@pama.local> 1786968558 -0300	commit: Alinha design do gerador de catalogo ao PMG Connect
+76adbf4acbb1e1b8e814f8dd3b36fa5a1cee515d c3f19b32d22885af7d3c780708c8dd9205f5a1e4 Marketing PMG. <MARKETING@pama.local> 1786988211 -0300	commit: Adiciona multiplos responsaveis nas demandas
+c3f19b32d22885af7d3c780708c8dd9205f5a1e4 04491b599614b5713fcafeaa6d3f0a4ece8380de Marketing PMG. <MARKETING@pama.local> 1786988923 -0300	commit: Adiciona modo compartilhada e primeiro a cumprir
+04491b599614b5713fcafeaa6d3f0a4ece8380de 39aedf80a97fbc7e6c2809400000761ceeb95a27 Marketing PMG. <MARKETING@pama.local> 1786993715 -0300	commit: Adiciona confirmacao de autoria na revisao das demandas
+39aedf80a97fbc7e6c2809400000761ceeb95a27 263befeecf0beea6ea85000fbb10faff39e7b20c Marketing PMG. <MARKETING@pama.local> 1786996197 -0300	commit: Restringe popups dos gestores as demandas relacionadas
+263befeecf0beea6ea85000fbb10faff39e7b20c 1531cc583a89f9f679230365361fb28c168a016e Marketing PMG. <MARKETING@pama.local> 1786996373 -0300	commit: Restringe popups dos gestores as demandas relacionadas
+1531cc583a89f9f679230365361fb28c168a016e ae7b059bdb175eccb70ca481507912c84c53ff04 Marketing PMG. <MARKETING@pama.local> 1787051157 -0300	commit: Restringe popups dos gestores as demandas relacionadas
+ae7b059bdb175eccb70ca481507912c84c53ff04 3e2fcf1d3826c02c1bee4bec059522e19d6468f0 Marketing PMG. <MARKETING@pama.local> 1787051847 -0300	commit: Permite lembretes de equipe recorrentes com varios horarios
+3e2fcf1d3826c02c1bee4bec059522e19d6468f0 c6ed2c052af3cd20559f8fb4a0948d5caac4bb2b Marketing PMG. <MARKETING@pama.local> 1787052467 -0300	commit: Adiciona suporte seguro a Markdown nas demandas
+c6ed2c052af3cd20559f8fb4a0948d5caac4bb2b 27378e243fa334fdcad7d9d06c9718f309f1e5f0 Marketing PMG. <MARKETING@pama.local> 1787055944 -0300	commit: Adiciona feedback do tempo de revisao
+27378e243fa334fdcad7d9d06c9718f309f1e5f0 c9fb9436acb1fecf1ca88d00d5303cfca296d525 Marketing PMG. <MARKETING@pama.local> 1787056421 -0300	commit: Congela prazo enquanto demanda esta em revisao
+c9fb9436acb1fecf1ca88d00d5303cfca296d525 3f552528ebd40bdebf8d12790fcd0e67e64a3a93 Marketing PMG. <MARKETING@pama.local> 1787076197 -0300	commit: feat: consolida v3.7.11 preservando recursos da v3.7.4
+3f552528ebd40bdebf8d12790fcd0e67e64a3a93 414ba2b689c27be5468f813738267e1f8e28ccc7 Marketing PMG. <MARKETING@pama.local> 1787085617 -0300	commit: fix: restaura ponte de autenticação entre PMG Connect e API local
+414ba2b689c27be5468f813738267e1f8e28ccc7 fde1008d59a3ec72293e19bef0b7bd6982f9d68a Marketing PMG. <MARKETING@pama.local> 1787141823 -0300	commit: perf: otimiza consultas SQL do regional e campanhas
+fde1008d59a3ec72293e19bef0b7bd6982f9d68a 5a76ecc1f386ec93a9a7fdfdf6b744d51a00369b Marketing PMG. <MARKETING@pama.local> 1787143086 -0300	commit: feat: adiciona Central de Acompanhamento e consolida controles PMG
+5a76ecc1f386ec93a9a7fdfdf6b744d51a00369b e3772569a3f32f69ddd6b207025630e3ed57c521 Marketing PMG. <MARKETING@pama.local> 1787144840 -0300	commit: fix: corrige tela branca da Central de Acompanhamento
+e3772569a3f32f69ddd6b207025630e3ed57c521 6bd59230c27afeafbe0b0ef91bd151045782221a Marketing PMG. <MARKETING@pama.local> 1787145841 -0300	commit: feat: redesenha central de acompanhamento como cockpit executivo
+6bd59230c27afeafbe0b0ef91bd151045782221a c1d23098e7206a44b53a65f576152ec0875bc09f Marketing PMG. <MARKETING@pama.local> 1787148550 -0300	commit: feat: adiciona caixa de entrada inteligente para documentos
+c1d23098e7206a44b53a65f576152ec0875bc09f 9370fc7406e149534ddf4eab53d84bbe18a444ec Marketing PMG. <MARKETING@pama.local> 1787148582 -0300	commit: feat: adiciona caixa de entrada inteligente para documentos
+9370fc7406e149534ddf4eab53d84bbe18a444ec c4872ab7b55676a998029a49614c3d89674c09ce Marketing PMG. <MARKETING@pama.local> 1787148837 -0300	commit: fix: corrige tela branca e autenticação da leitura de documentos
+c4872ab7b55676a998029a49614c3d89674c09ce ae8fbe9fb4ad485df0f92054e98bba57d2bc30bd Marketing PMG. <MARKETING@pama.local> 1787151305 -0300	commit: feat: substitui leitura paga por OCR local gratuito
+ae8fbe9fb4ad485df0f92054e98bba57d2bc30bd af50e956abf5d588e7ae2fc401a89bf389913b8c Marketing PMG. <MARKETING@pama.local> 1787156023 -0300	commit: feat: substitui leitura paga por OCR local gratuito
+af50e956abf5d588e7ae2fc401a89bf389913b8c 7d336d2cb590bb27fc1838686e67ab2d286a19e4 Marketing PMG. <MARKETING@pama.local> 1787156766 -0300	commit: feat: substitui leitura paga por OCR local gratuito
+7d336d2cb590bb27fc1838686e67ab2d286a19e4 84bee279e772f06dda3ae1c52022e152e536f8e1 Marketing PMG. <MARKETING@pama.local> 1787158594 -0300	commit: feat: atualiza taxonomia dos documentos da central de acompanhamento
+84bee279e772f06dda3ae1c52022e152e536f8e1 95ad746407f5c03f4ec62e03e9903e1a05ac4cd2 Marketing PMG. <MARKETING@pama.local> 1787170165 -0300	commit: feat: adiciona sincronizacao diaria com snapshot local
+95ad746407f5c03f4ec62e03e9903e1a05ac4cd2 f963a18f5ce1f93455e444a31deee1a7669093ee Marketing PMG. <MARKETING@pama.local> 1787224386 -0300	commit: feat: consolida gestao MKT com snapshot comercial diario
+f963a18f5ce1f93455e444a31deee1a7669093ee 680fc7d800b87714b430bc449e9e73bf8189a119 Marketing PMG. <MARKETING@pama.local> 1787224841 -0300	commit: fix: corrige timeout durante sincronizacao diaria
+680fc7d800b87714b430bc449e9e73bf8189a119 1b91b2e49973130c5c6b2bd883f1ac469e54656a Marketing PMG. <MARKETING@pama.local> 1787225563 -0300	commit: fix: isola sincronizacao diaria em worker thread
+1b91b2e49973130c5c6b2bd883f1ac469e54656a cc14239e590859b5d932edad4f2a92a38879c6fd Marketing PMG. <MARKETING@pama.local> 1787228690 -0300	commit: fix: isola apuracoes de campanhas em worker thread
+cc14239e590859b5d932edad4f2a92a38879c6fd de51899c6ddb3501a1163a7dd5d5947ca9e9111f Marketing PMG. <MARKETING@pama.local> 1787229176 -0300	commit: fix: garante snapshot diario antes das apuracoes
+de51899c6ddb3501a1163a7dd5d5947ca9e9111f cda89a2f2385f312f10e248b0064ee065b8987e1 Marketing PMG. <MARKETING@pama.local> 1787230122 -0300	commit: fix: grava snapshot comercial em streaming
+cda89a2f2385f312f10e248b0064ee065b8987e1 718247a66977cd7b94c34c7e40d53228c341cb93 Marketing PMG. <MARKETING@pama.local> 1787604560 -0300	commit: fix(demandas): consolida autoria, recorrencias e UX da v3.8.5

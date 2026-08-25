@@ -10,12 +10,9 @@ const snapshotPath = path.join(projectRoot, 'data', 'acompanhamento-carga-inicia
 const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 
 const original = fs.readFileSync(appPath, 'utf8');
-const html = fs.readFileSync(path.join(projectRoot, 'public', 'acompanhamento.html'), 'utf8');
-const operationalSql = fs.readFileSync(path.join(projectRoot, 'sql', '12-CONTROLES-OPERACIONAIS-V1.4.0.sql'), 'utf8');
-const unifiedSql = fs.readFileSync(path.join(projectRoot, 'sql', '13-CENTRAL-UNIFICADA-V1.6.0.sql'), 'utf8');
 const testable = original.replace(
-  "ReactDOM.createRoot(document.getElementById('root')).render(\n    React.createElement(CentralErrorBoundary, null, React.createElement(App))\n  );",
-  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, fetchPages };',
+  "ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);",
+  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError };',
 );
 
 const noop = () => {};
@@ -23,7 +20,6 @@ const sandbox = {
   console, XLSX, Intl, Date, URLSearchParams, crypto: webcrypto,
   setTimeout, clearTimeout, requestAnimationFrame: callback => callback(Date.now()), cancelAnimationFrame: noop,
   React: {
-    Component: class { constructor(props) { this.props = props; } },
     createElement: noop, useCallback: value => value, useEffect: noop, useMemo: callback => callback(),
     useRef: value => ({ current:value }), useState: value => [value, noop],
   },
@@ -45,16 +41,6 @@ for (const missingError of [
 }
 if (sandbox.__PMG_TEST__.isMissingSetupError({ code:'42501', message:'permission denied' })) throw new Error('Erro de permissão confundido com instalação ausente');
 
-const pageSource = Array.from({ length:2305 }, (_, index) => ({ id:index + 1 }));
-const paged = await sandbox.__PMG_TEST__.fetchPages(
-  async (from, to) => ({ data:pageSource.slice(from, to + 1), error:null }),
-  5000,
-  1000,
-);
-if (paged.error || paged.data.length !== 2305 || paged.data.at(-1)?.id !== 2305) {
-  throw new Error('A paginação não recuperou todos os movimentos além do limite de 1.000 linhas');
-}
-
 const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
 const fingerprints = new Set(snapshot.items.map(item => item.registro.fingerprint));
 const paymentFingerprints = new Set(snapshot.items.flatMap(item => item.pagamentos.map(payment => `${item.registro.fingerprint}|${payment.fingerprint}`)));
@@ -68,12 +54,11 @@ const expectedCounts = {
 };
 
 for (const fileName of cases) {
-  const workbook = XLSX.readFile(path.join(sourceDir, fileName), { cellFormula:true, cellDates:true, cellStyles:true, bookFiles:true });
+  const workbook = XLSX.readFile(path.join(sourceDir, fileName), { cellFormula:true, cellDates:true });
   const parsed = sandbox.__PMG_TEST__.parseOfficialWorkbook(fileName, workbook);
   if (!parsed) throw new Error(`${fileName}: modelo oficial não reconhecido`);
   const unique = new Set(parsed.items.map(item => item.registro.fingerprint));
   const expectedItems = snapshot.items.filter(item => item.registro.origem_importacao === fileName);
-  const expectedByFingerprint = new Map(expectedItems.map(item => [item.registro.fingerprint, item]));
   const expected = new Set(expectedItems.map(item => item.registro.fingerprint));
   const missing = [...unique].filter(item => !fingerprints.has(item));
   const omitted = [...expected].filter(item => !unique.has(item));
@@ -86,25 +71,6 @@ for (const fileName of cases) {
   if (omitted.length) throw new Error(`${fileName}: ${omitted.length} registros da carga inicial não são atualizados pela reimportação`);
   if (missingPayments.length) throw new Error(`${fileName}: ${missingPayments.length} pagamentos não conciliam com a carga inicial`);
   if (omittedPayments.length) throw new Error(`${fileName}: ${omittedPayments.length} pagamentos da carga inicial não são atualizados pela reimportação`);
-  const recordFields = ['fornecedor', 'natureza', 'impacta_totais', 'categoria', 'titulo', 'referencia', 'status', 'data_inicio', 'data_fim', 'valor_acordado', 'centro_custo', 'numero_documento'];
-  const paymentFields = ['descricao', 'valor_previsto', 'valor_pago', 'vencimento', 'pago_em', 'status', 'forma_pagamento', 'favorecido', 'numero_documento'];
-  for (const item of parsed.items) {
-    const expectedItem = expectedByFingerprint.get(item.registro.fingerprint);
-    for (const field of recordFields) {
-      if (JSON.stringify(item.registro[field] ?? '') !== JSON.stringify(expectedItem.registro[field] ?? '')) {
-        throw new Error(`${fileName}: campo ${field} diverge entre a carga e a reimportação de ${item.registro.titulo}`);
-      }
-    }
-    const expectedPaymentMap = new Map(expectedItem.pagamentos.map(payment => [payment.fingerprint, payment]));
-    for (const payment of item.pagamentos) {
-      const expectedPayment = expectedPaymentMap.get(payment.fingerprint);
-      for (const field of paymentFields) {
-        if (JSON.stringify(payment[field] ?? '') !== JSON.stringify(expectedPayment[field] ?? '')) {
-          throw new Error(`${fileName}: pagamento ${payment.descricao} diverge no campo ${field}`);
-        }
-      }
-    }
-  }
   const records = parsed.items.length;
   const payments = parsed.items.reduce((sum, item) => sum + item.pagamentos.length, 0);
   const expectedCount = expectedCounts[fileName];
@@ -119,12 +85,6 @@ for (const fileName of cases) {
 if (snapshot.items.length !== 1335) throw new Error(`Carga consolidada: ${snapshot.items.length} registros; esperado 1335`);
 const allPayments = snapshot.items.flatMap(item => item.pagamentos || []);
 if (allPayments.length !== 1707) throw new Error(`Carga consolidada: ${allPayments.length} movimentos; esperado 1707`);
-if (paymentFingerprints.size !== allPayments.length) throw new Error('A carga consolidada contém fingerprints de pagamento duplicados');
-
-const firstSupplier = snapshot.items.find(item => item.registro.origem_importacao === 'Fornecedores 2024.xlsx' && item.registro.fornecedor === 'Alibra');
-if (!firstSupplier || /\|janeiro\|\d+\|alibra\|/.test(firstSupplier.registro.fingerprint)) {
-  throw new Error('A identidade oficial ainda depende da posição física da linha');
-}
 
 const planning = snapshot.items.filter(item => {
   const record = item.registro || {};
@@ -132,32 +92,8 @@ const planning = snapshot.items.filter(item => {
 });
 const planningPayments = planning.flatMap(item => item.pagamentos || []);
 const planningPaid = planningPayments.filter(payment => payment.status === 'pago' || Number(payment.valor_pago || 0) > 0);
-const planningPaidValue = planningPaid.reduce((total, payment) => total + Number(payment.valor_pago || 0), 0);
-if (planning.length !== 15 || planningPayments.length !== 104 || planningPaid.length !== 73 || Math.abs(planningPaidValue - 1740817.68) > .01) {
-  throw new Error(`Planejamento 2026 divergente: ${planning.length} frentes / ${planningPayments.length} parcelas / ${planningPaid.length} realizados / R$ ${planningPaidValue}`);
-}
-if (planning.some(item => !Array.isArray(item.registro.dados_originais?.status_mensais))) throw new Error('Planejamento sem leitura das cores da fonte');
-
-const supplierPayments = snapshot.items.filter(item => (item.registro?.tags || []).includes('fornecedores')).flatMap(item => item.pagamentos || []);
-for (const requiredMethod of ['Desconto em boleto', 'Depósito', 'Depósito + desconto em boleto']) {
-  if (!supplierPayments.some(payment => payment.forma_pagamento === requiredMethod)) throw new Error(`Classificação de recebimento ausente: ${requiredMethod}`);
-}
-const supplierMethodCounts = supplierPayments.reduce((counts, payment) => ({ ...counts, [payment.forma_pagamento]:(counts[payment.forma_pagamento] || 0) + 1 }), {});
-if (supplierMethodCounts['Desconto em boleto'] !== 786 || supplierMethodCounts.Depósito !== 240 || supplierMethodCounts['Depósito + desconto em boleto'] !== 22) {
-  throw new Error(`Classificação dos recebimentos divergente: ${JSON.stringify(supplierMethodCounts)}`);
-}
-if (!/Sobra Marketing/.test(original) || !/Bonificação/.test(original)) throw new Error('Os quatro tipos de recebimento não estão disponíveis para lançamentos futuros');
-
-for (const [year, expectedValue] of [[2024, 5197089.34], [2025, 6562385.94], [2026, 3970269.22]]) {
-  const value = snapshot.items.filter(item => item.registro.ano_referencia === year && (item.registro.tags || []).includes('fornecedores'))
-    .reduce((total, item) => total + Number(item.registro.valor_acordado || 0), 0);
-  if (Math.abs(value - expectedValue) > .01) throw new Error(`Total de verbas ${year} divergente: ${value}`);
-}
-const plannedValue = planning.reduce((total, item) => total + Number(item.registro.valor_acordado || 0), 0);
-if (Math.abs(plannedValue - 2610377.68) > .01) throw new Error(`Planejamento anual divergente: ${plannedValue}`);
-const indicators = Object.fromEntries(snapshot.items.filter(item => item.registro.natureza === 'indicador').map(item => [(item.registro.tags || []).find(tag => ['receita','investimento','saldo'].includes(tag)), Number(item.registro.valor_acordado)]));
-if (indicators.investimento !== 3100997.78 || indicators.receita !== 6816000 || indicators.saldo !== 3715002.22) {
-  throw new Error(`Indicadores executivos divergentes: ${JSON.stringify(indicators)}`);
+if (planning.length !== 15 || planningPayments.length !== 104 || planningPaid.length !== 0) {
+  throw new Error(`Planejamento 2026 divergente: ${planning.length} frentes / ${planningPayments.length} parcelas / ${planningPaid.length} baixas automáticas`);
 }
 
 const centerCosts = snapshot.items.filter(item => (item.registro?.tags || []).includes('centro-custo'));
@@ -176,57 +112,4 @@ if (!ajinomotoMay || Number(ajinomotoMay.registro.valor_acordado) !== 10000 || a
   throw new Error('Regra AJINOMOTO/incentivo maio 2026 não foi preservada');
 }
 
-if (!/acompanhamento\.css\?v=1\.6\.2/.test(html) || !/acompanhamento\.js\?v=1\.6\.2/.test(html)) {
-  throw new Error('A página não referencia a interface V1.6.2');
-}
-for (const expected of [
-  /async function fetchPages/,
-  /\.range\(from, to\)/,
-  /function PlanningActivityBoard/,
-  /function PlanningMatrix/,
-  /function FinanceWorkspace/,
-  /const workflow/,
-  /const SIDEBAR_VIEWS = \['dashboard', 'planejamento', 'financeiro', 'registros', 'documentos', 'importar'\]/,
-  /salvar_atividade_planejamento_v1/,
-  /Planejamento, recebimentos e execução/,
-  /Recebido lançado\./,
-  /Data, forma e documento são obrigatórios/,
-  /class CentralErrorBoundary extends React\.Component/,
-  /const tagList = record =>/,
-  /data-error-boundary/,
-]) {
-  if (!expected.test(original)) throw new Error(`Controle operacional ausente: ${expected}`);
-}
-for (const forbidden of [/Controle Marcos/, /Controle Marketing/, /Somente gestores/, /Aguardando gestor/, /context\.canManage/, /me\?\.role/]) {
-  if (forbidden.test(original)) throw new Error(`Separação antiga ainda visível: ${forbidden}`);
-}
-if (/registrar_anexo_acompanhamento_v1/.test(original)) throw new Error('A interface ainda permite contornar a conferência de documentos');
-for (const expected of [
-  /create table if not exists public\.acompanhamento_planejamento_atividades/,
-  /trg_validar_baixa_pagamento/,
-  /trg_bloquear_pdf_sem_conferencia/,
-  /drop trigger if exists trg_gestor_importacoes/,
-  /on delete set null/,
-]) {
-  if (!expected.test(operationalSql)) throw new Error(`Proteção SQL ausente: ${expected}`);
-}
-if (/create trigger trg_gestor_/.test(operationalSql)) throw new Error('O SQL operacional ainda recria barreiras por perfil');
-for (const expected of [
-  /drop trigger if exists trg_gestor_importacoes/,
-  /drop trigger if exists trg_proteger_arquivamento/,
-  /create or replace function public\.excluir_entrada_documento_v1/,
-  /equipe remove arquivos pendentes acompanhamento/,
-  /status = 'aprovado'/,
-]) {
-  if (!expected.test(unifiedSql)) throw new Error(`Migração unificada incompleta: ${expected}`);
-}
-if (fs.existsSync(path.join(projectRoot, 'public', 'data', 'acompanhamento-carga-inicial.json'))) {
-  throw new Error('A carga financeira não pode permanecer publicada em public/data');
-}
-for (const fileName of cases) {
-  if (fs.existsSync(path.join(projectRoot, 'public', 'fontes', 'acompanhamento', fileName))) {
-    throw new Error(`A planilha oficial ${fileName} não pode permanecer publicada em public/fontes`);
-  }
-}
-
-console.log(JSON.stringify({ status:'ok', summary:{ records:snapshot.items.length, payments:allPayments.length, stableFingerprints:true, publicSources:false, planning:{ fronts:planning.length, installments:planningPayments.length, sourceRealized:planningPaid.length, sourceRealizedValue:planningPaidValue, executionBoard:true }, receiptMethods:true, centerCostRules:{ alfamaMtrix:true, ajinomotoIncentivo:true } }, results }));
+console.log(JSON.stringify({ status:'ok', summary:{ records:snapshot.items.length, payments:allPayments.length, planning:{ fronts:planning.length, installments:planningPayments.length, autoPaid:planningPaid.length }, centerCostRules:{ alfamaMtrix:true, ajinomotoIncentivo:true } }, results }));

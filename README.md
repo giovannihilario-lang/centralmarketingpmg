@@ -56,10 +56,10 @@ node --check server.js
 
 ## Central de Acompanhamento
 
-O módulo que reúne planejamento, recebimentos, investimentos e execução em uma única Central está documentado em:
+O módulo que unifica o Controle Marcos e o Controle Marketing / Fornecedores está documentado em:
 
 ```text
 README-acompanhamento.md
 ```
 
-Antes do primeiro acesso, execute `sql/06-CENTRAL-ACOMPANHAMENTO.sql`, carregue os lotes descritos em `sql/carga-acompanhamento-sql-editor/00-LEIA-ME.md` e siga os complementos `08` a `12` na ordem indicada em `README-acompanhamento.md`. A Caixa de Documentos exige conferência humana antes de qualquer lançamento originado por PDF.
+Antes do primeiro acesso, execute `sql/06-CENTRAL-ACOMPANHAMENTO.sql`, carregue os lotes descritos em `sql/carga-acompanhamento-sql-editor/00-LEIA-ME.md` e finalize com `sql/08-CAIXA-ENTRADA-DOCUMENTOS.sql`. A Caixa de Entrada exige conferência humana antes de qualquer lançamento originado por PDF.
