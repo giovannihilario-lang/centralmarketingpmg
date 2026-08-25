@@ -456,3 +456,46 @@ body.command-open{overflow:hidden}
   .overview-hero{grid-template-columns:1fr}.overview-hero-copy{padding:24px 20px}.overview-hero h2{font-size:28px}.overview-balance{margin:0 14px 14px}.overview-budget-grid{grid-template-columns:1fr 1fr}.overview-metric{min-height:105px;padding:13px;grid-template-columns:32px 1fr}.overview-metric>span{width:32px;height:32px}.overview-metric strong{font-size:15px}.overview-layout{display:block}.overview-panel{margin-bottom:10px}.overview-evolution,.overview-attention{min-height:0}.overview-evolution .revenue-chart{height:240px}.month-health-grid{grid-template-columns:repeat(3,1fr)}.overview-shortcuts{grid-template-columns:1fr}
   .ac-app.sheet-mode{--sidebar:252px}.ac-app.sheet-mode .ac-topbar{height:70px}.ac-app.sheet-mode .ac-content{padding:10px 0 32px}.ac-app.sheet-mode .sheet-titlebar{margin:0 10px}.ac-app.sheet-mode .workbook-tabs{top:70px;padding-left:10px;padding-right:10px}.ac-app.sheet-mode .sheet-stats,.ac-app.sheet-mode .sheet-ux-hint,.ac-app.sheet-mode .planning-summary-line,.ac-app.sheet-mode .sheet-footnote{margin-left:10px;margin-right:10px}.ac-app.sheet-mode .sheet-stats{grid-template-columns:1fr 1fr}.ac-app.sheet-mode .spreadsheet-scroll{overflow:auto}.ac-app.sheet-mode .payment-live-sheet{min-width:1060px}.ac-app.sheet-mode .planning-live-sheet{min-width:1600px}.ac-app.sheet-mode .revenue-live-sheet{min-width:1770px}.ac-app.sheet-mode .budget-strip{margin:0 10px;width:calc(100% - 20px);grid-template-columns:1fr 1fr}.ac-app.sheet-mode .budget-title{grid-column:1/-1;min-height:48px;border-right:0}.ac-app.sheet-mode .budget-cell{min-height:55px}.ac-app.sheet-mode .budget-cell.balance{grid-column:1/-1}
 }
+
+/* ============================================================
+   PMG Connect V1.8.0 — Receita confirmada = baixa + conferência
+   ============================================================ */
+.overview-budget-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.overview-metric.review>span{background:#fff6df;color:#a76a10}
+.overview-metric.open>span{background:#f2f4f1;color:#647066}
+.overview-metric.review strong{color:#8d5b13}.overview-metric.open strong{color:#3d4a40}
+
+.revenue-rule-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:10px 0 12px}
+.revenue-rule-strip>span{position:relative;min-height:76px;padding:13px 14px 12px 17px;border:1px solid #dfe7e1;border-radius:14px;background:#fff;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 5px 18px rgba(16,45,29,.035)}
+.revenue-rule-strip>span>i{position:absolute;left:0;top:0;bottom:0;width:4px;background:#bac5bd}
+.revenue-rule-strip small{font-size:7px;font-weight:850;letter-spacing:.65px;text-transform:uppercase;color:#7a887f}
+.revenue-rule-strip strong{margin-top:4px;font:850 15px/1.1 Inter;color:#1f3025;letter-spacing:-.25px}
+.revenue-rule-strip em{margin-top:5px;font-size:7.5px;font-style:normal;color:#829087}
+.revenue-rule-strip .confirmed>i{background:#3f9a61}.revenue-rule-strip .confirmed strong{color:#246d42}
+.revenue-rule-strip .awaiting>i{background:#d4a13c}.revenue-rule-strip .awaiting strong{color:#91661f}
+.revenue-rule-strip .open>i{background:#8c9890}.revenue-rule-strip .open strong{color:#4b5750}
+
+.derived-revenue-td{padding:0!important;position:relative}
+.derived-revenue-cell{position:relative;width:100%;height:37px;padding:0 12px 0 6px;border:0;background:transparent;color:#536159;font:750 7.4px/1 Inter;cursor:pointer;text-align:right;white-space:nowrap;transition:background .16s ease,color .16s ease}
+.derived-revenue-cell:hover{background:#f2f7f3;color:#26382c}
+.derived-revenue-cell i{position:absolute;right:4px;top:50%;width:5px;height:5px;border-radius:50%;transform:translateY(-50%);background:#c2cbc5;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
+.derived-revenue-td.confirmed .derived-revenue-cell{color:#246b40;font-weight:850;background:#f4fbf6}
+.derived-revenue-td.confirmed .derived-revenue-cell i{background:#43a267}
+.derived-revenue-td.awaiting .derived-revenue-cell{color:#8a641f;background:#fffaf0}
+.derived-revenue-td.awaiting .derived-revenue-cell i{background:#d4a13c}
+.derived-revenue-td.open .derived-revenue-cell{color:#9ba59e;background:#fafbfa}
+.derived-revenue-td.open .derived-revenue-cell i{background:#aeb8b1}
+.derived-revenue-td.mixed .derived-revenue-cell{color:#246b40;background:linear-gradient(90deg,#f4fbf6 0 70%,#fff8e8 70% 100%)}
+.derived-revenue-td.mixed .derived-revenue-cell i{background:#d4a13c;box-shadow:0 0 0 2px #fff,0 0 0 3px #43a267}
+.derived-revenue-td.empty .derived-revenue-cell{color:#c1c8c3}
+.revenue-footnote{background:#f3f8f4;border-color:#d5e5da;color:#536258}.revenue-footnote strong{color:#244e32}
+
+@media (max-width:1180px){.overview-budget-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.overview-budget-grid,.revenue-rule-strip{grid-template-columns:1fr 1fr}.revenue-rule-strip>span:last-child{grid-column:1/-1}}
+@media (max-width:520px){.overview-budget-grid,.revenue-rule-strip{grid-template-columns:1fr}.revenue-rule-strip>span:last-child{grid-column:auto}}
+
+.ac-app.sheet-mode .derived-revenue-cell{height:37px;padding:0 9px 0 3px;font-size:6.9px}
+.ac-app.sheet-mode .revenue-rule-strip{margin-left:0;margin-right:0}
+.conference-check.locked{opacity:.62;background:#f6f7f6;color:#879188;border-color:#e1e6e2}
+.conference-check.locked span{background:#ecefed;color:#7f8a82}
+.conference-check.locked:hover{transform:none;box-shadow:none}
