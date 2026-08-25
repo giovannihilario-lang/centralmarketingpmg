@@ -1764,3 +1764,106 @@ body{font-size:14px!important}
 /* V2.3.3 — fornecedor: fundo legível, sem desfoque */
 .supplier-drawer-shell .drawer-backdrop{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(5,24,13,.18)!important}
 .supplier-drawer{filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+
+/* V2.3.4 — drawer clicável + frentes do Planejamento explícitas */
+.supplier-drawer-shell .drawer-backdrop{
+  z-index:0!important;
+  backdrop-filter:none!important;
+  -webkit-backdrop-filter:none!important;
+  background:rgba(5,24,13,.22)!important;
+}
+.supplier-drawer{
+  z-index:1!important;
+  pointer-events:auto!important;
+}
+.supplier-drawer *{pointer-events:auto}
+
+.planning-fronts-panel{
+  margin:0 0 12px;
+  padding:14px;
+  border:1px solid #dfe9e2;
+  border-radius:16px;
+  background:#fff;
+}
+.planning-fronts-heading{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:11px;
+}
+.planning-fronts-heading>div{display:flex;flex-direction:column;gap:2px}
+.planning-fronts-heading span{
+  font:800 11px Inter,sans-serif;
+  color:#668072;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+}
+.planning-fronts-heading strong{font:800 16px Sora,Inter,sans-serif;color:#173b26}
+.planning-fronts-heading>small{font:650 11px Inter,sans-serif;color:#7d9084}
+.planning-fronts-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:7px;
+}
+.planning-fronts-grid>button{
+  min-width:0;
+  min-height:62px;
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) 18px;
+  align-items:center;
+  gap:8px;
+  padding:9px 10px;
+  border:1px solid #e0e9e3;
+  border-radius:11px;
+  background:#f9fbfa;
+  color:#264a35;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .16s,background .16s,transform .16s;
+}
+.planning-fronts-grid>button:hover{
+  border-color:#afd0ba;
+  background:#f1f8f3;
+  transform:translateY(-1px);
+}
+.planning-fronts-grid>button>span{
+  width:28px;height:28px;border-radius:8px;
+  display:grid;place-items:center;
+  background:#eaf4ed;color:#2a7549;
+  font:800 10px Sora,Inter,sans-serif;
+}
+.planning-fronts-grid>button>div{min-width:0}
+.planning-fronts-grid strong{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font:750 12px Inter,sans-serif;
+  color:#234630;
+}
+.planning-fronts-grid small{display:block;margin-top:3px;font:700 10.5px Inter,sans-serif;color:#6f8377}
+.planning-fronts-grid svg{width:15px;height:15px;color:#82a08d}
+.planning-missing{
+  display:grid;
+  grid-template-columns:42px minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  margin:0 0 14px;
+  padding:14px 16px;
+  border:1px solid #f0d7aa;
+  border-radius:14px;
+  background:#fffaf0;
+}
+.planning-missing>span{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#fff0cd;color:#9a6509}
+.planning-missing strong{font:800 13px Inter,sans-serif;color:#654a17}
+.planning-missing p{margin:4px 0 0;font:600 11px/1.45 Inter,sans-serif;color:#8a7449}
+
+@media(max-width:1500px){.planning-fronts-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){
+  .planning-fronts-heading{align-items:flex-start;flex-direction:column;gap:4px}
+  .planning-fronts-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .planning-missing{grid-template-columns:42px minmax(0,1fr)}
+  .planning-missing .button{grid-column:1/-1}
+}
+@media(max-width:560px){.planning-fronts-grid{grid-template-columns:1fr}}
