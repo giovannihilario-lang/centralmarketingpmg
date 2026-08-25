@@ -755,17 +755,12 @@
           if (payload?.pagamento) persistedPayment = payload.pagamento;
           if (payload?.registro) persistedRecord = { ...record, ...payload.registro };
 
-          // Verificação independente: lemos a PRÓPRIA linha, que é a fonte de verdade.
-          const { data:verifiedRecord, error:verifyError } = await client
-            .from('acompanhamento_registros')
-            .select('id,pagamento_confirmado,pagamento_confirmado_em,pagamento_confirmado_por')
-            .eq('id', record.id)
-            .single();
-          if (verifyError) throw verifyError;
-          if (Boolean(verifiedRecord?.pagamento_confirmado) !== willPay) {
-            throw new Error('O banco não persistiu o status da linha.');
+          // A própria RPC devolve a linha depois do UPDATE na mesma transação.
+          // Isso evita uma segunda ida ao Supabase em cada clique.
+          if (!payload?.registro || Boolean(payload.registro.pagamento_confirmado) !== willPay) {
+            throw new Error('O banco não confirmou o novo status da linha.');
           }
-          persistedRecord = { ...record, ...verifiedRecord };
+          persistedRecord = { ...record, ...payload.registro };
         }
 
         setData(current => ({
@@ -790,18 +785,38 @@
       const valid = (rows || []).filter(row => row?.record?.id);
       if (!valid.length || saving) return false;
       const previous = data;
-      const ids = new Set(valid.map(row => row.record.id));
-      setData(current => ({ ...current, records:current.records.map(item => ids.has(item.id) ? { ...item, pagamento_confirmado:confirmed, pagamento_confirmado_em:confirmed ? new Date().toISOString() : null } : item) }));
+      const recordIds = valid.map(row => row.record.id);
+      const ids = new Set(recordIds);
+      const now = new Date().toISOString();
+      setData(current => ({ ...current, records:current.records.map(item => ids.has(item.id) ? { ...item, pagamento_confirmado:confirmed, pagamento_confirmado_em:confirmed ? now : null } : item) }));
       setSaving(true);
       try {
         if (!DEMO_MODE) {
-          for (const row of valid) {
-            const { error } = await client.rpc('confirmar_pagamento_linha_v1', { p_registro_id:row.record.id, p_confirmado:confirmed });
-            if (error) throw error;
+          // Caminho rápido: uma única chamada de rede para todo o lote.
+          const { data:bulkData, error:bulkError } = await client.rpc('confirmar_pagamentos_lote_v1', {
+            p_registro_ids:recordIds,
+            p_confirmado:confirmed
+          });
+
+          if (bulkError) {
+            const details = [bulkError.message, bulkError.details, bulkError.hint, bulkError.code].filter(Boolean).join(' · ');
+            const missingBulkRpc = /confirmar_pagamentos_lote_v1|PGRST202|schema cache|could not find the function/i.test(details);
+            if (!missingBulkRpc) throw new Error(details || 'O Supabase recusou a confirmação em lote.');
+
+            // Compatibilidade: se o SQL novo ainda não foi instalado, confirma em paralelo
+            // em pequenos grupos, evitando o caminho sequencial antigo.
+            const concurrency = 6;
+            for (let index = 0; index < recordIds.length; index += concurrency) {
+              const batch = recordIds.slice(index, index + concurrency);
+              const results = await Promise.all(batch.map(id => client.rpc('confirmar_pagamento_linha_v1', { p_registro_id:id, p_confirmado:confirmed })));
+              const failed = results.find(result => result.error);
+              if (failed?.error) throw failed.error;
+            }
+          } else if (bulkData && Number(bulkData.total || bulkData.count || valid.length) < valid.length) {
+            throw new Error('O banco confirmou menos linhas do que o solicitado.');
           }
-          await reload(true);
         }
-        notify(`${valid.length} pagamento(s) ${confirmed ? 'confirmado(s)' : 'reaberto(s)'}.`);
+        notify(`${valid.length} pagamento(s) ${confirmed ? 'confirmado(s)' : 'reaberto(s)'} de uma vez.`);
         return true;
       } catch (error) {
         reloadSeqRef.current += 1; setData(previous);
@@ -1294,12 +1309,20 @@
     const monthLabelLong=OFFICIAL_MONTHS[sheetMonth]?.[1]||'';
     const addRow=()=>context.newRecord({controle:'marketing',ano_referencia:sheetYear,natureza:'receita',impacta_totais:true,categoria:'cota_anual',referencia:'COTA',titulo:`COTA — Novo fornecedor — ${monthLabelLong} ${sheetYear}`,status:'concluido',prioridade:'normal',data_inicio:officialMonthStart(sheetYear,sheetMonth),data_fim:officialMonthEnd(sheetYear,sheetMonth),centro_custo:'Cota',tags:['marketing','fornecedores',String(sheetYear),monthLabelLong.toLocaleLowerCase('pt-BR'),'cota']});
     const chosenRows=rows.filter(row=>selectedRows.has(row.record.id));
+    const pendingVisibleRows=rows.filter(row=>!supplierRowConfirmed(row.record,row.payment));
+    const pendingVisibleAmount=sum(pendingVisibleRows,row=>Number(row.record.valor_acordado||0));
+    const confirmVisiblePending=async()=>{
+      if(!pendingVisibleRows.length||context.saving)return;
+      const scope=supplierDrill?` de ${supplierDrill}`:'';
+      if(!confirm(`Confirmar ${pendingVisibleRows.length} pagamento(s)${scope} em ${monthLabelLong}?\n\nTotal: ${money(pendingVisibleAmount)}`))return;
+      await context.quickBulkConfirm(pendingVisibleRows,true);
+    };
     const setBulkNF=async()=>{ const value=prompt(`NF/documento para ${chosenRows.length} linha(s):`); if(value) { await context.quickBulkNF(chosenRows,value); clearSelected(); } };
     const archiveBulk=async()=>{ if(!confirm(`Arquivar ${chosenRows.length} linha(s) selecionada(s)?`))return; await context.quickBulkArchive(chosenRows.map(row=>row.record)); clearSelected(); };
     useLucide([sheetYear,sheetMonth,rows.length,onlyPending,context.saving,selectedRows.size,supplierDrill]);
 
     return html`<section className=${`spreadsheet-view payment-sheet-view ux-sheet-v2 ${compactMode?'density-compact':'density-comfortable'}`}>
-      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="Edite na célula, confirme com um clique e use seleção em lote quando o mês apertar." actions=${html`<label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e=>setSheetYear(Number(e.target.value))}>${yearOptions.map(value=>html`<option value=${value}>${value}</option>`)}</select></label><button className=${`sheet-filter-button ${onlyPending?'active':''}`} onClick=${()=>setOnlyPending(value=>!value)}><${Icon} name="filter"/>${onlyPending?'Só pendentes':'Pendentes'}</button><button className="sheet-density-toggle" onClick=${toggleDensity}><${Icon} name=${compactMode?'maximize-2':'minimize-2'}/>${compactMode?'Confortável':'Compacta'}</button><button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}/>
+      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="Edite na célula, confirme com um clique e use seleção em lote quando o mês apertar." actions=${html`<label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e=>setSheetYear(Number(e.target.value))}>${yearOptions.map(value=>html`<option value=${value}>${value}</option>`)}</select></label><button className=${`sheet-filter-button ${onlyPending?'active':''}`} onClick=${()=>setOnlyPending(value=>!value)}><${Icon} name="filter"/>${onlyPending?'Só pendentes':'Pendentes'}</button>${pendingVisibleRows.length>0&&html`<button className="confirm-pending-fast" disabled=${context.saving} onClick=${confirmVisiblePending} title=${`Confirmar ${pendingVisibleRows.length} pendente(s) visível(is)`}><${Icon} name="badge-check"/><span>Confirmar pendentes</span><b>${pendingVisibleRows.length}</b></button>`}<button className="sheet-density-toggle" onClick=${toggleDensity}><${Icon} name=${compactMode?'maximize-2':'minimize-2'}/>${compactMode?'Confortável':'Compacta'}</button><button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}/>
 
       <div className="workbook-tabs annual-workbook-tabs" role="tablist">${monthSnapshots.map(item=>{const isNow=Number(sheetYear)===new Date().getFullYear()&&item.index===new Date().getMonth();return html`<button role="tab" aria-selected=${sheetMonth===item.index} className=${`${sheetMonth===item.index?'active':''} ${item.state} ${isNow?'is-now':''}`} onClick=${()=>setSheetMonth(item.index)}><span>${item.label}${isNow&&html`<em>Atual</em>`}</span><strong>${item.total?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.total?`${compactMoney(item.confirmed)} / ${compactMoney(item.total)}`:'sem dados'}</small></button>`;})}</div>
 
