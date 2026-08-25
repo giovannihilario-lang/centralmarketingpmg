@@ -499,3 +499,55 @@ body.command-open{overflow:hidden}
 .conference-check.locked{opacity:.62;background:#f6f7f6;color:#879188;border-color:#e1e6e2}
 .conference-check.locked span{background:#ecefed;color:#7f8a82}
 .conference-check.locked:hover{transform:none;box-shadow:none}
+
+
+/* V1.9 — pagamento e conferência unificados */
+.payment-live-sheet th:nth-child(6),.payment-live-sheet td:nth-child(6){min-width:180px;text-align:center}
+.payment-live-sheet th:nth-child(7),.payment-live-sheet td:nth-child(7){min-width:48px;text-align:center}
+.ac-app.sheet-mode .payment-live-sheet th:nth-child(6),.ac-app.sheet-mode .payment-live-sheet td:nth-child(6){width:28%;min-width:0}
+.ac-app.sheet-mode .payment-live-sheet th:nth-child(7),.ac-app.sheet-mode .payment-live-sheet td:nth-child(7){width:5%;min-width:0}
+.ac-app.sheet-mode .one-click-status{width:calc(100% - 10px);min-width:0;font-size:8px}
+.revenue-rule-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+.overview-budget-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1280px){.overview-budget-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.overview-budget-grid,.revenue-rule-strip{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.overview-budget-grid,.revenue-rule-strip{grid-template-columns:1fr}}
+
+/* PMG Connect — Acompanhamento V1.9.1
+   Fluxo simplificado: um único VALOR e um único STATUS por linha. */
+.sheet-stats>span.stat-confirmed-value::before{background:#2f9758}
+.sheet-stats>span.stat-pending-value::before{background:#d39a2a}
+.sheet-stats>span.stat-confirmed-value{background:linear-gradient(135deg,#f6fbf7,#eef8f1)}
+.sheet-stats>span.stat-confirmed-value strong{color:#176437}
+.sheet-stats>span.stat-pending-value{background:linear-gradient(135deg,#fffdf7,#fff9e9)}
+.sheet-stats>span.stat-pending-value strong{color:#876217}
+
+/* Acompanhamentos: CAMPANHA | FORNECEDOR | VALOR | NF | STATUS | ações */
+.payment-live-sheet th:nth-child(1),.payment-live-sheet td:nth-child(1){min-width:138px;width:16%}
+.payment-live-sheet th:nth-child(2),.payment-live-sheet td:nth-child(2){min-width:240px;width:30%}
+.payment-live-sheet thead th:nth-child(1),.payment-live-sheet tbody td:nth-child(1){position:sticky;left:0;z-index:6}
+.payment-live-sheet thead th:nth-child(2),.payment-live-sheet tbody td:nth-child(2){position:sticky;left:16%;z-index:6;box-shadow:3px 0 7px rgba(26,58,37,.055)}
+.payment-live-sheet thead th:nth-child(1),.payment-live-sheet thead th:nth-child(2){z-index:12}
+.payment-live-sheet th:nth-child(3),.payment-live-sheet td:nth-child(3){min-width:150px;width:18%}
+.payment-live-sheet th:nth-child(4),.payment-live-sheet td:nth-child(4){min-width:130px;width:15%}
+.payment-live-sheet th:nth-child(5),.payment-live-sheet td:nth-child(5){min-width:190px;width:16%;text-align:center}
+.payment-live-sheet th:nth-child(6),.payment-live-sheet td:nth-child(6){min-width:48px;width:5%;text-align:center}
+.payment-live-sheet .unified-value-cell .sheet-cell-editable{font-weight:800;color:#173d27}
+.payment-live-sheet .one-click-status{width:calc(100% - 12px);min-width:150px}
+
+@media(min-width:1181px){
+  .ac-app.sheet-mode .payment-live-sheet{min-width:0;table-layout:fixed}
+  .ac-app.sheet-mode .payment-live-sheet th:nth-child(1),.ac-app.sheet-mode .payment-live-sheet td:nth-child(1){width:16%;min-width:0}
+  .ac-app.sheet-mode .payment-live-sheet th:nth-child(2),.ac-app.sheet-mode .payment-live-sheet td:nth-child(2){width:30%;min-width:0}
+  .ac-app.sheet-mode .payment-live-sheet thead th:nth-child(2),.ac-app.sheet-mode .payment-live-sheet tbody td:nth-child(2){left:16%}
+  .ac-app.sheet-mode .payment-live-sheet th:nth-child(3),.ac-app.sheet-mode .payment-live-sheet td:nth-child(3){width:18%;min-width:0}
+  .ac-app.sheet-mode .payment-live-sheet th:nth-child(4),.ac-app.sheet-mode .payment-live-sheet td:nth-child(4){width:15%;min-width:0}
+  .ac-app.sheet-mode .payment-live-sheet th:nth-child(5),.ac-app.sheet-mode .payment-live-sheet td:nth-child(5){width:16%;min-width:0}
+  .ac-app.sheet-mode .payment-live-sheet th:nth-child(6),.ac-app.sheet-mode .payment-live-sheet td:nth-child(6){width:5%;min-width:0}
+  .ac-app.sheet-mode .payment-live-sheet .one-click-status{min-width:0;width:calc(100% - 10px)}
+}
+
+@media(max-width:1180px){
+  .payment-live-sheet{min-width:900px}
+  .payment-live-sheet thead th:nth-child(2),.payment-live-sheet tbody td:nth-child(2){left:138px}
+}
