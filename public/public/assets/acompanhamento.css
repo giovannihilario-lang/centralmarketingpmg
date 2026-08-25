@@ -193,3 +193,203 @@ body.command-open{overflow:hidden}
 @media(max-width:1100px){.management-kpis{grid-template-columns:repeat(2,1fr)}.management-grid,.revenue-grid{grid-template-columns:1fr}.planning-fronts{grid-template-columns:1fr}.unlinked-list{grid-template-columns:1fr}}
 @media(max-width:780px){.management-hero{padding:25px 21px;min-height:220px}.management-hero h2{font-size:28px}.management-hero-badge,.balance-orbit{display:none}.management-kpis,.management-kpis.six,.closing-kpis{grid-template-columns:1fr 1fr}.monthly-plan-row{grid-template-columns:25px minmax(0,1fr) 60px}.monthly-plan-row>small{display:none}.revenue-chart{height:260px;padding:10px}.closing-month{min-width:170px}}
 @media(max-width:480px){.management-kpis,.management-kpis.six,.closing-kpis{grid-template-columns:1fr}.planning-front-values{grid-template-columns:1fr 1fr}.planning-front-values span:last-child{grid-column:1/-1}.management-hero{align-items:flex-start;flex-direction:column}.closing-month{width:100%}}
+
+/* ==========================================================
+   PMG CONNECT — PLANILHAS VIVAS V1.5
+   A interface segue a estrutura das fontes oficiais.
+   ========================================================== */
+.spreadsheet-view{display:flex;flex-direction:column;gap:14px;animation:sheetEnter .45s var(--ease)}
+@keyframes sheetEnter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.sheet-titlebar{min-height:92px;padding:18px 20px;border:1px solid #d8e2db;border-radius:18px;background:linear-gradient(135deg,#fff,#f6faf7);display:flex;align-items:center;justify-content:space-between;gap:18px;box-shadow:0 10px 30px rgba(10,43,24,.06)}
+.sheet-titlebar>div:first-child{min-width:0}.sheet-titlebar>div:first-child>span{font-size:8px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--forest-600)}.sheet-titlebar h2{margin:4px 0 3px;color:#15231a;font-size:20px;letter-spacing:-.35px}.sheet-titlebar p{margin:0;color:#728078;font-size:9px;line-height:1.5}.sheet-title-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.sheet-help{height:36px;padding:0 11px;border:1px solid #dce6df;border-radius:10px;background:#fff;display:flex;align-items:center;gap:7px;font-size:8px;font-weight:700;color:#617069}.sheet-help svg{width:14px;color:var(--forest-600)}
+.sheet-select{height:38px;padding:0 8px 0 11px;border:1px solid #dce5df;border-radius:10px;background:#fff;display:flex;align-items:center;gap:7px}.sheet-select>span{font-size:7px;text-transform:uppercase;font-weight:800;color:#8b9990}.sheet-select select{border:0;background:transparent;outline:0;font-size:10px;font-weight:800;color:#1b3022}.sheet-filter-button{height:38px;padding:0 11px;border:1px solid #dce5df;border-radius:10px;background:#fff;display:flex;align-items:center;gap:6px;font-size:8px;font-weight:750;cursor:pointer}.sheet-filter-button svg{width:13px}.sheet-filter-button:hover,.sheet-filter-button.active{border-color:#9ecbad;background:#eef8f1;color:#1f6a3b}.sheet-add{height:38px!important}
+.workbook-tabs{display:flex;gap:5px;overflow:auto;padding:2px 2px 5px;scrollbar-width:thin}.workbook-tabs button{position:relative;flex:1 0 94px;min-width:94px;height:48px;padding:6px 9px;border:1px solid #dce5df;border-radius:11px 11px 7px 7px;background:#edf2ee;color:#607067;text-align:left;cursor:pointer;transition:.2s var(--ease)}.workbook-tabs button span{display:block;font-size:9px;font-weight:800;text-transform:uppercase}.workbook-tabs button small{display:block;margin-top:4px;font-size:6.5px;color:#8b9990;white-space:nowrap}.workbook-tabs button:hover{transform:translateY(-1px);background:#fff}.workbook-tabs button.active{background:#fff;border-color:#7bb791;color:#154d2a;box-shadow:0 7px 18px rgba(42,126,78,.10)}.workbook-tabs button.active::after{content:"";position:absolute;left:8px;right:8px;bottom:-4px;height:3px;border-radius:99px;background:#2a7e4e}.workbook-tabs button.empty{opacity:.55}.workbook-tabs button.empty.active{opacity:1}
+.sheet-stats,.planning-summary-line{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.sheet-stats>span,.planning-summary-line>span{min-height:58px;padding:10px 12px;border:1px solid #e0e8e2;border-radius:12px;background:#fff;display:flex;flex-direction:column;justify-content:center;gap:3px}.sheet-stats small,.planning-summary-line small{font-size:6.5px;text-transform:uppercase;letter-spacing:.55px;font-weight:800;color:#8a9990}.sheet-stats strong,.planning-summary-line strong{font:750 13px Inter;color:#1c2e22}.sheet-stats>span.ok{background:#eff9f2;border-color:#b9dec5}.sheet-stats>span.ok strong{color:#1f7040}.planning-summary-line{grid-template-columns:repeat(3,minmax(0,1fr))}
+.spreadsheet-card{overflow:hidden;border:1px solid #cfd9d2;border-radius:14px;background:#fff;box-shadow:0 13px 36px rgba(8,39,22,.07)}.spreadsheet-scroll{overflow:auto;max-width:100%;scrollbar-width:thin}.live-sheet{width:100%;border-collapse:separate;border-spacing:0;font-family:Inter,sans-serif;font-size:9px;color:#19291f}.live-sheet th,.live-sheet td{border-right:1px solid #bfc8c2;border-bottom:1px solid #bfc8c2;padding:0;vertical-align:middle;background:#fff}.live-sheet thead th{position:sticky;top:0;z-index:8;height:35px;padding:0 10px;background:#f0f1f0;color:#16251c;font-size:8px;font-weight:850;text-align:center;white-space:nowrap;border-top:0}.live-sheet thead th:first-child{border-left:0}.live-sheet tbody tr{animation:sheetRowIn .35s var(--ease) both;animation-delay:var(--row-delay,0ms)}@keyframes sheetRowIn{from{opacity:0;transform:translateX(-4px)}}.live-sheet tbody tr:hover td,.live-sheet tbody tr:hover th{background:#fbfdfb}.live-sheet tbody td,.live-sheet tbody th{height:34px}.live-sheet tfoot th{height:37px;padding:0 9px;font-size:8px;font-weight:850;background:#caeaf4;color:#10252d;border-bottom:0}.live-sheet .money-col{text-align:right}.live-sheet .supplier-sheet-cell{min-width:180px}.live-sheet .specific-value{background:#fafafa}.live-sheet tr.specific-row td{background:#f6f6f6}.live-sheet tr.signed-row td{background:#f3fbf5}.live-sheet tr.signed-row:hover td{background:#edf8f0}
+.sheet-cell-editable{width:100%;min-width:82px;height:33px;padding:0 7px;border:0;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;cursor:text;color:inherit}.money-col .sheet-cell-editable{justify-content:flex-end;text-align:right}.sheet-cell-editable span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sheet-cell-editable svg{width:10px;height:10px;flex:0 0 auto;opacity:0;color:#46825a;transition:.16s}.sheet-cell-editable:hover{background:#edf7f0;box-shadow:inset 0 0 0 1px #9ecbae}.sheet-cell-editable:hover svg{opacity:1}.sheet-editing{display:block;width:100%;height:33px;background:#fff8dd;box-shadow:inset 0 0 0 2px #d8a328}.sheet-editing input{width:100%;height:100%;padding:0 7px;border:0;background:transparent;outline:0;color:#1a2a20;font:750 9px Inter}.money-col .sheet-editing input{text-align:right}
+.one-click-status{min-width:86px;height:27px;margin:3px 6px;padding:0 8px;border-radius:7px;border:1px solid #d8e0db;background:#fff;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:7px;font-weight:800;cursor:pointer}.one-click-status svg{width:12px}.one-click-status.paid{background:#e8f7ed;border-color:#add7ba;color:#196638}.one-click-status.open{background:#fff9e8;border-color:#ead79a;color:#866416}.conference-check{min-width:100px;height:29px;margin:2px 6px;padding:0 7px;border:1px solid #d7dfda;border-radius:8px;background:#fff;display:grid;grid-template-columns:20px 1fr;grid-template-rows:1fr auto;column-gap:5px;align-items:center;cursor:pointer;text-align:left}.conference-check>span{grid-row:1/3;width:19px;height:19px;border-radius:6px;border:1px solid #b9c5bd;display:grid;place-items:center;color:transparent}.conference-check>span svg{width:12px}.conference-check b{font:750 7px Inter}.conference-check small{font-size:5.5px;color:#8a978f}.conference-check.checked{background:#eaf8ee;border-color:#a8d8b6;color:#176337}.conference-check.checked>span{background:#2d8b50;border-color:#2d8b50;color:#fff;box-shadow:0 0 0 3px rgba(45,139,80,.08)}.sheet-open-row{width:29px;height:29px;margin:2px 5px;border:0;background:transparent;border-radius:7px;display:grid;place-items:center;cursor:pointer;color:#7c8a82}.sheet-open-row svg{width:14px}.sheet-open-row:hover{background:#eef3ef;color:#254d34}
+.sheet-empty-row td{height:260px!important}.sheet-empty-row>td>div{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#718078}.sheet-empty-row svg{width:27px;height:27px;color:#6fa582}.sheet-empty-row strong{font:750 11px Inter;color:#24372a}.sheet-empty-row p{margin:0;max-width:440px;text-align:center;font-size:8px}.sheet-empty-row .button{margin-top:6px}
+.sheet-pendencies{border:1px solid #dce5df;border-radius:14px;background:#fff;overflow:hidden}.sheet-section-heading{height:58px;padding:0 14px;background:#f3f5f3;border-bottom:1px solid #dce5df;display:flex;align-items:center;justify-content:space-between}.sheet-section-heading>div span{font-size:7px;letter-spacing:.7px;font-weight:850;color:#718078}.sheet-section-heading h3{margin:2px 0 0;font-size:11px;color:#1d2c22}.sheet-section-heading button{height:30px;padding:0 9px;border:1px solid #d1dbd4;border-radius:8px;background:#fff;display:flex;align-items:center;gap:5px;font-size:7px;font-weight:800;cursor:pointer}.sheet-section-heading button svg{width:12px}.pendency-sheet-list{padding:8px}.pendency-sheet-list article{min-height:52px;border-bottom:1px solid #edf1ee;display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 7px}.pendency-sheet-list article:last-child{border-bottom:0}.pendency-mark{width:27px;height:27px;border-radius:8px;background:#fff3dd;color:#b87b18;display:grid;place-items:center}.pendency-mark svg{width:14px}.pendency-sheet-list article>div{min-width:0}.pendency-sheet-list article .sheet-cell-editable{font-weight:700}.pendency-sheet-list article small{display:block;padding:0 7px;font-size:6.5px;color:#89968f}.pendency-sheet-list article.resolved{opacity:.58}.resolve-one-click{height:29px;padding:0 9px;border:1px solid #b8dcc3;border-radius:8px;background:#edf8f0;color:#226b3d;display:flex;align-items:center;gap:5px;font-size:7px;font-weight:800;cursor:pointer}.resolve-one-click svg{width:12px}.pendency-empty{min-height:70px;display:flex;align-items:center;justify-content:center;gap:8px;color:#718078;font-size:8px}.pendency-empty svg{width:18px;color:#3f945c}
+
+/* Planejamento como a matriz original */
+.planning-card{border-color:#b7c6bc}.planning-live-sheet{min-width:1680px}.planning-live-sheet thead th{background:#00a94f;color:#07190e;font-weight:900;height:39px}.planning-live-sheet thead th:first-child{background:#d7dcda;color:#17251c}.planning-live-sheet thead .total-head{background:#e3e7e4}.planning-live-sheet tbody th{padding:0 8px;background:#dfe4e1;text-align:left;font-size:8px;font-weight:850;white-space:nowrap}.planning-live-sheet tbody th small{display:inline-block;margin-left:5px;padding:2px 4px;border-radius:99px;background:#1d7f42;color:#fff;font-size:5px;text-transform:uppercase}.planning-live-sheet tbody td{min-width:99px}.planning-live-sheet tbody td.has-value .sheet-cell-editable{color:#ef2525;font-weight:750}.planning-live-sheet tbody td.blank-value .sheet-cell-editable{color:#b0b9b3}.planning-live-sheet .current-month-row td,.planning-live-sheet .current-month-row th{background:#f6fbf7}.planning-live-sheet .current-month-row th.sticky-first{background:#cfe8d7}.planning-live-sheet .row-total{min-width:108px;padding:0 7px;text-align:right;font-weight:850;background:#f7f8f7}.planning-live-sheet tfoot th{background:#ff1515;color:#111;font-weight:900}.planning-live-sheet .sticky-first{position:sticky;left:0;z-index:7;min-width:120px;box-shadow:2px 0 0 rgba(112,128,117,.18)}.planning-live-sheet thead .sticky-first{z-index:12}.planning-live-sheet tfoot .sticky-first{z-index:10}.sheet-footnote{min-height:42px;padding:8px 11px;border-radius:10px;background:#f6f8f6;border:1px solid #e2e8e3;display:flex;align-items:center;gap:7px;color:#6d7b73;font-size:7px}.sheet-footnote svg{width:14px;color:#4c7b5b}
+
+/* Receita anual como a planilha MKTG */
+.closed-year-chip{min-width:130px;height:45px;padding:6px 10px;border:1px solid #dae3dc;border-radius:10px;background:#fff;display:flex;flex-direction:column;justify-content:center}.closed-year-chip small{font-size:6px;text-transform:uppercase;color:#89968f;font-weight:800}.closed-year-chip strong{margin-top:2px;font:800 10px Inter;color:#24402d}.revenue-live-sheet{min-width:1850px}.revenue-live-sheet thead th{background:#b7c3d0;color:#14202a;font-weight:900}.revenue-live-sheet thead .total-head{background:#dcebd2}.revenue-live-sheet thead .balance-head{background:#dfe9df}.revenue-live-sheet .sticky-first{position:sticky;left:0;z-index:7;background:#fff;box-shadow:2px 0 0 rgba(110,125,114,.17)}.revenue-live-sheet thead .sticky-first{z-index:12;background:#b7c3d0}.revenue-live-sheet tfoot .sticky-first{z-index:10;background:#dfefd7}.revenue-live-sheet .supplier-col{min-width:150px;text-align:left}.revenue-live-sheet .supplier-col button{width:100%;height:33px;padding:0 7px;border:0;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:8px;font-weight:750;text-align:left;cursor:pointer}.revenue-live-sheet .supplier-col button svg{width:10px;opacity:0}.revenue-live-sheet .supplier-col button:hover svg{opacity:1}.revenue-live-sheet .forecast-col{min-width:102px;background:#f8faf8}.revenue-live-sheet td{min-width:96px}.revenue-live-sheet td.has-value .sheet-cell-editable{font-weight:700}.revenue-live-sheet td.blank-value .sheet-cell-editable{color:#adb6b0}.revenue-live-sheet .row-total{min-width:105px;padding:0 7px;text-align:right;background:#edf5e7;font-weight:850}.balance-cell{min-width:104px;padding:0 7px!important;text-align:right;background:#f5f8f5!important;font-weight:750;color:#23623b}.balance-cell.negative{background:#fff0ee!important;color:#bc433b}.revenue-progress{position:relative;width:67px;height:23px;margin:auto;border-radius:7px;background:#edf2ee;display:flex;align-items:center;justify-content:center;overflow:hidden}.revenue-progress i{position:absolute;inset:0 auto 0 0;background:#cde8d5}.revenue-progress b{position:relative;z-index:2;font:800 7px Inter;color:#235b38}.revenue-progress.over i{background:#f2c5c1}.revenue-progress.over b{color:#a63d37}.revenue-live-sheet tfoot th{background:#dcecd4;color:#192a1e;font-weight:900}
+.budget-strip{width:min(520px,100%);display:grid;grid-template-columns:1fr 1.25fr;margin-top:2px;border:1px solid #c6d0c9;border-radius:10px;overflow:hidden;background:#fff}.budget-title{grid-column:1/-1;height:34px;padding:0 10px;display:flex;align-items:center;border-bottom:1px solid #c6d0c9;background:#f4f5f4;font:850 8px Inter;color:#1d2a21}.budget-cell{grid-column:1/-1;display:grid;grid-template-columns:1fr 1.25fr;min-height:36px;border-bottom:1px solid #d9dfdb}.budget-cell:last-child{border-bottom:0}.budget-cell span,.budget-cell strong{display:flex;align-items:center;padding:0 9px;font:850 8px Inter}.budget-cell strong{justify-content:flex-end;border-left:1px solid rgba(20,20,20,.2)}.budget-cell.investment{background:#ff1717;color:#111}.budget-cell.revenue{background:#fbff00;color:#171717}.budget-cell.balance{background:#13b55f;color:#082214}
+
+@media(max-width:1180px){.sheet-titlebar{align-items:flex-start;flex-direction:column}.sheet-title-actions{width:100%;justify-content:flex-start}.sheet-stats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:780px){.sheet-titlebar{padding:14px;border-radius:14px}.sheet-titlebar h2{font-size:17px}.sheet-title-actions{overflow:auto;flex-wrap:nowrap;padding-bottom:2px}.sheet-title-actions>*{flex:0 0 auto}.workbook-tabs{margin:0 -13px;padding-left:13px;padding-right:13px}.workbook-tabs button{flex-basis:90px}.sheet-stats,.planning-summary-line{grid-template-columns:1fr 1fr}.spreadsheet-card{margin:0 -13px;border-radius:0;border-left:0;border-right:0}.live-sheet{font-size:8px}.payment-live-sheet{min-width:910px}.sheet-pendencies{border-radius:12px}.sheet-section-heading{padding:0 10px}.pendency-sheet-list article{grid-template-columns:28px minmax(0,1fr)}.resolve-one-click{grid-column:2;justify-self:end}.budget-strip{width:100%}}
+
+
+/* ==========================================================
+   PMG CONNECT — UX POLISH V1.6
+   Mesma estrutura das planilhas vivas, com foco em leitura,
+   hierarquia, edição direta e feedback de ação.
+   ========================================================== */
+:root{
+  --sheet-green:#1f7a43;
+  --sheet-green-strong:#155d32;
+  --sheet-green-soft:#eaf6ee;
+  --sheet-blue-soft:#edf4f8;
+  --sheet-amber:#b9821d;
+  --sheet-amber-soft:#fff7df;
+  --sheet-red:#bd4b45;
+  --sheet-ink:#17261d;
+  --sheet-muted:#708077;
+  --sheet-grid:#d9e2dc;
+}
+
+/* Mais respiro sem mexer na arquitetura */
+.ac-content{max-width:1920px;padding:26px 34px 72px}
+.spreadsheet-view{gap:16px}
+.sheet-titlebar{
+  min-height:112px;padding:22px 24px;border-color:#d6e2da;border-radius:22px;
+  background:linear-gradient(120deg,#fff 0%,#f7fbf8 64%,#eef7f1 100%);
+  box-shadow:0 18px 44px rgba(12,49,28,.07);position:relative;overflow:hidden
+}
+.sheet-titlebar::after{content:"";position:absolute;width:260px;height:260px;right:-120px;top:-160px;border-radius:50%;background:radial-gradient(circle,rgba(56,145,84,.12),transparent 68%);pointer-events:none}
+.sheet-titlebar>div{position:relative;z-index:1}
+.sheet-titlebar>div:first-child>span{font-size:9px;letter-spacing:1.25px;color:#397b50}
+.sheet-titlebar h2{font-size:26px;letter-spacing:-.65px;margin:5px 0 5px;color:#13231a}
+.sheet-titlebar p{font-size:11px;line-height:1.55;max-width:720px;color:#68786f}
+.sheet-title-actions{gap:9px}
+.sheet-select,.sheet-filter-button,.sheet-help{height:42px;border-radius:12px;box-shadow:0 3px 10px rgba(20,55,34,.035)}
+.sheet-select{padding:0 10px 0 12px}.sheet-select>span{font-size:8px}.sheet-select select{font-size:11px}
+.sheet-filter-button{padding:0 13px;font-size:9px}.sheet-filter-button svg{width:15px}
+.sheet-add{height:42px!important;padding:0 16px!important;border-radius:12px!important}
+.sheet-help{padding:0 13px;font-size:9px}
+
+/* Abas mensais mais legíveis e com forte noção de contexto */
+.workbook-tabs{position:sticky;top:88px;z-index:19;gap:7px;padding:7px 5px 10px;margin:0 -4px;background:linear-gradient(180deg,var(--canvas) 76%,rgba(242,246,243,0));scrollbar-width:thin}
+.workbook-tabs button{
+  flex:1 0 108px;min-width:108px;height:58px;padding:8px 11px;border-radius:14px 14px 9px 9px;
+  border-color:#d7e1da;background:#eef3ef;color:#617168;box-shadow:0 2px 7px rgba(16,47,29,.025)
+}
+.workbook-tabs button span{font-size:10px;display:flex;align-items:center;justify-content:space-between;gap:5px}
+.workbook-tabs button span em{font-style:normal;font-size:6px;letter-spacing:.5px;text-transform:uppercase;padding:3px 5px;border-radius:99px;background:#d8eee0;color:#23643a}
+.workbook-tabs button small{font-size:7.5px;margin-top:5px}
+.workbook-tabs button:hover{transform:translateY(-2px);border-color:#b8d0c0;box-shadow:0 8px 18px rgba(21,77,42,.075)}
+.workbook-tabs button.active{border-color:#5fa276;background:#fff;color:#174d2c;box-shadow:0 10px 24px rgba(29,101,54,.13)}
+.workbook-tabs button.active::after{left:10px;right:10px;bottom:-4px;height:4px;background:linear-gradient(90deg,#1d7540,#5daf78)}
+.workbook-tabs button.is-now:not(.active){border-color:#b4d2bf}
+.workbook-tabs button.empty{opacity:.62;filter:saturate(.7)}
+
+/* KPIs: leitura rápida e progresso visual sem virar dashboard paralelo */
+.sheet-stats{gap:10px}
+.sheet-stats>span,.planning-summary-line>span{
+  min-height:74px;padding:13px 15px;border-radius:15px;border-color:#dce6df;box-shadow:0 6px 18px rgba(15,48,29,.035);position:relative;overflow:hidden
+}
+.sheet-stats>span::before,.planning-summary-line>span::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#a8b7ad}
+.sheet-stats>span.stat-total::before{background:#2c8150}.sheet-stats>span.stat-specific::before{background:#718b79}.sheet-stats>span.stat-paid::before{background:#d39a2a}.sheet-stats>span.stat-signed::before{background:#2f9758}
+.sheet-stats small,.planning-summary-line small{font-size:7.5px;letter-spacing:.7px}.sheet-stats strong,.planning-summary-line strong{font-size:16px;letter-spacing:-.2px}
+.sheet-stats>span>i{position:absolute;left:0;bottom:0;height:3px;width:var(--stat-progress,0%);background:#d39a2a;transition:width .45s var(--ease)}
+.sheet-stats>span.stat-signed>i{background:#2f9758}.sheet-stats>span.stat-total>i,.sheet-stats>span.stat-specific>i{display:none}
+.sheet-stats>span.ok{background:linear-gradient(135deg,#f4fbf6,#eaf7ee);border-color:#afd7ba}
+.sheet-ux-hint{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:-4px}
+.sheet-ux-hint span{height:29px;padding:0 9px;border:1px solid #dfe7e1;border-radius:999px;background:rgba(255,255,255,.74);display:inline-flex;align-items:center;gap:5px;font-size:7.5px;font-weight:700;color:#738178}
+.sheet-ux-hint svg{width:12px;color:#43805a}
+
+/* Tabela principal: mais produto, menos grade espremida */
+.spreadsheet-card{border-color:#cbd8cf;border-radius:18px;box-shadow:0 18px 48px rgba(8,39,22,.075)}
+.spreadsheet-scroll{scrollbar-color:#aabdb0 #edf2ee;overscroll-behavior:contain}
+.live-sheet{font-size:10.5px;color:#18291f}
+.live-sheet th,.live-sheet td{border-right-color:var(--sheet-grid);border-bottom-color:var(--sheet-grid)}
+.live-sheet thead th{height:43px;padding:0 11px;font-size:9px;letter-spacing:.15px;background:linear-gradient(180deg,#f5f7f5,#ecefec);box-shadow:0 1px 0 #cdd8d0}
+.live-sheet tbody td,.live-sheet tbody th{height:44px}
+.live-sheet tbody tr:nth-child(even) td{background:#fcfdfc}
+.live-sheet tbody tr:hover td,.live-sheet tbody tr:hover th{background:#f2f8f4!important}
+.live-sheet tbody tr{transition:box-shadow .16s,background .16s}
+.live-sheet tbody tr:hover{box-shadow:inset 3px 0 #6fac80}
+.live-sheet tfoot th{height:45px;font-size:9px}
+
+/* Pagamentos: mantém campanha e fornecedor visíveis durante rolagem horizontal */
+.payment-live-sheet th:nth-child(1),.payment-live-sheet td:nth-child(1){min-width:118px;width:118px}
+.payment-live-sheet th:nth-child(2),.payment-live-sheet td:nth-child(2){min-width:205px;width:205px}
+.payment-live-sheet thead th:nth-child(1),.payment-live-sheet tbody td:nth-child(1){position:sticky;left:0;z-index:6}
+.payment-live-sheet thead th:nth-child(2),.payment-live-sheet tbody td:nth-child(2){position:sticky;left:118px;z-index:6;box-shadow:3px 0 7px rgba(26,58,37,.055)}
+.payment-live-sheet thead th:nth-child(1),.payment-live-sheet thead th:nth-child(2){z-index:12}
+.payment-live-sheet tbody tr.signed-row td:nth-child(1),.payment-live-sheet tbody tr.signed-row td:nth-child(2){background:#f0faf3}
+.payment-live-sheet tbody tr.specific-row:not(.signed-row) td:nth-child(1),.payment-live-sheet tbody tr.specific-row:not(.signed-row) td:nth-child(2){background:#f8f8f8}
+.payment-live-sheet .money-col{min-width:118px}
+.payment-live-sheet th:nth-child(4),.payment-live-sheet td:nth-child(4){min-width:112px}
+.payment-live-sheet th:nth-child(6),.payment-live-sheet td:nth-child(6){min-width:118px;text-align:center}
+.payment-live-sheet th:nth-child(7),.payment-live-sheet td:nth-child(7){min-width:138px;text-align:center}
+.payment-live-sheet th:nth-child(8),.payment-live-sheet td:nth-child(8){min-width:48px;text-align:center}
+
+/* Edição: o usuário percebe que é clicável sem poluir */
+.sheet-cell-editable{min-width:96px;height:43px;padding:0 10px;gap:8px;font-size:10.5px;border-radius:7px;transition:background .15s,box-shadow .15s,color .15s}
+.sheet-cell-editable svg{width:12px;height:12px;opacity:.28;color:#37764f}
+.sheet-cell-editable:hover{background:#eaf6ee;box-shadow:inset 0 0 0 1px #9bc8a9;color:#184f2d}
+.sheet-cell-editable:hover svg{opacity:1}
+.sheet-cell-editable:focus-visible{outline:2px solid #4b9a65;outline-offset:-2px}
+.sheet-editing{height:43px;background:#fff;box-shadow:inset 0 0 0 2px #4b9a65,0 0 0 3px rgba(75,154,101,.12);border-radius:7px}
+.sheet-editing input{padding:0 10px;font-size:10.5px;font-weight:750}
+
+/* Ações de um clique: parecem ações, não células misteriosas */
+.one-click-status{min-width:98px;height:34px;margin:4px 8px;padding:0 10px;border-radius:10px;font-size:8.5px;gap:6px;transition:.18s var(--ease);box-shadow:0 2px 6px rgba(20,50,31,.035)}
+.one-click-status svg{width:14px}.one-click-status.open:hover{background:#fff2c8;border-color:#d7b44f;transform:translateY(-1px)}
+.one-click-status.paid{background:linear-gradient(135deg,#edf9f0,#e3f4e8);border-color:#9fceb0;color:#155f34}
+.one-click-status.paid:hover{background:#def1e4;border-color:#79b890;transform:translateY(-1px)}
+.conference-check{min-width:118px;height:36px;margin:3px 8px;padding:0 9px;border-radius:11px;grid-template-columns:24px 1fr;column-gap:7px;transition:.18s var(--ease);box-shadow:0 2px 6px rgba(20,50,31,.03)}
+.conference-check>span{width:23px;height:23px;border-radius:7px}.conference-check>span svg{width:14px}.conference-check b{font-size:8.5px}.conference-check small{font-size:6.5px}.conference-check:not(.checked):hover{border-color:#86b99a;background:#f4faf6;transform:translateY(-1px)}
+.conference-check.checked{background:linear-gradient(135deg,#edf9f0,#e2f4e7);border-color:#94c9a5;color:#145e33}.conference-check.checked>span{box-shadow:0 0 0 4px rgba(45,139,80,.09)}
+.sheet-open-row{width:34px;height:34px;border-radius:9px}.sheet-open-row svg{width:16px}.sheet-open-row:hover{background:#e8f3ec;transform:translateY(-1px)}
+
+/* Linhas conferidas ficam identificáveis sem apagar conteúdo */
+.live-sheet tr.signed-row td{background:#f4fbf6}.live-sheet tr.signed-row{box-shadow:inset 3px 0 #3c9a5d}
+.live-sheet tr.signed-row .sheet-cell-editable{color:#315a3f}
+.live-sheet tr.specific-row:not(.signed-row) td{background:#fafbfa}
+.specific-value{position:relative}.specific-value::after{content:"específico";position:absolute;right:5px;top:3px;font-size:5.5px;text-transform:uppercase;letter-spacing:.45px;color:#9aa49e;pointer-events:none}
+
+/* Pendências: ação clara e leitura mais humana */
+.sheet-pendencies{border-radius:18px;border-color:#d7e1da;box-shadow:0 8px 24px rgba(13,48,28,.035)}
+.sheet-section-heading{height:66px;padding:0 17px;background:linear-gradient(180deg,#f7f9f7,#f0f4f1)}
+.sheet-section-heading>div span{font-size:8px}.sheet-section-heading h3{font-size:13px}
+.sheet-section-heading button{height:34px;padding:0 11px;border-radius:10px;font-size:8px}
+.pendency-sheet-list{padding:10px}.pendency-sheet-list article{min-height:62px;padding:7px 9px;border-radius:10px;border-bottom:0;margin:2px 0;transition:.16s}
+.pendency-sheet-list article:hover{background:#fafcfb}.pendency-mark{width:33px;height:33px;border-radius:10px}.pendency-mark svg{width:16px}
+.pendency-sheet-list article small{font-size:7.5px}.resolve-one-click{height:34px;padding:0 11px;border-radius:10px;font-size:8px}
+.pendency-sheet-list article.resolved{opacity:.67;background:#f6faf7}
+
+/* Planejamento: cores herdadas da planilha, tratadas para tela */
+.planning-live-sheet{min-width:1770px}
+.planning-live-sheet thead th{height:47px;background:linear-gradient(180deg,#36b965,#23a552);color:#0b2414;font-size:9px}
+.planning-live-sheet thead th:first-child{background:linear-gradient(180deg,#e4e8e5,#d7ddda)}
+.planning-live-sheet thead .total-head{background:linear-gradient(180deg,#edf1ee,#dfe5e1)}
+.planning-live-sheet tbody th{font-size:9.5px;padding:0 10px;background:#e5e9e6}.planning-live-sheet tbody th small{font-size:6px;padding:3px 6px}
+.planning-live-sheet tbody td{min-width:108px}.planning-live-sheet .row-total{min-width:120px;padding:0 9px;background:#f2f6f3;font-size:9.5px}
+.planning-live-sheet tbody td.has-value .sheet-cell-editable{color:#c6423d}.planning-live-sheet tbody td.blank-value .sheet-cell-editable{color:#a7b1aa}
+.planning-live-sheet .current-month-row td,.planning-live-sheet .current-month-row th{background:#edf8f0!important}.planning-live-sheet .current-month-row{box-shadow:inset 3px 0 #2e9151}
+.planning-live-sheet tfoot th{height:46px;background:linear-gradient(180deg,#e7534c,#d8413b);color:#fff;text-shadow:0 1px rgba(0,0,0,.08)}
+.sheet-footnote{min-height:46px;padding:10px 13px;border-radius:12px;font-size:8.5px;background:#f7faf8}
+
+/* Receita: coluna do fornecedor firme e leitura anual mais limpa */
+.revenue-live-sheet{min-width:1970px}
+.revenue-live-sheet thead th{height:45px;background:linear-gradient(180deg,#d8e0e8,#c6d1dc);font-size:9px}
+.revenue-live-sheet thead .total-head{background:linear-gradient(180deg,#e6f0df,#d9e9cf)}
+.revenue-live-sheet thead .balance-head{background:linear-gradient(180deg,#eaf0ea,#dfe8df)}
+.revenue-live-sheet .supplier-col{min-width:190px}.revenue-live-sheet .supplier-col button{height:43px;padding:0 10px;font-size:10px}.revenue-live-sheet .supplier-col button svg{width:13px;opacity:.28}.revenue-live-sheet .supplier-col button:hover svg{opacity:1}
+.revenue-live-sheet .forecast-col{min-width:118px}.revenue-live-sheet td{min-width:108px}.revenue-live-sheet .row-total,.balance-cell{min-width:118px;font-size:9.5px}
+.revenue-progress{width:78px;height:27px;border-radius:9px}.revenue-progress b{font-size:8px}
+.budget-strip{width:min(580px,100%);border-radius:14px;box-shadow:0 8px 20px rgba(18,52,32,.035)}.budget-title{height:39px;font-size:9px}.budget-cell{min-height:42px}.budget-cell span,.budget-cell strong{font-size:9px}
+.budget-cell.investment{background:#f05a54;color:#fff}.budget-cell.revenue{background:#f4d94f;color:#2d2b12}.budget-cell.balance{background:#36a765;color:#fff}
+
+/* Estados focáveis para navegação por teclado */
+.workbook-tabs button:focus-visible,.sheet-filter-button:focus-visible,.one-click-status:focus-visible,.conference-check:focus-visible,.resolve-one-click:focus-visible,.sheet-open-row:focus-visible{outline:2px solid #3f8e59;outline-offset:2px}
+
+@media(max-width:1180px){
+  .ac-content{padding-left:24px;padding-right:24px}
+  .sheet-titlebar h2{font-size:23px}
+  .workbook-tabs{top:86px}
+}
+@media(max-width:780px){
+  .ac-content{padding:18px 13px 52px}
+  .sheet-titlebar{min-height:auto;padding:17px;border-radius:17px}.sheet-titlebar h2{font-size:20px}.sheet-titlebar p{font-size:10px}
+  .workbook-tabs{top:78px;margin:0 -13px;padding:7px 13px 10px}.workbook-tabs button{flex-basis:102px;min-width:102px;height:55px}
+  .sheet-stats>span,.planning-summary-line>span{min-height:68px;padding:11px 12px}.sheet-stats strong,.planning-summary-line strong{font-size:14px}
+  .sheet-ux-hint{overflow:auto;flex-wrap:nowrap;margin-right:-13px;padding-right:13px}.sheet-ux-hint span{flex:0 0 auto}
+  .spreadsheet-card{border-radius:0}.live-sheet{font-size:9.5px}.live-sheet tbody td,.live-sheet tbody th{height:42px}
+  .sheet-cell-editable{height:41px;font-size:9.5px}.sheet-editing{height:41px}
+  .payment-live-sheet{min-width:1080px}.payment-live-sheet th:nth-child(1),.payment-live-sheet td:nth-child(1){min-width:105px;width:105px}.payment-live-sheet th:nth-child(2),.payment-live-sheet td:nth-child(2){min-width:180px;width:180px}.payment-live-sheet thead th:nth-child(2),.payment-live-sheet tbody td:nth-child(2){left:105px}
+}

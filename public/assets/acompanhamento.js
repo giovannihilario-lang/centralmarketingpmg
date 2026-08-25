@@ -898,7 +898,7 @@
     useLucide([sheetYear, sheetMonth, rows.length, onlyPending, context.saving]);
 
     return html`<section className="spreadsheet-view payment-sheet-view">
-      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="A mesma leitura da planilha, agora editável. Clique em qualquer célula com lápis para alterar; a marca verde assina a linha como conferida." actions=${html`
+      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="Leitura familiar de planilha, com edição direta e ações rápidas. Tudo importante acontece sem sair desta tela." actions=${html`
         <label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e => setSheetYear(Number(e.target.value))}>${yearOptions.map(value => html`<option value=${value}>${value}</option>`)}</select></label>
         <button className=${`sheet-filter-button ${onlyPending ? 'active' : ''}`} onClick=${() => setOnlyPending(value => !value)}><${Icon} name="filter"/>${onlyPending ? 'Só não conferidos' : 'Filtrar pendentes'}</button>
         <button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}/>
@@ -906,10 +906,17 @@
       <div className="workbook-tabs" role="tablist">${OFFICIAL_MONTHS.map(([,label],index) => {
         const total = sum(supplierRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear) && sourceMonthIndex(record) === index), record => record.valor_acordado);
         const exists = availableMonths.includes(index);
-        return html`<button role="tab" aria-selected=${sheetMonth === index} className=${`${sheetMonth === index ? 'active' : ''} ${exists ? '' : 'empty'}`} onClick=${() => setSheetMonth(index)}><span>${label}</span><small>${total ? compactMoney(total) : 'sem dados'}</small></button>`;
+        const isNow = Number(sheetYear) === new Date().getFullYear() && index === new Date().getMonth();
+        return html`<button role="tab" aria-selected=${sheetMonth === index} className=${`${sheetMonth === index ? 'active' : ''} ${exists ? '' : 'empty'} ${isNow ? 'is-now' : ''}`} onClick=${() => setSheetMonth(index)}><span>${label}${isNow && html`<em>Atual</em>`}</span><small>${total ? compactMoney(total) : 'sem dados'}</small></button>`;
       })}</div>
 
-      <div className="sheet-stats"><span><small>Total do mês</small><strong>${money(monthTotal)}</strong></span><span><small>Valores específicos</small><strong>${money(specificTotal)}</strong></span><span><small>Pagamentos baixados</small><strong>${paidCount}/${rows.length}</strong></span><span className=${signedCount === rows.length && rows.length ? 'ok' : ''}><small>Conferidos</small><strong>${signedCount}/${rows.length}</strong></span></div>
+      <div className="sheet-stats">
+        <span className="stat-total"><small>Total do mês</small><strong>${money(monthTotal)}</strong><i></i></span>
+        <span className="stat-specific"><small>Valores específicos</small><strong>${money(specificTotal)}</strong><i></i></span>
+        <span className="stat-paid" style=${{ '--stat-progress':`${rows.length ? Math.round((paidCount / rows.length) * 100) : 0}%` }}><small>Pagamentos baixados</small><strong>${paidCount}/${rows.length}</strong><i></i></span>
+        <span className=${`stat-signed ${signedCount === rows.length && rows.length ? 'ok' : ''}`} style=${{ '--stat-progress':`${rows.length ? Math.round((signedCount / rows.length) * 100) : 0}%` }}><small>Conferidos</small><strong>${signedCount}/${rows.length}</strong><i></i></span>
+      </div>
+      <div className="sheet-ux-hint"><span><${Icon} name="mouse-pointer-click"/>Clique numa célula para editar</span><span><${Icon} name="badge-check"/>Baixa e conferência em 1 clique</span><span><${Icon} name="corner-down-left"/>Enter salva · Esc cancela</span></div>
 
       <article className="spreadsheet-card"><div className="spreadsheet-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VERBA</th><th>NF</th><th className="money-col">VALOR</th><th>PAGAMENTO</th><th>CONFERÊNCIA</th><th></th></tr></thead><tbody>
         ${rows.length ? rows.map((row,index) => {
@@ -1014,7 +1021,7 @@
     const grandTotal = sum(columnTotals, value => value); const currentMonth = new Date().getFullYear() === 2026 ? new Date().getMonth() : -1;
     useLucide([planning.length, context.saving]);
     return html`<section className="spreadsheet-view planning-sheet-view">
-      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na planilha original. Cada valor é editável e recalcula os totais automaticamente." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar fonte</button>`}/>
+      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na fonte oficial. Clique, edite e acompanhe o total sem perder o contexto." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar fonte</button>`}/>
       <div className="planning-summary-line"><span><small>Frentes</small><strong>${planning.length}</strong></span><span><small>Total planejado</small><strong>${money(grandTotal)}</strong></span><span><small>Mês atual</small><strong>${currentMonth >= 0 ? OFFICIAL_MONTHS[currentMonth][1] : '2026'}</strong></span></div>
       <article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll"><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${record.referencia || record.titulo}>${record.referencia || record.titulo.replace(/^Planejamento 2026\s*—\s*/i,'')}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
         ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = Number(payment?.valor_previsto || 0); return html`<td className=${value ? 'has-value' : 'blank-value'}><${EditableSheetCell} type="money" value=${value} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
