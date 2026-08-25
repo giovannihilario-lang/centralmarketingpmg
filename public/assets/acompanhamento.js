@@ -448,6 +448,20 @@
 
   const monthKey = (year, monthIndex) => `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
   const monthPayment = (payments, recordId, year, monthIndex) => payments.find(item => item.registro_id === recordId && String(item.vencimento || item.pago_em || '').startsWith(monthKey(year, monthIndex))) || null;
+  const supplierRowPayment = (payments, record, year = Number(record?.ano_referencia || 0), monthIndex = null) => {
+    if (!record?.id) return null;
+    const sourceIndex = monthIndex == null ? sourceMonthIndex(record) : Number(monthIndex);
+    const key = monthKey(Number(year || record.ano_referencia || 0), sourceIndex);
+    const candidates = (payments || []).filter(item => item.registro_id === record.id && item.status !== 'cancelado');
+    if (!candidates.length) return null;
+    const score = item => {
+      const dateMatches = String(item.vencimento || item.pago_em || '').startsWith(key);
+      const dedicated = item.fingerprint === `confirmacao:${record.id}`;
+      const paid = item.status === 'pago';
+      return (dedicated ? 100 : 0) + (dateMatches ? 50 : 0) + (paid ? 10 : 0);
+    };
+    return [...candidates].sort((a,b) => score(b) - score(a) || String(b.atualizado_em || b.criado_em || '').localeCompare(String(a.atualizado_em || a.criado_em || '')))[0] || null;
+  };
   const sourceMonthIndex = record => Math.max(0, Number(String(record?.data_inicio || record?.data_fim || '').slice(5, 7) || 1) - 1);
   const sourceMonthKey = record => `${Number(record?.ano_referencia || 0)}-${String(sourceMonthIndex(record) + 1).padStart(2, '0')}`;
   const rowConferenceKey = record => `${record?.fornecedor || 'Sem fornecedor'} · ${record?.referencia || 'COTA'} · L${record?.linha_origem || record?.id || 'novo'}`;
@@ -1005,7 +1019,7 @@
     const supplierRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && isSupplierRevenueRecord(record));
     const stages = supplierRecords.map(record => {
       const monthIndex = sourceMonthIndex(record);
-      const payment = monthPayment(context.payments, record.id, year, monthIndex);
+      const payment = supplierRowPayment(context.payments, record, year, monthIndex);
       const stage = supplierRevenueStage(payment, record, context.conferences, year, monthIndex);
       const expected = Number(payment?.valor_previsto || record.valor_acordado || 0);
       const value = payment?.status === 'pago' ? paymentValue(payment) : expected;
@@ -1089,7 +1103,7 @@
       }); return map;
     }, [context.allRecords]);
     let rows = supplierRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear) && sourceMonthIndex(record) === sheetMonth).map(record => {
-      const payment = monthPayment(context.payments, record.id, sheetYear, sheetMonth);
+      const payment = supplierRowPayment(context.payments, record, sheetYear, sheetMonth);
       const detailRecord = detailMap.get([record.ano_referencia, record.origem_importacao || '', record.linha_origem || '', supplierKey(record.fornecedor)].join('|')) || null;
       const detailPayment = detailRecord ? monthPayment(context.payments, detailRecord.id, sheetYear, sheetMonth) : null;
       return { record, payment, detailRecord, detailPayment };
@@ -1249,7 +1263,7 @@
       records.forEach(record => {
         const year = Number(record.ano_referencia);
         const monthIndex = sourceMonthIndex(record);
-        const payment = monthPayment(context.payments, record.id, year, monthIndex);
+        const payment = supplierRowPayment(context.payments, record, year, monthIndex);
         if (supplierRevenueStage(payment, record, context.conferences, year, monthIndex) !== 'confirmado') return;
         values[year][monthIndex] += paymentValue(payment);
       });
@@ -1277,7 +1291,7 @@
       supplierRecords.forEach(record => {
         if (!record.fornecedor) return;
         const monthIndex = sourceMonthIndex(record);
-        const payment = monthPayment(context.payments, record.id, 2026, monthIndex);
+        const payment = supplierRowPayment(context.payments, record, 2026, monthIndex);
         const stage = supplierRevenueStage(payment, record, context.conferences, 2026, monthIndex);
         const key = supplierKey(record.fornecedor);
         const row = map.get(key) || { months:OFFICIAL_MONTHS.map(() => ({ confirmed:0, open:0, confirmedCount:0, openCount:0 })) };
@@ -1415,7 +1429,7 @@
           current.value += Number(record.valor_acordado || 0);
           if (isSupplierRevenueRecord(record) && Number(record.ano_referencia) >= 2026) {
             const monthIndex = sourceMonthIndex(record);
-            const payment = monthPayment(context.payments, record.id, Number(record.ano_referencia), monthIndex);
+            const payment = supplierRowPayment(context.payments, record, Number(record.ano_referencia), monthIndex);
             if (supplierRevenueStage(payment, record, context.conferences, Number(record.ano_referencia), monthIndex) === 'confirmado') current.paid += paymentValue(payment);
           } else current.paid += Number(record.total_pago || 0);
         }
