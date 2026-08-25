@@ -5851,7 +5851,6 @@ function renderCreateRecurrenceTimesV381() {
   const root = $('itemRecurrenceTimesList'); if (!root) return;
   const primary = String($('itemDueTime')?.value || '17:00').slice(0,5);
   const extras = uniqueTimesV381(state.recurrenceExtraTimesV381).filter(time => time !== primary);
-  state.recurrenceExtraTimesV381 = extras;
   root.innerHTML = `<div class="recurrence-time-primary"><span><i data-lucide="clock-3"></i><strong>Ocorrência principal</strong></span><b>${escapeHtml(primary)}</b></div>${extras.map((time,index)=>`<label class="recurrence-time-row"><span><i data-lucide="repeat-2"></i>Outra ocorrência</span><input type="time" value="${time}" data-recurrence-extra-time="${index}"><button type="button" data-remove-recurrence-time="${index}" title="Remover"><i data-lucide="x"></i></button></label>`).join('')}`;
   refreshIcons();
 }
@@ -5859,7 +5858,6 @@ function renderEditRecurrenceTimesV381() {
   const root = $('recurrenceEditTimesList'); if (!root) return;
   const primary = String($('recurrenceEditDueTime')?.value || '17:00').slice(0,5);
   const extras = uniqueTimesV381(state.recurrenceEditExtraTimesV381).filter(time => time !== primary);
-  state.recurrenceEditExtraTimesV381 = extras;
   root.innerHTML = extras.length ? extras.map((time,index)=>`<label class="recurrence-time-row"><span><i data-lucide="repeat-2"></i>Outra ocorrência</span><input type="time" value="${time}" data-recurrence-edit-extra-time="${index}"><button type="button" data-remove-recurrence-edit-time="${index}" title="Remover"><i data-lucide="x"></i></button></label>`).join('') : `<div class="recurrence-time-empty"><i data-lucide="clock"></i>Esta rotina roda uma vez por dia.</div>`;
   refreshIcons();
 }
@@ -6240,28 +6238,14 @@ submitTaskEvaluation = async function submitTaskEvaluationUxV384(approved){
   const executors=uniqueIdsV37(state.evaluationExecutorIds);
   if(!executors.length)return toast('Selecione pelo menos uma pessoa que realizou a demanda.','error');
 
-  // Trabalho individual nunca depende do módulo de confirmação coletiva.
-  // Se a estrutura de autoria estiver disponível, usamos o RPC novo para
-  // também registrar o executor. Se não estiver, aprovamos pela rotina V3.
-  if(executors.length===1&&!state.authorshipReady){
-    setLoading(true);
-    try{
-      const {error}=await db.rpc('avaliar_conclusao',{p_tarefa_id:taskId,p_aprovado:true,p_observacao:note||null});
-      if(error)throw error;
-      closeModal('taskEvaluationModal');
-      await refreshData();
-      await dispatchPendingPush();
-      if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);
-      toast('Entrega validada e concluída. Trabalho individual não exige confirmação de autoria.');
-    }catch(error){toast(errorMessage(error),'error');}
-    finally{setLoading(false);}
-    return;
-  }
-
-  if(!state.authorshipReady)return toast('A autoria compartilhada não respondeu. Atualize a página. Se persistir, execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.','error');
-
+  // V3.8.6: a conclusão usa sempre a RPC de autoria. Não usamos mais
+  // avaliar_conclusao() como fallback, porque bancos antigos podem conter
+  // uma versão dessa rotina que exige confirmação de autoria e cria um ciclo.
+  // Também não bloqueamos pelo state.authorshipReady: o snapshot pode estar
+  // desatualizado enquanto a RPC já existe no banco.
   setLoading(true);try{
-    const {data,error}=await db.rpc('solicitar_confirmacao_autoria_v1',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});if(error)throw error;
+    const {data,error}=await db.rpc('solicitar_confirmacao_autoria_v1',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});
+    if(error)throw error;
     closeModal('taskEvaluationModal');await refreshData();await dispatchPendingPush();if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);
     if(data?.confirmacao_necessaria||executors.length>1)toast(`Entrega validada. ${executors.length} participantes precisam confirmar a autoria.`);
     else toast('Entrega validada e concluída. Autoria individual registrada sem confirmação extra.');
@@ -6289,7 +6273,20 @@ function bindUxV381Events(){
   $('savedTaskViewSelect')?.addEventListener('change',event=>{const item=loadSavedTaskViewsV381().find(row=>row.id===event.target.value);$('deleteTaskViewBtn')?.classList.toggle('hidden',!event.target.value);if(item)applyTaskViewConfigV381(item.config);});
   $('deskRefreshBtn')?.addEventListener('click',async()=>{setLoading(true);try{await refreshData();toast('Minha Mesa atualizada.');}finally{setLoading(false);}});
   $('deskNewBtn')?.addEventListener('click',()=>openQuickAdd('demanda'));
-  document.addEventListener('change',event=>{if(event.target.matches('[data-recurrence-extra-time]')){state.recurrenceExtraTimesV381[Number(event.target.dataset.recurrenceExtraTime)]=event.target.value;renderCreateRecurrenceTimesV381();}if(event.target.matches('[data-recurrence-edit-extra-time]')){state.recurrenceEditExtraTimesV381[Number(event.target.dataset.recurrenceEditExtraTime)]=event.target.value;renderEditRecurrenceTimesV381();}});
+  // Não re-renderize inputs <type=time> enquanto o usuário está escolhendo um horário.
+  // Chrome/Firefox podem expor um valor vazio transitório durante a edição; o código antigo
+  // interpretava isso como horário inválido e removia a própria linha do formulário.
+  document.addEventListener('change',event=>{
+    if(event.target.matches('[data-recurrence-extra-time]')){
+      const index=Number(event.target.dataset.recurrenceExtraTime), value=String(event.target.value||'').slice(0,5);
+      if(/^\d{2}:\d{2}$/.test(value)) state.recurrenceExtraTimesV381[index]=value;
+      return;
+    }
+    if(event.target.matches('[data-recurrence-edit-extra-time]')){
+      const index=Number(event.target.dataset.recurrenceEditExtraTime), value=String(event.target.value||'').slice(0,5);
+      if(/^\d{2}:\d{2}$/.test(value)) state.recurrenceEditExtraTimesV381[index]=value;
+    }
+  });
   document.addEventListener('click',event=>{const remove=event.target.closest('[data-remove-recurrence-time]');if(remove){state.recurrenceExtraTimesV381.splice(Number(remove.dataset.removeRecurrenceTime),1);renderCreateRecurrenceTimesV381();return;}const removeEdit=event.target.closest('[data-remove-recurrence-edit-time]');if(removeEdit){state.recurrenceEditExtraTimesV381.splice(Number(removeEdit.dataset.removeRecurrenceEditTime),1);renderEditRecurrenceTimesV381();}});
 }
 bindUxV381Events();
