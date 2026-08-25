@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento V1.9.2 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.1.0 / React + HTM */
 (() => {
   'use strict';
 
@@ -486,6 +486,16 @@
   const supplierRevenueStage = (payment, record, conferences, year = Number(record?.ano_referencia || 0), monthIndex = sourceMonthIndex(record)) =>
     supplierRowConfirmed(record, payment) ? 'confirmado' : 'a_receber';
 
+  const monthIndexFromText = value => {
+    const needle = normalize(value);
+    if (!needle) return -1;
+    return OFFICIAL_MONTHS.findIndex(([key,label]) => needle.includes(normalize(key)) || needle.includes(normalize(label)));
+  };
+  const savedNumber = (key, fallback) => {
+    const value = Number(localStorage.getItem(key));
+    return Number.isFinite(value) ? value : fallback;
+  };
+
   function App() {
     const [view, setView] = useState('dashboard');
     const [mobileNav, setMobileNav] = useState(false);
@@ -502,6 +512,8 @@
     const [recordModal, setRecordModal] = useState(null);
     const [paymentModal, setPaymentModal] = useState(null);
     const [selectedId, setSelectedId] = useState(null);
+    const [supplierSelected, setSupplierSelected] = useState(null);
+    const [paymentJump, setPaymentJump] = useState(null);
     const [toast, setToast] = useState(null);
     const [saving, setSaving] = useState(false);
     const subscriptionRef = useRef(null);
@@ -594,10 +606,16 @@
     }, [data.records, control, year, search]);
 
     const selected = useMemo(() => data.records.find(item => item.id === selectedId) || null, [data.records, selectedId]);
-    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, client, me, reload, notify, saving, setSaving,
+    const navigatePayments = useCallback((options = {}) => {
+      setPaymentJump({ ...options, token:Date.now() });
+      setView('pagamentos');
+      requestAnimationFrame(() => window.scrollTo({ top:0, behavior:'smooth' }));
+    }, []);
+    const openSupplier = useCallback(name => { if (name) { setSelectedId(null); setSupplierSelected(name); } }, []);
+    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, reload, notify, saving, setSaving, paymentJump, navigatePayments, openSupplier,
       openRecord:record => setSelectedId(record.id), editRecord:record => setRecordModal(record), newRecord:(defaults = {}) => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year, ...defaults }),
       newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), saveConference, setView,
-      quickUpdateRecord, quickUpdatePayment, quickUpsertPayment, quickTogglePaid, quickUpdateSupplierRow, quickUpdateSpecificValue };
+      quickUpdateRecord, quickUpdatePayment, quickUpsertPayment, quickTogglePaid, quickBulkConfirm, quickBulkNF, quickBulkArchive, quickUpdateSupplierRow, quickUpdateSpecificValue };
 
     useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);
 
@@ -769,6 +787,64 @@
       } finally { setSaving(false); }
     }
 
+    async function quickBulkConfirm(rows, confirmed = true) {
+      const valid = (rows || []).filter(row => row?.record?.id);
+      if (!valid.length || saving) return false;
+      const previous = data;
+      const ids = new Set(valid.map(row => row.record.id));
+      setData(current => ({ ...current, records:current.records.map(item => ids.has(item.id) ? { ...item, pagamento_confirmado:confirmed, pagamento_confirmado_em:confirmed ? new Date().toISOString() : null } : item) }));
+      setSaving(true);
+      try {
+        if (!DEMO_MODE) {
+          for (const row of valid) {
+            const { error } = await client.rpc('confirmar_pagamento_linha_v1', { p_registro_id:row.record.id, p_confirmado:confirmed });
+            if (error) throw error;
+          }
+          await reload(true);
+        }
+        notify(`${valid.length} pagamento(s) ${confirmed ? 'confirmado(s)' : 'reaberto(s)'}.`);
+        return true;
+      } catch (error) {
+        reloadSeqRef.current += 1; setData(previous);
+        notify(error.message || 'Não foi possível atualizar os pagamentos selecionados.', 'error');
+        return false;
+      } finally { setSaving(false); }
+    }
+
+    async function quickBulkNF(rows, documentNumber) {
+      const doc = String(documentNumber || '').trim();
+      const valid = (rows || []).filter(row => row?.record?.id);
+      if (!valid.length || !doc || saving) return false;
+      setSaving(true);
+      try {
+        for (const row of valid) {
+          await rpcRecord(row.record, { numero_documento:doc });
+          if (row.payment) await rpcPayment(row.payment, row.record.id, { numero_documento:doc, forma_pagamento:officialMethod(doc) });
+        }
+        if (!DEMO_MODE) await reload(true);
+        notify(`NF/documento aplicado em ${valid.length} linha(s).`);
+        return true;
+      } catch (error) {
+        notify(error.message || 'Não foi possível alterar o documento em lote.', 'error');
+        return false;
+      } finally { setSaving(false); }
+    }
+
+    async function quickBulkArchive(records) {
+      const valid = (records || []).filter(record => record?.id);
+      if (!valid.length || saving) return false;
+      setSaving(true);
+      try {
+        for (const record of valid) await rpcRecord(record, { status:'cancelado' });
+        if (!DEMO_MODE) await reload(true);
+        notify(`${valid.length} linha(s) arquivada(s).`, 'info');
+        return true;
+      } catch (error) {
+        notify(error.message || 'Não foi possível arquivar as linhas selecionadas.', 'error');
+        return false;
+      } finally { setSaving(false); }
+    }
+
     async function quickUpdateSupplierRow(record, payment, field, rawValue) {
       const monthIndex = sourceMonthIndex(record);
       if (field === 'campanha') {
@@ -892,6 +968,7 @@
         ${recordModal && html`<${RecordModal} record=${recordModal} collaborators=${data.collaborators} onClose=${() => setRecordModal(null)} onSave=${saveRecord} saving=${saving}/>`}
         ${paymentModal && html`<${PaymentModal} payment=${paymentModal} records=${data.records} onClose=${() => setPaymentModal(null)} onSave=${savePayment} saving=${saving}/>`}
         ${selected && html`<${RecordDrawer} record=${selected} context=${context} onClose=${() => setSelectedId(null)}/>`}
+        ${supplierSelected && html`<${SupplierDrawer} supplier=${supplierSelected} context=${context} onClose=${() => setSupplierSelected(null)}/>`}
         ${commandOpen && html`<${CommandPalette} context=${context} onClose=${() => setCommandOpen(false)}/>`}
         ${toast && html`<${Toast} toast=${toast}/>`}
       </div>`;
@@ -945,7 +1022,7 @@
     const meta = VIEWS[view];
     useLucide([view]);
     const documentView = view === 'documentos';
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Fornecedor, ação ou comando</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button><button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="sparkles"/><span><small>Busca inteligente</small><b>Pendentes, NF, fornecedor...</b></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label><button className="button secondary import-shortcut" onClick=${() => context.setView(documentView ? 'registros' : 'importar')}><${Icon} name=${documentView ? 'rows-3' : 'sheet'}/>${documentView ? 'Acompanhamentos' : 'Importar'}</button><button className="button primary topbar-create" onClick=${documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button><div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
   }
 
   function CommandPalette({ context, onClose }) {
@@ -953,30 +1030,49 @@
     const [activeIndex, setActiveIndex] = useState(0);
     const input = useRef(null);
     const needle = normalize(query);
-    const results = needle ? context.allRecords.filter(record => normalize([record.codigo, record.fornecedor, record.titulo, record.referencia, ...(record.tags || [])].join(' ')).includes(needle)).slice(0, 7) : [];
+    const monthIndex = monthIndexFromText(query);
+    const wantsPending = /\b(pendente|pendentes|aberto|abertos|a receber)\b/.test(needle);
+    const wantsConfirmed = /\b(confirmado|confirmados|pago|pagos)\b/.test(needle);
+    const nfNeedle = needle.match(/\bnf\s+(.+)/)?.[1] || '';
+
+    const recordMap = useMemo(() => Object.fromEntries(context.allRecords.map(item => [item.id,item])), [context.allRecords]);
+    const supplierNames = useMemo(() => uniq(context.allRecords.map(item => item.fornecedor)).filter(Boolean), [context.allRecords]);
+    const supplierHits = needle ? supplierNames.filter(name => normalize(name).includes(needle.replace(/^fornecedor\s+/,''))).slice(0,4) : [];
+    const nfRecords = nfNeedle ? uniq(context.payments.filter(payment => normalize(payment.numero_documento).includes(nfNeedle)).map(payment => payment.registro_id)).map(id => recordMap[id]).filter(Boolean).slice(0,5) : [];
+    const recordResults = needle ? context.allRecords.filter(record => normalize([record.codigo,record.fornecedor,record.titulo,record.referencia,record.numero_documento,...(record.tags||[])].join(' ')).includes(needle)).slice(0,7) : [];
+
+    const smart = [];
+    if (monthIndex >= 0) smart.push({ type:'smart', icon:wantsPending ? 'circle-dollar-sign' : 'calendar-range', label:`${wantsPending ? 'Pendentes de' : 'Abrir'} ${OFFICIAL_MONTHS[monthIndex][1]}`, detail:wantsPending ? 'Planilha já filtrada somente no que falta confirmar' : 'Ir direto para a competência', action:() => context.navigatePayments({ year:2026, month:monthIndex, pending:wantsPending }) });
+    if (/acima da previsao|superou a previsao|mais que previsto/.test(needle)) smart.push({ type:'smart', icon:'trending-up', label:'Fornecedores acima da previsão', detail:'Abrir Receita anual para comparar previsto x realizado', action:() => context.setView('receita') });
+    if (/abaixo da previsao|falta receber|menos que previsto/.test(needle)) smart.push({ type:'smart', icon:'trending-down', label:'Fornecedores abaixo da previsão', detail:'Abrir Receita anual e localizar diferenças', action:() => context.setView('receita') });
+    if (wantsConfirmed && monthIndex >= 0) smart.push({ type:'smart', icon:'badge-check', label:`Confirmados de ${OFFICIAL_MONTHS[monthIndex][1]}`, detail:'Abrir a competência completa', action:() => context.navigatePayments({ year:2026, month:monthIndex, pending:false }) });
+
+    const supplierResults = supplierHits.map(name => ({ type:'supplier', icon:'building-2', label:name, detail:'Abrir painel completo do fornecedor', action:() => context.openSupplier(name) }));
+    const nfResults = nfRecords.map(record => ({ type:'record', icon:'receipt-text', label:record.fornecedor || record.titulo, detail:`NF · ${record.numero_documento || 'documento localizado'}`, value:record.valor_acordado, action:() => context.openRecord(record) }));
+    const genericResults = recordResults.map(record => ({ type:'record', icon:category(record.categoria).icon, label:record.fornecedor || record.titulo, detail:`#${record.codigo || '—'} · ${record.titulo}`, value:record.valor_acordado, action:() => context.openRecord(record) }));
+    const dedupe = new Set();
+    const queryItems = [...smart,...supplierResults,...nfResults,...genericResults].filter(item => { const key=`${item.type}|${item.label}|${item.detail}`; if (dedupe.has(key)) return false; dedupe.add(key); return true; }).slice(0,10);
+
     const commands = [
-      { label:'Planilha de pagamentos', detail:'Abrir o mês e conferir linhas', icon:'table-2', action:() => context.setView('dashboard') },
+      { label:'Dashboard', detail:'Resumo executivo e pontos de atenção', icon:'layout-dashboard', action:() => context.setView('dashboard') },
+      { label:'Planilha de pagamentos', detail:'Abrir mês, editar e confirmar', icon:'table-2', action:() => context.setView('pagamentos') },
       { label:'Planejamento PMG', detail:'Matriz oficial mês a mês', icon:'target', action:() => context.setView('planejamento') },
-      { label:'Receita anual', detail:'Previsão x recebido por fornecedor', icon:'landmark', action:() => context.setView('receita') },
+      { label:'Receita anual', detail:'Previsão x confirmado por fornecedor', icon:'landmark', action:() => context.setView('receita') },
       { label:'Fornecedores', detail:'Histórico consolidado', icon:'building-2', action:() => context.setView('fornecedores') },
       { label:'Atualizar planilhas', detail:'Importar as fontes oficiais', icon:'file-up', action:() => context.setView('importar') },
-      { label:'Documentos', detail:'Caixa de entrada e conferência', icon:'scan-line', action:() => context.setView('documentos') },
     ];
+    const items = needle ? queryItems : commands.map(item => ({ ...item, type:'command' }));
+
     useEffect(() => { input.current?.focus(); document.body.classList.add('command-open'); return () => document.body.classList.remove('command-open'); }, []);
     useEffect(() => setActiveIndex(0), [query]);
-    useLucide([query, results.length]);
+    useLucide([query, items.length]);
     const run = action => { action?.(); onClose(); };
-    const totalItems = needle ? results.length : commands.length;
-    const activate = index => {
-      if (needle) return results[index] && run(() => context.openRecord(results[index]));
-      return commands[index] && run(commands[index].action);
-    };
     const handleKeys = event => {
-      if (event.key === 'ArrowDown') { event.preventDefault(); setActiveIndex(current => totalItems ? (current + 1) % totalItems : 0); }
-      if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex(current => totalItems ? (current - 1 + totalItems) % totalItems : 0); }
-      if (event.key === 'Enter' && totalItems) { event.preventDefault(); activate(activeIndex); }
+      if (event.key === 'ArrowDown') { event.preventDefault(); setActiveIndex(current => items.length ? (current + 1) % items.length : 0); }
+      if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex(current => items.length ? (current - 1 + items.length) % items.length : 0); }
+      if (event.key === 'Enter' && items[activeIndex]) { event.preventDefault(); run(items[activeIndex].action); }
     };
-    return html`<div className="command-overlay" onMouseDown=${event => event.target === event.currentTarget && onClose()}><section className="command-palette" role="dialog" aria-modal="true" aria-label="Busca inteligente"><div className="command-input"><span><${Icon} name="sparkles"/></span><input ref=${input} value=${query} onInput=${event => setQuery(event.target.value)} onKeyDown=${handleKeys} placeholder="Digite um fornecedor, ação ou comando..."/><kbd>ESC</kbd></div><div className="command-body">${needle ? html`<div className="command-group"><span className="command-label">Resultados</span>${results.length ? results.map((record, index) => html`<button className=${index === activeIndex ? 'active' : ''} onMouseEnter=${() => setActiveIndex(index)} onClick=${() => run(() => context.openRecord(record))}><span className=${`command-result-icon ${record.controle}`}><${Icon} name=${category(record.categoria).icon}/></span><div><strong>${record.fornecedor || record.titulo}</strong><small>#${record.codigo || '—'} · ${record.titulo}</small></div><em>${money(record.valor_acordado)}</em><${Icon} name="chevron-right"/></button>`) : html`<div className="command-empty"><${Icon} name="search-x"/><span>Nenhum acompanhamento encontrado.</span></div>`}</div>` : html`<div className="command-group"><span className="command-label">Ações rápidas</span>${commands.map((command, index) => html`<button className=${index === activeIndex ? 'active' : ''} onMouseEnter=${() => setActiveIndex(index)} onClick=${() => run(command.action)}><span className="command-result-icon"><${Icon} name=${command.icon}/></span><div><strong>${command.label}</strong><small>${command.detail}</small></div><span></span><${Icon} name="arrow-up-right"/></button>`)}</div>`}</div><footer><span><b>↑↓</b> navegar</span><span><b>Enter</b> abrir</span><span>PMG · Planilhas vivas</span></footer></section></div>`;
+    return html`<div className="command-overlay" onMouseDown=${event => event.target === event.currentTarget && onClose()}><section className="command-palette" role="dialog" aria-modal="true" aria-label="Busca inteligente"><div className="command-input"><span><${Icon} name="sparkles"/></span><input ref=${input} value=${query} onInput=${event => setQuery(event.target.value)} onKeyDown=${handleKeys} placeholder="Ex.: pendentes julho, NF 12846, Doceiro..."/><kbd>ESC</kbd></div><div className="command-body"><div className="command-group"><span className="command-label">${needle ? 'Resultados inteligentes' : 'Ações rápidas'}</span>${items.length ? items.map((item,index) => html`<button className=${index === activeIndex ? 'active' : ''} onMouseEnter=${() => setActiveIndex(index)} onClick=${() => run(item.action)}><span className=${`command-result-icon ${item.type}`}><${Icon} name=${item.icon || 'arrow-up-right'}/></span><div><strong>${item.label}</strong><small>${item.detail}</small></div>${item.value != null ? html`<em>${money(item.value)}</em>` : html`<span></span>`}<${Icon} name="chevron-right"/></button>`) : html`<div className="command-empty"><${Icon} name="search-x"/><span>Nada encontrado. Tente fornecedor, NF, mês ou “pendentes julho”.</span></div>`}</div></div><footer><span><b>↑↓</b> navegar</span><span><b>Enter</b> abrir</span><span>Busca por contexto, não só texto</span></footer></section></div>`;
   }
 
   function FilterBand({ control, setControl, year, setYear, years, count }) {
@@ -1002,16 +1098,31 @@
   }
 
   function EditableSheetCell({ value, type = 'text', onSave, placeholder = '—', className = '', title = 'Clique para editar', disabled = false }) {
-    const [editing, setEditing] = useState(false); const [draft, setDraft] = useState(''); const inputRef = useRef(null);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const [saveState, setSaveState] = useState('idle');
+    const inputRef = useRef(null); const timerRef = useRef(null);
+    useEffect(() => () => clearTimeout(timerRef.current), []);
     useEffect(() => { if (editing) { setDraft(type === 'money' ? String(Number(value || 0)).replace('.', ',') : String(value ?? '')); requestAnimationFrame(() => inputRef.current?.select?.()); } }, [editing]);
     const commit = async () => {
-      if (!editing) return; const parsed = type === 'money' ? parseMoney(draft) : String(draft || '').trim(); setEditing(false);
+      if (!editing) return;
+      const parsed = type === 'money' ? parseMoney(draft) : String(draft || '').trim();
       const before = type === 'money' ? Number(value || 0) : String(value ?? '').trim();
-      if (String(parsed) === String(before)) return; await onSave?.(parsed);
+      setEditing(false);
+      if (String(parsed) === String(before)) return;
+      setSaveState('saving');
+      try {
+        const ok = await onSave?.(parsed);
+        if (ok === false) throw new Error('Falha ao salvar');
+        setSaveState('saved'); clearTimeout(timerRef.current); timerRef.current=setTimeout(() => setSaveState('idle'), 1300);
+      } catch (_) {
+        setSaveState('error'); clearTimeout(timerRef.current); timerRef.current=setTimeout(() => setSaveState('idle'), 2200);
+      }
     };
     if (editing) return html`<span className=${`sheet-editing ${className}`}><input ref=${inputRef} inputMode=${type === 'money' ? 'decimal' : undefined} value=${draft} onInput=${event => setDraft(event.target.value)} onBlur=${commit} onKeyDown=${event => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setEditing(false); setDraft(String(value ?? '')); } }} /></span>`;
     const display = type === 'money' ? (Number(value || 0) ? money(value) : 'R$ -') : (String(value ?? '').trim() || placeholder);
-    return html`<button type="button" className=${`sheet-cell-editable ${className}`} onClick=${() => !disabled && setEditing(true)} title=${disabled ? '' : title} disabled=${disabled}><span>${display}</span>${!disabled && html`<${Icon} name="pencil"/>`}</button>`;
+    const stateIcon = saveState === 'saving' ? 'loader-circle' : saveState === 'saved' ? 'check' : saveState === 'error' ? 'triangle-alert' : 'pencil';
+    return html`<button type="button" className=${`sheet-cell-editable ${className} state-${saveState}`} onClick=${() => !disabled && setEditing(true)} title=${disabled ? '' : title} disabled=${disabled}><span>${display}</span>${!disabled && html`<span className="sheet-cell-state"><${Icon} name=${stateIcon}/><small>${saveState === 'saving' ? 'Salvando' : saveState === 'saved' ? 'Salvo' : saveState === 'error' ? 'Erro' : ''}</small></span>`}</button>`;
   }
 
   function SpreadsheetTitle({ kicker, title, subtitle, actions }) {
@@ -1022,10 +1133,8 @@
     const now = new Date();
     const year = context.allRecords.some(record => Number(record.ano_referencia) === 2026) ? 2026 : Math.max(...context.allRecords.map(record => Number(record.ano_referencia) || 0), now.getFullYear());
     const currentMonth = now.getFullYear() === year ? now.getMonth() : Math.max(0, ...context.allRecords.filter(record => Number(record.ano_referencia) === year).map(sourceMonthIndex));
-
     const forecastRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.controle === 'marcos' && record.natureza === 'receita' && record.fornecedor && hasTag(record,'previsão') && hasTag(record,'fornecedor') && record.status !== 'cancelado');
     const forecastRevenueBase = sum(forecastRecords, record => record.valor_acordado);
-
     const planningRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.natureza === 'despesa' && hasTag(record,'planejamento') && record.status !== 'cancelado');
     const planningBase = sum(planningRecords, record => record.valor_acordado);
     const indicators = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.natureza === 'indicador');
@@ -1036,150 +1145,105 @@
 
     const supplierRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && isSupplierRevenueRecord(record));
     const stages = supplierRecords.map(record => {
-      const monthIndex = sourceMonthIndex(record);
-      const payment = supplierRowPayment(context.payments, record, year, monthIndex);
-      const stage = supplierRevenueStage(payment, record, context.conferences, year, monthIndex);
-      const expected = Number(payment?.valor_previsto || record.valor_acordado || 0);
-      const value = stage === 'confirmado' ? supplierConfirmedValue(record, payment) : expected;
-      return { record, payment, monthIndex, stage, value, expected };
+      const monthIndex = sourceMonthIndex(record); const payment = supplierRowPayment(context.payments,record,year,monthIndex);
+      const stage = supplierRevenueStage(payment,record,context.conferences,year,monthIndex); const expected=Number(record.valor_acordado||0);
+      return { record,payment,monthIndex,stage,expected,value:stage==='confirmado'?supplierConfirmedValue(record,payment):0 };
     });
+    const confirmedRows=stages.filter(item=>item.stage==='confirmado'); const openRows=stages.filter(item=>item.stage==='a_receber');
+    const received=sum(confirmedRows,item=>item.value); const toReceiveAmount=sum(openRows,item=>item.expected); const realizationPct=forecastRevenue?received/forecastRevenue*100:0;
+    const difference=received-forecastRevenue;
+    const currentRows=stages.filter(item=>item.monthIndex===currentMonth); const currentConfirmed=currentRows.filter(item=>item.stage==='confirmado');
+    const currentConfirmedAmount=sum(currentConfirmed,item=>item.value); const currentOpen=currentRows.filter(item=>item.stage==='a_receber');
+    const pendingRecords=context.allRecords.filter(record=>Number(record.ano_referencia)===year&&record.categoria==='pendencia'&&!['concluido','cancelado'].includes(record.status));
 
-    const confirmedRows = stages.filter(item => item.stage === 'confirmado');
-    const openRows = stages.filter(item => item.stage === 'a_receber');
-    const received = sum(confirmedRows, item => item.value);
-    const toReceiveAmount = sum(openRows, item => item.expected);
-    const realizationPct = forecastRevenue ? Math.min(999, received / forecastRevenue * 100) : 0;
+    const confirmedBySupplier=new Map(); confirmedRows.forEach(({record,value})=>{ if(!record.fornecedor)return; const key=supplierKey(record.fornecedor); const row=confirmedBySupplier.get(key)||{name:record.fornecedor,value:0}; row.value+=value; confirmedBySupplier.set(key,row); });
+    const forecastBySupplier=new Map(); forecastRecords.forEach(record=>{ const key=supplierKey(record.fornecedor); const row=forecastBySupplier.get(key)||{name:record.fornecedor,forecast:0}; row.forecast+=Number(record.valor_acordado||0); forecastBySupplier.set(key,row); });
+    const supplierPerformance=[...forecastBySupplier.entries()].map(([key,row])=>({ ...row, confirmed:confirmedBySupplier.get(key)?.value||0, diff:(confirmedBySupplier.get(key)?.value||0)-row.forecast })).sort((a,b)=>a.diff-b.diff);
+    const belowSuppliers=supplierPerformance.filter(item=>item.diff<-.01); const aboveSuppliers=supplierPerformance.filter(item=>item.diff>.01);
+    const topSuppliers=[...confirmedBySupplier.values()].sort((a,b)=>b.value-a.value).slice(0,5); const maxSupplier=topSuppliers[0]?.value||1;
+    const monthly=OFFICIAL_MONTHS.map(([,label],index)=>{ const rows=stages.filter(item=>item.monthIndex===index); const amount=sum(rows,item=>item.expected); const confirmed=sum(rows.filter(item=>item.stage==='confirmado'),item=>item.value); const count=rows.length; const confirmedCount=rows.filter(item=>item.stage==='confirmado').length; const pct=amount?Math.min(100,confirmed/amount*100):0; const state=!count?'empty':confirmedCount===count?'complete':confirmedCount?'partial':'pending'; return {label,index,amount,confirmed,count,confirmedCount,pct,state,active:index===currentMonth}; });
 
-    const currentRows = stages.filter(item => item.monthIndex === currentMonth);
-    const currentConfirmed = currentRows.filter(item => item.stage === 'confirmado');
-    const currentConfirmedAmount = sum(currentConfirmed, item => item.value);
-    const currentOpen = currentRows.filter(item => item.stage === 'a_receber');
-    const pendingRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.categoria === 'pendencia' && !['concluido','cancelado'].includes(record.status));
-
-    const confirmedBySupplier = new Map();
-    confirmedRows.forEach(({ record, value }) => {
-      if (!record?.fornecedor) return;
-      const key = supplierKey(record.fornecedor);
-      const row = confirmedBySupplier.get(key) || { name:record.fornecedor, value:0 };
-      row.value += value;
-      confirmedBySupplier.set(key,row);
-    });
-    const topSuppliers = [...confirmedBySupplier.values()].sort((a,b) => b.value-a.value).slice(0,5);
-    const maxSupplier = topSuppliers[0]?.value || 1;
-
-    const monthly = OFFICIAL_MONTHS.map(([,label],index) => {
-      const monthRows = stages.filter(item => item.monthIndex === index);
-      const amount = sum(monthRows, item => item.expected);
-      const confirmed = sum(monthRows.filter(item => item.stage === 'confirmado'), item => item.value);
-      return { label, amount, confirmed, pct:amount ? Math.min(100, confirmed/amount*100) : 0, active:index === currentMonth };
-    });
-
-    useLucide([context.allRecords.length, context.payments.length, currentMonth, pendingRecords.length, openRows.length]);
-    return html`<section className="overview-dashboard">
-      <header className="overview-hero">
-        <div className="overview-hero-copy"><span className="overview-kicker"><i></i>Acompanhamento ${year}</span><h2>O ano inteiro em uma tela.</h2><p>Previsão vem do MKTG. Receita realizada nasce quando o pagamento é confirmado na Planilha de Pagamentos.</p><div className="overview-actions"><button className="button primary" onClick=${() => context.setView('pagamentos')}><${Icon} name="table-2"/>Abrir pagamentos</button><button className="button secondary" onClick=${() => context.setView('receita')}><${Icon} name="landmark"/>Abrir receita anual</button></div></div>
-        <div className="overview-balance"><small>Saldo orçamentário previsto</small><strong>${money(forecastBalance)}</strong><span className=${forecastBalance >= 0 ? 'positive' : 'negative'}><${Icon} name=${forecastBalance >= 0 ? 'trending-up' : 'trending-down'}/>${forecastBalance >= 0 ? 'Previsão positiva' : 'Atenção ao orçamento'}</span></div>
+    useLucide([context.allRecords.length,context.payments.length,currentMonth,pendingRecords.length,openRows.length]);
+    return html`<section className="overview-dashboard ux-dashboard-v2">
+      <header className="executive-hero">
+        <div className="executive-copy"><span className="overview-kicker"><i></i>Central de Acompanhamentos · ${year}</span><h2>Previsto, confirmado e o que exige ação.</h2><p>Uma leitura rápida do ano, com cada número abrindo exatamente a planilha que o explica.</p><div className="executive-actions"><button className="button primary" onClick=${() => context.navigatePayments({year,month:currentMonth})}><${Icon} name="table-2"/>Trabalhar ${OFFICIAL_MONTHS[currentMonth][1]}</button><button className="button secondary hero-secondary" onClick=${() => context.setView('receita')}><${Icon} name="landmark"/>Ver Receita anual</button></div></div>
+        <div className="executive-flow"><div><small>Receita prevista</small><strong>${money(forecastRevenue)}</strong></div><span><${Icon} name="arrow-right"/></span><div className="confirmed"><small>Confirmada</small><strong>${money(received)}</strong><em>${Math.round(realizationPct)}%</em></div><span><${Icon} name="arrow-right"/></span><div className=${difference>=0?'positive':'remaining'}><small>${difference>=0?'Acima da previsão':'Ainda falta'}</small><strong>${money(Math.abs(difference))}</strong></div><i><b style=${{width:`${Math.min(100,Math.max(0,realizationPct))}%`}}></b></i></div>
       </header>
 
-      <div className="overview-budget-grid">
-        <article className="overview-metric revenue"><span><${Icon} name="badge-dollar-sign"/></span><div><small>Receita prevista</small><strong>${money(forecastRevenue)}</strong><p>Previsão anual · MKTG 2026</p></div></article>
-        <article className="overview-metric received"><span><${Icon} name="circle-check-big"/></span><div><small>Receita confirmada</small><strong>${money(received)}</strong><p>Pagamentos confirmados · ${Math.round(realizationPct)}% da previsão</p></div><i style=${{width:`${Math.min(100,realizationPct)}%`}}></i></article>
-        <article className="overview-metric open"><span><${Icon} name="circle-dollar-sign"/></span><div><small>A confirmar</small><strong>${money(toReceiveAmount)}</strong><p>${openRows.length} pagamento(s) pendente(s)</p></div></article>
-        <article className="overview-metric investment"><span><${Icon} name="target"/></span><div><small>Investimento previsto</small><strong>${money(forecastInvestment)}</strong><p>Planejamento PMG</p></div></article>
-        <article className="overview-metric month"><span><${Icon} name="calendar-range"/></span><div><small>${OFFICIAL_MONTHS[currentMonth][1]} · confirmado</small><strong>${money(currentConfirmedAmount)}</strong><p>${currentConfirmed.length}/${currentRows.length} linhas completas</p></div></article>
+      <div className="executive-metrics">
+        <button onClick=${() => context.setView('receita')}><span className="metric-glyph green"><${Icon} name="badge-dollar-sign"/></span><div><small>PREVISÃO ANUAL</small><strong>${money(forecastRevenue)}</strong><p>MKTG 2026</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.setView('receita')}><span className="metric-glyph dark"><${Icon} name="circle-check-big"/></span><div><small>RECEITA CONFIRMADA</small><strong>${money(received)}</strong><p>${Math.round(realizationPct)}% do previsto</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.navigatePayments({year,month:currentMonth,pending:true})}><span className="metric-glyph amber"><${Icon} name="circle-dollar-sign"/></span><div><small>A CONFIRMAR</small><strong>${money(toReceiveAmount)}</strong><p>${openRows.length} linhas pendentes no ano</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.setView('planejamento')}><span className="metric-glyph violet"><${Icon} name="target"/></span><div><small>INVESTIMENTO PREVISTO</small><strong>${money(forecastInvestment)}</strong><p>Saldo previsto ${money(forecastBalance)}</p></div><${Icon} name="arrow-up-right"/></button>
       </div>
 
-      <div className="overview-layout">
-        <article className="overview-panel overview-evolution"><div className="overview-panel-head"><div><span>EVOLUÇÃO</span><h3>Receita confirmada por mês</h3><p>2025 x 2026. Em 2026 entra quando o pagamento é confirmado.</p></div><button onClick=${() => context.setView('receita')}>Ver matriz <${Icon} name="arrow-up-right"/></button></div><${RevenueComparisonChart} context=${context}/></article>
-        <article className="overview-panel overview-attention"><div className="overview-panel-head"><div><span>AGORA</span><h3>O que pede atenção</h3><p>Uma regra simples: confirmado entra na Receita; pendente continua a receber.</p></div></div>
-          <button className=${openRows.length ? 'attention-item warning' : 'attention-item ok'} onClick=${() => context.setView('pagamentos')}><span><${Icon} name=${openRows.length ? 'circle-dollar-sign' : 'circle-check'}/></span><div><strong>${openRows.length} pagamento(s) pendente(s)</strong><small>${openRows.length ? `${money(toReceiveAmount)} ainda em aberto` : 'Nenhum pagamento pendente'}</small></div><${Icon} name="chevron-right"/></button>
-          <button className=${pendingRecords.length ? 'attention-item danger' : 'attention-item ok'} onClick=${() => context.setView('pagamentos')}><span><${Icon} name=${pendingRecords.length ? 'triangle-alert' : 'circle-check'}/></span><div><strong>${pendingRecords.length} pendência(s) aberta(s)</strong><small>${pendingRecords.length ? 'Pendências registradas nas competências' : 'Nenhuma pendência aberta'}</small></div><${Icon} name="chevron-right"/></button>
+      <div className="dashboard-grid-v2">
+        <article className="overview-panel overview-evolution"><div className="overview-panel-head"><div><span>EVOLUÇÃO</span><h3>Receita confirmada por mês</h3><p>Clique no gráfico para abrir a competência.</p></div><button onClick=${() => context.setView('receita')}>Matriz anual <${Icon} name="arrow-up-right"/></button></div><${RevenueComparisonChart} context=${context}/></article>
+        <article className="overview-panel attention-v2"><div className="overview-panel-head"><div><span>ATENÇÃO AGORA</span><h3>O que vale abrir primeiro</h3><p>Sem KPI inventado. Só coisa que pede ação.</p></div></div>
+          <button className=${currentOpen.length?'attention-item warning':'attention-item ok'} onClick=${() => context.navigatePayments({year,month:currentMonth,pending:true})}><span><${Icon} name=${currentOpen.length?'circle-dollar-sign':'circle-check'}/></span><div><strong>${currentOpen.length} pendente(s) em ${OFFICIAL_MONTHS[currentMonth][1]}</strong><small>${currentOpen.length?`${money(sum(currentOpen,item=>item.expected))} aguardando confirmação`:'Competência em dia'}</small></div><${Icon} name="chevron-right"/></button>
+          <button className=${pendingRecords.length?'attention-item danger':'attention-item ok'} onClick=${() => context.navigatePayments({year,month:currentMonth})}><span><${Icon} name=${pendingRecords.length?'triangle-alert':'circle-check'}/></span><div><strong>${pendingRecords.length} pendência(s) registradas</strong><small>${pendingRecords.length?'Observações abertas nas planilhas':'Nenhuma pendência aberta'}</small></div><${Icon} name="chevron-right"/></button>
+          <button className=${belowSuppliers.length?'attention-item neutral':'attention-item ok'} onClick=${() => context.setView('receita')}><span><${Icon} name="trending-down"/></span><div><strong>${belowSuppliers.length} fornecedor(es) abaixo da previsão</strong><small>${aboveSuppliers.length} já estão acima do previsto</small></div><${Icon} name="chevron-right"/></button>
         </article>
 
-        <article className="overview-panel overview-months"><div className="overview-panel-head"><div><span>ANO</span><h3>Ritmo das competências</h3><p>Percentual já transformado em Receita confirmada.</p></div></div><div className="month-health-grid">${monthly.map(item => html`<button className=${item.active ? 'active' : ''} onClick=${() => context.setView('pagamentos')} title=${item.amount ? `${money(item.confirmed)} confirmado de ${money(item.amount)}` : ''}><span>${item.label.slice(0,3)}</span><strong>${item.amount ? `${Math.round(item.pct)}%` : '—'}</strong><i><em style=${{width:`${item.pct}%`}}></em></i><small>${item.amount ? `${compactMoney(item.confirmed)} conf.` : 'sem dados'}</small></button>`)}</div></article>
-        <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Ranking do ano apenas com valores validados.</p></div><button onClick=${() => context.setView('fornecedores')}>Ver todos <${Icon} name="arrow-up-right"/></button></div><div className="top-supplier-list">${topSuppliers.length ? topSuppliers.map((item,index) => html`<div><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small></div>`) : html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
+        <article className="overview-panel annual-timeline-panel"><div className="overview-panel-head"><div><span>COMPETÊNCIAS</span><h3>Janeiro → Dezembro</h3><p>Estado e confirmação do ano inteiro sem trocar de zoom.</p></div></div><div className="annual-timeline">${monthly.map(item=>html`<button className=${`${item.state} ${item.active?'active':''}`} onClick=${() => context.navigatePayments({year,month:item.index})} title=${item.amount?`${money(item.confirmed)} confirmado de ${money(item.amount)}`:'Sem dados'}><span><b>${item.label.slice(0,3)}</b><em>${item.active?'Agora':item.state==='complete'?'Fechado':item.state==='partial'?'Parcial':item.state==='pending'?'Pendente':'—'}</em></span><strong>${item.amount?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.count?`${item.confirmedCount}/${item.count} linhas`:'sem dados'}</small></button>`)}</div></article>
+        <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Clique para abrir o painel lateral do parceiro.</p></div><button onClick=${() => context.setView('fornecedores')}>Ver todos <${Icon} name="arrow-up-right"/></button></div><div className="top-supplier-list interactive">${topSuppliers.length?topSuppliers.map((item,index)=>html`<button onClick=${() => context.openSupplier(item.name)}><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small><${Icon} name="chevron-right"/></button>`):html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
       </div>
-
-      <div className="overview-shortcuts"><button onClick=${() => context.setView('pagamentos')}><span><${Icon} name="table-2"/></span><div><strong>Pagamentos</strong><small>Confirmação, NF e pendências</small></div><${Icon} name="arrow-right"/></button><button onClick=${() => context.setView('planejamento')}><span><${Icon} name="target"/></span><div><strong>Planejamento</strong><small>Matriz mensal das 15 frentes</small></div><${Icon} name="arrow-right"/></button><button onClick=${() => context.setView('receita')}><span><${Icon} name="landmark"/></span><div><strong>Receita anual</strong><small>Previsão x receita confirmada</small></div><${Icon} name="arrow-right"/></button></div>
+      <div className="overview-shortcuts"><button onClick=${() => context.navigatePayments({year,month:currentMonth})}><span><${Icon} name="table-2"/></span><div><strong>Pagamentos</strong><small>Editar e confirmar em um clique</small></div><${Icon} name="arrow-right"/></button><button onClick=${() => context.setView('planejamento')}><span><${Icon} name="target"/></span><div><strong>Planejamento</strong><small>Matriz mensal das 15 frentes</small></div><${Icon} name="arrow-right"/></button><button onClick=${() => context.setView('receita')}><span><${Icon} name="landmark"/></span><div><strong>Receita anual</strong><small>Previsão x confirmado</small></div><${Icon} name="arrow-right"/></button></div>
     </section>`;
   }
 
   function PaymentsView({ context }) {
-    const supplierRecords = useMemo(() => context.allRecords.filter(record => record.controle === 'marketing' && record.natureza === 'receita' && record.status !== 'cancelado' && record.categoria !== 'pendencia' && hasTag(record, 'fornecedores')), [context.allRecords]);
-    const yearOptions = useMemo(() => uniq(supplierRecords.map(record => Number(record.ano_referencia))).filter(Boolean).sort((a,b) => b-a), [supplierRecords]);
-    const [sheetYear, setSheetYear] = useState(yearOptions.includes(2026) ? 2026 : (yearOptions[0] || 2026));
-    const availableMonths = useMemo(() => supplierRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear)).map(sourceMonthIndex), [supplierRecords, sheetYear]);
-    const latestMonth = availableMonths.length ? Math.max(...availableMonths) : 0;
-    const [sheetMonth, setSheetMonth] = useState(latestMonth);
-    const [onlyPending, setOnlyPending] = useState(false);
-    useEffect(() => { const months = supplierRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear)).map(sourceMonthIndex); setSheetMonth(months.length ? Math.max(...months) : 0); }, [sheetYear]);
+    const supplierRecords=useMemo(()=>context.allRecords.filter(record=>record.controle==='marketing'&&record.natureza==='receita'&&record.status!=='cancelado'&&record.categoria!=='pendencia'&&hasTag(record,'fornecedores')),[context.allRecords]);
+    const yearOptions=useMemo(()=>uniq(supplierRecords.map(record=>Number(record.ano_referencia))).filter(Boolean).sort((a,b)=>b-a),[supplierRecords]);
+    const defaultYear=yearOptions.includes(savedNumber('pmg_payment_year',2026))?savedNumber('pmg_payment_year',2026):(yearOptions.includes(2026)?2026:(yearOptions[0]||2026));
+    const [sheetYear,setSheetYear]=useState(defaultYear);
+    const [sheetMonth,setSheetMonth]=useState(Math.min(11,Math.max(0,savedNumber('pmg_payment_month',new Date().getMonth()))));
+    const [onlyPending,setOnlyPending]=useState(localStorage.getItem('pmg_payment_pending')==='1');
+    const [supplierDrill,setSupplierDrill]=useState(localStorage.getItem('pmg_payment_supplier')||'');
+    const [compactMode,setCompactMode]=useState(()=>localStorage.getItem('pmg_sheet_density')==='compact');
+    const [selectedRows,setSelectedRows]=useState(()=>new Set());
+    const jumpRef=useRef(0);
+    const availableMonths=useMemo(()=>supplierRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)).map(sourceMonthIndex),[supplierRecords,sheetYear]);
+    const toggleSelected=id=>setSelectedRows(current=>{const next=new Set(current);next.has(id)?next.delete(id):next.add(id);return next;});
+    const clearSelected=()=>setSelectedRows(new Set());
+    const toggleDensity=()=>setCompactMode(value=>{const next=!value;localStorage.setItem('pmg_sheet_density',next?'compact':'comfortable');return next;});
 
-    const currentKey = monthKey(sheetYear, sheetMonth); const needle = normalize(context.search);
-    const detailMap = useMemo(() => {
-      const map = new Map(); context.allRecords.filter(record => record.controle === 'marketing' && record.natureza === 'despesa' && record.status !== 'cancelado' && hasTag(record, 'centro-custo')).forEach(record => {
-        map.set([record.ano_referencia, record.origem_importacao || '', record.linha_origem || '', supplierKey(record.fornecedor)].join('|'), record);
-      }); return map;
-    }, [context.allRecords]);
-    let rows = supplierRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear) && sourceMonthIndex(record) === sheetMonth).map(record => {
-      const payment = supplierRowPayment(context.payments, record, sheetYear, sheetMonth);
-      const detailRecord = detailMap.get([record.ano_referencia, record.origem_importacao || '', record.linha_origem || '', supplierKey(record.fornecedor)].join('|')) || null;
-      const detailPayment = detailRecord ? monthPayment(context.payments, detailRecord.id, sheetYear, sheetMonth) : null;
-      return { record, payment, detailRecord, detailPayment };
-    }).sort((a,b) => Number(a.record.linha_origem || 9999) - Number(b.record.linha_origem || 9999) || String(a.record.fornecedor).localeCompare(String(b.record.fornecedor),'pt-BR'));
-    if (needle) rows = rows.filter(row => normalize([row.record.fornecedor,row.record.referencia,row.record.numero_documento,row.record.titulo].join(' ')).includes(needle));
-    if (onlyPending) rows = rows.filter(row => !supplierRowConfirmed(row.record, row.payment));
+    useEffect(()=>{ localStorage.setItem('pmg_payment_year',String(sheetYear)); },[sheetYear]);
+    useEffect(()=>{ localStorage.setItem('pmg_payment_month',String(sheetMonth)); clearSelected(); },[sheetMonth]);
+    useEffect(()=>{ localStorage.setItem('pmg_payment_pending',onlyPending?'1':'0'); },[onlyPending]);
+    useEffect(()=>{ supplierDrill?localStorage.setItem('pmg_payment_supplier',supplierDrill):localStorage.removeItem('pmg_payment_supplier'); },[supplierDrill]);
+    useEffect(()=>{ const jump=context.paymentJump; if(!jump?.token||jump.token===jumpRef.current)return; jumpRef.current=jump.token; if(Number.isFinite(Number(jump.year)))setSheetYear(Number(jump.year)); if(Number.isFinite(Number(jump.month)))setSheetMonth(Math.max(0,Math.min(11,Number(jump.month)))); setOnlyPending(Boolean(jump.pending)); setSupplierDrill(jump.supplier||''); clearSelected(); },[context.paymentJump]);
 
-    const monthTotal = sum(rows, row => row.record.valor_acordado);
-    const confirmedRows = rows.filter(row => supplierRowConfirmed(row.record, row.payment));
-    const confirmedCount = confirmedRows.length;
-    const confirmedAmount = sum(confirmedRows, row => supplierConfirmedValue(row.record, row.payment));
-    const pendingAmount = Math.max(0, monthTotal - confirmedAmount);
-    const pendingRecords = context.allRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear) && record.categoria === 'pendencia' && record.status !== 'cancelado' && (!record.data_inicio || String(record.data_inicio).startsWith(currentKey)));
-    const monthLabelLong = OFFICIAL_MONTHS[sheetMonth]?.[1] || '';
+    const monthSnapshots=useMemo(()=>OFFICIAL_MONTHS.map(([,label],index)=>{ const records=supplierRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&sourceMonthIndex(record)===index); const total=sum(records,record=>record.valor_acordado); const confirmedRecords=records.filter(record=>supplierRowConfirmed(record,supplierRowPayment(context.payments,record,sheetYear,index))); const confirmed=sum(confirmedRecords,record=>supplierConfirmedValue(record,supplierRowPayment(context.payments,record,sheetYear,index))); const state=!records.length?'empty':confirmedRecords.length===records.length?'complete':confirmedRecords.length?'partial':'pending'; return {index,label,total,confirmed,count:records.length,confirmedCount:confirmedRecords.length,pct:total?Math.min(100,confirmed/total*100):0,state}; }),[supplierRecords,context.payments,sheetYear]);
+    const currentKey=monthKey(sheetYear,sheetMonth); const needle=normalize(context.search);
+    let rows=supplierRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&sourceMonthIndex(record)===sheetMonth).map(record=>({record,payment:supplierRowPayment(context.payments,record,sheetYear,sheetMonth)})).sort((a,b)=>Number(a.record.linha_origem||9999)-Number(b.record.linha_origem||9999)||String(a.record.fornecedor).localeCompare(String(b.record.fornecedor),'pt-BR'));
+    if(needle)rows=rows.filter(row=>normalize([row.record.fornecedor,row.record.referencia,row.record.numero_documento,row.payment?.numero_documento,row.record.titulo].join(' ')).includes(needle));
+    if(supplierDrill)rows=rows.filter(row=>supplierKey(row.record.fornecedor)===supplierKey(supplierDrill));
+    if(onlyPending)rows=rows.filter(row=>!supplierRowConfirmed(row.record,row.payment));
 
-    const addRow = () => context.newRecord({ controle:'marketing', ano_referencia:sheetYear, natureza:'receita', impacta_totais:true, categoria:'cota_anual', referencia:'COTA',
-      titulo:`COTA — Novo fornecedor — ${monthLabelLong} ${sheetYear}`, status:'concluido', prioridade:'normal', data_inicio:officialMonthStart(sheetYear, sheetMonth), data_fim:officialMonthEnd(sheetYear, sheetMonth),
-      centro_custo:'Cota', tags:['marketing','fornecedores',String(sheetYear),monthLabelLong.toLocaleLowerCase('pt-BR'),'cota'] });
-    useLucide([sheetYear, sheetMonth, rows.length, onlyPending, context.saving]);
+    const monthTotal=sum(rows,row=>row.record.valor_acordado); const confirmedRows=rows.filter(row=>supplierRowConfirmed(row.record,row.payment)); const confirmedCount=confirmedRows.length; const confirmedAmount=sum(confirmedRows,row=>supplierConfirmedValue(row.record,row.payment)); const pendingAmount=Math.max(0,monthTotal-confirmedAmount);
+    const pendingRecords=context.allRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&record.categoria==='pendencia'&&record.status!=='cancelado'&&(!record.data_inicio||String(record.data_inicio).startsWith(currentKey)));
+    const monthLabelLong=OFFICIAL_MONTHS[sheetMonth]?.[1]||'';
+    const addRow=()=>context.newRecord({controle:'marketing',ano_referencia:sheetYear,natureza:'receita',impacta_totais:true,categoria:'cota_anual',referencia:'COTA',titulo:`COTA — Novo fornecedor — ${monthLabelLong} ${sheetYear}`,status:'concluido',prioridade:'normal',data_inicio:officialMonthStart(sheetYear,sheetMonth),data_fim:officialMonthEnd(sheetYear,sheetMonth),centro_custo:'Cota',tags:['marketing','fornecedores',String(sheetYear),monthLabelLong.toLocaleLowerCase('pt-BR'),'cota']});
+    const chosenRows=rows.filter(row=>selectedRows.has(row.record.id));
+    const setBulkNF=async()=>{ const value=prompt(`NF/documento para ${chosenRows.length} linha(s):`); if(value) { await context.quickBulkNF(chosenRows,value); clearSelected(); } };
+    const archiveBulk=async()=>{ if(!confirm(`Arquivar ${chosenRows.length} linha(s) selecionada(s)?`))return; await context.quickBulkArchive(chosenRows.map(row=>row.record)); clearSelected(); };
+    useLucide([sheetYear,sheetMonth,rows.length,onlyPending,context.saving,selectedRows.size,supplierDrill]);
 
-    return html`<section className="spreadsheet-view payment-sheet-view">
-      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="Acompanhamento mensal em tela cheia. Um valor por linha, uma confirmação e nenhuma etapa duplicada." actions=${html`
-        <label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e => setSheetYear(Number(e.target.value))}>${yearOptions.map(value => html`<option value=${value}>${value}</option>`)}</select></label>
-        <button className=${`sheet-filter-button ${onlyPending ? 'active' : ''}`} onClick=${() => setOnlyPending(value => !value)}><${Icon} name="filter"/>${onlyPending ? 'Só pendentes' : 'Filtrar pendentes'}</button>
-        <button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}/>
+    return html`<section className=${`spreadsheet-view payment-sheet-view ux-sheet-v2 ${compactMode?'density-compact':'density-comfortable'}`}>
+      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="Edite na célula, confirme com um clique e use seleção em lote quando o mês apertar." actions=${html`<label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e=>setSheetYear(Number(e.target.value))}>${yearOptions.map(value=>html`<option value=${value}>${value}</option>`)}</select></label><button className=${`sheet-filter-button ${onlyPending?'active':''}`} onClick=${()=>setOnlyPending(value=>!value)}><${Icon} name="filter"/>${onlyPending?'Só pendentes':'Pendentes'}</button><button className="sheet-density-toggle" onClick=${toggleDensity}><${Icon} name=${compactMode?'maximize-2':'minimize-2'}/>${compactMode?'Confortável':'Compacta'}</button><button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}/>
 
-      <div className="workbook-tabs" role="tablist">${OFFICIAL_MONTHS.map(([,label],index) => {
-        const total = sum(supplierRecords.filter(record => Number(record.ano_referencia) === Number(sheetYear) && sourceMonthIndex(record) === index), record => record.valor_acordado);
-        const exists = availableMonths.includes(index);
-        const isNow = Number(sheetYear) === new Date().getFullYear() && index === new Date().getMonth();
-        return html`<button role="tab" aria-selected=${sheetMonth === index} className=${`${sheetMonth === index ? 'active' : ''} ${exists ? '' : 'empty'} ${isNow ? 'is-now' : ''}`} onClick=${() => setSheetMonth(index)}><span>${label}${isNow && html`<em>Atual</em>`}</span><small>${total ? compactMoney(total) : 'sem dados'}</small></button>`;
-      })}</div>
+      <div className="workbook-tabs annual-workbook-tabs" role="tablist">${monthSnapshots.map(item=>{const isNow=Number(sheetYear)===new Date().getFullYear()&&item.index===new Date().getMonth();return html`<button role="tab" aria-selected=${sheetMonth===item.index} className=${`${sheetMonth===item.index?'active':''} ${item.state} ${isNow?'is-now':''}`} onClick=${()=>setSheetMonth(item.index)}><span>${item.label}${isNow&&html`<em>Atual</em>`}</span><strong>${item.total?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.total?`${compactMoney(item.confirmed)} / ${compactMoney(item.total)}`:'sem dados'}</small></button>`;})}</div>
 
-      <div className="sheet-stats">
-        <span className="stat-total"><small>Total do mês</small><strong>${money(monthTotal)}</strong><i></i></span>
-        <span className="stat-confirmed-value"><small>Confirmado</small><strong>${money(confirmedAmount)}</strong><i></i></span>
-        <span className="stat-pending-value"><small>Pendente</small><strong>${money(pendingAmount)}</strong><i></i></span>
-        <span className=${`stat-signed ${confirmedCount === rows.length && rows.length ? 'ok' : ''}`} style=${{ '--stat-progress':`${rows.length ? Math.round((confirmedCount / rows.length) * 100) : 0}%` }}><small>Pagamentos confirmados</small><strong>${confirmedCount}/${rows.length}</strong><i></i></span>
-      </div>
-      <div className="sheet-ux-hint"><span><${Icon} name="mouse-pointer-click"/>Clique numa célula para editar</span><span><${Icon} name="badge-check"/>Confirmar ou desfazer em 1 clique</span><span><${Icon} name="corner-down-left"/>Enter salva · Esc cancela</span></div>
+      <div className="sheet-command-row"><div className="sheet-stats compact-stats"><span className="stat-total"><small>Total</small><strong>${money(monthTotal)}</strong></span><span className="stat-confirmed-value"><small>Confirmado</small><strong>${money(confirmedAmount)}</strong></span><span className="stat-pending-value"><small>Pendente</small><strong>${money(pendingAmount)}</strong></span><span className=${`stat-signed ${confirmedCount===rows.length&&rows.length?'ok':''}`}><small>Status</small><strong>${confirmedCount}/${rows.length}</strong></span></div><div className="active-sheet-filters">${supplierDrill&&html`<button onClick=${()=>setSupplierDrill('')}><${Icon} name="building-2"/>${supplierDrill}<${Icon} name="x"/></button>`}${onlyPending&&html`<button onClick=${()=>setOnlyPending(false)}><${Icon} name="filter"/>Só pendentes<${Icon} name="x"/></button>`}</div></div>
 
-      <article className="spreadsheet-card"><div className="spreadsheet-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>NF</th><th>STATUS</th><th></th></tr></thead><tbody>
-        ${rows.length ? rows.map((row,index) => {
-          const isPaid = supplierRowConfirmed(row.record, row.payment);
-          return html`<tr key=${row.record.id} className=${isPaid ? 'signed-row' : ''} style=${{ '--row-delay':`${Math.min(index,35)*18}ms` }}>
-            <td><${EditableSheetCell} value=${row.record.referencia || 'COTA'} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td>
-            <td className="supplier-sheet-cell"><${EditableSheetCell} value=${row.record.fornecedor || ''} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/></td>
-            <td className="money-col unified-value-cell"><${EditableSheetCell} type="money" value=${row.record.valor_acordado} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td>
-            <td><${EditableSheetCell} value=${row.payment?.numero_documento || row.record.numero_documento || ''} onSave=${value => context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td>
-            <td><button disabled=${context.saving} className=${`one-click-status ${isPaid ? 'paid' : 'open'} ${context.saving ? 'busy' : ''}`} onClick=${() => context.quickTogglePaid(row.payment,row.record)} title=${isPaid ? 'Clique para desfazer a confirmação' : 'Confirmar pagamento e lançar na Receita Anual'}><${Icon} name=${context.saving ? 'loader-circle' : (isPaid ? 'badge-check' : 'circle-dollar-sign')}/><span>${isPaid ? 'Confirmado' : 'Confirmar pagamento'}</span></button></td>
-            <td><button className="sheet-open-row" onClick=${() => context.openRecord(row.record)} title="Abrir detalhes"><${Icon} name="more-horizontal"/></button></td>
-          </tr>`;
-        }) : html`<tr className="sheet-empty-row"><td colSpan="6"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>Esta competência ainda está vazia. Você pode criar a primeira linha sem esperar uma nova planilha cair do céu.</p><button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button></div></td></tr>`}
-      </tbody><tfoot><tr><th colSpan="2">TOTAL</th><th className="money-col">${money(monthTotal)}</th><th></th><th>${confirmedCount} confirmados</th><th></th></tr></tfoot></table></div></article>
+      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas visíveis" checked=${rows.length>0&&rows.every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>NF</th><th>STATUS</th><th></th></tr></thead><tbody>
+        ${rows.length?rows.map((row,index)=>{const isPaid=supplierRowConfirmed(row.record,row.payment);return html`<tr key=${row.record.id} className=${`${isPaid?'signed-row':''} ${selectedRows.has(row.record.id)?'selected-row':''}`} style=${{'--row-delay':`${Math.min(index,35)*12}ms`}}><td className="select-col"><input type="checkbox" checked=${selectedRows.has(row.record.id)} onChange=${()=>toggleSelected(row.record.id)}/></td><td><${EditableSheetCell} value=${row.record.referencia||'COTA'} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td><td className="supplier-sheet-cell"><div className="supplier-edit-wrap"><${EditableSheetCell} value=${row.record.fornecedor||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/><button className="supplier-peek" title="Ver fornecedor" onClick=${()=>context.openSupplier(row.record.fornecedor)}><${Icon} name="panel-right-open"/></button></div></td><td className="money-col unified-value-cell"><${EditableSheetCell} type="money" value=${row.record.valor_acordado} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td><td><${EditableSheetCell} value=${row.payment?.numero_documento||row.record.numero_documento||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td><td><button disabled=${context.saving} className=${`one-click-status status-simple ${isPaid?'paid':'open'}`} onClick=${()=>context.quickTogglePaid(row.payment,row.record)} title=${isPaid?'Clique para desfazer':'Confirmar e lançar na Receita'}><span className="status-dot">${isPaid?'✓':'○'}</span><span>${isPaid?'Confirmado':'Pendente'}</span></button></td><td><button className="sheet-open-row" onClick=${()=>context.openRecord(row.record)} title="Mais detalhes"><${Icon} name="more-horizontal"/></button></td></tr>`;}) : html`<tr className="sheet-empty-row"><td colSpan="7"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>${supplierDrill?'Retire o filtro do fornecedor ou escolha outro mês.':'Crie a primeira linha diretamente por aqui.'}</p><button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button></div></td></tr>`}
+      </tbody><tfoot><tr><th></th><th colSpan="2">TOTAL</th><th className="money-col">${money(monthTotal)}</th><th></th><th>${confirmedCount} confirmados</th><th></th></tr></tfoot></table></div></article>
 
-      <section className="sheet-pendencies"><div className="sheet-section-heading"><div><span>PENDÊNCIAS</span><h3>${monthLabelLong} ${sheetYear}</h3></div><button onClick=${() => context.newRecord({ controle:'marketing', ano_referencia:sheetYear, natureza:'receita', categoria:'pendencia', titulo:`Pendência — ${monthLabelLong} ${sheetYear}`, referencia:'Observação da planilha mensal', status:'negociacao', prioridade:'alta', data_inicio:officialMonthEnd(sheetYear,sheetMonth), tags:['marketing','pendência',String(sheetYear),monthLabelLong.toLocaleLowerCase('pt-BR')] })}><${Icon} name="plus"/>Adicionar pendência</button></div>
-        <div className="pendency-sheet-list">${pendingRecords.length ? pendingRecords.map(record => html`<article className=${record.status === 'concluido' ? 'resolved' : ''}><span className="pendency-mark"><${Icon} name=${record.status === 'concluido' ? 'circle-check' : 'triangle-alert'}/></span><div><${EditableSheetCell} value=${record.descricao || record.observacoes || record.titulo} onSave=${value => context.quickUpdateRecord(record,{ descricao:value, observacoes:value })}/><small>${record.fornecedor || 'Pendência geral'}${record.valor_acordado ? ` · ${money(record.valor_acordado)}` : ''}</small></div><button className="resolve-one-click" onClick=${() => context.quickUpdateRecord(record,{ status:record.status === 'concluido' ? 'negociacao' : 'concluido' }, record.status === 'concluido' ? 'Pendência reaberta.' : 'Pendência resolvida.')}><${Icon} name="check"/>${record.status === 'concluido' ? 'Reabrir' : 'Resolver'}</button></article>`) : html`<div className="pendency-empty"><${Icon} name="circle-check-big"/><span>Nenhuma pendência registrada nesta competência.</span></div>`}</div>
-      </section>
+      ${selectedRows.size>0&&html`<div className="sheet-selection-bar bulk-actions-v2"><div><strong>${selectedRows.size}</strong><span>${selectedRows.size===1?'linha selecionada':'linhas selecionadas'}</span></div><button onClick=${async()=>{const open=chosenRows.filter(row=>!supplierRowConfirmed(row.record,row.payment));await context.quickBulkConfirm(open,true);clearSelected();}} disabled=${context.saving}><${Icon} name="badge-check"/>Confirmar pendentes</button><button onClick=${setBulkNF} disabled=${context.saving}><${Icon} name="receipt-text"/>Definir NF</button><button className="bulk-archive" onClick=${archiveBulk} disabled=${context.saving}><${Icon} name="archive"/>Arquivar</button><button className="selection-clear" onClick=${clearSelected}><${Icon} name="x"/>Limpar</button></div>`}
+
+      <section className="sheet-pendencies"><div className="sheet-section-heading"><div><span>PENDÊNCIAS</span><h3>${monthLabelLong} ${sheetYear}</h3></div><button onClick=${()=>context.newRecord({controle:'marketing',ano_referencia:sheetYear,natureza:'receita',categoria:'pendencia',titulo:`Pendência — ${monthLabelLong} ${sheetYear}`,referencia:'Observação da planilha mensal',status:'negociacao',prioridade:'alta',data_inicio:officialMonthEnd(sheetYear,sheetMonth),tags:['marketing','pendência',String(sheetYear),monthLabelLong.toLocaleLowerCase('pt-BR')]})}><${Icon} name="plus"/>Adicionar pendência</button></div><div className="pendency-sheet-list">${pendingRecords.length?pendingRecords.map(record=>html`<article className=${record.status==='concluido'?'resolved':''}><span className="pendency-mark"><${Icon} name=${record.status==='concluido'?'circle-check':'triangle-alert'}/></span><div><${EditableSheetCell} value=${record.descricao||record.observacoes||record.titulo} onSave=${value=>context.quickUpdateRecord(record,{descricao:value,observacoes:value})}/><small>${record.fornecedor||'Pendência geral'}${record.valor_acordado?` · ${money(record.valor_acordado)}`:''}</small></div><button className="resolve-one-click" onClick=${()=>context.quickUpdateRecord(record,{status:record.status==='concluido'?'negociacao':'concluido'},record.status==='concluido'?'Pendência reaberta.':'Pendência resolvida.')}><${Icon} name="check"/>${record.status==='concluido'?'Reabrir':'Resolver'}</button></article>`):html`<div className="pendency-empty"><${Icon} name="circle-check-big"/><span>Nenhuma pendência nesta competência.</span></div>`}</div></section>
     </section>`;
   }
 
@@ -1293,7 +1357,7 @@
       chartRef.current = new Chart(canvas.current, { type:'line', data:{ labels:OFFICIAL_MONTHS.map(([, label]) => label.slice(0,3)), datasets:[
         { label:'2025', data:series[2025], borderColor:'#9ca9a0', backgroundColor:'rgba(156,169,160,.08)', tension:.32, fill:false, pointRadius:3, borderWidth:2 },
         { label:'2026', data:series[2026], borderColor:'#2a7e4e', backgroundColor:'rgba(42,126,78,.10)', tension:.32, fill:true, pointRadius:3, borderWidth:2.5 },
-      ]}, options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false }, plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:7, font:{ family:'Inter', size:10 } } }, tooltip:{ callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } }, scales:{ x:{ grid:{ display:false }, border:{ display:false } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.06)' }, ticks:{ callback:value => compactMoney(value) } } } } });
+      ]}, options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false }, onClick:(_,elements) => { const point=elements?.[0]; if(point) context.navigatePayments({ year:2026, month:point.index }); }, onHover:(event,elements) => { if(event?.native?.target) event.native.target.style.cursor = elements?.length ? 'pointer' : 'default'; }, plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:7, font:{ family:'Inter', size:10 } } }, tooltip:{ callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } }, scales:{ x:{ grid:{ display:false }, border:{ display:false } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.06)' }, ticks:{ callback:value => compactMoney(value) } } } } });
       return () => chartRef.current?.destroy();
     }, [series]);
     return html`<div className="revenue-chart"><canvas ref=${canvas}></canvas></div>`;
@@ -1356,14 +1420,14 @@
       <section className="budget-strip"><div className="budget-title"><span>PREVISÃO ORÇAMENTÁRIA</span><small>Visão anual antes da matriz</small></div><div className="budget-cell investment"><span>PREV. INVESTIMENTO</span><strong>${money(forecastInvestment)}</strong></div><div className="budget-cell revenue"><span>PREV. RECEITA</span><strong>${money(forecastRevenue)}</strong></div><div className="budget-cell balance"><span>PREV. SALDO</span><strong>${money(forecastBalance)}</strong></div></section>
 
       <div className="revenue-rule-strip">
-        <span className="confirmed"><i></i><small>Receita confirmada</small><strong>${money(totalReceived)}</strong><em>Pagamentos confirmados</em></span>
-        <span className="open"><i></i><small>A receber</small><strong>${money(totalOpen)}</strong><em>Aguardando confirmação</em></span>
+        <button className="confirmed" onClick=${() => context.setView('receita')}><i></i><small>Receita confirmada</small><strong>${money(totalReceived)}</strong><em>Pagamentos confirmados</em></button>
+        <button className="open" onClick=${() => context.navigatePayments({ year:2026, month:new Date().getMonth(), pending:true })}><i></i><small>A receber</small><strong>${money(totalOpen)}</strong><em>Aguardando confirmação</em></button>
       </div>
 
       <article className="spreadsheet-card revenue-card"><div className="spreadsheet-scroll"><table className="live-sheet revenue-live-sheet"><thead><tr><th className="sticky-first supplier-col">FORNECEDORES</th><th className="forecast-col">PREVISÃO</th>${OFFICIAL_MONTHS.map(([,label]) => html`<th>${label.toUpperCase()}</th>`)}<th className="total-head">TOTAL</th><th className="balance-head">DIFERENÇA VS. PREVISÃO</th><th>%</th></tr></thead><tbody>
-        ${rowData.map(row => html`<tr><th className="sticky-first supplier-col"><button onClick=${() => context.openRecord(row.record)}>${row.record.fornecedor}<${Icon} name="arrow-up-right"/></button></th><td className="forecast-col"><${EditableSheetCell} type="money" value=${row.forecast} onSave=${value => context.quickUpdateRecord(row.record,{ valor_acordado:value },'Previsão atualizada.')}/></td>${row.months.map((value,monthIndex) => {
+        ${rowData.map(row => html`<tr><th className="sticky-first supplier-col"><button onClick=${() => context.openSupplier(row.record.fornecedor)}>${row.record.fornecedor}<${Icon} name="panel-right-open"/></button></th><td className="forecast-col"><${EditableSheetCell} type="money" value=${row.forecast} onSave=${value => context.quickUpdateRecord(row.record,{ valor_acordado:value },'Previsão atualizada.')}/></td>${row.months.map((value,monthIndex) => {
           const item = row.monthStatus[monthIndex]; const state = cellState(item); const label = OFFICIAL_MONTHS[monthIndex][1];
-          return html`<td className=${`derived-revenue-td ${state}`}><button className="derived-revenue-cell" title=${cellTitle(item,label)} onClick=${() => context.setView('pagamentos')}><span>${value ? money(value) : '—'}</span><i></i></button></td>`;
+          return html`<td className=${`derived-revenue-td ${state}`}><button className="derived-revenue-cell" title=${cellTitle(item,label)} onClick=${() => context.navigatePayments({ year:2026, month:monthIndex, supplier:row.record.fornecedor })}><span>${value ? money(value) : '—'}</span><i></i></button></td>`;
         })}<td className="row-total">${money(row.total)}</td><td className=${`balance-cell ${row.variance > .005 ? 'above' : row.variance < -.005 ? 'below' : 'on-target'}`}>${row.variance > .005 ? html`<span className="variance-value">+ ${money(row.variance)}</span><small>acima</small>` : row.variance < -.005 ? html`<span className="variance-value">${money(Math.abs(row.variance))}</span><small>abaixo</small>` : html`<span className="variance-value">—</span><small>meta atingida</small>`}</td><td><span className=${`revenue-progress ${row.pct >= 100 ? 'target-hit' : row.pct >= 80 ? 'near-target' : 'below-target'}`}><i style=${{ width:`${Math.min(100,row.pct)}%` }}></i><b>${Math.round(row.pct)}%</b></span></td></tr>`)}
       </tbody><tfoot><tr><th className="sticky-first">SOMA MENSAL</th><th>${money(totalForecast)}</th>${monthlyTotals.map(value => html`<th>${money(value)}</th>`)}<th>${money(totalReceived)}</th><th>${totalReceived-totalForecast > .005 ? `+ ${money(totalReceived-totalForecast)} acima` : totalReceived-totalForecast < -.005 ? `${money(Math.abs(totalReceived-totalForecast))} abaixo` : 'Meta atingida'}</th><th>${totalForecast ? `${Math.round(totalReceived/totalForecast*100)}%` : '0%'}</th></tr></tfoot></table></div></article>
       <div className="sheet-footnote revenue-footnote"><${Icon} name="shield-check"/><span><strong>Regra de receita:</strong> editar a previsão não realiza receita. Para um mês entrar aqui, basta <b>Confirmar o pagamento</b> na Planilha de Pagamentos. Desfazer a confirmação retira o valor automaticamente do realizado.</span></div>
@@ -1437,27 +1501,29 @@
   }
 
   function SuppliersView({ context }) {
-    const { records, openRecord } = context;
-    const suppliers = useMemo(() => {
-      const map = new Map(); records.forEach(record => {
-        const name = record.fornecedor || 'Sem fornecedor';
-        const current = map.get(name) || { name, records:[], value:0, paid:0, overdue:0, controls:new Set(), categories:new Set() };
-        current.records.push(record);
-        if (record.impacta_totais !== false && record.natureza !== 'indicador') {
-          current.value += Number(record.valor_acordado || 0);
-          if (isSupplierRevenueRecord(record) && Number(record.ano_referencia) >= 2026) {
-            const monthIndex = sourceMonthIndex(record);
-            const payment = supplierRowPayment(context.payments, record, Number(record.ano_referencia), monthIndex);
-            if (supplierRevenueStage(payment, record, context.conferences, Number(record.ano_referencia), monthIndex) === 'confirmado') current.paid += supplierConfirmedValue(record, payment);
-          } else current.paid += Number(record.total_pago || 0);
-        }
-        current.overdue += Number(record.pagamentos_atrasados || 0);
-        current.controls.add(record.controle); current.categories.add(record.categoria); map.set(name, current);
-      });
-      return [...map.values()].sort((a, b) => b.value - a.value);
-    }, [records, context.payments, context.conferences]);
+    const { records }=context;
+    const suppliers=useMemo(()=>{ const map=new Map(); records.forEach(record=>{ const name=record.fornecedor||'Sem fornecedor'; const current=map.get(name)||{name,records:[],value:0,paid:0,overdue:0,categories:new Set()}; current.records.push(record); if(record.impacta_totais!==false&&record.natureza!=='indicador'){current.value+=Number(record.valor_acordado||0); if(isSupplierRevenueRecord(record)&&Number(record.ano_referencia)>=2026){const monthIndex=sourceMonthIndex(record);const payment=supplierRowPayment(context.payments,record,Number(record.ano_referencia),monthIndex);if(supplierRowConfirmed(record,payment))current.paid+=supplierConfirmedValue(record,payment);}else current.paid+=Number(record.total_pago||0);} current.overdue+=Number(record.pagamentos_atrasados||0);current.categories.add(record.categoria);map.set(name,current); }); return [...map.values()].sort((a,b)=>b.paid-a.paid||b.value-a.value); },[records,context.payments]);
     useLucide([suppliers.length]);
-    return html`<section className="suppliers-section"><div className="view-tools"><div className="view-tools-copy"><span className="eyebrow">Relacionamento comercial</span><h2>Mapa de parceiros</h2><p>Visão consolidada de tudo o que existe com cada fornecedor.</p></div><div className="supplier-summary"><span><b>${int(suppliers.length)}</b> parceiros</span><span><b>${money(sum(suppliers, item => item.value))}</b> acompanhados</span></div></div><div className="supplier-grid">${suppliers.map((supplier, index) => { const progress = supplier.value ? Math.min(100, supplier.paid / supplier.value * 100) : 0; return html`<article key=${supplier.name} className="supplier-card" style=${{ '--delay':`${Math.min(index, 12) * 45}ms` }}><div className="supplier-card-head"><span className="supplier-initial">${supplier.name.charAt(0)}</span><div><h3>${supplier.name}</h3><p>${int(supplier.records.length)} acompanhamentos · ${int(supplier.categories.size)} categorias</p></div>${supplier.overdue ? html`<span className="supplier-alert"><${Icon} name="triangle-alert"/>${supplier.overdue}</span>` : html`<span className="supplier-ok"><${Icon} name="check"/></span>`}</div><div className="supplier-money"><span><small>Valor total</small><strong>${money(supplier.value)}</strong></span><span><small>Realizado</small><strong>${money(supplier.paid)}</strong></span></div><div className="supplier-progress"><i style=${{ width:`${progress}%` }}></i></div><div className="supplier-tags">${[...supplier.categories].slice(0, 3).map(key => html`<span>${category(key).label}</span>`)}</div><button onClick=${() => openRecord(supplier.records[0])}>Abrir histórico <${Icon} name="arrow-right"/></button><div className="card-glow"></div></article>`; })}</div></section>`;
+    return html`<section className="suppliers-section suppliers-v2"><div className="view-tools"><div className="view-tools-copy"><span className="eyebrow">Relacionamento comercial</span><h2>Fornecedores</h2><p>Cada parceiro abre num painel lateral, sem tirar você da página.</p></div><div className="supplier-summary"><span><b>${int(suppliers.length)}</b> parceiros</span><span><b>${money(sum(suppliers,item=>item.paid))}</b> confirmados</span></div></div><div className="supplier-grid">${suppliers.map((supplier,index)=>{const progress=supplier.value?Math.min(100,supplier.paid/supplier.value*100):0;return html`<button key=${supplier.name} className="supplier-card supplier-card-button" style=${{'--delay':`${Math.min(index,12)*35}ms`}} onClick=${()=>context.openSupplier(supplier.name)}><div className="supplier-card-head"><span className="supplier-initial">${supplier.name.charAt(0)}</span><div><h3>${supplier.name}</h3><p>${int(supplier.records.length)} lançamentos · ${int(supplier.categories.size)} categorias</p></div><span className="supplier-open-icon"><${Icon} name="panel-right-open"/></span></div><div className="supplier-money"><span><small>Acompanhado</small><strong>${money(supplier.value)}</strong></span><span><small>Confirmado</small><strong>${money(supplier.paid)}</strong></span></div><div className="supplier-progress"><i style=${{width:`${progress}%`}}></i></div><div className="supplier-card-foot"><span>${Math.round(progress)}% realizado</span><b>Ver histórico <${Icon} name="arrow-right"/></b></div></button>`;})}</div></section>`;
+  }
+
+  function SupplierDrawer({ supplier, context, onClose }) {
+    const [tab,setTab]=useState('resumo');
+    const all=context.allRecords.filter(record=>supplierKey(record.fornecedor)===supplierKey(supplier)&&record.status!=='cancelado');
+    const supplierRows=all.filter(record=>Number(record.ano_referencia)===2026&&isSupplierRevenueRecord(record));
+    const forecastRows=context.allRecords.filter(record=>Number(record.ano_referencia)===2026&&record.controle==='marcos'&&record.natureza==='receita'&&hasTag(record,'previsão')&&supplierKey(record.fornecedor)===supplierKey(supplier)&&record.status!=='cancelado');
+    const forecast=sum(forecastRows,record=>record.valor_acordado);
+    const months=OFFICIAL_MONTHS.map(([,label],index)=>{const rows=supplierRows.filter(record=>sourceMonthIndex(record)===index);const expected=sum(rows,record=>record.valor_acordado);const confirmed=sum(rows.filter(record=>supplierRowConfirmed(record,supplierRowPayment(context.payments,record,2026,index))),record=>supplierConfirmedValue(record,supplierRowPayment(context.payments,record,2026,index)));return{index,label,rows,expected,confirmed,pct:expected?Math.min(100,confirmed/expected*100):0};});
+    const confirmed=sum(months,item=>item.confirmed); const difference=confirmed-forecast;
+    const recordIds=new Set(all.map(record=>record.id)); const activities=context.activities.filter(item=>recordIds.has(item.registro_id)).sort((a,b)=>String(b.criado_em||'').localeCompare(String(a.criado_em||''))).slice(0,40);
+    const lines=supplierRows.sort((a,b)=>sourceMonthIndex(a)-sourceMonthIndex(b)||Number(a.linha_origem||9999)-Number(b.linha_origem||9999));
+    useEffect(()=>{document.body.classList.add('drawer-open');return()=>document.body.classList.remove('drawer-open');},[]);
+    useLucide([supplier,tab,lines.length,activities.length]);
+    return html`<div className="supplier-drawer-shell"><button className="drawer-backdrop" onClick=${onClose} aria-label="Fechar"></button><aside className="supplier-drawer"><header><div className="supplier-drawer-identity"><span>${supplier.charAt(0)}</span><div><small>FORNECEDOR · 2026</small><h2>${supplier}</h2><p>${lines.length} lançamento(s) na planilha de pagamentos</p></div></div><button className="icon-button" onClick=${onClose}><${Icon} name="x"/></button></header><section className="supplier-drawer-kpis"><div><small>Previsão</small><strong>${money(forecast)}</strong></div><div className="confirmed"><small>Confirmado</small><strong>${money(confirmed)}</strong></div><div className=${difference>=0?'above':'below'}><small>Vs. previsão</small><strong>${difference>=0?'+ ':''}${money(difference)}</strong></div></section><nav>${[['resumo','Visão geral'],['pagamentos','Pagamentos'],['historico','Histórico']].map(([key,label])=>html`<button className=${tab===key?'active':''} onClick=${()=>setTab(key)}>${label}</button>`)}</nav><div className="supplier-drawer-body">
+      ${tab==='resumo'&&html`<div className="supplier-summary-stack"><div className="supplier-month-grid">${months.map(item=>html`<button className=${item.confirmed>=item.expected&&item.expected?'complete':item.confirmed?'partial':item.expected?'pending':'empty'} onClick=${()=>{context.navigatePayments({year:2026,month:item.index,supplier});onClose();}}><span>${item.label.slice(0,3)}</span><strong>${item.expected?`${Math.round(item.pct)}%`:'—'}</strong><small>${item.expected?compactMoney(item.confirmed):'sem dados'}</small></button>`)}</div><button className="supplier-primary-action" onClick=${()=>{const latest=[...months].reverse().find(item=>item.rows.length)?.index??new Date().getMonth();context.navigatePayments({year:2026,month:latest,supplier});onClose();}}><${Icon} name="table-2"/><span><strong>Abrir linhas deste fornecedor</strong><small>Planilha de Pagamentos já filtrada</small></span><${Icon} name="arrow-right"/></button></div>`}
+      ${tab==='pagamentos'&&html`<div className="supplier-payment-list">${lines.length?lines.map(record=>{const monthIndex=sourceMonthIndex(record);const payment=supplierRowPayment(context.payments,record,2026,monthIndex);const confirmedRow=supplierRowConfirmed(record,payment);return html`<button onClick=${()=>{context.navigatePayments({year:2026,month:monthIndex,supplier});onClose();}}><span className=${confirmedRow?'ok':'pending'}>${confirmedRow?'✓':'○'}</span><div><strong>${OFFICIAL_MONTHS[monthIndex][1]} · ${record.referencia||'COTA'}</strong><small>${payment?.numero_documento||record.numero_documento||'Sem NF'} · ${confirmedRow?'Confirmado':'Pendente'}</small></div><b>${money(record.valor_acordado)}</b><${Icon} name="chevron-right"/></button>`;}):html`<div className="overview-empty">Sem linhas de pagamento em 2026.</div>`}</div>`}
+      ${tab==='historico'&&html`<div className="supplier-history-list">${activities.length?activities.map(activity=>html`<div><span><${Icon} name=${activity.tipo?.includes('pagamento')?'receipt-text':'history'}/></span><div><strong>${activity.resumo||'Atualização'}</strong><small>${dateTime(activity.criado_em)}</small></div></div>`):all.slice(0,30).map(record=>html`<button onClick=${()=>context.openRecord(record)}><span><${Icon} name="file-text"/></span><div><strong>${record.titulo}</strong><small>${record.ano_referencia} · ${category(record.categoria).label}</small></div><b>${money(record.valor_acordado)}</b></button>`)}</div>`}
+      </div></aside></div>`;
   }
 
   function ModalShell({ title, eyebrow, icon, onClose, children, wide = false }) {
