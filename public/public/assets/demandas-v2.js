@@ -376,16 +376,12 @@ function errorMessage(error) {
   const code = String(error?.code || '');
   const authorshipRef = /solicitar_confirmacao_autoria_v1|responder_confirmacao_autoria_v1|pmg_autoria_snapshot_v385|tarefa_autoria_revisoes|tarefa_autoria_confirmacoes|tarefa_executores/i.test(message);
   const authorshipMissing = authorshipRef && (['PGRST202','PGRST205','42P01','42883'].includes(code) || /could not find the function|does not exist|schema cache/i.test(message));
-  if (authorshipMissing) return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase e atualize a página.';
-  if (authorshipRef && code === '42501') return 'Sua sessão não recebeu permissão para a autoria compartilhada. Saia do PMG Connect, entre novamente e atualize a página. O erro técnico foi registrado no console.';
-  if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
-  if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
-  if (/alterar_urgencia_tarefa_v1/i.test(message)) {
-    return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
-  }
-  if (/demandas_recorrentes|recorrencia_id|processar_recorrencias_demanda|converter_tarefa_em_recorrente|transferir_demanda_recorrente/i.test(message)) {
-    return 'A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.';
-  }
+  if (authorshipMissing) return `O recurso de autoria compartilhada não respondeu (${code || 'sem código'}). Atualize a página; se persistir, envie o erro técnico do console.`;
+  if (authorshipRef && code === '42501') return 'Sua sessão não recebeu permissão para a autoria compartilhada. Saia do PMG Connect, entre novamente e atualize a página.';
+  if (/definir_responsaveis_tarefa_modo_v1|definir_responsaveis_recorrencia_modo_v1|modo_responsabilidade|primeiro_cumprir/i.test(message)) return `O recurso de múltiplos responsáveis não respondeu: ${message}`;
+  if (/tarefa_responsaveis|definir_responsaveis_tarefa_v1|demanda_recorrente_responsaveis/i.test(message)) return `O recurso de responsáveis não respondeu: ${message}`;
+  if (/alterar_urgencia_tarefa_v1/i.test(message)) return `Não foi possível alterar a urgência: ${message}`;
+  if (/demandas_recorrentes|recorrencia_id|processar_recorrencias_demanda|converter_tarefa_em_recorrente|transferir_demanda_recorrente/i.test(message)) return `O recurso de recorrências não respondeu: ${message}`;
   if (/academia_reservas|transferencias_tarefa|criar_tarefa_v3|editar_tarefa_v3|avaliar_conclusao|transferir_tarefa/i.test(message)) {
     return 'A migração Demandas V3 ainda não foi executada no Supabase. Rode sql/demandas_v3_operacao.sql.';
   }
@@ -1943,7 +1939,7 @@ async function saveEditedTask(event) {
         if (assigneeError) throw assigneeError;
       }
     } else if (desiredAssignee !== originalAssignee) {
-      if (!desiredAssignee) throw new Error('A instalação do Demandas no banco está incompleta. Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.');
+      if (!desiredAssignee) throw new Error('Selecione pelo menos um responsável para a demanda.');
       const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável principal alterado durante a edição da demanda.' });
       if (transferError) throw transferError;
     }
@@ -3349,7 +3345,6 @@ async function submitTaskEvaluation(approved) {
   }
 
   if (approved) {
-    if (!state.authorshipReady) return toast('A autoria compartilhada não respondeu. Atualize a página. Se persistir, execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.', 'error');
     const executors = uniqueIdsV37(state.evaluationExecutorIds);
     if (!executors.length) return toast('Selecione pelo menos uma pessoa que realizou a demanda.', 'error');
   }
@@ -4958,7 +4953,7 @@ openQuickAdd = function openQuickAddRecurring(type = 'demanda', preset = {}) {
 const createTaskBeforeRecurringV36 = createTaskV2;
 createTaskV2 = async function createTaskWithRecurrenceV36() {
   if (!$('itemRecurringEnabled')?.checked) return createTaskBeforeRecurringV36();
-  if (!state.recurrenceReady) throw new Error('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase antes de criar uma recorrência.');
+  // Não bloqueia por health-check local: a RPC de criação é a fonte de verdade.
   const frequency = $('itemRecurrenceFrequency').value;
   const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
   if (['semanal','personalizada'].includes(frequency) && !weekdays.length) throw new Error('Selecione pelo menos um dia da semana.');
@@ -5616,7 +5611,7 @@ loadAll = async function loadAllMultiAssigneeV37() {
 };
 async function updateTaskAssigneesV37(taskId, ids) {
   if (!isManager()) return toast('Somente gestores podem alterar os responsáveis da demanda.','error');
-  if (!state.multiAssigneeReady) return toast('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.','error');
+  if (!state.multiAssigneeReady) return toast('Os responsáveis ainda não foram carregados. Atualize a página e tente novamente.','error');
   setLoading(true);
   try {
     const { error } = await db.rpc('definir_responsaveis_tarefa_v1', { p_tarefa_id: taskId, p_responsaveis: uniqueIdsV37(ids) });
@@ -5630,7 +5625,7 @@ async function updateTaskAssigneesV37(taskId, ids) {
 }
 async function updateRecurringAssigneesV37(recurringId, ids) {
   if (!isManager()) return toast('Somente gestores podem alterar responsáveis da recorrência.','error');
-  if (!state.multiAssigneeReady) return toast('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase.','error');
+  if (!state.multiAssigneeReady) return toast('Os responsáveis ainda não foram carregados. Atualize a página e tente novamente.','error');
   setLoading(true);
   try {
     const { error } = await db.rpc('definir_responsaveis_recorrencia_v1', { p_recorrencia_id: recurringId, p_responsaveis: uniqueIdsV37(ids), p_aplicar_ocorrencias: true });
@@ -5918,7 +5913,7 @@ createTaskV2 = async function createTaskV2UxV381() {
   if (!$('itemRecurringEnabled')?.checked) return createTaskV2BeforeUxV381();
   const times = createRecurrenceTimesV381();
   if (times.length <= 1) return createTaskV2BeforeUxV381();
-  if (!state.recurrenceGroupsReadyV381) throw new Error('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase antes de usar vários horários no mesmo dia.');
+  // Não bloqueia por health-check de leitura; tentamos a RPC real ao salvar.
   const frequency = $('itemRecurrenceFrequency').value;
   const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
   if (['semanal','personalizada'].includes(frequency) && !weekdays.length) throw new Error('Selecione pelo menos um dia da semana.');
@@ -6082,7 +6077,7 @@ async function saveRecurrenceGroupV381(event) {
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
-  if (!state.recurrenceGroupsReadyV381) return toast('Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql no Supabase antes de editar vários horários.', 'error');
+  // A edição multi-horário tenta a operação real; falhas são exibidas com o erro técnico correto.
   const frequency = $('recurrenceEditFrequency').value;
   const weekdays = selectedWeekdays('recurrenceEditWeekdays');
   const start = $('recurrenceEditStart').value;
@@ -6207,7 +6202,7 @@ function injectAttachmentPanelV381(){
   const firstDetail=root.querySelector('.detail-section');
   const section=document.createElement('section');section.className='detail-section task-attachments-v381';
   const rows=state.taskAttachmentsV381||[];
-  section.innerHTML=`<div class="detail-section-head"><h3>Anexos</h3><span>${rows.length}</span></div><div class="task-attachment-list">${rows.length?rows.map(item=>`<button type="button" class="task-attachment" data-open-attachment-v381="${item.id}"><span><i data-lucide="paperclip"></i></span><div><strong>${escapeHtml(item.nome)}</strong><small>${escapeHtml([item.mime_type,fileSizeLabelV381(item.tamanho_bytes),relativeTime(item.criado_em)].filter(Boolean).join(' · '))}</small></div><i data-lucide="external-link"></i></button>`).join(''):`<div class="attachment-empty"><i data-lucide="paperclip"></i><span>${state.attachmentsReadyV381?'Nenhum arquivo anexado.':'Execute EXECUTAR-UMA-VEZ-DEMANDAS-V3-8-5.sql para ativar anexos.'}</span></div>`}</div>${!task.arquivada_em&&state.attachmentsReadyV381?`<label class="attachment-upload-btn"><input id="taskAttachmentInputV381" type="file" hidden><i data-lucide="upload-cloud"></i><span><strong>Anexar arquivo</strong><small>PDF, imagem, planilha, PPTX ou outro material · até 25 MB</small></span></label>`:''}`;
+  section.innerHTML=`<div class="detail-section-head"><h3>Anexos</h3><span>${rows.length}</span></div><div class="task-attachment-list">${rows.length?rows.map(item=>`<button type="button" class="task-attachment" data-open-attachment-v381="${item.id}"><span><i data-lucide="paperclip"></i></span><div><strong>${escapeHtml(item.nome)}</strong><small>${escapeHtml([item.mime_type,fileSizeLabelV381(item.tamanho_bytes),relativeTime(item.criado_em)].filter(Boolean).join(' · '))}</small></div><i data-lucide="external-link"></i></button>`).join(''):`<div class="attachment-empty"><i data-lucide="paperclip"></i><span>${state.attachmentsReadyV381?'Nenhum arquivo anexado.':'Anexos indisponíveis nesta sessão.'}</span></div>`}</div>${!task.arquivada_em&&state.attachmentsReadyV381?`<label class="attachment-upload-btn"><input id="taskAttachmentInputV381" type="file" hidden><i data-lucide="upload-cloud"></i><span><strong>Anexar arquivo</strong><small>PDF, imagem, planilha, PPTX ou outro material · até 25 MB</small></span></label>`:''}`;
   root.insertBefore(section,firstDetail||null);$('taskAttachmentInputV381')?.addEventListener('change',uploadTaskAttachmentV381);refreshIcons();
 }
 const openTaskBeforeUxV381 = openTask;
