@@ -433,6 +433,24 @@ function parseMarcosWorkbook(fileName) {
     importedRows += 1;
   });
 
+  const somaMensalRow = receitaRows.find(row => normalized(row?.[3]) === 'SOMA MENSAL');
+  if (somaMensalRow) {
+    const monthlyTotals = Array.from({ length: 12 }, (_, monthIndex) => parseMoney(somaMensalRow[5 + monthIndex]));
+    const exactTotal = parseMoney(somaMensalRow[17]) || roundMoney(monthlyTotals.reduce((sum, value) => sum + value, 0));
+    monthlyTotals.forEach((value, monthIndex) => { marcosMonthly[monthIndex] = value; });
+    addItem({
+      controle: 'marcos', ano_referencia: 2026, natureza: 'indicador', impacta_totais: false,
+      categoria: 'meta_financeira', titulo: 'Receita realizada 2026 — total oficial',
+      descricao: 'Total realizado preservado exatamente da linha SOMA MENSAL da aba RECEITA do MKTG 2026.',
+      referencia: 'SOMA MENSAL', status: 'concluido', data_inicio: '2026-01-01', data_fim: '2026-12-31',
+      valor_acordado: exactTotal, tags: ['marcos', 'indicador', '2026', 'receita-realizada', 'soma-mensal'],
+      origem_importacao: fileName, linha_origem: receitaRows.indexOf(somaMensalRow) + 1,
+      fingerprint: fingerprint('marcos', 'indicador', 2026, 'receita-realizada'),
+      dados_originais: { arquivo: fileName, aba: 'RECEITA', indicador: 'receita-realizada', pagamentos_mensais: monthlyTotals, total: exactTotal },
+    });
+    importedRows += 1;
+  }
+
   const planning = workbook.Sheets.Planejamento;
   const planningRows = XLSX.utils.sheet_to_json(planning, { header: 1, defval: null, raw: true, blankrows: false });
   const planningHeaders = planningRows[1];
@@ -883,7 +901,7 @@ Os registros marcados como detalhamento preservam linhas de eventos, cartões e 
 |---|---:|---:|---:|
 ${monthRows}
 
-Valores de **R$ 1,00** existentes no MKTG 2026 foram identificados como marcadores de preenchimento e ignorados como movimento financeiro. As diferenças restantes foram preservadas para conferência; nenhuma delas foi alterada por suposição.
+A linha **SOMA MENSAL** do MKTG 2026 é preservada como fonte oficial do realizado, inclusive os valores de R$ 1,00 presentes na própria planilha. Assim, Dashboard e Receita Anual reproduzem exatamente o total exibido no arquivo.
 
 ## Conferência dos totais mensais das planilhas Fornecedores
 

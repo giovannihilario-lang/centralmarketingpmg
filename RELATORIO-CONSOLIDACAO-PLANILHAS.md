@@ -7,7 +7,7 @@ Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
 - **Fornecedores 2024.xlsx**: 397 linhas úteis importadas para o Controle Marketing.
 - **Fornecedores 2025.xlsx**: 423 linhas úteis importadas para o Controle Marketing.
 - **Fornecedores 2026.xlsx**: 246 linhas úteis importadas para o Controle Marketing.
-- **MKTG 2026.xlsx**: 96 linhas úteis importadas para o Controle Marcos.
+- **MKTG 2026.xlsx**: 97 linhas úteis importadas para o Controle Marcos.
 
 ## Carga consolidada
 
@@ -15,7 +15,7 @@ Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
 |---|---:|---|---:|---:|
 | Marcos | 2025 | receita | 34 | R$ 3.867.000,00 |
 | Marcos | 2026 | despesa | 15 | R$ 2.610.377,68 |
-| Marcos | 2026 | indicador | 3 | R$ 0,00 |
+| Marcos | 2026 | indicador | 4 | R$ 0,00 |
 | Marcos | 2026 | receita | 48 | R$ 6.835.200,89 |
 | Marketing | 2024 | despesa | 29 | R$ 0,00 |
 | Marketing | 2024 | receita | 401 | R$ 5.197.089,34 |
@@ -30,20 +30,20 @@ Os registros marcados como detalhamento preservam linhas de eventos, cartões e 
 
 | Competência | Controle Marketing | Controle Marcos | Diferença Marcos − Marketing |
 |---|---:|---:|---:|
-| Janeiro | R$ 376.445,98 | R$ 376.445,65 | -R$ 0,33 |
-| Fevereiro | R$ 528.110,20 | R$ 528.110,40 | R$ 0,20 |
-| Março | R$ 700.918,22 | R$ 700.918,22 | R$ 0,00 |
-| Abril | R$ 672.692,96 | R$ 672.693,56 | R$ 0,60 |
+| Janeiro | R$ 376.445,98 | R$ 376.464,65 | R$ 18,67 |
+| Fevereiro | R$ 528.110,20 | R$ 528.111,40 | R$ 1,20 |
+| Março | R$ 700.918,22 | R$ 700.919,22 | R$ 1,00 |
+| Abril | R$ 672.692,96 | R$ 672.694,56 | R$ 1,60 |
 | Maio | R$ 472.527,61 | R$ 472.527,61 | R$ 0,00 |
-| Junho | R$ 583.853,89 | R$ 583.853,89 | R$ 0,00 |
+| Junho | R$ 583.853,89 | R$ 583.854,89 | R$ 1,00 |
 | Julho | R$ 635.720,36 | R$ 635.720,36 | R$ 0,00 |
-| Agosto | R$ 0,00 | R$ 0,00 | R$ 0,00 |
-| Setembro | R$ 0,00 | R$ 0,00 | R$ 0,00 |
-| Outubro | R$ 0,00 | R$ 0,00 | R$ 0,00 |
-| Novembro | R$ 0,00 | R$ 0,00 | R$ 0,00 |
-| Dezembro | R$ 0,00 | R$ 0,00 | R$ 0,00 |
+| Agosto | R$ 0,00 | R$ 1,00 | R$ 1,00 |
+| Setembro | R$ 0,00 | R$ 1,00 | R$ 1,00 |
+| Outubro | R$ 0,00 | R$ 1,00 | R$ 1,00 |
+| Novembro | R$ 0,00 | R$ 1,00 | R$ 1,00 |
+| Dezembro | R$ 0,00 | R$ 1,00 | R$ 1,00 |
 
-Valores de **R$ 1,00** existentes no MKTG 2026 foram identificados como marcadores de preenchimento e ignorados como movimento financeiro. As diferenças restantes foram preservadas para conferência; nenhuma delas foi alterada por suposição.
+A linha **SOMA MENSAL** do MKTG 2026 é preservada como fonte oficial do realizado, inclusive os valores de R$ 1,00 presentes na própria planilha. Assim, Dashboard e Receita Anual reproduzem exatamente o total exibido no arquivo.
 
 ## Conferência dos totais mensais das planilhas Fornecedores
 

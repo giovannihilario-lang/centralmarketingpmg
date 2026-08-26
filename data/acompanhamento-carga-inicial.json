@@ -53,7 +53,7 @@
       "control": "marcos",
       "year": 2026,
       "sourceRows": 56,
-      "importedRows": 96,
+      "importedRows": 97,
       "total": 6816000
     }
   ],
@@ -79813,6 +79813,59 @@
           "fingerprint": "pmg-c173937b-pmg 20069f3f marcos previsao verba 2026 simplot|recebimento|7"
         }
       ]
+    },
+    {
+      "registro": {
+        "controle": "marcos",
+        "ano_referencia": 2026,
+        "fornecedor": "",
+        "fornecedor_codigo": "",
+        "natureza": "indicador",
+        "impacta_totais": false,
+        "categoria": "meta_financeira",
+        "titulo": "Receita realizada 2026 — total oficial",
+        "descricao": "Total realizado preservado exatamente da linha SOMA MENSAL da aba RECEITA do MKTG 2026.",
+        "referencia": "SOMA MENSAL",
+        "status": "concluido",
+        "prioridade": "normal",
+        "data_inicio": "2026-01-01",
+        "data_fim": "2026-12-31",
+        "valor_acordado": 3970297.69,
+        "centro_custo": "",
+        "numero_documento": "",
+        "tags": [
+          "marcos",
+          "indicador",
+          "2026",
+          "receita-realizada",
+          "soma-mensal"
+        ],
+        "observacoes": "",
+        "origem_importacao": "MKTG 2026.xlsx",
+        "linha_origem": 52,
+        "dados_originais": {
+          "arquivo": "MKTG 2026.xlsx",
+          "aba": "RECEITA",
+          "indicador": "receita-realizada",
+          "pagamentos_mensais": [
+            376464.65,
+            528111.4,
+            700919.22,
+            672694.56,
+            472527.61,
+            583854.89,
+            635720.36,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "total": 3970297.69
+        },
+        "fingerprint": "pmg-f52c3cf5-marcos|indicador|2026|receita realizada"
+      },
+      "pagamentos": []
     },
     {
       "registro": {

@@ -12,7 +12,7 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 const original = fs.readFileSync(appPath, 'utf8');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);",
-  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError };',
+  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, decorateOfficialRevenueTruth };',
 );
 
 const noop = () => {};
@@ -50,7 +50,7 @@ const expectedCounts = {
   'Fornecedores 2024.xlsx': { records:430, payments:426 },
   'Fornecedores 2025.xlsx': { records:524, payments:523 },
   'Fornecedores 2026.xlsx': { records:271, payments:270 },
-  'MKTG 2026.xlsx': { records:100, payments:384 },
+  'MKTG 2026.xlsx': { records:101, payments:384 },
 };
 
 for (const fileName of cases) {
@@ -82,7 +82,32 @@ for (const fileName of cases) {
 }
 
 
-if (snapshot.items.length !== 1325) throw new Error(`Carga consolidada: ${snapshot.items.length} registros; esperado 1325`);
+if (snapshot.items.length !== 1326) throw new Error(`Carga consolidada: ${snapshot.items.length} registros; esperado 1326`);
+
+const officialRevenueTotal = snapshot.items.find(item => {
+  const record = item.registro || {};
+  return record.controle === 'marcos' && record.ano_referencia === 2026 && record.natureza === 'indicador' && (record.tags || []).includes('receita-realizada');
+});
+if (!officialRevenueTotal) throw new Error('Receita realizada oficial 2026 não foi preservada');
+if (Math.abs(Number(officialRevenueTotal.registro.valor_acordado || 0) - 3970297.69) > 0.01) {
+  throw new Error(`Receita realizada 2026 divergente: ${officialRevenueTotal.registro.valor_acordado}; esperado 3970297.69`);
+}
+const officialRevenueMonths = officialRevenueTotal.registro.dados_originais?.pagamentos_mensais || [];
+if (officialRevenueMonths.length !== 12 || Math.abs(Number(officialRevenueMonths[6] || 0) - 635720.36) > 0.01) {
+  throw new Error('SOMA MENSAL do MKTG 2026 não foi preservada corretamente');
+}
+
+const snapshotRecords = snapshot.items.map((item, index) => ({ id:`test-${index}`, ...(item.registro || {}) }));
+const officialSnapshot = sandbox.__PMG_TEST__.officialRevenueSnapshot(snapshotRecords, 2026);
+if (Math.abs(Number(officialSnapshot.total || 0) - 3970297.69) > 0.01) {
+  throw new Error(`Dashboard/Receita não reproduzem o total oficial: ${officialSnapshot.total}`);
+}
+const decoratedRecords = sandbox.__PMG_TEST__.decorateOfficialRevenueTruth(snapshotRecords);
+const julySupplierRows = decoratedRecords.filter(record => record.controle === 'marketing' && record.ano_referencia === 2026 && record.natureza === 'receita' && (record.tags || []).includes('fornecedores') && String(record.data_inicio || '').startsWith('2026-07'));
+if (julySupplierRows.length !== 34 || julySupplierRows.some(record => record._oficial_confirmado !== true)) {
+  throw new Error(`Conciliação MKTG julho divergente: ${julySupplierRows.filter(record => record._oficial_confirmado).length}/${julySupplierRows.length} confirmadas pela fonte`);
+}
+
 const allPayments = snapshot.items.flatMap(item => item.pagamentos || []);
 if (allPayments.length !== 1603) throw new Error(`Carga consolidada: ${allPayments.length} movimentos; esperado 1603`);
 
