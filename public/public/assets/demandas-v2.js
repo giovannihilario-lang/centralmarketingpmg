@@ -6244,12 +6244,12 @@ submitTaskEvaluation = async function submitTaskEvaluationUxV384(approved){
   // Também não bloqueamos pelo state.authorshipReady: o snapshot pode estar
   // desatualizado enquanto a RPC já existe no banco.
   setLoading(true);try{
-    const {data,error}=await db.rpc('solicitar_confirmacao_autoria_v1',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});
+    const {data,error}=await db.rpc('validar_entrega_v388',{p_tarefa_id:taskId,p_executores:executors,p_observacao:note||null});
     if(error)throw error;
     closeModal('taskEvaluationModal');await refreshData();await dispatchPendingPush();if(state.tasks.some(task=>task.id===taskId))await openTask(taskId);
     if(data?.confirmacao_necessaria||executors.length>1)toast(`Entrega validada. ${executors.length} participantes precisam confirmar a autoria.`);
     else toast('Entrega validada e concluída. Autoria individual registrada sem confirmação extra.');
-  }catch(error){console.error('[autoria V3.8.5 validação]',error);toast(errorMessage(error),'error');}finally{setLoading(false);}
+  }catch(error){console.error('[Demandas V3.8.8 validação]',error);toast(errorMessage(error),'error');}finally{setLoading(false);}
 };
 const evaluationPanelHTMLBeforeUxV381 = evaluationPanelHTMLV372;
 evaluationPanelHTMLV372 = function evaluationPanelHTMLUxV381(task,evaluator){
