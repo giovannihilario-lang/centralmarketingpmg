@@ -199,6 +199,51 @@ assert.equal(buildPlanningSnapshot([zeroSource], []).grandTotal, 0);
 const otherYear = { ...june, vencimento:'2025-06-30', valor_previsto:1 };
 assert.equal(buildPlanningSnapshot([fair], [otherYear]).planningCellValue(fair, 5), 816400.56);
 
+// Botões de pagamento usam o mesmo retrato da matriz, inclusive meses da fonte.
+server.records = clone(records); server.payments = clone(payments);
+actions.setData(await fetchAll(db)); actions = render();
+const planningBeforeToggle = currentSnapshot();
+const julyValue = planningBeforeToggle.planningCellValue(fair, 6);
+assert.equal(planningBeforeToggle.planningCellPaid(fair, 6), false);
+const duplicateClick = [actions.quickTogglePlanningPaid(fair, 6), actions.quickTogglePlanningPaid(fair, 6)];
+assert.deepEqual(await Promise.all(duplicateClick), [true, false], 'Clique duplo não duplica a gravação.');
+updated = currentSnapshot();
+assert.equal(updated.planningCellPaid(fair, 6), true);
+assert.equal(cents(updated.grandTotal), cents(baseline.grandTotal));
+assert.equal(cents(updated.paidTotal), cents(baseline.paidTotal + julyValue));
+assert.equal(cents(updated.remainingTotal), cents(baseline.remainingTotal - julyValue));
+const paidJuly = updated.paymentMap.get(`${fair.id}|6`);
+assert.equal(Number(paidJuly.valor_pago), julyValue);
+const now = new Date();
+const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+assert.equal(paidJuly.pago_em, today, 'Data real não deve ser inventada pelo vencimento.');
+assert.equal(server.payments.length, payments.length);
+assert.equal(await actions.quickTogglePlanningPaid(fair, 6), true);
+updated = currentSnapshot();
+assert.equal(updated.planningCellPaid(fair, 6), false);
+assert.equal(Number(updated.paymentMap.get(`${fair.id}|6`).valor_pago), 0);
+assert.equal(updated.paymentMap.get(`${fair.id}|6`).pago_em, '');
+assert.equal(cents(updated.paidTotal), cents(baseline.paidTotal));
+assert.equal(cents(updated.grandTotal), cents(baseline.grandTotal));
+assert.equal(await actions.quickTogglePlanningPaid(fair, 0), false, 'Não permite dar baixa em um mês vazio.');
+server.failRpc = 'salvar_pagamento_acompanhamento_v1';
+assert.equal(await actions.quickTogglePlanningPaid(fair, 6), false);
+assert.equal(currentSnapshot().planningCellPaid(fair, 6), false, 'Falha ao salvar não marca como pago.');
+server.failRpc = null;
+
+// Fonte vermelha sem parcela: reabrir cria uma única sobreposição explícita.
+server.payments = payments.filter(payment => payment.registro_id !== fair.id).map(clone);
+actions.setData(await fetchAll(db)); actions = render();
+assert.equal(await actions.quickTogglePlanningPaid(fair, 5), true);
+updated = currentSnapshot();
+assert.equal(updated.planningCellPaid(fair, 5), false);
+assert.equal(updated.planningCellValue(fair, 5), Number(june.valor_previsto));
+assert.equal(cents(updated.grandTotal), cents(baseline.grandTotal));
+assert.equal(cents(updated.paidTotal), cents(baseline.paidTotal - Number(june.valor_previsto)));
+assert.equal(JSON.stringify(server.records.find(item => item.id === fair.id).dados_originais), sourceBefore);
+const finalReload = await fetchAll(db);
+assert.equal(buildPlanningSnapshot(finalReload.records, finalReload.payments).planningCellPaid(fair, 5), false);
+
 const pageError = await sandbox.__TEST__.fetchAll({ from:() => ({
   select() { return this; }, order() { return this; }, eq() { return this; }, limit() { return this; },
   range() { return Promise.resolve({ data:null, error:new Error('Sem conexão') }); },
@@ -208,5 +253,5 @@ assert.ok(pageError, 'Uma falha de paginação não deve devolver uma base parci
 
 console.log(JSON.stringify({ status:'ok', records:records.length, payments:payments.length,
   planningTotal:2610377.68, planningPaid:1740817.68,
-  tested:['indices da soma', 'pagina além de 1000', 'edição paga', 'recarga', 'zero', 'mês vazio', 'falha ao salvar', 'falha ao recarregar', 'meses sem parcela', 'fonte preservada', 'status salvo', 'ano correto'],
+  tested:['indices da soma', 'pagina além de 1000', 'edição paga', 'recarga', 'zero', 'mês vazio', 'falha ao salvar', 'falha ao recarregar', 'meses sem parcela', 'fonte preservada', 'status salvo', 'ano correto', 'marcar pago', 'reabrir', 'clique duplo', 'data real', 'reabertura da fonte vermelha'],
   liveDatabaseAccess:false }));

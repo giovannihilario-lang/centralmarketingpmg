@@ -1884,5 +1884,16 @@ body{font-size:14px!important}
 @media(max-width:900px){.planning-summary-line{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:560px){.planning-summary-line{grid-template-columns:1fr!important}}
 
+/* V2.3.9 — ações explícitas por competência, sem esconder o valor */
+.ac-app.sheet-mode .planning-live-sheet{width:2500px!important;min-width:2500px!important}
+.ac-app.sheet-mode .planning-live-sheet tbody td,.ac-app.sheet-mode .planning-live-sheet tbody th{height:86px!important}
+.planning-cell-controls{display:flex;flex-direction:column;min-height:84px;justify-content:center;gap:3px;padding-bottom:5px}
+.ac-app.sheet-mode .planning-live-sheet .planning-cell-controls .sheet-cell-editable{height:38px!important;white-space:nowrap!important}
+.planning-payment-toggle{display:flex;align-items:center;justify-content:center;gap:4px;margin:0 5px;padding:5px 4px;min-height:32px;border:1px solid #bfd2c6;border-radius:6px;background:#fff;color:#235b3d;font:700 10.5px/1.2 Inter,sans-serif;cursor:pointer;white-space:normal}
+.planning-payment-toggle.is-paid{color:#6f4240;border-color:#e6c7c4;background:#fffafa}
+.planning-payment-toggle:hover:not(:disabled){background:#e5f3ea;border-color:#3d8059}
+.planning-payment-toggle:focus-visible{outline:3px solid #298452;outline-offset:1px}
+.planning-payment-toggle:disabled{opacity:.55;cursor:wait}
+
 /* V2.3.7 — reconciliação visual com a linha SOMA MENSAL do MKTG 2026 */
 .source-adjustment-row{background:#fbfcfb;color:#6d7e73}.source-adjustment-row th{font-weight:800}.source-adjustment-row th span{display:block;color:#385544}.source-adjustment-row th small{display:block;margin-top:2px;font-size:10px;font-weight:600;color:#8a978f}.source-adjustment-row td{font-size:11px;color:#6d7e73}.one-click-status.source-confirmed{box-shadow:inset 0 0 0 1px rgba(31,118,68,.06)!important}

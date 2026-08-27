@@ -43,3 +43,13 @@
 .ocr-orbit-progress{position:absolute;left:20px;right:20px;bottom:13px;height:3px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.14)}
 .ocr-orbit-progress::after{content:"";display:block;width:var(--ocr-progress,0%);height:100%;border-radius:inherit;background:linear-gradient(90deg,#71dc91,#f2cf7e);box-shadow:0 0 10px rgba(113,220,145,.65);transition:width .25s ease}
 @media(max-width:780px){.ocr-orbit-progress{left:48px;right:12px;bottom:5px}}
+
+/* V1.2.7 — reescaneamento explícito com preservação da conferência */
+.doc-rescan-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;background:#f2f8f4;border:1px solid #c9dbce;border-radius:12px}
+.doc-rescan-toolbar>div{min-width:0}
+.doc-rescan-toolbar strong{display:block;overflow-wrap:anywhere;color:#244c33;font-size:13px}
+.doc-rescan-toolbar small{display:block;margin-top:4px;color:#576d5f;font-size:12px;line-height:1.4}
+.doc-rescan-toolbar .button{flex-shrink:0;min-height:40px}
+.doc-review-lock{min-width:0;border:0;margin:0;padding:0}
+.doc-review-lock:disabled{opacity:.65}
+@media(max-width:680px){.doc-rescan-toolbar{align-items:stretch;flex-direction:column}.doc-rescan-toolbar .button{justify-content:center}}

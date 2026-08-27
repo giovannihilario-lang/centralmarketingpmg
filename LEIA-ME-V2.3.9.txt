@@ -1,0 +1,60 @@
+PMG CONNECT — BOTÕES E TOTAIS V2.3.9
+
+INSTALAÇÃO
+1. Faça uma cópia dos arquivos atuais antes de substituí-los.
+2. Extraia este ZIP na raiz do projeto, mantendo as pastas.
+3. Execute SOMENTE sql/24-REESCANEAR-DOCUMENTO-V2.3.9.sql no SQL Editor do Supabase.
+   É pequeno, pode ser reexecutado e não altera os lançamentos financeiros.
+4. Publique o código e atualize o navegador com Ctrl + F5.
+   Não é necessário reenviar PDFs ou reimportar planilhas.
+
+ONDE ESTÃO OS BOTÕES
+- Planejamento PMG: cada célula com valor tem “Marcar como pago” ou “Marcar em aberto”.
+  Ao marcar pago, a data registrada é hoje. Ao reabrir, o valor previsto é preservado,
+  o valor pago fica zero e a data de pagamento é removida.
+  O total planejado não muda ao alternar o status; “Já pago” e “A pagar” mudam.
+- No topo do Planejamento, “Reescanear PDF com IA” abre Documentos.
+- Em Documentos, selecione um PDF pendente e clique em “Reescanear com IA”.
+  Confirme a substituição dos campos extraídos. O PDF original não é alterado.
+  A reanálise não aprova documentos nem marca pagamentos automaticamente.
+  A IA lê o PDF; não reimporta nem reinterpreta a matriz de Planejamento.
+
+PROTEÇÕES
+- A nova leitura só substitui a anterior após concluir e validar o estado no banco.
+- Se a IA falhar, mantém-se a leitura anterior, sem substituí-la novamente por OCR.
+- O primeiro envio continua usando OCR local como contingência quando necessário.
+- PDFs com qualquer item aprovado/ignorado ou vinculado a lançamentos ficam protegidos.
+- Se outra pessoa conferir/alterar o documento durante a leitura, a troca é recusada.
+- Clique duplo não inicia duas operações pela mesma tela.
+- A chave Gemini existente continua no servidor. Nenhuma chave está neste pacote.
+  O botão não elimina uma indisponibilidade do provedor nem dispensa sua configuração.
+
+COMPATIBILIDADE
+Base: versão mais recente analisada, Central V2.3.7, com o hotfix de totais V2.3.8
+e o hotfix Gemini V1.2.6 preservados. Não foi usado o HTML antigo da Central V1.3.1.
+O pacote contém somente os arquivos necessários e inclui os hotfixes anteriores
+nos arquivos afetados. Aplique este pacote por último, não o HTML do hotfix antigo.
+Demandas, Dashboard Regional e demais módulos não foram alterados.
+Se esses mesmos arquivos foram modificados depois da base enviada, compare antes
+de substituir: alterações posteriores não disponíveis aqui não puderam ser verificadas.
+
+VALIDAÇÃO LOCAL
+node scripts/testar-planejamento.js
+node scripts/testar-reescaneamento.js
+node scripts/testar-documentos.js
+node scripts/testar-acompanhamento.js
+
+Os quatro testes passaram. A carga atual de teste tem 1.326 registros e 1.603
+movimentos; Planejamento com 15 frentes, 104 competências e 73 pagas na fonte.
+Total planejado original: R$ 2.610.377,68; pago: R$ 1.740.817,68.
+Foram testados edição, persistência simulada, reabertura, totais, falhas de gravação,
+falha da IA, clique duplo e proteção de conferência. O SQL teve revisão estática,
+mas não foi executado no seu Supabase. Nenhuma chamada real ao Gemini foi feita.
+O navegador de teste bloqueou a prévia local; a revisão visual ficou pendente.
+
+PUBLICAÇÃO
+git add public/acompanhamento.html public/assets/acompanhamento.js public/assets/acompanhamento.css public/assets/acompanhamento-documentos.js public/assets/acompanhamento-documentos.css api/analisar-documento.js sql/24-REESCANEAR-DOCUMENTO-V2.3.9.sql scripts/testar-planejamento.js scripts/testar-reescaneamento.js scripts/testar-documentos.js LEIA-ME-V2.3.9.txt
+git commit -m "feat: adiciona reescaneamento IA e pagamento no planejamento"
+git push origin main
+
+Este pacote não publica o site nem cria um commit no seu repositório remoto.

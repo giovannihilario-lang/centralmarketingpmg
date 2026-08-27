@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.6 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.7 */
 (() => {
   'use strict';
 
@@ -204,11 +204,17 @@
     </form>`;
   }
 
-  function ReviewWorkspace({ entry, items, activeItem, setActiveItemId, context, previewUrl, previewLoading, openOriginal, onCompleted }) {
+  function canRescanDocument(entry, items) {
+    return Boolean(entry && ['aguardando_conferencia', 'erro', 'analisando'].includes(entry.status)
+      && items.length && items.every(item => item.entrada_id === entry.id && item.status === 'aguardando_conferencia'
+        && !item.conferido_em && !item.registro_id && !item.pagamento_id));
+  }
+
+  function ReviewWorkspace({ entry, items, activeItem, setActiveItemId, context, previewUrl, previewLoading, openOriginal, onCompleted, onRescan, busy, rescanning }) {
     const meta = TYPES[normalizeType(activeItem?.tipo)] || TYPES.nao_identificado;
-    useLucide([entry?.id, activeItem?.id, items.length]);
+    useLucide([entry?.id, activeItem?.id, items.length, busy, rescanning]);
     if (!entry || !activeItem) return html`<div className="doc-no-selection"><span><${Icon} name="mouse-pointer-click"/></span><h3>Escolha um documento da fila</h3><p>A prévia e os campos reconhecidos aparecerão aqui.</p></div>`;
-    return html`<div className="doc-workspace"><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[normalizeType(item.tipo)] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>Nenhum campo será lançado antes da sua aprovação.</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
+    return html`<div className="doc-workspace"><div className="doc-rescan-toolbar"><div><strong>${entry.nome_arquivo}</strong><small>${canRescanDocument(entry, items) ? 'Releia o PDF original com IA; os novos campos exigirão conferência.' : 'Leitura protegida: a conferência deste PDF já foi iniciada.'}</small></div>${canRescanDocument(entry, items) ? html`<button type="button" className="button secondary" disabled=${busy} onClick=${() => onRescan(entry)}>${rescanning ? html`<span className="spinner"></span>` : html`<${Icon} name="scan-line"/>`}${rescanning ? 'Reescaneando...' : 'Reescanear com IA'}</button>` : html`<span className="mandatory-review"><${Icon} name="lock-keyhole"/>Conferência protegida</span>`}</div><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[normalizeType(item.tipo)] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>Nenhum campo será lançado antes da sua aprovação.</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<fieldset className="doc-review-lock" disabled=${busy} aria-busy=${rescanning}><${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/></fieldset>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
   }
 
   function QueueCard({ entry, items, selected, select }) {
@@ -221,6 +227,7 @@
 
   function DocumentInbox({ context }) {
     const fileInput = useRef(null);
+    const processingRef = useRef(false);
     const [selectedEntryId, setSelectedEntryId] = useState(null);
     const [activeItemId, setActiveItemId] = useState(null);
     const [queueFilter, setQueueFilter] = useState('pendentes');
@@ -299,6 +306,8 @@
       const entry = typeof entryOrId === 'string' ? entries.find(item => item.id === entryId) : entryOrId;
       if (!entryId) return context.notify('Documento não encontrado para leitura.', 'error');
       if (DEMO_MODE) { context.notify('Modo demonstração: a leitura inteligente foi simulada.', 'info'); return; }
+      if (processingRef.current) return;
+      processingRef.current = true;
       setBusyEntryId(entryId);
       setOcrProgress({ progress:.05, label:'Preparando a leitura do documento...' });
       try {
@@ -333,10 +342,53 @@
       } catch (error) {
         await context.client.rpc('registrar_erro_documento_v1', { p_entrada_id:entryId, p_erro:error.message || 'Falha na leitura do documento.' });
         await context.reload(true); context.notify(error.message || 'Falha na leitura do documento.', 'error');
-      } finally { setBusyEntryId(null); setOcrProgress(null); }
+      } finally { processingRef.current = false; setBusyEntryId(null); setOcrProgress(null); }
+    }
+
+    async function rescanEntry(entry) {
+      if (processingRef.current || uploading) return false;
+      const items = allItems.filter(item => item.entrada_id === entry?.id);
+      if (!canRescanDocument(entry, items)) {
+        context.notify('A leitura fica protegida após o início da conferência.', 'info');
+        return false;
+      }
+      if (DEMO_MODE) { context.notify('O reescaneamento com IA está disponível no ambiente real.', 'info'); return false; }
+      if (!entry.atualizado_em) {
+        context.notify('Atualize a página antes de reescanear este documento.', 'info');
+        return false;
+      }
+      if (!window.confirm('Reescanear este PDF com IA? A nova leitura substituirá os campos extraídos e descartará edições ainda não confirmadas. O PDF original será preservado. Nada será lançado automaticamente.')) return false;
+      processingRef.current = true;
+      setBusyEntryId(entry.id);
+      setOcrProgress({ progress:.05, label:'Reescaneando com IA; leitura anterior preservada...' });
+      try {
+        // Não altera o banco nem usa OCR local nesta tentativa explícita de IA.
+        // A troca só acontece quando a IA termina e o banco revalida a conferência.
+        const analysis = await analyzeWithGemini(entry.id);
+        if (!Array.isArray(analysis?.documentos) || !analysis.documentos.length) throw new Error('A IA não devolveu documentos para conferir.');
+        setOcrProgress({ progress:.92, label:'Validando e salvando a nova leitura...' });
+        const { error } = await context.client.rpc('reescanear_documento_v1', {
+          p_entrada_id:entry.id, p_resultado:analysis, p_versao_esperada:entry.atualizado_em,
+        });
+        if (error) {
+          if (['PGRST202', '42883'].includes(error.code)) throw new Error('Execute sql/24-REESCANEAR-DOCUMENTO-V2.3.9.sql no Supabase para ativar este botão.');
+          throw error;
+        }
+        setSelectedEntryId(entry.id); setActiveItemId(null);
+        let refreshed = false;
+        try { refreshed = await context.reload(true); } catch (_) { /* A nova leitura já foi salva. */ }
+        context.notify(refreshed === false
+          ? 'Nova leitura salva. Atualize a página para ver e conferir os novos campos.'
+          : 'PDF reescaneado com IA. Confira os novos campos antes de lançar.', refreshed === false ? 'info' : 'success');
+        return true;
+      } catch (error) {
+        context.notify(`${error.message || 'A IA não concluiu o reescaneamento.'} A leitura anterior foi mantida.`, 'error');
+        return false;
+      } finally { processingRef.current = false; setBusyEntryId(null); setOcrProgress(null); }
     }
 
     async function manualReview(entry) {
+      if (processingRef.current || allItems.some(item => item.entrada_id === entry.id)) return;
       if (DEMO_MODE) return context.notify('A conferência manual está disponível no ambiente real.', 'info');
       const fallback = { total_paginas:entry.total_paginas || 1, resumo:'Documento encaminhado para conferência manual.', documentos:[{ ordem:1, paginas:[1], tipo:'nao_identificado', confianca:0, titulo_sugerido:'Documento para classificação manual', descricao:'', observacoes:'A leitura automática não foi utilizada.', evidencias:[], alertas:['Preencha e confira todos os campos manualmente.'], campos_duvidosos:['tipo', 'fornecedor', 'valor'] }] };
       const { error } = await context.client.rpc('registrar_analise_documento_v1', { p_entrada_id:entry.id, p_resultado:fallback });
@@ -346,6 +398,7 @@
 
     async function processFile(file) {
       if (!file) return;
+      if (processingRef.current || uploading) return context.notify('Aguarde a leitura atual terminar antes de enviar outro PDF.', 'info');
       if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) return context.notify('Envie somente arquivos PDF.', 'error');
       if (file.size > MAX_FILE_SIZE) return context.notify('O PDF deve ter no máximo 15 MB.', 'error');
       if (context.documentsSetupMissing) return context.notify('Execute o SQL 08 antes de enviar documentos.', 'error');
@@ -397,7 +450,7 @@
       <input ref=${fileInput} type="file" accept="application/pdf,.pdf" hidden onChange=${event => processFile(event.target.files?.[0])}/>
       <div className="documents-toolbar"><div className="doc-queue-tabs">${[['pendentes','Para conferir'],['conferidos','Conferidos'],['todos','Todos']].map(([key, label]) => html`<button className=${queueFilter === key ? 'active' : ''} onClick=${() => setQueueFilter(key)}>${label}${key === 'pendentes' && pendingCount ? html`<b>${pendingCount}</b>` : null}</button>`)}</div><div className="documents-safety"><${Icon} name="shield-check"/><span>Conferência obrigatória ativa</span></div></div>
 
-      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${busyEntryId === entry.id}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar leitura' : 'Tentar novamente'}</button>${entry.status === 'erro' ? html`<button onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
+      ${entries.length ? html`<div className="documents-shell"><aside className="documents-queue"><div className="documents-drop-mini" onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); processFile(event.dataTransfer.files?.[0]); }} data-dragging=${dragging}><span><${Icon} name="cloud-upload"/></span><div><strong>${dragging ? 'Solte o PDF aqui' : 'Novo documento'}</strong><small>Arraste ou clique para selecionar</small></div><button onClick=${() => fileInput.current?.click()}><${Icon} name="plus"/></button></div><div className="documents-queue-list">${filteredEntries.length ? filteredEntries.map(entry => html`<div className="queue-card-wrap"><${QueueCard} entry=${entry} items=${allItems.filter(item => item.entrada_id === entry.id)} selected=${entry.id === selectedEntry?.id} select=${() => chooseEntry(entry)}/>${['erro', 'analisando'].includes(entry.status) && !allItems.some(item => item.entrada_id === entry.id) ? html`<div className="queue-error-actions"><button onClick=${() => analyzeEntry(entry)} disabled=${Boolean(busyEntryId) || uploading}><${Icon} name="refresh-cw"/>${entry.status === 'analisando' ? 'Retomar leitura' : 'Tentar novamente'}</button>${entry.status === 'erro' ? html`<button disabled=${Boolean(busyEntryId) || uploading} onClick=${() => manualReview(entry)}><${Icon} name="pencil-line"/>Conferir manualmente</button>` : null}</div>` : null}</div>`) : html`<div className="queue-filter-empty"><${Icon} name="check-check"/><span>Nenhum documento nesta seleção.</span></div>`}</div></aside><${ReviewWorkspace} entry=${selectedEntry} items=${entryItems} activeItem=${activeItem} setActiveItemId=${setActiveItemId} context=${context} previewUrl=${previewUrl} previewLoading=${previewLoading} openOriginal=${openOriginal} onCompleted=${onCompleted} onRescan=${rescanEntry} busy=${Boolean(busyEntryId) || uploading} rescanning=${busyEntryId === selectedEntry?.id}/></div>` : html`<${EmptyInbox} upload=${() => fileInput.current?.click()}/>`}
     </section>`;
   }
 

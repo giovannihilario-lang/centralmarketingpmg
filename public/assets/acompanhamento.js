@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.3.8 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.3.9 / React + HTM */
 (() => {
   'use strict';
 
@@ -582,6 +582,7 @@
     const [saving, setSaving] = useState(false);
     const subscriptionRef = useRef(null);
     const reloadSeqRef = useRef(0);
+    const quickActionRef = useRef(false);
 
     const notify = useCallback((message, tone = 'success') => {
       setToast({ message, tone, id:Date.now() });
@@ -681,7 +682,7 @@
     const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, reload, notify, saving, setSaving, paymentJump, navigatePayments, openSupplier,
       openRecord:record => setSelectedId(record.id), editRecord:record => setRecordModal(record), newRecord:(defaults = {}) => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year, ...defaults }),
       newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), saveConference, setView,
-      quickUpdateRecord, quickUpdatePayment, quickUpsertPayment, quickTogglePaid, quickBulkConfirm, quickBulkNF, quickBulkArchive, quickUpdateSupplierRow, quickUpdateSpecificValue };
+      quickUpdateRecord, quickUpdatePayment, quickUpsertPayment, quickTogglePlanningPaid, quickTogglePaid, quickBulkConfirm, quickBulkNF, quickBulkArchive, quickUpdateSupplierRow, quickUpdateSpecificValue };
 
     useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);
 
@@ -746,7 +747,8 @@
     }
 
     async function runQuick(action, message = 'Alteração salva.') {
-      if (saving) return false;
+      if (saving || quickActionRef.current) return false;
+      quickActionRef.current = true;
       setSaving(true);
       try {
         await action();
@@ -757,7 +759,7 @@
         notify(message); return true;
       }
       catch (quickError) { notify(quickError.message || 'Não foi possível salvar a alteração.', 'error'); return false; }
-      finally { setSaving(false); }
+      finally { quickActionRef.current = false; setSaving(false); }
     }
 
     async function quickUpdateRecord(record, patch, message = 'Célula atualizada.') {
@@ -781,13 +783,27 @@
       const paymentPatch = {
         parcela:payment?.parcela || currentPayments.length + 1,
         descricao:payment?.descricao || `${record.referencia || record.fornecedor || 'Lançamento'} — ${OFFICIAL_MONTHS[monthIndex][1]} ${yearValue}`,
-        valor_previsto:value, valor_pago:status === 'pago' ? value : Number(payment?.valor_pago || 0), vencimento:due,
-        pago_em:status === 'pago' ? (payment?.pago_em || due) : '', status,
+        valor_previsto:value, valor_pago:status === 'pago' ? value : (planning ? 0 : Number(payment?.valor_pago || 0)), vencimento:due,
+        pago_em:status === 'pago' ? (options.pago_em || payment?.pago_em || due) : '', status,
         forma_pagamento:payment?.forma_pagamento || options.forma_pagamento || 'Não informado', favorecido:record.fornecedor || '',
         numero_documento:payment?.numero_documento || record.numero_documento || '', observacoes:payment?.observacoes || options.observacoes || '',
         fingerprint:payment?.fingerprint || fingerprint([record.fingerprint || record.id, options.fingerprintLabel || 'celula', monthIndex + 1])
       };
       return runQuick(async () => { await rpcPayment(payment, record.id, paymentPatch); if (options.syncRecordTotal !== false) await rpcRecord(record, { valor_acordado:newTotal }); }, options.message || 'Valor atualizado.');
+    }
+
+    async function quickTogglePlanningPaid(record, monthIndex) {
+      if (!record || saving || quickActionRef.current || !hasTag(record, 'planejamento') || !Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) return false;
+      const snapshot = buildPlanningSnapshot([record], data.payments, Number(record.ano_referencia || 2026));
+      const payment = snapshot.paymentMap.get(`${record.id}|${monthIndex}`);
+      const amount = snapshot.planningCellValue(record, monthIndex);
+      if (!(amount > 0)) { notify('Informe um valor antes de marcar o mês como pago.', 'info'); return false; }
+      const willPay = !snapshot.planningCellPaid(record, monthIndex);
+      return quickUpsertPayment(record, payment, monthIndex, amount, {
+        status:willPay ? 'pago' : 'previsto', pago_em:willPay ? todayKey() : '',
+        syncRecordTotal:true, fingerprintLabel:'planejamento',
+        message:willPay ? 'Mês marcado como pago. Totais atualizados.' : 'Mês marcado em aberto. Totais atualizados.',
+      });
     }
 
     async function quickTogglePaid(payment, record) {
@@ -1568,14 +1584,14 @@
     };
     useLucide([planning.length, context.saving]);
     return html`<section className="spreadsheet-view planning-sheet-view">
-      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na fonte oficial. Clique, edite e acompanhe o total sem perder o contexto." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar fonte</button>`}/>
+      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na fonte oficial. Edite os valores e use o botão de cada mês para marcar pago ou em aberto." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" title="Abrir Documentos e escolher o PDF para uma nova leitura com IA" onClick=${() => context.setView('documentos')}><${Icon} name="scan-line"/>Reescanear PDF com IA</button><button className="button secondary" onClick=${() => context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar fonte</button>`}/>
       <div className="planning-summary-line"><span><small>Frentes</small><strong>${planning.length}</strong></span><span><small>Total planejado</small><strong>${money(grandTotal)}</strong></span><span className="paid"><small>Já pago</small><strong>${money(paidTotal)}</strong></span><span className="pending"><small>A pagar</small><strong>${money(remainingTotal)}</strong></span></div>
-      ${planning.length ? html`<section className="planning-fronts-panel"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Vermelho = já pago na planilha oficial</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])} planejado</small><em>${money(paidColumnTotals[index])} pago</em></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. Reimporte o MKTG 2026 para restaurar a matriz.</p></div><button className="button primary" onClick=${()=>context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar MKTG 2026</button></div>`}
+      ${planning.length ? html`<section className="planning-fronts-panel"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Vermelho = pago · escuro = em aberto</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])} planejado</small><em>${money(paidColumnTotals[index])} pago</em></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. Reimporte o MKTG 2026 para restaurar a matriz.</p></div><button className="button primary" onClick=${()=>context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar MKTG 2026</button></div>`}
       ${planning.length ? html`<${EasySheetNavigator} scrollRef=${planningScrollRef} focusSelector=".planning-live-sheet .total-head" focusLabel="Ir ao total"/>` : null}
       ${planning.length ? html`<article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll assisted-scroll" ref=${planningScrollRef}><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${planningName(record)}>${planningName(record)}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
-        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Pago: valor atual do planejamento' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><${EditableSheetCell} type="money" value=${value} disabled=${context.saving} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
+        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Pago: valor atual do planejamento' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><div className="planning-cell-controls"><${EditableSheetCell} type="money" value=${value} disabled=${context.saving} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/>${value > 0 ? html`<button type="button" className=${`planning-payment-toggle ${paid ? 'is-paid' : 'is-open'}`} disabled=${context.saving} aria-label=${`${paid ? 'Marcar em aberto' : 'Marcar como pago'}: ${planningName(record)}, ${label} de 2026, ${money(value)}`} title=${paid ? 'Reabrir este mês sem apagar seu valor' : 'Registrar este valor como pago hoje'} onClick=${() => context.quickTogglePlanningPaid(record,monthIndex)}><span aria-hidden="true">${paid ? '↶' : '✓'}</span>${paid ? 'Marcar em aberto' : 'Marcar como pago'}</button>` : null}</div></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
       </tbody><tfoot><tr><th className="sticky-first">Total</th>${columnTotals.map(value => html`<th>${money(value)}</th>`)}<th>${money(grandTotal)}</th></tr></tfoot></table></div></article>` : null}
-      ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Os valores vêm da aba Planejamento do MKTG 2026. Valores em vermelho na fonte oficial são tratados como já pagos; valores escuros continuam apenas previstos.</span></div>` : null}
+      ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Vermelho indica pago; escuro indica em aberto. Suas alterações atualizam os totais e prevalecem sobre a leitura inicial. O botão de IA abre a Caixa de Documentos para reescanear um PDF; para atualizar a planilha, use Reimportar fonte.</span></div>` : null}
     </section>`;
   }
 
