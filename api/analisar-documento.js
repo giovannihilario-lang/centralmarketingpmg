@@ -339,7 +339,7 @@ export default async function handler(req, res) {
     const buildRequestBody = model => JSON.stringify({
       model,
       input:[
-        { type:'document', data:pdfBase64, mime_type:'application/pdf', resolution:'medium' },
+        { type:'document', data:pdfBase64, mime_type:'application/pdf' },
         { type:'text', text:`${INSTRUCTIONS}\n\nArquivo: ${entry.nome_arquivo}. Faça uma checagem final de fornecedor, numero do documento e valores antes de responder. Devolva somente o JSON solicitado.` },
       ],
       generation_config:{ thinking_level:mode === 'reescan' ? 'high' : 'medium' },

@@ -83,12 +83,13 @@ assert.doesNotMatch(providerMessage({ error:{ message:'gemini-3.7-flash is curre
 const candidates = geminiModelCandidates();
 assert.deepEqual(candidates.slice(0, 3), ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
 const apiSource = fs.readFileSync(new URL('../api/analisar-documento.js', import.meta.url), 'utf8');
-assert.match(apiSource, /resolution:'medium'/);
+assert.doesNotMatch(apiSource, /type:'document'[^\n]*resolution:/, 'PDF inline da Interactions API nao deve enviar resolution; o endpoint em producao rejeita esse parametro.');
 assert.match(apiSource, /thinking_level:mode === 'reescan' \? 'high' : 'medium'/);
 assert.match(apiSource, /GEMINI_DOCUMENT_FALLBACK_MODELS/);
-assert.match(documentModule, /canonicalSupplierName\(extracted\.fornecedor, context\.allRecords\)/, 'O fornecedor lido deve ser reconciliado com o nome curto ja usado na Central.');
-assert.match(documentModule, /context\.navigatePayments\(paymentNavigation\(form, supplier\)\)/, 'Ao lancar pagamento, a conferencia deve abrir a planilha de pagamentos.');
-assert.match(documentModule, /\['fornecedores'\]/, 'Lancamentos de Marketing com fornecedor precisam entrar na planilha de pagamentos.');
+
+assert.match(documentModule, /canonicalSupplierName\(extracted\.fornecedor, context\.allRecords\)/, 'O fornecedor lido deve ser reconciliado com o nome curto já usado na Central.');
+assert.match(documentModule, /context\.navigatePayments\(paymentNavigation\(form, supplier\)\)/, 'Ao lançar pagamento, a conferência deve abrir a planilha de pagamentos.');
+assert.match(documentModule, /\['fornecedores'\]/, 'Lançamentos de Marketing com fornecedor precisam entrar na planilha de pagamentos.');
 assert.match(apiSource, /Prefira o nome comercial curto e reconhecivel do fornecedor/);
 
 const envExample = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
