@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import '../public/assets/acompanhamento-ocr.js';
-import { DOCUMENT_SCHEMA, validateAnalysis } from '../api/analisar-documento.js';
+import { DOCUMENT_SCHEMA, providerMessage, shouldRetryGemini, validateAnalysis } from '../api/analisar-documento.js';
 
 const { classify, parsePage, parseBrazilianMoney } = globalThis.PMGDocumentOCR;
 
@@ -58,14 +58,20 @@ assert.match(html, /pdfjs-dist@3\.11\.174/);
 assert.match(html, /tesseract\.js@5\.1\.1/);
 assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.5/);
 assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.3/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.5/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.6/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');
 assert.match(documentModule, /PMGDocumentOCR\.analyzePdf/);
 assert.match(documentModule, /\/api\/analisar-documento/);
-assert.match(documentModule, /Gemini 3\.7 Flash/);
+assert.match(documentModule, /Leitura protegida · contingência automática/);
+assert.doesNotMatch(documentModule, /context\.notify\(`\$\{geminiError/);
 assert.match(documentModule, /return \(\) => cancelAnimationFrame\(frame\)/, 'O efeito dos icones precisa devolver uma funcao de limpeza.');
+
+assert.equal(shouldRetryGemini(503, 'gemini-3.7-flash is currently experiencing high demand'), true);
+assert.equal(shouldRetryGemini(400, 'invalid request'), false);
+assert.match(providerMessage({ error:{ message:'gemini-3.7-flash is currently experiencing high demand' } }, 503), /leitura visual esta ocupada/i);
+assert.doesNotMatch(providerMessage({ error:{ message:'gemini-3.7-flash is currently experiencing high demand' } }, 503), /high demand/i);
 
 const envExample = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 assert.doesNotMatch(envExample, /OPENAI_API_KEY/);

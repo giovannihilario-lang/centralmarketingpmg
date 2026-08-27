@@ -3,6 +3,9 @@ import { bearerToken, requireSupabaseUser, sendAuthError } from '../src/lib/supa
 
 const MAX_REQUESTS_PER_MINUTE = 6;
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
+const GEMINI_ATTEMPTS = 3;
+const GEMINI_TIME_BUDGET_MS = 40_000;
+const GEMINI_RETRY_DELAYS_MS = [700, 1_600];
 const recentRequests = new Map();
 const DOCUMENT_TYPES = new Set(['desconto_nota', 'deposito', 'extrato_bancario', 'nao_identificado']);
 const LEGACY_DOCUMENT_TYPES = Object.freeze({ cadastro_pagamento:'desconto_nota', pedido_compra:'desconto_nota', danfe:'deposito' });
@@ -172,10 +175,62 @@ function json(res, status, payload) {
   return res.status(status).json(payload);
 }
 
-function providerMessage(payload, status) {
-  if (status === 429) return 'A cota gratuita do Gemini esta ocupada. O leitor local sera usado como contingencia.';
+export function shouldRetryGemini(status, message = '') {
+  return [429, 500, 502, 503, 504].includes(Number(status))
+    || /high demand|overloaded|temporar(?:ily|iamente)|try again|indisponivel/i.test(String(message || ''));
+}
+
+export function providerMessage(payload, status) {
+  const originalMessage = textValue(payload?.error?.message, 500) || '';
+  if (shouldRetryGemini(status, originalMessage)) {
+    return 'A leitura visual esta ocupada no momento. A leitura local sera usada automaticamente.';
+  }
   if (status === 401 || status === 403) return 'A chave gratuita do Gemini precisa ser revisada no servidor.';
-  return textValue(payload?.error?.message, 500) || `O Gemini nao concluiu a leitura (${status}).`;
+  return originalMessage || `A leitura visual nao concluiu o documento (${status}).`;
+}
+
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+async function requestGemini({ apiKey, model, requestBody }) {
+  const deadline = Date.now() + GEMINI_TIME_BUDGET_MS;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < GEMINI_ATTEMPTS; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < 4_000) break;
+
+    try {
+      const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method:'POST',
+        headers:{ 'x-goog-api-key':apiKey, 'Content-Type':'application/json' },
+        body:requestBody,
+        signal:AbortSignal.timeout(Math.min(attempt === 0 ? 28_000 : 16_000, remaining)),
+      });
+      const responseBody = await aiResponse.json().catch(() => ({}));
+      if (aiResponse.ok) return { responseBody, attempts:attempt + 1 };
+
+      const message = providerMessage(responseBody, aiResponse.status);
+      const error = Object.assign(new Error(message), {
+        status:aiResponse.status,
+        providerPayload:responseBody,
+      });
+      lastError = error;
+      if (!shouldRetryGemini(aiResponse.status, responseBody?.error?.message) || attempt === GEMINI_ATTEMPTS - 1) throw error;
+    } catch (error) {
+      lastError = error;
+      const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+      const retryable = timedOut || shouldRetryGemini(error?.status, error?.message);
+      if (!retryable || attempt === GEMINI_ATTEMPTS - 1) throw error;
+    }
+
+    const delay = GEMINI_RETRY_DELAYS_MS[attempt] || GEMINI_RETRY_DELAYS_MS.at(-1);
+    if (Date.now() + delay + 4_000 >= deadline) break;
+    await wait(delay);
+  }
+
+  throw lastError || Object.assign(new Error('A leitura visual nao respondeu a tempo.'), { status:504 });
 }
 
 export default async function handler(req, res) {
@@ -226,38 +281,27 @@ export default async function handler(req, res) {
     if (!pdfBuffer.length || pdfBuffer.length > MAX_FILE_SIZE) throw new Error('O PDF esta vazio ou ultrapassa 15 MB.');
 
     const model = process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.7-flash';
-    const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-      method:'POST',
-      headers:{ 'x-goog-api-key':apiKey, 'Content-Type':'application/json' },
-      body:JSON.stringify({
+    const requestBody = JSON.stringify({
         model,
         input:[
           { type:'document', data:pdfBuffer.toString('base64'), mime_type:'application/pdf' },
           { type:'text', text:`${INSTRUCTIONS}\n\nArquivo: ${entry.nome_arquivo}. Devolva somente o JSON solicitado.` },
         ],
         response_format:{ type:'text', mime_type:'application/json', schema:DOCUMENT_SCHEMA },
-      }),
-      signal:AbortSignal.timeout(44_000),
     });
-
-    const responseBody = await aiResponse.json().catch(() => ({}));
-    if (!aiResponse.ok) {
-      const error = new Error(providerMessage(responseBody, aiResponse.status));
-      error.status = aiResponse.status;
-      throw error;
-    }
+    const { responseBody, attempts } = await requestGemini({ apiKey, model, requestBody });
     const output = interactionText(responseBody);
     if (!output) throw new Error('O Gemini nao devolveu campos para conferencia.');
     const analysis = validateAnalysis(JSON.parse(output));
     if (!analysis.documentos.length) throw new Error('O Gemini nao identificou paginas suficientes para montar a conferencia.');
-    return json(res, 200, { analise:analysis, modelo:model, gratuito:true, conferencia_obrigatoria:true });
+    return json(res, 200, { analise:analysis, modelo:model, tentativas:attempts, gratuito:true, conferencia_obrigatoria:true });
   } catch (error) {
     const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     const providerStatus = Number(error?.status);
     const status = timeout ? 504 : (providerStatus >= 400 && providerStatus < 600 ? providerStatus : 500);
     return json(res, status, {
       erro:timeout ? 'A leitura Gemini demorou mais que o esperado. O leitor local sera usado.' : (error?.message || 'Nao foi possivel analisar o documento.'),
-      fallback_local:status >= 429,
+      fallback_local:true,
     });
   }
 }
