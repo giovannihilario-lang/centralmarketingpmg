@@ -66,7 +66,7 @@ assert.match(html, /pdfjs-dist@3\.11\.174/);
 assert.match(html, /tesseract\.js@5\.1\.1/);
 assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.6/);
 assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.9/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.9/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.10/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');
@@ -86,6 +86,10 @@ const apiSource = fs.readFileSync(new URL('../api/analisar-documento.js', import
 assert.match(apiSource, /resolution:'medium'/);
 assert.match(apiSource, /thinking_level:mode === 'reescan' \? 'high' : 'medium'/);
 assert.match(apiSource, /GEMINI_DOCUMENT_FALLBACK_MODELS/);
+assert.match(documentModule, /canonicalSupplierName\(extracted\.fornecedor, context\.allRecords\)/, 'O fornecedor lido deve ser reconciliado com o nome curto ja usado na Central.');
+assert.match(documentModule, /context\.navigatePayments\(paymentNavigation\(form, supplier\)\)/, 'Ao lancar pagamento, a conferencia deve abrir a planilha de pagamentos.');
+assert.match(documentModule, /\['fornecedores'\]/, 'Lancamentos de Marketing com fornecedor precisam entrar na planilha de pagamentos.');
+assert.match(apiSource, /Prefira o nome comercial curto e reconhecivel do fornecedor/);
 
 const envExample = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 assert.doesNotMatch(envExample, /OPENAI_API_KEY/);

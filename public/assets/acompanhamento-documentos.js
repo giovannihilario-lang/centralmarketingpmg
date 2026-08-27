@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.9 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.10 */
 (() => {
   'use strict';
 
@@ -43,6 +43,40 @@
     else if (raw.includes(',')) raw = raw.replace(',', '.');
     const parsed = Number(raw.replace(/[^0-9.-]/g, ''));
     return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  };
+  const normalizeSupplier = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const SUPPLIER_NOISE = new Set(['sa','s','a','ltda','me','eireli','industria','industrial','comercio','comercial','distribuidora','distribuicao','alimentos','alimenticios','brasil','brasileira','brasileiro','do','da','de','dos','das','e']);
+  const supplierCoreTokens = value => normalizeSupplier(value).split(' ').filter(Boolean).filter(token => !SUPPLIER_NOISE.has(token));
+  const supplierFirstToken = value => supplierCoreTokens(value)[0] || normalizeSupplier(value).split(' ').filter(Boolean)[0] || '';
+  const supplierCatalog = records => [...new Set((records || []).map(record => String(record?.fornecedor || '').trim()).filter(Boolean))];
+  const canonicalSupplierName = (value, records = []) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const normalized = normalizeSupplier(raw);
+    const known = supplierCatalog(records);
+    const exact = known.find(name => normalizeSupplier(name) === normalized);
+    if (exact) return exact;
+    const contained = known.filter(name => {
+      const candidate = normalizeSupplier(name);
+      return candidate.length >= 4 && (normalized.includes(candidate) || candidate.includes(normalized));
+    }).sort((a, b) => normalizeSupplier(b).length - normalizeSupplier(a).length);
+    if (contained.length === 1 || (contained[0] && normalizeSupplier(contained[0]).length > normalizeSupplier(contained[1] || '').length + 3)) return contained[0];
+    const first = supplierFirstToken(raw);
+    if (first) {
+      const byFirst = known.filter(name => supplierFirstToken(name) === first);
+      if (byFirst.length === 1) return byFirst[0];
+    }
+    return raw.replace(/\s+(?:S\.?\s*A\.?|LTDA\.?|EIRELI|ME)\s*$/i, '').trim();
+  };
+  const paymentNavigation = (form, supplier) => {
+    const paidAt = String(form.get('data_pagamento') || '').trim();
+    const dueAt = String(form.get('vencimento') || '').trim();
+    const issuedAt = String(form.get('data_emissao') || '').trim();
+    const fallback = new Date().toISOString().slice(0, 10);
+    const date = paidAt || dueAt || issuedAt || fallback;
+    const year = Number(date.slice(0, 4)) || new Date().getFullYear();
+    const month = Math.max(0, Math.min(11, (Number(date.slice(5, 7)) || 1) - 1));
+    return { year, month, supplier };
   };
   const refreshIcons = () => {
     const frame = requestAnimationFrame(() => {
@@ -104,9 +138,11 @@
     const [confirmed, setConfirmed] = useState(false);
     const normalizedSearch = recordSearch.toLocaleLowerCase('pt-BR');
     const records = context.allRecords.filter(record => !normalizedSearch || `${record.codigo} ${record.fornecedor} ${record.titulo}`.toLocaleLowerCase('pt-BR').includes(normalizedSearch)).slice(0, 150);
+    const detectedSupplier = canonicalSupplierName(extracted.fornecedor, context.allRecords);
     const defaultValue = extracted.valor_lancamento_sugerido ?? extracted.valor_marketing ?? extracted.valor_total_documento ?? '';
     const defaultDocument = extracted.numero_documento || extracted.numero_nota || extracted.numero_pedido || '';
     const defaultPaymentStatus = extracted.data_pagamento || item.tipo === 'extrato_bancario' ? 'pago' : 'previsto';
+    const defaultNature = extracted.natureza_sugerida && extracted.natureza_sugerida !== 'neutro' ? extracted.natureza_sugerida : (['desconto_nota','deposito','extrato_bancario'].includes(normalizeType(item.tipo)) ? 'receita' : 'neutro');
     useLucide([item.id, action, createPayment, saving, confirmed, records.length]);
 
     async function ignoreItem() {
@@ -128,7 +164,7 @@
       const recordId = form.get('registro_id') || null;
       if (action !== 'novo' && !recordId) return context.notify('Selecione o acompanhamento relacionado.', 'error');
       const amount = parseMoney(form.get('valor_lancamento'));
-      const supplier = String(form.get('fornecedor') || '').trim();
+      const supplier = canonicalSupplierName(form.get('fornecedor'), context.allRecords);
       const documentNumber = String(form.get('numero_documento') || '').trim();
       const paymentStatus = form.get('status_pagamento');
       const paidAt = form.get('data_pagamento') || null;
@@ -149,7 +185,7 @@
           referencia:`Documento conferido na Caixa de Entrada · ${TYPES[form.get('tipo_documento')]?.label || 'Documento'}`,
           status:'em_andamento', prioridade:'normal', data_inicio:referenceDate, data_fim:null,
           valor_acordado:amount, numero_documento:documentNumber,
-          tags:['documento-conferido', String(form.get('tipo_documento') || 'documento'), String(form.get('controle') || 'marketing')],
+          tags:['documento-conferido', String(form.get('tipo_documento') || 'documento'), String(form.get('controle') || 'marketing'), ...(form.get('controle') === 'marketing' && supplier ? ['fornecedores'] : [])],
           observacoes:String(form.get('observacoes') || '').trim(),
           origem_importacao:'caixa_documentos', dados_originais:extracted,
         },
@@ -167,7 +203,10 @@
       try {
         const { data, error } = await context.client.rpc('aprovar_documento_acompanhamento_v1', { p_item_id:item.id, p_dados:payload });
         if (error) throw error;
-        await context.reload(true); context.notify('Documento conferido e lançamento registrado.'); onCompleted(item.id, data?.registro_id);
+        await context.reload(true);
+        context.notify(createPayment ? 'Documento conferido. Abrindo a planilha de pagamentos...' : 'Documento conferido e acompanhamento registrado.');
+        onCompleted(item.id, data?.registro_id);
+        if (action !== 'somente_anexar' && createPayment) context.navigatePayments(paymentNavigation(form, supplier));
       } catch (error) { context.notify(error.message || 'Não foi possível concluir a conferência.', 'error'); }
       finally { setSaving(false); }
     }
@@ -181,10 +220,10 @@
       <section className="doc-review-section"><div className="doc-review-heading"><span>02</span><div><small>Classificação</small><h3>Confira a leitura do documento</h3></div><b className=${`doc-confidence ${item.confianca >= .9 ? 'high' : item.confianca >= .7 ? 'medium' : 'low'}`}>${Math.round(Number(item.confianca || 0) * 100)}% de confiança</b></div><div className="doc-form-grid">
         <${Field} label="Tipo de documento"><select name="tipo_documento" defaultValue=${normalizeType(item.tipo)}>${Object.entries(TYPES).map(([key, meta]) => html`<option value=${key}>${meta.label}</option>`)}</select></${Field}>
         <${Field} label="Controle"><select name="controle" defaultValue="marketing"><option value="marketing">Marketing / Fornecedores</option><option value="marcos">Marcos / Presidência</option></select></${Field}>
-        <${Field} label="Fornecedor"><input name="fornecedor" defaultValue=${extracted.fornecedor || ''} placeholder="Fornecedor ou parceiro"/></${Field}>
+        <${Field} label="Fornecedor"><input name="fornecedor" defaultValue=${detectedSupplier} placeholder="Fornecedor ou parceiro"/></${Field}>
         <${Field} label="Código do fornecedor"><input name="fornecedor_codigo" defaultValue=${extracted.fornecedor_codigo || ''} placeholder="Opcional"/></${Field}>
         <${Field} label="Categoria"><select name="categoria" defaultValue=${extracted.categoria_sugerida || 'outro'}>${Object.entries(CATEGORIES).map(([key, label]) => html`<option value=${key}>${label}</option>`)}</select></${Field}>
-        <${Field} label="Natureza financeira"><select name="natureza" defaultValue=${extracted.natureza_sugerida || 'neutro'}><option value="receita">Receita / verba</option><option value="despesa">Despesa / investimento</option><option value="neutro">Sem impacto financeiro</option></select></${Field}>
+        <${Field} label="Natureza financeira"><select name="natureza" defaultValue=${defaultNature}><option value="receita">Receita / verba</option><option value="despesa">Despesa / investimento</option><option value="neutro">Sem impacto financeiro</option></select></${Field}>
         <${Field} label="Número do documento"><input name="numero_documento" defaultValue=${defaultDocument} placeholder="Pedido, NF ou comprovante"/></${Field}>
         <${Field} label="Data de emissão"><input name="data_emissao" type="date" defaultValue=${extracted.data_emissao || ''}/></${Field}>
         <${Field} label="Título do acompanhamento" wide=${true}><input name="titulo" defaultValue=${extracted.titulo_sugerido || ''} required=${action === 'novo'} placeholder="Como este lançamento aparecerá na Central"/></${Field}>
@@ -510,5 +549,5 @@
     </section>`;
   }
 
-  window.PMGDocumentModule = Object.freeze({ DocumentInbox, canRescanDocument, analysisQuality, analysisRegression });
+  window.PMGDocumentModule = Object.freeze({ DocumentInbox, canRescanDocument, analysisQuality, analysisRegression, canonicalSupplierName, paymentNavigation });
 })();
