@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.3.9 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.3.10 / React + HTM */
 (() => {
   'use strict';
 
@@ -560,6 +560,30 @@
     return Number.isFinite(value) ? value : fallback;
   };
 
+  class AppErrorBoundary extends React.Component {
+    constructor(props) { super(props); this.state = { error:null }; }
+    static getDerivedStateFromError(error) { return { error }; }
+    componentDidCatch(error, info) {
+      console.error('[PMG Acompanhamento] Falha de interface capturada:', error, info);
+    }
+    render() {
+      if (!this.state.error) return this.props.children;
+      return html`<div className="fatal-screen"><div className="fatal-card"><div className="boot-mark compact"><img src="/imagenssite/pmglogo.png" alt="PMG"/></div><p className="eyebrow">PMG Connect</p><h1>A Central encontrou um erro de interface</h1><p>Seus dados não foram apagados. Recarregue a página para reconstruir a interface com segurança.</p><div className="fatal-actions"><a className="button secondary" href="/central.html">Voltar ao início</a><button className="button primary" onClick=${() => location.reload()}>Recarregar Central</button></div></div></div>`;
+    }
+  }
+
+  class DocumentErrorBoundary extends React.Component {
+    constructor(props) { super(props); this.state = { error:null }; }
+    static getDerivedStateFromError(error) { return { error }; }
+    componentDidCatch(error, info) {
+      console.error('[PMG Documentos] Falha de interface capturada:', error, info);
+    }
+    render() {
+      if (!this.state.error) return this.props.children;
+      return html`<section className="doc-no-selection"><span className="doc-recovery-mark">!</span><h3>Documentos encontrou um erro de interface</h3><p>O PDF e a leitura salva continuam preservados. Volte ao Dashboard e abra Documentos novamente.</p><button className="button primary" onClick=${this.props.onBack}>Voltar ao Dashboard</button></section>`;
+    }
+  }
+
   function App() {
     const [view, setView] = useState('dashboard');
     const [mobileNav, setMobileNav] = useState(false);
@@ -1080,7 +1104,7 @@
                 ${view === 'fechamento' && html`<${ClosingView} context=${context}/>`}
                 ${view === 'registros' && html`<${RecordsView} context=${context}/>`}
                 ${view === 'financeiro' && html`<${FinanceView} context=${context}/>`}
-                ${view === 'documentos' && window.PMGDocumentModule?.DocumentInbox && html`<${window.PMGDocumentModule.DocumentInbox} context=${context}/>`}
+                ${view === 'documentos' && window.PMGDocumentModule?.DocumentInbox && html`<${DocumentErrorBoundary} onBack=${() => setView('dashboard')}><${window.PMGDocumentModule.DocumentInbox} context=${context}/></${DocumentErrorBoundary}>`}
                 ${view === 'documentos' && !window.PMGDocumentModule?.DocumentInbox && html`<${MiniEmpty} icon="scan-line" title="Módulo de documentos indisponível" text="Atualize a página para carregar a Caixa de Entrada."/>`}
                 ${view === 'importar' && html`<${ImportView} context=${context} defaultControl=${control} defaultYear=${year}/>`}
               </div>`}
@@ -2463,5 +2487,5 @@
       <div className="import-history"><div className="panel-heading compact"><div><span className="eyebrow">Rastreabilidade</span><h2>Importações recentes</h2></div></div>${context.imports.length ? context.imports.slice(0, 5).map(item => html`<div className="import-history-row"><span><${Icon} name="file-check-2"/></span><div><strong>${item.nome_arquivo}</strong><small>${item.controle === 'marcos' ? 'Marcos' : 'Marketing'} · ${item.ano_referencia || 'Vários anos'} · ${dateTime(item.criado_em)}</small></div><b>${int(item.linhas_criadas + item.linhas_atualizadas)} processados</b></div>`) : html`<${MiniEmpty} icon="history" title="Nenhuma importação registrada" text="O histórico dos arquivos enviados aparecerá aqui."/>`}</div></section>`;
   }
 
-  ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+  ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);
 })();

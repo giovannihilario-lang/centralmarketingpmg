@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const appPath = new URL('../public/assets/acompanhamento.js', import.meta.url);
 const original = fs.readFileSync(appPath, 'utf8');
-const boot = "ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);";
+const boot = "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);";
 const contextMarker = '    useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);';
 assert.ok(original.includes(boot) && original.includes(contextMarker), 'Pontos de teste da Central não encontrados.');
 const code = original.replace(boot, 'globalThis.__TEST__ = { sum, buildPlanningSnapshot, fetchAll, App };')
@@ -17,7 +17,7 @@ const sandbox = {
   location:{ search:'' }, document:{}, localStorage:{ getItem:() => null },
   setTimeout:() => 1, clearTimeout:noop, requestAnimationFrame:noop, cancelAnimationFrame:noop,
   React:{
-    createElement:noop, useCallback:fn => fn, useEffect:noop, useMemo:fn => fn(),
+    Component:class {}, createElement:noop, useCallback:fn => fn, useEffect:noop, useMemo:fn => fn(),
     useState(initial) {
       const index = cursor++;
       if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial;

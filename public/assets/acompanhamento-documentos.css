@@ -53,3 +53,11 @@
 .doc-review-lock{min-width:0;border:0;margin:0;padding:0}
 .doc-review-lock:disabled{opacity:.65}
 @media(max-width:680px){.doc-rescan-toolbar{align-items:stretch;flex-direction:column}.doc-rescan-toolbar .button{justify-content:center}}
+/* V1.2.8 — evita que o Lucide remova nós que o React tenta trocar durante ações assíncronas */
+.doc-rescan-button,.doc-stable-action{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.doc-rescan-icon,.doc-stable-action-icon{position:relative;width:16px;height:16px;display:inline-grid;place-items:center;flex:0 0 16px}
+.doc-rescan-idle,.doc-stable-action-idle{display:inline-grid;place-items:center;width:16px;height:16px}
+.doc-rescan-idle svg,.doc-rescan-idle i,.doc-stable-action-idle svg,.doc-stable-action-idle i{width:16px;height:16px}
+.doc-rescan-spinner,.doc-stable-action-spinner{display:none;position:absolute;inset:0;margin:auto}
+.doc-rescan-button.is-busy .doc-rescan-idle,.doc-stable-action.is-busy .doc-stable-action-idle{visibility:hidden}
+.doc-rescan-button.is-busy .doc-rescan-spinner,.doc-stable-action.is-busy .doc-stable-action-spinner{display:block}

@@ -57,8 +57,8 @@ const html = fs.readFileSync(new URL('../public/acompanhamento.html', import.met
 assert.match(html, /pdfjs-dist@3\.11\.174/);
 assert.match(html, /tesseract\.js@5\.1\.1/);
 assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.5/);
-assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.7/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.7/);
+assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.8/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.8/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');

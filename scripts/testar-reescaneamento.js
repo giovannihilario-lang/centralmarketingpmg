@@ -112,5 +112,13 @@ const sql = fs.readFileSync(new URL('../sql/24-REESCANEAR-DOCUMENTO-V2.3.9.sql',
 for (const fragment of ["set search_path = ''", 'public.meu_colaborador_id()', 'for update', 'is distinct from p_versao_esperada', "status <> 'aguardando_conferencia'", 'conferido_em is not null', 'registro_id is not null', 'pagamento_id is not null', 'return public.registrar_analise_documento_v1', 'from public, anon', 'to authenticated', 'begin;', 'commit;']) assert.ok(sql.includes(fragment), fragment);
 assert.doesNotMatch(sql, /grant (insert|update|delete) on/i);
 assert.match(source, /fieldset className="doc-review-lock" disabled=\$\{busy\}/);
+assert.match(source, /doc-rescan-button/);
+assert.match(source, /doc-rescan-idle/);
+assert.match(source, /doc-rescan-spinner/);
+assert.doesNotMatch(source, /rescanning \? html`<span className="spinner"><\/span>` : html`<\$\{Icon\} name="scan-line"\/>`/);
+const appSource = fs.readFileSync(new URL('../public/assets/acompanhamento.js', import.meta.url), 'utf8');
+assert.match(appSource, /class AppErrorBoundary extends React\.Component/);
+assert.match(appSource, /class DocumentErrorBoundary extends React\.Component/);
+assert.match(appSource, /<\$\{AppErrorBoundary\}><\$\{App\}\/><\/\$\{AppErrorBoundary\}>/);
 assert.match(source, /Reescanear com IA/);
-console.log(JSON.stringify({ status:'ok', tests:['permissão por estado', 'confirmação', 'falha da IA preserva leitura', 'sem fallback no reescaneamento', 'troca com versão', 'SQL ausente', 'conflito de conferência', 'falha de recarga após salvar', 'clique duplo', 'resultado vazio'], liveDatabaseAccess:false, sqlExecuted:false }));
+console.log(JSON.stringify({ status:'ok', tests:['permissão por estado', 'confirmação', 'falha da IA preserva leitura', 'sem fallback no reescaneamento', 'troca com versão', 'SQL ausente', 'conflito de conferência', 'falha de recarga após salvar', 'clique duplo', 'resultado vazio', 'DOM estável no reescaneamento', 'barreira contra tela branca'], liveDatabaseAccess:false, sqlExecuted:false }));

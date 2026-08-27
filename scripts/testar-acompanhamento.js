@@ -11,7 +11,7 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 
 const original = fs.readFileSync(appPath, 'utf8');
 const testable = original.replace(
-  "ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);",
+  "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);",
   'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, decorateOfficialRevenueTruth };',
 );
 
@@ -20,7 +20,7 @@ const sandbox = {
   console, XLSX, Intl, Date, URLSearchParams, crypto: webcrypto,
   setTimeout, clearTimeout, requestAnimationFrame: callback => callback(Date.now()), cancelAnimationFrame: noop,
   React: {
-    createElement: noop, useCallback: value => value, useEffect: noop, useMemo: callback => callback(),
+    Component:class {}, createElement: noop, useCallback: value => value, useEffect: noop, useMemo: callback => callback(),
     useRef: value => ({ current:value }), useState: value => [value, noop],
   },
   ReactDOM: { createRoot: () => ({ render:noop }) },
