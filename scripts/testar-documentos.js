@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import '../public/assets/acompanhamento-ocr.js';
-import { DOCUMENT_SCHEMA, providerMessage, shouldRetryGemini, validateAnalysis } from '../api/analisar-documento.js';
+import { DOCUMENT_SCHEMA, geminiModelCandidates, providerMessage, shouldRetryGemini, validateAnalysis } from '../api/analisar-documento.js';
 
 const { classify, parsePage, parseBrazilianMoney } = globalThis.PMGDocumentOCR;
 
@@ -53,12 +53,20 @@ const unknown = parsePage('DOCUMENTO DIVERSO SEM MODELO CONHECIDO', 5, 80);
 assert.equal(unknown.tipo, 'nao_identificado');
 assert.ok(unknown.campos_duvidosos.includes('tipo_documento'));
 
+const lowConfidence = parsePage(samples[1].text, 6, 40);
+assert.equal(lowConfidence.valor_lancamento_sugerido, null, 'OCR de baixa confiança não deve sugerir valor financeiro.');
+assert.equal(lowConfidence.origem_leitura, 'ocr_local');
+assert.match(lowConfidence.modelo_leitura, /tesseract-v6/);
+
+const genericDescription = parsePage(`CADASTRO DE PAGAMENTO\nFORNECEDOR: TESTE ALIMENTOS\nDESCRICAO DO ITEM R$ 9.999,99\nVALOR BRUTO R$ 10.000,00`, 7, 95);
+assert.equal(genericDescription.valor_marketing, null, 'A palavra descrição não pode ser confundida com DESC/MKT.');
+
 const html = fs.readFileSync(new URL('../public/acompanhamento.html', import.meta.url), 'utf8');
 assert.match(html, /pdfjs-dist@3\.11\.174/);
 assert.match(html, /tesseract\.js@5\.1\.1/);
-assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.5/);
-assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.8/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.8/);
+assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.6/);
+assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.9/);
+assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.9/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');
@@ -72,6 +80,12 @@ assert.equal(shouldRetryGemini(503, 'gemini-3.7-flash is currently experiencing 
 assert.equal(shouldRetryGemini(400, 'invalid request'), false);
 assert.match(providerMessage({ error:{ message:'gemini-3.7-flash is currently experiencing high demand' } }, 503), /leitura visual esta ocupada/i);
 assert.doesNotMatch(providerMessage({ error:{ message:'gemini-3.7-flash is currently experiencing high demand' } }, 503), /high demand/i);
+const candidates = geminiModelCandidates();
+assert.deepEqual(candidates.slice(0, 3), ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
+const apiSource = fs.readFileSync(new URL('../api/analisar-documento.js', import.meta.url), 'utf8');
+assert.match(apiSource, /resolution:'medium'/);
+assert.match(apiSource, /thinking_level:mode === 'reescan' \? 'high' : 'medium'/);
+assert.match(apiSource, /GEMINI_DOCUMENT_FALLBACK_MODELS/);
 
 const envExample = fs.readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 assert.doesNotMatch(envExample, /OPENAI_API_KEY/);
@@ -88,6 +102,14 @@ const validated = validateAnalysis({
 assert.equal(validated.documentos[0].tipo, 'deposito');
 assert.equal(validated.documentos[0].valor_total_documento, 10064.6);
 assert.ok(validated.documentos[0].alertas.some(alert => /Confira o PDF original/i.test(alert)));
+const sanitized = validateAnalysis({
+  total_paginas:1,
+  documentos:[{ tipo:'desconto_nota', paginas:[1], confianca:.8, fornecedor:'PMG ATACADISTA', data_emissao:'2026-02-31', valor_total_documento:100, valor_marketing:150, valor_lancamento_sugerido:150, evidencias:['Marketing R$ 150,00'] }],
+});
+assert.equal(sanitized.documentos[0].fornecedor, null);
+assert.equal(sanitized.documentos[0].data_emissao, null);
+assert.equal(sanitized.documentos[0].valor_lancamento_sugerido, null);
+assert.ok(sanitized.documentos[0].campos_duvidosos.includes('fornecedor'));
 
 const legacyValidated = validateAnalysis({
   total_paginas:3,

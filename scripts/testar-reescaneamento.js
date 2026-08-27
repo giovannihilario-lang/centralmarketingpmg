@@ -32,7 +32,7 @@ const sandbox = {
 };
 sandbox.window = sandbox; sandbox.globalThis = sandbox;
 vm.runInNewContext(code, sandbox);
-const { DocumentInbox, canRescanDocument } = sandbox.PMGDocumentModule;
+const { DocumentInbox, canRescanDocument, analysisRegression, analysisQuality } = sandbox.PMGDocumentModule;
 function render() { cursor = 0; DocumentInbox({ context }); return sandbox.__ACTIONS__; }
 function reset() {
   state.calls = []; state.notices = []; state.confirmed = true; state.error = null; state.rpcError = null; state.reloadError = false; state.hold = null;
@@ -57,6 +57,13 @@ for (const changes of [{ status:'aprovado' }, { status:'ignorado' }, { registro_
   assert.equal(canRescanDocument(entry, [{ ...item, ...changes }]), false);
 }
 
+const richPrevious = [1,2,3].map(index => ({
+  tipo:'desconto_nota', confianca:.9, dados_extraidos:{ fornecedor:`Fornecedor ${index}`, numero_documento:`DOC${index}`, data_emissao:'2026-08-01', valor_total_documento:1000, valor_lancamento_sugerido:100, evidencias:['MKT R$ 100,00'] },
+}));
+const weakNext = { documentos:[{ tipo:'nao_identificado', confianca:.25, fornecedor:null, numero_documento:null, valor_total_documento:null, valor_lancamento_sugerido:null, campos_duvidosos:['tipo','fornecedor','valor'] }] };
+assert.ok(analysisQuality(richPrevious) > analysisQuality(weakNext.documentos));
+assert.equal(analysisRegression(richPrevious, weakNext).blocked, true, 'Reescaneamento não deve substituir uma leitura claramente melhor por uma pior.');
+
 let actions = reset(); state.confirmed = false;
 assert.equal(await actions.rescanEntry(entry), false);
 assert.deepEqual(state.calls, ['confirm']);
@@ -71,6 +78,8 @@ assert.match(state.notices.at(-1).message, /leitura anterior foi mantida/);
 actions = reset();
 assert.equal(await actions.rescanEntry(entry), true);
 const saved = state.calls.find(call => call.rpc);
+const visualCall = state.calls.find(call => call.fetch);
+assert.equal(visualCall.body.modo, 'reescan');
 assert.equal(saved.args.p_versao_esperada, entry.atualizado_em);
 assert.equal(saved.args.p_resultado.documentos[0].valor_marketing, 200);
 assert.match(state.notices.at(-1).message, /Confira os novos campos/);
@@ -121,4 +130,7 @@ assert.match(appSource, /class AppErrorBoundary extends React\.Component/);
 assert.match(appSource, /class DocumentErrorBoundary extends React\.Component/);
 assert.match(appSource, /<\$\{AppErrorBoundary\}><\$\{App\}\/><\/\$\{AppErrorBoundary\}>/);
 assert.match(source, /Reescanear com IA/);
+assert.match(source, /analysisRegression\(items, analysis\)/);
+assert.match(source, /OCR local/);
+assert.match(source, /IA Gemini/);
 console.log(JSON.stringify({ status:'ok', tests:['permissão por estado', 'confirmação', 'falha da IA preserva leitura', 'sem fallback no reescaneamento', 'troca com versão', 'SQL ausente', 'conflito de conferência', 'falha de recarga após salvar', 'clique duplo', 'resultado vazio', 'DOM estável no reescaneamento', 'barreira contra tela branca'], liveDatabaseAccess:false, sqlExecuted:false }));

@@ -1,4 +1,4 @@
-/* PMG Connect - Caixa de Entrada de Documentos V1.2.8 */
+/* PMG Connect - Caixa de Entrada de Documentos V1.2.9 */
 (() => {
   'use strict';
 
@@ -210,11 +210,60 @@
         && !item.conferido_em && !item.registro_id && !item.pagamento_id));
   }
 
+  function readingSource(data = {}) {
+    const model = String(data.modelo_leitura || '').trim();
+    const local = data.origem_leitura === 'ocr_local' || /ocr-local/i.test(model);
+    if (local) return { label:'OCR local', detail:'Contingência, exige revisão reforçada', tone:'local', icon:'scan-text' };
+    if (data.origem_leitura === 'gemini' || /gemini/i.test(model)) return { label:'IA Gemini', detail:model || 'Leitura visual', tone:'ai', icon:'sparkles' };
+    return { label:'Leitura automática', detail:'Origem não registrada', tone:'unknown', icon:'scan-search' };
+  }
+
+  function analysisQuality(documents = []) {
+    if (!Array.isArray(documents) || !documents.length) return 0;
+    const score = documents.reduce((total, document) => {
+      const data = document?.dados_extraidos || document || {};
+      const confidence = Math.max(0, Math.min(1, Number(document?.confianca ?? data.confianca ?? 0)));
+      const hasType = normalizeType(document?.tipo || data.tipo) !== 'nao_identificado';
+      const hasDocumentNumber = Boolean(data.numero_documento || data.numero_nota || data.numero_pedido);
+      const hasDate = Boolean(data.data_emissao || data.vencimento || data.data_pagamento);
+      const hasTotal = data.valor_total_documento !== null && data.valor_total_documento !== undefined;
+      const hasLaunch = data.valor_lancamento_sugerido !== null && data.valor_lancamento_sugerido !== undefined;
+      const doubts = Array.isArray(data.campos_duvidosos) ? data.campos_duvidosos.length : 0;
+      return total + confidence * .28 + (hasType ? .12 : 0) + (data.fornecedor ? .15 : 0)
+        + (hasDocumentNumber ? .12 : 0) + (hasDate ? .07 : 0) + (hasTotal ? .08 : 0)
+        + (hasLaunch ? .13 : 0) + ((data.evidencias || []).length ? .05 : 0) - Math.min(.12, doubts * .025);
+    }, 0);
+    return Math.max(0, Math.min(1, score / documents.length));
+  }
+
+  function analysisRegression(previousItems = [], analysis = {}) {
+    const previous = Array.isArray(previousItems) ? previousItems : [];
+    const next = Array.isArray(analysis?.documentos) ? analysis.documentos : [];
+    if (!previous.length || !next.length) return { blocked:false, previousScore:analysisQuality(previous), nextScore:analysisQuality(next) };
+    const previousScore = analysisQuality(previous);
+    const nextScore = analysisQuality(next);
+    const count = (documents, predicate) => documents.filter(document => predicate(document?.dados_extraidos || document || {}, document)).length;
+    const previousLaunch = count(previous, data => data.valor_lancamento_sugerido !== null && data.valor_lancamento_sugerido !== undefined);
+    const nextLaunch = count(next, data => data.valor_lancamento_sugerido !== null && data.valor_lancamento_sugerido !== undefined);
+    const previousSupplier = count(previous, data => Boolean(data.fornecedor));
+    const nextSupplier = count(next, data => Boolean(data.fornecedor));
+    const previousKnown = count(previous, (data, document) => normalizeType(document?.tipo || data.tipo) !== 'nao_identificado');
+    const nextKnown = count(next, (data, document) => normalizeType(document?.tipo || data.tipo) !== 'nao_identificado');
+    const reasons = [];
+    if (nextScore + .12 < previousScore) reasons.push('qualidade geral caiu');
+    if (previousLaunch >= 2 && nextLaunch < Math.ceil(previousLaunch * .5)) reasons.push('perdeu valores de Marketing');
+    if (previousSupplier >= 2 && nextSupplier < Math.ceil(previousSupplier * .5)) reasons.push('perdeu fornecedores');
+    if (previousKnown >= 2 && nextKnown < Math.ceil(previousKnown * .5)) reasons.push('passou a não identificar vários documentos');
+    if (previous.length >= 2 && next.length > previous.length * 2 + 2) reasons.push('fragmentou o PDF em documentos demais');
+    return { blocked:Boolean(reasons.length), previousScore, nextScore, reasons };
+  }
+
   function ReviewWorkspace({ entry, items, activeItem, setActiveItemId, context, previewUrl, previewLoading, openOriginal, onCompleted, onRescan, busy, rescanning }) {
     const meta = TYPES[normalizeType(activeItem?.tipo)] || TYPES.nao_identificado;
-    useLucide([entry?.id, activeItem?.id, items.length, busy, rescanning]);
+    const source = readingSource(activeItem?.dados_extraidos || {});
+    useLucide([entry?.id, activeItem?.id, items.length, busy, rescanning, source.label]);
     if (!entry || !activeItem) return html`<div className="doc-no-selection"><span><${Icon} name="mouse-pointer-click"/></span><h3>Escolha um documento da fila</h3><p>A prévia e os campos reconhecidos aparecerão aqui.</p></div>`;
-    return html`<div className="doc-workspace"><div className="doc-rescan-toolbar"><div><strong>${entry.nome_arquivo}</strong><small>${canRescanDocument(entry, items) ? 'Releia o PDF original com IA; os novos campos exigirão conferência.' : 'Leitura protegida: a conferência deste PDF já foi iniciada.'}</small></div>${canRescanDocument(entry, items) ? html`<button type="button" className=${`button secondary doc-rescan-button ${rescanning ? 'is-busy' : ''}`} disabled=${busy} onClick=${() => onRescan(entry)}><span className="doc-rescan-icon" aria-hidden="true"><span className="doc-rescan-idle"><${Icon} name="scan-line"/></span><span className="spinner doc-rescan-spinner"></span></span><span>${rescanning ? 'Reescaneando...' : 'Reescanear com IA'}</span></button>` : html`<span className="mandatory-review"><${Icon} name="lock-keyhole"/>Conferência protegida</span>`}</div><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[normalizeType(item.tipo)] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>Nenhum campo será lançado antes da sua aprovação.</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<fieldset className="doc-review-lock" disabled=${busy} aria-busy=${rescanning}><${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/></fieldset>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
+    return html`<div className="doc-workspace"><div className="doc-rescan-toolbar"><div><strong>${entry.nome_arquivo}</strong><small>${canRescanDocument(entry, items) ? 'Releia o PDF original com IA; os novos campos exigirão conferência.' : 'Leitura protegida: a conferência deste PDF já foi iniciada.'}</small></div>${canRescanDocument(entry, items) ? html`<button type="button" className=${`button secondary doc-rescan-button ${rescanning ? 'is-busy' : ''}`} disabled=${busy} onClick=${() => onRescan(entry)}><span className="doc-rescan-icon" aria-hidden="true"><span className="doc-rescan-idle"><${Icon} name="scan-line"/></span><span className="spinner doc-rescan-spinner"></span></span><span>${rescanning ? 'Reescaneando...' : 'Reescanear com IA'}</span></button>` : html`<span className="mandatory-review"><${Icon} name="lock-keyhole"/>Conferência protegida</span>`}</div><div className="doc-item-tabs">${items.map(item => { const itemMeta = TYPES[normalizeType(item.tipo)] || TYPES.nao_identificado; return html`<button className=${`${item.id === activeItem.id ? 'active' : ''} ${item.status}`} onClick=${() => setActiveItemId(item.id)}><span><${Icon} name=${item.status === 'aprovado' ? 'badge-check' : item.status === 'ignorado' ? 'eye-off' : itemMeta.icon}/></span><div><strong>${itemMeta.label}</strong><small>Página ${(item.paginas || []).join(', ')}</small></div><i>${String(item.ordem).padStart(2, '0')}</i></button>`; })}</div><div className="doc-review-layout"><${DocumentPreview} entry=${entry} item=${activeItem} previewUrl=${previewUrl} loading=${previewLoading} openOriginal=${openOriginal}/><main className="doc-review"><header className="doc-review-top"><div><div className="doc-reading-badges"><span className=${`doc-type-badge ${meta.tone}`}><${Icon} name=${meta.icon}/>${meta.label}</span><span className=${`doc-reader-badge ${source.tone}`} title=${source.detail}><${Icon} name=${source.icon}/>${source.label}</span></div><h2>${activeItem.dados_extraidos?.titulo_sugerido || 'Conferência do documento'}</h2><p>${source.tone === 'local' ? 'Este item veio da contingência OCR local. Confira fornecedor, número e valores com atenção.' : 'Nenhum campo será lançado antes da sua aprovação.'}</p></div><span className="mandatory-review"><i></i>Revisão obrigatória</span></header>${activeItem.status === 'aguardando_conferencia' ? html`<fieldset className="doc-review-lock" disabled=${busy} aria-busy=${rescanning}><${ReviewForm} key=${activeItem.id} item=${activeItem} context=${context} onCompleted=${onCompleted}/></fieldset>` : html`<${ReviewedSummary} item=${activeItem} context=${context} openOriginal=${openOriginal}/>`}</main></div></div>`;
   }
 
   function QueueCard({ entry, items, selected, select }) {
@@ -278,7 +327,7 @@
       return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
     }
 
-    async function analyzeWithGemini(entryId) {
+    async function analyzeWithGemini(entryId, mode = 'normal') {
       let token = await window.PMGConnectAuth?.ensureAccessToken?.();
       if (!token) {
         const { data } = await context.client.auth.getSession();
@@ -289,7 +338,7 @@
       const response = await fetch('/api/analisar-documento', {
         method:'POST',
         headers:{ Authorization:`Bearer ${token}`, 'Content-Type':'application/json' },
-        body:JSON.stringify({ entrada_id:entryId }),
+        body:JSON.stringify({ entrada_id:entryId, modo:mode }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload?.analise) {
@@ -320,7 +369,8 @@
           analysis = await analyzeWithGemini(entryId);
         } catch (geminiError) {
           console.warn('[PMG Documentos] Gemini indisponível; usando OCR local:', geminiError?.message || geminiError);
-          setOcrProgress({ progress:.02, label:'Continuando com a leitura local...' });
+          context.notify('Os modelos Gemini não responderam agora. Vou usar OCR local como contingência; confira os valores com atenção.', 'info');
+          setOcrProgress({ progress:.02, label:'Usando OCR local de contingência...' });
           let pdfFile = sourceFile;
           if (!pdfFile) {
             if (!entry?.caminho) throw new Error('O arquivo original não foi localizado.');
@@ -330,7 +380,7 @@
           }
           if (!window.PMGDocumentOCR?.analyzePdf) throw new Error('Nem o Gemini nem o leitor local estão disponíveis. Atualize a página e tente novamente.');
           analysis = await window.PMGDocumentOCR.analyzePdf(pdfFile, { onProgress:setOcrProgress });
-          reader = 'Leitura local';
+          reader = 'OCR local';
         }
         setOcrProgress({ progress:.92, label:'Salvando a proposta para conferência...' });
         const { error:saveError } = await context.client.rpc('registrar_analise_documento_v1', {
@@ -364,8 +414,14 @@
       try {
         // Não altera o banco nem usa OCR local nesta tentativa explícita de IA.
         // A troca só acontece quando a IA termina e o banco revalida a conferência.
-        const analysis = await analyzeWithGemini(entry.id);
+        const analysis = await analyzeWithGemini(entry.id, 'reescan');
         if (!Array.isArray(analysis?.documentos) || !analysis.documentos.length) throw new Error('A IA não devolveu documentos para conferir.');
+        const regression = analysisRegression(items, analysis);
+        if (regression.blocked) {
+          const reason = regression.reasons.join(', ');
+          context.notify(`A nova leitura ficou mais fraca (${reason}). A leitura anterior foi mantida.`, 'error');
+          return false;
+        }
         setOcrProgress({ progress:.92, label:'Validando e salvando a nova leitura...' });
         const { error } = await context.client.rpc('reescanear_documento_v1', {
           p_entrada_id:entry.id, p_resultado:analysis, p_versao_esperada:entry.atualizado_em,
@@ -454,5 +510,5 @@
     </section>`;
   }
 
-  window.PMGDocumentModule = Object.freeze({ DocumentInbox });
+  window.PMGDocumentModule = Object.freeze({ DocumentInbox, canRescanDocument, analysisQuality, analysisRegression });
 })();

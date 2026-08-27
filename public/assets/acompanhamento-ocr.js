@@ -1,4 +1,4 @@
-/* PMG Connect - OCR local de documentos V1.2.5 */
+/* PMG Connect - OCR local de documentos V1.2.6 */
 (() => {
   'use strict';
 
@@ -155,7 +155,7 @@
     const purchaseLike = /pedido de compra|ordem de compra|sobras? marketing|total do pedido/.test(normalized);
     const paymentRegistrationLike = /cadastro de pagamento|cadastro pagamento|valor liquido|valor bruto/.test(normalized);
     const invoiceLike = /danfe|nota fiscal eletronica|chave de acesso|valor total da nota|\bnf-e?\b/.test(normalized);
-    let marketingAmount = amountNear(lines, ['marketing', 'mkt', 'acordo mkt', 'sobra marketing', 'sobras marketing', 'verba marketing', 'desconto marketing', 'desc']);
+    let marketingAmount = amountNear(lines, ['marketing', 'mkt', 'acordo mkt', 'sobra marketing', 'sobras marketing', 'verba marketing', 'desconto marketing', 'desc mkt', 'desconto mkt']);
     if (marketingAmount === null && type === 'desconto_nota' && purchaseLike) marketingAmount = amountNear(lines, ['observacoes', 'observag', 'sobra']);
     if (marketingAmount === null && type === 'desconto_nota' && purchaseLike) marketingAmount = amountNear(lines, ['ankt']);
     const positiveCreditLine = type === 'extrato_bancario' ? lines.find(line => /\+\s*(?:R\$\s*)?\d/.test(line)) : '';
@@ -200,9 +200,17 @@
     if (launchAmount === null) doubts.push('valor_lancamento');
     if (!documentNumber) doubts.push('numero_documento');
     const alerts = ['Leitura OCR local: confira o PDF original, pois caracteres e valores podem exigir correção.'];
-    if (totalAmount !== null && launchAmount === null) alerts.push('Foi encontrado um total, mas nenhum valor de Marketing foi sugerido automaticamente.');
-    if (marketingAmount !== null && totalAmount !== null && marketingAmount !== totalAmount) alerts.push('O valor relacionado ao Marketing é diferente do total do documento.');
     const rawConfidence = Math.max(0, Math.min(1, Number(ocrConfidence || 0) / 100));
+    let safeMarketingAmount = marketingAmount;
+    let safeLaunchAmount = launchAmount;
+    if (ocrConfidence > 0 && rawConfidence < .55 && safeLaunchAmount !== null) {
+      safeMarketingAmount = null;
+      safeLaunchAmount = null;
+      if (!doubts.includes('valor_lancamento')) doubts.push('valor_lancamento');
+      alerts.push('A qualidade do OCR ficou baixa; o valor de Marketing foi deixado em branco para evitar lançamento incorreto.');
+    }
+    if (totalAmount !== null && safeLaunchAmount === null) alerts.push('Foi encontrado um total, mas nenhum valor de Marketing foi sugerido automaticamente.');
+    if (safeMarketingAmount !== null && totalAmount !== null && safeMarketingAmount !== totalAmount) alerts.push('O valor relacionado ao Marketing é diferente do total do documento.');
     const confidence = type === 'nao_identificado'
       ? Math.min(.45, rawConfidence * .45)
       : Math.min(.94, .42 + Math.min(classification.score, 16) / 32 + rawConfidence * .18);
@@ -223,8 +231,8 @@
       vencimento:dueDate,
       data_pagamento:paidDate,
       valor_total_documento:totalAmount,
-      valor_marketing:marketingAmount,
-      valor_lancamento_sugerido:launchAmount,
+      valor_marketing:safeMarketingAmount,
+      valor_lancamento_sugerido:safeLaunchAmount,
       natureza_sugerida:nature,
       categoria_sugerida:category,
       forma_pagamento:/\bpix\b/.test(normalized) ? 'PIX' : /\bted\b/.test(normalized) ? 'TED' : /boleto/.test(normalized) ? 'Boleto' : null,
@@ -235,6 +243,8 @@
       alertas:alerts,
       campos_duvidosos:doubts,
       texto_ocr:String(text || '').slice(0, 12000),
+      origem_leitura:'ocr_local',
+      modelo_leitura:'ocr-local-pdfjs-tesseract-v6',
     };
   }
 
@@ -306,7 +316,7 @@
       total_paginas:totalPages,
       resumo:`${documents.length} página(s) preparada(s) por OCR local para conferência humana.`,
       documentos:documents,
-      modelo_leitura:'ocr-local-pdfjs-tesseract-v5',
+      modelo_leitura:'ocr-local-pdfjs-tesseract-v6',
     };
   }
 

@@ -3,9 +3,9 @@ import { bearerToken, requireSupabaseUser, sendAuthError } from '../src/lib/supa
 
 const MAX_REQUESTS_PER_MINUTE = 6;
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
-const GEMINI_ATTEMPTS = 3;
-const GEMINI_TIME_BUDGET_MS = 40_000;
-const GEMINI_RETRY_DELAYS_MS = [700, 1_600];
+const GEMINI_TIME_BUDGET_MS = 48_000;
+const GEMINI_RETRY_DELAYS_MS = [500, 900];
+const DEFAULT_GEMINI_MODELS = Object.freeze(['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
 const recentRequests = new Map();
 const DOCUMENT_TYPES = new Set(['desconto_nota', 'deposito', 'extrato_bancario', 'nao_identificado']);
 const LEGACY_DOCUMENT_TYPES = Object.freeze({ cadastro_pagamento:'desconto_nota', pedido_compra:'desconto_nota', danfe:'deposito' });
@@ -74,17 +74,20 @@ Classifique cada documento ou grupo de paginas em exatamente um destes tipos:
 - nao_identificado: quando nao houver evidencia suficiente para os tres modelos conhecidos.
 
 Regras obrigatorias:
-1. Um PDF pode conter varias paginas do mesmo documento ou documentos diferentes. Agrupe paginas relacionadas e separe documentos distintos.
-2. Nunca confunda o total da compra, nota ou pagamento com o valor efetivamente relacionado ao Marketing.
-3. Procure MKT, marketing, acordo, sobra, desconto, verba, bonificacao, doacao, brinde, transferencia recebida e destaques visuais.
-4. Em desconto_nota, reconheca tanto cadastro de pagamento quanto pedido de compra. Sugira o valor explicitamente ligado ao Marketing, desconto, acordo ou sobra. Preserve bruto, total do pedido, descontos, sobra de Compras e liquido na descricao quando existirem.
-5. Em desconto_nota originado de pedido de compra, o valor de Marketing tem prioridade sobre o total do pedido.
-6. Em deposito originado de nota fiscal/DANFE de remessa em bonificacao, doacao ou brinde, sugira categoria bonificacao e natureza receita, mas crie um alerta para validacao humana.
-7. Em extrato bancario, extraia apenas a movimentacao destacada ou claramente ligada ao fornecedor/Marketing. Nao transforme cada linha em um documento.
-8. Datas devem usar AAAA-MM-DD. Valores devem ser numeros em reais. Quando nao houver certeza, use null e liste o campo em campos_duvidosos.
-9. Nao invente fornecedor, numero, data, forma de pagamento ou valor. Cite evidencias curtas retiradas do proprio documento.
-10. Todo resultado e apenas uma proposta e precisa de conferencia humana. Inclua um alerta de conferencia em cada item.
-11. Se surgir um layout diferente dos tres modelos, use nao_identificado e prepare os campos que conseguir reconhecer sem inventar.
+1. Um PDF pode conter varias paginas do mesmo documento ou documentos diferentes. Agrupe paginas relacionadas e separe documentos distintos. Nao crie um item por pagina se as paginas pertencem ao mesmo documento.
+2. Antes de preencher valores, identifique visualmente os rotulos e a relacao entre eles. Nunca escolha simplesmente o maior numero da pagina.
+3. Nunca confunda o total da compra, nota ou pagamento com o valor efetivamente relacionado ao Marketing. valor_lancamento_sugerido so pode existir quando houver evidencia direta de Marketing/MKT, acordo, sobra, desconto/verba, bonificacao, ou uma movimentacao bancaria claramente ligada ao fornecedor. Caso contrario, use null.
+4. Procure MKT, marketing, acordo, sobra, desconto, verba, bonificacao, doacao, brinde, transferencia recebida e destaques visuais. Dê prioridade a texto destacado, campos rotulados e linhas de totais claramente nomeadas.
+5. Em desconto_nota, reconheca tanto cadastro de pagamento quanto pedido de compra. O valor de Marketing tem prioridade sobre total do pedido, valor bruto e valor liquido. Preserve esses valores distintos na descricao quando existirem.
+6. Em deposito originado de nota fiscal/DANFE de remessa em bonificacao, doacao ou brinde, o total da nota pode ser sugerido como valor de Marketing apenas quando essa natureza estiver clara no documento. Sugira categoria bonificacao e natureza receita e crie alerta de validacao humana.
+7. Em extrato bancario, extraia somente a movimentacao destacada ou claramente ligada ao fornecedor/Marketing. Nao transforme cada linha do extrato em um documento e nao use o saldo da conta como valor do lancamento.
+8. fornecedor significa a contraparte externa da PMG. Nao use PMG, PMG Atacadista, PAMA ou o titular da propria conta como fornecedor quando o documento mostrar uma contraparte externa. Em DANFE normalmente use o emitente quando a PMG for destinataria; em extrato use o remetente da movimentacao escolhida.
+9. numero_nota e numero_documento nao podem ser CNPJ, chave de acesso de NF-e, numero de pedido ou codigo aleatorio. Respeite o rotulo visual correspondente.
+10. Datas devem usar AAAA-MM-DD e existir no calendario. Valores devem ser numeros em reais, preservando centavos. Quando nao houver certeza, use null e liste o campo em campos_duvidosos.
+11. Nao invente fornecedor, numero, data, forma de pagamento ou valor. Cite evidencias curtas retiradas do proprio documento, de preferencia contendo o rotulo que justificou o campo.
+12. A confianca deve refletir a qualidade real da leitura. Se houver ambiguidade relevante de fornecedor, tipo ou valor, use confianca abaixo de 0.70 e liste os campos duvidosos.
+13. Todo resultado e apenas uma proposta e precisa de conferencia humana. Inclua um alerta de conferencia em cada item.
+14. Se surgir um layout diferente dos tres modelos, use nao_identificado e preencha somente o que estiver claro, sem forcar uma classificacao.
 `.trim();
 
 function textValue(value, max = 2000) {
@@ -102,6 +105,25 @@ function stringArray(value, maxItems = 20) {
   return Array.isArray(value) ? value.map(item => textValue(item, 500)).filter(Boolean).slice(0, maxItems) : [];
 }
 
+function isoDateValue(value) {
+  const text = textValue(value, 10);
+  if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const [year, month, day] = text.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? text : null;
+}
+
+function looksLikePmg(value) {
+  const normalized = String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /\bpmg\b|pmg atacadista|\bpama\b/.test(normalized);
+}
+
+function hasMarketingEvidence(document) {
+  const evidence = [...stringArray(document?.evidencias), textValue(document?.descricao, 3000), textValue(document?.observacoes, 3000)]
+    .filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return /marketing|\bmkt\b|acordo|sobra|desconto|verba|bonif|doacao|brinde|transfer|pix|ted|credito|recebid/.test(evidence);
+}
+
 export function validateAnalysis(value) {
   const source = value && typeof value === 'object' ? value : {};
   const documents = Array.isArray(source.documentos) ? source.documentos : [];
@@ -110,24 +132,47 @@ export function validateAnalysis(value) {
       ? [...new Set(document.paginas.map(Number).filter(page => Number.isInteger(page) && page > 0))].sort((a, b) => a - b)
       : [];
     const alerts = stringArray(document.alertas);
+    const doubts = stringArray(document.campos_duvidosos);
+    let supplier = textValue(document.fornecedor, 300);
+    let marketingAmount = numericValue(document.valor_marketing);
+    let launchAmount = numericValue(document.valor_lancamento_sugerido);
+    const totalAmount = numericValue(document.valor_total_documento);
+    const type = DOCUMENT_TYPES.has(document.tipo) ? document.tipo : (LEGACY_DOCUMENT_TYPES[document.tipo] || 'nao_identificado');
+    if (supplier && looksLikePmg(supplier)) {
+      supplier = null;
+      if (!doubts.includes('fornecedor')) doubts.push('fornecedor');
+      alerts.push('A IA indicou a propria PMG/PAMA como fornecedor; o campo foi limpo para evitar vinculacao incorreta.');
+    }
+    if (type !== 'extrato_bancario' && totalAmount !== null && launchAmount !== null && launchAmount > totalAmount * 1.01) {
+      launchAmount = null;
+      marketingAmount = null;
+      if (!doubts.includes('valor_lancamento_sugerido')) doubts.push('valor_lancamento_sugerido');
+      alerts.push('O valor sugerido para lancamento excedia o total do documento e foi removido para conferencia.');
+    }
+    if (launchAmount !== null && type !== 'extrato_bancario' && type !== 'deposito' && !hasMarketingEvidence(document)) {
+      launchAmount = null;
+      marketingAmount = null;
+      if (!doubts.includes('valor_lancamento_sugerido')) doubts.push('valor_lancamento_sugerido');
+      alerts.push('Nao havia evidencia textual suficiente para sustentar o valor de Marketing; o campo foi deixado em branco.');
+    }
     if (!alerts.some(alert => /confer/i.test(alert))) alerts.push('Confira o PDF original antes de criar ou vincular qualquer lancamento.');
     return {
       ordem:index + 1,
       paginas:pages.length ? pages : [index + 1],
-      tipo:DOCUMENT_TYPES.has(document.tipo) ? document.tipo : (LEGACY_DOCUMENT_TYPES[document.tipo] || 'nao_identificado'),
+      tipo:type,
       confianca:Math.max(0, Math.min(1, Number(document.confianca) || 0)),
-      fornecedor:textValue(document.fornecedor, 300),
+      fornecedor:supplier,
       cnpj:textValue(document.cnpj, 30),
       fornecedor_codigo:textValue(document.fornecedor_codigo, 80),
       numero_documento:textValue(document.numero_documento, 120),
       numero_pedido:textValue(document.numero_pedido, 120),
       numero_nota:textValue(document.numero_nota, 120),
-      data_emissao:textValue(document.data_emissao, 10),
-      vencimento:textValue(document.vencimento, 10),
-      data_pagamento:textValue(document.data_pagamento, 10),
-      valor_total_documento:numericValue(document.valor_total_documento),
-      valor_marketing:numericValue(document.valor_marketing),
-      valor_lancamento_sugerido:numericValue(document.valor_lancamento_sugerido),
+      data_emissao:isoDateValue(document.data_emissao),
+      vencimento:isoDateValue(document.vencimento),
+      data_pagamento:isoDateValue(document.data_pagamento),
+      valor_total_documento:totalAmount,
+      valor_marketing:marketingAmount,
+      valor_lancamento_sugerido:launchAmount,
       natureza_sugerida:NATURES.has(document.natureza_sugerida) ? document.natureza_sugerida : 'neutro',
       categoria_sugerida:CATEGORIES.has(document.categoria_sugerida) ? document.categoria_sugerida : 'outro',
       forma_pagamento:textValue(document.forma_pagamento, 120),
@@ -136,7 +181,7 @@ export function validateAnalysis(value) {
       observacoes:textValue(document.observacoes, 3000) || '',
       evidencias:stringArray(document.evidencias),
       alertas:alerts,
-      campos_duvidosos:stringArray(document.campos_duvidosos),
+      campos_duvidosos:doubts,
     };
   });
   const lastPage = cleaned.flatMap(item => item.paginas).reduce((max, page) => Math.max(max, page), 1);
@@ -193,44 +238,52 @@ function wait(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
-async function requestGemini({ apiKey, model, requestBody }) {
+export function geminiModelCandidates(primaryModel = process.env.GEMINI_DOCUMENT_MODEL) {
+  const configuredFallbacks = String(process.env.GEMINI_DOCUMENT_FALLBACK_MODELS || '')
+    .split(',').map(value => value.trim()).filter(Boolean);
+  return [...new Set([primaryModel, ...configuredFallbacks, ...DEFAULT_GEMINI_MODELS].filter(Boolean))].slice(0, 4);
+}
+
+async function requestGemini({ apiKey, models, buildRequestBody }) {
   const deadline = Date.now() + GEMINI_TIME_BUDGET_MS;
   let lastError = null;
+  const attemptedModels = [];
 
-  for (let attempt = 0; attempt < GEMINI_ATTEMPTS; attempt += 1) {
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const model = models[modelIndex];
     const remaining = deadline - Date.now();
-    if (remaining < 4_000) break;
+    if (remaining < 5_000) break;
+    attemptedModels.push(model);
 
     try {
+      const modelBudget = modelIndex === 0 ? 22_000 : modelIndex === 1 ? 15_000 : 10_000;
       const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
         method:'POST',
         headers:{ 'x-goog-api-key':apiKey, 'Content-Type':'application/json' },
-        body:requestBody,
-        signal:AbortSignal.timeout(Math.min(attempt === 0 ? 28_000 : 16_000, remaining)),
+        body:buildRequestBody(model),
+        signal:AbortSignal.timeout(Math.min(modelBudget, remaining)),
       });
       const responseBody = await aiResponse.json().catch(() => ({}));
-      if (aiResponse.ok) return { responseBody, attempts:attempt + 1 };
+      if (aiResponse.ok) return { responseBody, model, attemptedModels };
 
       const message = providerMessage(responseBody, aiResponse.status);
-      const error = Object.assign(new Error(message), {
-        status:aiResponse.status,
-        providerPayload:responseBody,
-      });
+      const error = Object.assign(new Error(message), { status:aiResponse.status, providerPayload:responseBody, model });
       lastError = error;
-      if (!shouldRetryGemini(aiResponse.status, responseBody?.error?.message) || attempt === GEMINI_ATTEMPTS - 1) throw error;
+      if (!shouldRetryGemini(aiResponse.status, responseBody?.error?.message)) throw error;
     } catch (error) {
       lastError = error;
       const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
-      const retryable = timedOut || shouldRetryGemini(error?.status, error?.message);
-      if (!retryable || attempt === GEMINI_ATTEMPTS - 1) throw error;
+      if (!timedOut && !shouldRetryGemini(error?.status, error?.message)) throw error;
     }
 
-    const delay = GEMINI_RETRY_DELAYS_MS[attempt] || GEMINI_RETRY_DELAYS_MS.at(-1);
-    if (Date.now() + delay + 4_000 >= deadline) break;
+    const delay = GEMINI_RETRY_DELAYS_MS[Math.min(modelIndex, GEMINI_RETRY_DELAYS_MS.length - 1)] || 500;
+    if (Date.now() + delay + 5_000 >= deadline) break;
     await wait(delay);
   }
 
-  throw lastError || Object.assign(new Error('A leitura visual nao respondeu a tempo.'), { status:504 });
+  const error = lastError || Object.assign(new Error('A leitura visual nao respondeu a tempo.'), { status:504 });
+  error.attemptedModels = attemptedModels;
+  throw error;
 }
 
 export default async function handler(req, res) {
@@ -280,21 +333,26 @@ export default async function handler(req, res) {
     const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
     if (!pdfBuffer.length || pdfBuffer.length > MAX_FILE_SIZE) throw new Error('O PDF esta vazio ou ultrapassa 15 MB.');
 
-    const model = process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.7-flash';
-    const requestBody = JSON.stringify({
-        model,
-        input:[
-          { type:'document', data:pdfBuffer.toString('base64'), mime_type:'application/pdf' },
-          { type:'text', text:`${INSTRUCTIONS}\n\nArquivo: ${entry.nome_arquivo}. Devolva somente o JSON solicitado.` },
-        ],
-        response_format:{ type:'text', mime_type:'application/json', schema:DOCUMENT_SCHEMA },
+    const mode = body.modo === 'reescan' ? 'reescan' : 'normal';
+    const models = geminiModelCandidates();
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const buildRequestBody = model => JSON.stringify({
+      model,
+      input:[
+        { type:'document', data:pdfBase64, mime_type:'application/pdf', resolution:'medium' },
+        { type:'text', text:`${INSTRUCTIONS}\n\nArquivo: ${entry.nome_arquivo}. Faça uma checagem final de fornecedor, numero do documento e valores antes de responder. Devolva somente o JSON solicitado.` },
+      ],
+      generation_config:{ thinking_level:mode === 'reescan' ? 'high' : 'medium' },
+      response_format:{ type:'text', mime_type:'application/json', schema:DOCUMENT_SCHEMA },
     });
-    const { responseBody, attempts } = await requestGemini({ apiKey, model, requestBody });
+    const { responseBody, model, attemptedModels } = await requestGemini({ apiKey, models, buildRequestBody });
     const output = interactionText(responseBody);
     if (!output) throw new Error('O Gemini nao devolveu campos para conferencia.');
     const analysis = validateAnalysis(JSON.parse(output));
     if (!analysis.documentos.length) throw new Error('O Gemini nao identificou paginas suficientes para montar a conferencia.');
-    return json(res, 200, { analise:analysis, modelo:model, tentativas:attempts, gratuito:true, conferencia_obrigatoria:true });
+    analysis.modelo_leitura = model;
+    analysis.documentos = analysis.documentos.map(document => ({ ...document, origem_leitura:'gemini', modelo_leitura:model }));
+    return json(res, 200, { analise:analysis, modelo:model, modelos_tentados:attemptedModels, gratuito:true, conferencia_obrigatoria:true });
   } catch (error) {
     const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
     const providerStatus = Number(error?.status);

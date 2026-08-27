@@ -61,3 +61,10 @@
 .doc-rescan-spinner,.doc-stable-action-spinner{display:none;position:absolute;inset:0;margin:auto}
 .doc-rescan-button.is-busy .doc-rescan-idle,.doc-stable-action.is-busy .doc-stable-action-idle{visibility:hidden}
 .doc-rescan-button.is-busy .doc-rescan-spinner,.doc-stable-action.is-busy .doc-stable-action-spinner{display:block}
+/* V1.2.9 — origem da leitura visível e revisão reforçada para contingência local */
+.doc-reading-badges{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.doc-reader-badge{display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%;padding:6px 9px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.01em;border:1px solid transparent}
+.doc-reader-badge i,.doc-reader-badge svg{width:14px;height:14px}
+.doc-reader-badge.ai{color:#28533a;background:#edf7f0;border-color:#c7dfce}
+.doc-reader-badge.local{color:#765a12;background:#fff8df;border-color:#ead692}
+.doc-reader-badge.unknown{color:#58625d;background:#f3f5f4;border-color:#d9dfdc}
