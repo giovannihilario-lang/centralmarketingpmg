@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.3.6 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.3.8 / React + HTM */
 (() => {
   'use strict';
 
@@ -116,7 +116,7 @@
   const isOverdue = payment => payment.status !== 'pago' && payment.status !== 'cancelado' && payment.vencimento && payment.vencimento < todayKey();
   const category = value => CATEGORIES[value] || { label: value || 'Outro', icon: 'shapes', tone: 'slate' };
   const uniq = values => [...new Set(values.filter(Boolean))];
-  const sum = (rows, getter) => rows.reduce((total, item) => total + Number(getter(item) || 0), 0);
+  const sum = (rows, getter) => rows.reduce((total, item, index) => total + Number(getter(item, index, rows) || 0), 0);
   const hasTag = (record, tag) => (record?.tags || []).some(item => normalize(item) === normalize(tag));
   const paymentValue = payment => Number(payment?.valor_pago || (payment?.status === 'pago' ? payment?.valor_previsto : 0) || 0);
   const paymentMonthKey = payment => String(payment?.pago_em || payment?.vencimento || '').slice(0, 7);
@@ -372,26 +372,38 @@
     } catch { return demoPayload(); }
   }
 
+  async function fetchAllPages(makeQuery) {
+    const pageSize = 500;
+    const rows = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const result = await makeQuery().range(offset, offset + pageSize - 1);
+      if (result.error) return result;
+      const page = result.data || [];
+      rows.push(...page);
+      if (page.length < pageSize) return { ...result, data:rows };
+    }
+  }
+
   async function fetchAll(db) {
     const queries = await Promise.all([
-      db.from('acompanhamento_painel').select('*').order('atualizado_em', { ascending:false }).limit(5000),
-      db.from('acompanhamento_pagamentos').select('*').order('vencimento', { ascending:true }).limit(10000),
+      fetchAllPages(() => db.from('acompanhamento_painel').select('*').order('atualizado_em', { ascending:false }).order('id')),
+      fetchAllPages(() => db.from('acompanhamento_pagamentos').select('*').order('vencimento', { ascending:true }).order('id')),
       db.from('colaboradores').select('id,nome,foto_url,cargo,role,ativo').eq('ativo', true).order('nome'),
-      db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).limit(5000),
+      fetchAllPages(() => db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).order('id')),
       db.from('acompanhamento_atividades').select('*').order('criado_em', { ascending:false }).limit(300),
       db.from('acompanhamento_importacoes').select('*').order('criado_em', { ascending:false }).limit(30),
-      db.from('acompanhamento_registros').select('id,pagamento_confirmado,pagamento_confirmado_em,pagamento_confirmado_por').limit(5000),
+      fetchAllPages(() => db.from('acompanhamento_registros').select('id,pagamento_confirmado,pagamento_confirmado_em,pagamento_confirmado_por').order('id')),
     ]);
     const failed = queries.find(result => result.error);
     if (failed) throw failed.error;
     const documentQueries = await Promise.all([
-      db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).limit(500),
-      db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).limit(2000),
+      fetchAllPages(() => db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).order('id')),
+      fetchAllPages(() => db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).order('id')),
     ]);
     const documentFailure = documentQueries.find(result => result.error);
     const documentsSetupMissing = Boolean(documentFailure && isMissingDocumentSetupError(documentFailure.error));
     if (documentFailure && !documentsSetupMissing) throw documentFailure.error;
-    const conferenceQuery = await db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).limit(5000);
+    const conferenceQuery = await fetchAllPages(() => db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).order('id'));
     const conferencesSetupMissing = Boolean(conferenceQuery.error && isMissingConferenceSetupError(conferenceQuery.error));
     if (conferenceQuery.error && !conferencesSetupMissing) throw conferenceQuery.error;
     const confirmationMap = new Map((queries[6].data || []).map(item => [item.id, item]));
@@ -585,12 +597,14 @@
         if (requestSeq !== reloadSeqRef.current) return;
         setData(nextData);
         setError(null); setSetupMissing(false);
+        return true;
       } catch (fetchError) {
         if (requestSeq !== reloadSeqRef.current) return;
         const missing = isMissingSetupError(fetchError);
         if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:true, documents:[], documentItems:[], documentsSetupMissing:true });
         setSetupMissing(missing);
         setError(fetchError);
+        return false;
       } finally {
         if (requestSeq === reloadSeqRef.current && !quiet) setLoading(false);
       }
@@ -704,7 +718,12 @@
       }
       const { data:idSaved, error:saveError } = await client.rpc('salvar_acompanhamento_v1', { p_registro_id:record?.id || null, p_dados:buildRecordPayload(record || {}, patch) });
       if (saveError) throw saveError;
-      return idSaved || record?.id;
+      const id = idSaved || record?.id;
+      reloadSeqRef.current += 1;
+      setData(current => ({ ...current, records:current.records.some(item => item.id === id)
+        ? current.records.map(item => item.id === id ? { ...item, ...patch } : item)
+        : [...current.records, { id, ...buildRecordPayload(record || {}, patch) }] }));
+      return id;
     }
 
     async function rpcPayment(payment, recordId, patch = {}) {
@@ -717,13 +736,26 @@
       }
       const { data:idSaved, error:saveError } = await client.rpc('salvar_pagamento_acompanhamento_v1', { p_pagamento_id:payment?.id || null, p_registro_id:recordId, p_dados:buildPaymentPayload(payment || {}, patch) });
       if (saveError) throw saveError;
-      return idSaved || payment?.id;
+      const id = idSaved || payment?.id;
+      const saved = { ...payment, ...buildPaymentPayload(payment || {}, patch), id, registro_id:recordId };
+      reloadSeqRef.current += 1;
+      setData(current => ({ ...current, payments:current.payments.some(item => item.id === id)
+        ? current.payments.map(item => item.id === id ? { ...item, ...saved } : item)
+        : [...current.payments, saved] }));
+      return id;
     }
 
     async function runQuick(action, message = 'Alteração salva.') {
       if (saving) return false;
       setSaving(true);
-      try { await action(); if (!DEMO_MODE) await reload(true); notify(message); return true; }
+      try {
+        await action();
+        if (!DEMO_MODE && await reload(true) === false) {
+          notify('Alteração salva. Não foi possível atualizar o restante da base; tente recarregar a página.', 'info');
+          return true;
+        }
+        notify(message); return true;
+      }
       catch (quickError) { notify(quickError.message || 'Não foi possível salvar a alteração.', 'error'); return false; }
       finally { setSaving(false); }
     }
@@ -742,7 +774,10 @@
       const value = Math.max(0, Number(amount) || 0);
       const status = options.status || payment?.status || 'previsto';
       const currentPayments = data.payments.filter(item => item.registro_id === record.id && item.id !== payment?.id && item.status !== 'cancelado');
-      const newTotal = sum(currentPayments, item => item.valor_previsto) + value;
+      const planning = hasTag(record, 'planejamento') ? buildPlanningSnapshot([record], data.payments, yearValue) : null;
+      const newTotal = planning
+        ? Math.round(sum(OFFICIAL_MONTHS, (_, index) => index === monthIndex ? value : planning.planningCellValue(record, index)) * 100) / 100
+        : sum(currentPayments, item => item.valor_previsto) + value;
       const paymentPatch = {
         parcela:payment?.parcela || currentPayments.length + 1,
         descricao:payment?.descricao || `${record.referencia || record.fornecedor || 'Lançamento'} — ${OFFICIAL_MONTHS[monthIndex][1]} ${yearValue}`,
@@ -1471,23 +1506,31 @@
     }).map(record => ({ record, value:recordRealized(context.payments, record) }));
   }
 
-  function PlanningView({ context }) {
-    const planningScrollRef = useRef(null);
-    const planning = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.natureza === 'despesa' && hasTag(record, 'planejamento') && record.status !== 'cancelado')
+  const planningName = record => record.referencia || String(record.titulo || '').replace(/^Planejamento \d{4}\s*—\s*/i,'') || 'Frente';
+
+  function buildPlanningSnapshot(records, payments, year = 2026) {
+    const planning = records.filter(record => Number(record.ano_referencia) === Number(year) && record.natureza === 'despesa' && hasTag(record, 'planejamento') && record.status !== 'cancelado')
       .sort((a,b) => String(a.dados_originais?.coluna || 'Z').localeCompare(String(b.dados_originais?.coluna || 'Z')) || String(a.referencia).localeCompare(String(b.referencia),'pt-BR'));
-    const paymentMap = useMemo(() => { const map = new Map(); context.payments.forEach(payment => { const record = planning.find(item => item.id === payment.registro_id); if (!record) return; const idx = Math.max(0, Number(String(payment.vencimento || '').slice(5,7) || 1)-1); map.set(`${record.id}|${idx}`, payment); }); return map; }, [context.payments, planning.length]);
-    const planningName = record => record.referencia || String(record.titulo || '').replace(/^Planejamento 2026\s*—\s*/i,'') || 'Frente';
+    const recordIds = new Set(planning.map(record => record.id));
+    const paymentMap = new Map();
+    payments.forEach(payment => {
+      if (!recordIds.has(payment.registro_id)) return;
+      const due = String(payment.vencimento || payment.pago_em || '');
+      const monthIndex = Number(due.slice(5, 7)) - 1;
+      if (Number(due.slice(0, 4)) !== Number(year) || monthIndex < 0 || monthIndex > 11) return;
+      paymentMap.set(`${payment.registro_id}|${monthIndex}`, payment);
+    });
     const planningSourceMeta = record => {
       const candidates = [record?.dados_originais?.categoria_original, record?.referencia, planningName(record)];
       for (const candidate of candidates) {
-        const fallback = OFFICIAL_PLANNING_2026[normalize(candidate)];
+        const fallback = Number(year) === 2026 ? OFFICIAL_PLANNING_2026[normalize(candidate)] : null;
         if (fallback) return fallback;
       }
       return null;
     };
     const sourcePlanningValue = (record, monthIndex) => {
       const stored = record?.dados_originais?.valores_mensais;
-      if (Array.isArray(stored) && stored.some(value => Number(value || 0) > 0)) return Number(stored[monthIndex] || 0);
+      if (Array.isArray(stored) && stored.length >= 12) return Number(stored[monthIndex] || 0);
       return Number(planningSourceMeta(record)?.monthly?.[monthIndex] || 0);
     };
     const sourcePlanningPaid = (record, monthIndex) => {
@@ -1497,11 +1540,11 @@
     };
     const planningCellValue = (record, monthIndex) => {
       const payment = paymentMap.get(`${record.id}|${monthIndex}`);
-      return payment ? Number(payment.valor_previsto || 0) : sourcePlanningValue(record, monthIndex);
+      return payment ? (payment.status === 'cancelado' ? 0 : Number(payment.valor_previsto || 0)) : sourcePlanningValue(record, monthIndex);
     };
     const planningCellPaid = (record, monthIndex) => {
       const payment = paymentMap.get(`${record.id}|${monthIndex}`);
-      if (payment && (payment.status === 'pago' || Number(payment.valor_pago || 0) > 0)) return true;
+      if (payment) return payment.status === 'pago';
       return sourcePlanningPaid(record, monthIndex);
     };
     const monthTotals = OFFICIAL_MONTHS.map((_,monthIndex) => sum(planning, record => planningCellValue(record, monthIndex)));
@@ -1510,6 +1553,13 @@
     const grandTotal = sum(columnTotals, value => value);
     const paidTotal = sum(paidColumnTotals, value => value);
     const remainingTotal = Math.max(0, grandTotal - paidTotal);
+    return { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal };
+  }
+
+  function PlanningView({ context }) {
+    const planningScrollRef = useRef(null);
+    const { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal } =
+      useMemo(() => buildPlanningSnapshot(context.allRecords, context.payments), [context.allRecords, context.payments]);
     const currentMonth = new Date().getFullYear() === 2026 ? new Date().getMonth() : -1;
     const jumpToPlanningColumn = index => {
       const scroller = planningScrollRef.current; if (!scroller) return;
@@ -1523,7 +1573,7 @@
       ${planning.length ? html`<section className="planning-fronts-panel"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Vermelho = já pago na planilha oficial</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])} planejado</small><em>${money(paidColumnTotals[index])} pago</em></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. Reimporte o MKTG 2026 para restaurar a matriz.</p></div><button className="button primary" onClick=${()=>context.setView('importar')}><${Icon} name="refresh-cw"/>Reimportar MKTG 2026</button></div>`}
       ${planning.length ? html`<${EasySheetNavigator} scrollRef=${planningScrollRef} focusSelector=".planning-live-sheet .total-head" focusLabel="Ir ao total"/>` : null}
       ${planning.length ? html`<article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll assisted-scroll" ref=${planningScrollRef}><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${planningName(record)}>${planningName(record)}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
-        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Já pago segundo o MKTG 2026' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><${EditableSheetCell} type="money" value=${value} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
+        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Pago: valor atual do planejamento' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><${EditableSheetCell} type="money" value=${value} disabled=${context.saving} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
       </tbody><tfoot><tr><th className="sticky-first">Total</th>${columnTotals.map(value => html`<th>${money(value)}</th>`)}<th>${money(grandTotal)}</th></tr></tfoot></table></div></article>` : null}
       ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Os valores vêm da aba Planejamento do MKTG 2026. Valores em vermelho na fonte oficial são tratados como já pagos; valores escuros continuam apenas previstos.</span></div>` : null}
     </section>`;
