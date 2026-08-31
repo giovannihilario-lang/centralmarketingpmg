@@ -357,6 +357,17 @@ body{
 .catalog-page-actions .btn-add-page{margin:0!important}
 .catalog-product-tools{margin-top:18px;padding-top:16px;border-top:1px solid var(--pmg-line)}
 .catalog-section-label{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--pmg-faint);margin-bottom:9px}
+.page-title-wrap{display:flex;min-width:0;flex:1;flex-direction:column;gap:2px}
+.page-subtitle{font-size:8px;color:var(--pmg-muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pool-bulk-label{display:block;margin:0 0 6px;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--pmg-faint)}
+.pool-bulk-filter{width:100%;min-height:108px;resize:vertical;border:1px solid var(--pmg-line);border-radius:9px;background:#fff;color:var(--pmg-text);padding:9px 10px;font:10.5px/1.45 inherit;outline:0;margin-bottom:6px}
+.pool-bulk-filter:focus{border-color:#73ad87;box-shadow:0 0 0 3px rgba(45,122,79,.08)}
+.pool-bulk-meta{display:flex;flex-direction:column;gap:6px;margin:0 0 9px;padding:8px 9px;border:1px solid var(--pmg-line);border-radius:9px;background:var(--pmg-surface-2);font-size:9px;line-height:1.35;color:var(--pmg-muted)}
+.pool-bulk-meta strong{color:var(--pmg-g700)}
+.pool-bulk-meta span span{color:#a64b52}
+.pool-bulk-actions{display:flex;gap:6px;flex-wrap:wrap}
+.pool-bulk-actions button{border:1px solid var(--pmg-line);border-radius:7px;background:#fff;color:var(--pmg-text);font:700 8.5px inherit;padding:5px 7px;cursor:pointer}
+.pool-bulk-actions button:hover{border-color:#a6c8b2;background:var(--pmg-g50)}
 
 .upload-logo-area{border-color:#cfdcd4!important;background:var(--pmg-surface-2)!important;border-radius:12px!important;padding:16px!important}
 .upload-logo-area:hover{background:var(--pmg-g50)!important;border-color:#8cbb9c!important}
@@ -404,7 +415,9 @@ body.catalog-dark .page-header:hover{background:#1b2920!important}
 body.catalog-dark .page-edit-fields{background:#121c16!important;border-color:#304238!important}
 body.catalog-dark .product-tag,body.catalog-dark .pool-item,body.catalog-dark .cad-item,body.catalog-dark .prod-img-row{background:#18241c!important;border-color:#304238!important;color:#d7e3db!important}
 body.catalog-dark .product-tag:hover,body.catalog-dark .pool-item:hover{background:#1d2d23!important;border-color:#405a49!important}
-body.catalog-dark .pool-search,body.catalog-dark .cad-search,body.catalog-dark .pool-cat-filter,body.catalog-dark .cad-form input,body.catalog-dark .cad-form select,body.catalog-dark .page-edit-fields input,body.catalog-dark .page-edit-fields textarea,body.catalog-dark .color-input-wrap input[type=text]{background:#18251d!important;border-color:#354c3c!important;color:#f2f7f4!important}
+body.catalog-dark .pool-search,body.catalog-dark .cad-search,body.catalog-dark .pool-cat-filter,body.catalog-dark .cad-form input,body.catalog-dark .cad-form select,body.catalog-dark .page-edit-fields input,body.catalog-dark .page-edit-fields textarea,body.catalog-dark .color-input-wrap input[type=text],body.catalog-dark .pool-bulk-filter{background:#18251d!important;border-color:#354c3c!important;color:#f2f7f4!important}
+body.catalog-dark .pool-bulk-meta{background:#151f19!important;border-color:#304238!important;color:#9eafa4!important}
+body.catalog-dark .pool-bulk-actions button{background:#18251d!important;border-color:#354c3c!important;color:#d7e3db!important}
 body.catalog-dark .btn-add-page{background:#18291e!important;color:#9be2b2!important;border-color:#31513d!important}
 body.catalog-dark .upload-logo-area{background:#151f19!important;border-color:#35483b!important}
 body.catalog-dark .tab-btn:hover{background:#1b2920!important;color:#fff!important}
@@ -511,6 +524,9 @@ const MAPA_CATEGORIAS = {
 
 let TODOS_PRODUTOS = [];
 let nextProdId = 1;
+const MAX_PRODUTOS_POR_PAGINA = 25;
+let catalogoProdutosRevisao = 0;
+let poolListaCache = { texto: null, revisao: -1, resultado: null };
 let colors_state = {
   verdeEscuro:'#1B5E20', verdeMed:'#2E7D32', verdeClaro:'#C8E6C9',
   verdeSuave:'#F1F8F1', accent:'#81C784',
@@ -600,6 +616,186 @@ function assignedPages() {
   const set = new Set();
   pages.forEach(pg => pg.produtos.forEach(id => set.add(id)));
   return set;
+}
+
+function normalizarNomeProduto(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function separarListaProdutos(valor) {
+  return String(valor || '')
+    .split(/(?:\r?\n)+|;\s*|,\s*(?=[A-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ"'])/i)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function analisarListaProdutos() {
+  const campo = document.getElementById('poolBulkFilter');
+  const textoLista = campo ? campo.value : '';
+  if (poolListaCache.texto === textoLista && poolListaCache.revisao === catalogoProdutosRevisao && poolListaCache.resultado) {
+    return poolListaCache.resultado;
+  }
+  const itensOriginais = separarListaProdutos(textoLista);
+  const termos = [];
+  const vistos = new Set();
+
+  itensOriginais.forEach(original => {
+    const normalizado = normalizarNomeProduto(original);
+    if (!normalizado || vistos.has(normalizado)) return;
+    vistos.add(normalizado);
+    termos.push({ original, normalizado });
+  });
+
+  if (!termos.length) {
+    const resultado = { ativo: false, termos: [], ids: null, naoEncontrados: [] };
+    poolListaCache = { texto: textoLista, revisao: catalogoProdutosRevisao, resultado };
+    return resultado;
+  }
+
+  const porNome = new Map();
+  TODOS_PRODUTOS.forEach(produto => {
+    const chave = normalizarNomeProduto(produto.nome);
+    if (!porNome.has(chave)) porNome.set(chave, []);
+    porNome.get(chave).push(produto);
+  });
+
+  const ids = new Set();
+  const naoEncontrados = [];
+  termos.forEach(termo => {
+    let candidatos = porNome.get(termo.normalizado) || [];
+
+    // Tolerância controlada para pequenas diferenças de cadastro/embalagem.
+    // Só aceita aproximação quando ela aponta para um único produto.
+    if (!candidatos.length && termo.normalizado.length >= 8) {
+      const aproximados = TODOS_PRODUTOS.filter(produto => {
+        const nome = normalizarNomeProduto(produto.nome);
+        return nome.includes(termo.normalizado) || termo.normalizado.includes(nome);
+      });
+      if (aproximados.length === 1) candidatos = aproximados;
+    }
+
+    if (!candidatos.length) naoEncontrados.push(termo.original);
+    candidatos.forEach(produto => ids.add(produto.id));
+  });
+
+  const resultado = { ativo: true, termos, ids, naoEncontrados };
+  poolListaCache = { texto: textoLista, revisao: catalogoProdutosRevisao, resultado };
+  return resultado;
+}
+
+function atualizarResumoListaProdutos(analise) {
+  const status = document.getElementById('poolBulkStatus');
+  const copiar = document.getElementById('btnCopyMissing');
+  if (!status) return;
+
+  if (!analise.ativo) {
+    status.textContent = 'Cole uma lista para mostrar somente os produtos dela.';
+    if (copiar) copiar.hidden = true;
+    return;
+  }
+
+  const encontrados = analise.termos.length - analise.naoEncontrados.length;
+  status.innerHTML = `<strong>${encontrados}/${analise.termos.length}</strong> itens da lista encontrados no catálogo${analise.naoEncontrados.length ? ` · <span>${analise.naoEncontrados.length} não encontrado${analise.naoEncontrados.length !== 1 ? 's' : ''}</span>` : ''}`;
+  if (copiar) copiar.hidden = analise.naoEncontrados.length === 0;
+}
+
+function limparListaProdutos() {
+  const campo = document.getElementById('poolBulkFilter');
+  if (campo) campo.value = '';
+  renderPool();
+}
+
+async function copiarProdutosNaoEncontrados() {
+  const analise = analisarListaProdutos();
+  if (!analise.naoEncontrados.length) return;
+  const texto = analise.naoEncontrados.join(', ');
+  try {
+    await navigator.clipboard.writeText(texto);
+    showToast(`${analise.naoEncontrados.length} item${analise.naoEncontrados.length !== 1 ? 's' : ''} não encontrado${analise.naoEncontrados.length !== 1 ? 's' : ''} copiado${analise.naoEncontrados.length !== 1 ? 's' : ''}.`);
+  } catch (_) {
+    showToast('Não foi possível copiar automaticamente.');
+  }
+}
+
+function criarPaginaDepoisDa(paginaBase, subtitulo = '') {
+  const nova = {
+    id: nextPageId++,
+    titulo: paginaBase.titulo,
+    subtitulo,
+    produtos: [],
+    cor: paginaBase.cor || null,
+  };
+  const indice = pages.findIndex(p => p.id === paginaBase.id);
+  pages.splice(indice >= 0 ? indice + 1 : pages.length, 0, nova);
+  return nova;
+}
+
+function normalizarPaginasParaLimite() {
+  let alterou = false;
+  for (let i = 0; i < pages.length; i++) {
+    const pg = pages[i];
+    if (!Array.isArray(pg.produtos)) pg.produtos = [];
+    if (pg.produtos.length <= MAX_PRODUTOS_POR_PAGINA) continue;
+
+    const excedentes = pg.produtos.splice(MAX_PRODUTOS_POR_PAGINA);
+    let posicao = i + 1;
+    for (let j = 0; j < excedentes.length; j += MAX_PRODUTOS_POR_PAGINA) {
+      pages.splice(posicao++, 0, {
+        id: nextPageId++,
+        titulo: pg.titulo,
+        subtitulo: '',
+        produtos: excedentes.slice(j, j + MAX_PRODUTOS_POR_PAGINA),
+        cor: pg.cor || null,
+      });
+    }
+    alterou = true;
+  }
+  return alterou;
+}
+
+function moverProdutosParaPaginaComOverflow(pid, produtos) {
+  const alvo = pages.find(p => p.id === pid);
+  if (!alvo || !produtos.length) return { adicionados: 0, novasPaginas: 0 };
+
+  const ids = [...new Set(produtos.map(p => typeof p === 'object' ? p.id : p).filter(id => id != null))];
+  pages.forEach(pg => { pg.produtos = pg.produtos.filter(id => !ids.includes(id)); });
+
+  let paginaAtual = alvo;
+  let novasPaginas = 0;
+  let adicionados = 0;
+
+  ids.forEach(id => {
+    if (paginaAtual.produtos.length >= MAX_PRODUTOS_POR_PAGINA) {
+      paginaAtual = criarPaginaDepoisDa(paginaAtual, '');
+      novasPaginas++;
+    }
+    paginaAtual.produtos.push(id);
+    adicionados++;
+  });
+
+  return { adicionados, novasPaginas };
+}
+
+function produtosFiltradosDoPool() {
+  const catFilter = (document.getElementById('poolCatFilter') || {}).value || '';
+  const searchRaw = ((document.getElementById('poolSearch') || {}).value || '').trim().toLowerCase();
+  const analise = analisarListaProdutos();
+  atualizarResumoListaProdutos(analise);
+
+  const filtered = TODOS_PRODUTOS.filter(p => {
+    const matchCat = !catFilter || p.categoria === catFilter;
+    const matchLista = !analise.ativo || analise.ids.has(p.id);
+    const matchText = !searchRaw || p.nome.toLowerCase().includes(searchRaw);
+    return matchCat && matchLista && matchText;
+  });
+
+  return { filtered, analise };
 }
 
 // ── TABS ──
@@ -711,8 +907,9 @@ function cadAddProduct() {
   if (!categoria) { showToast('Selecione a categoria.'); return; }
   const prod = { id: nextProdId++, nome, unidade, categoria };
   TODOS_PRODUTOS.push(prod);
+  catalogoProdutosRevisao++;
   const pg = pages.find(p => p.titulo === categoria);
-  if (pg && !pg.produtos.includes(prod.id)) pg.produtos.push(prod.id);
+  if (pg) moverProdutosParaPaginaComOverflow(pg.id, [prod.id]);
   document.getElementById('cadNome').value = '';
   document.getElementById('cadUnidade').value = '';
   renderCadList(); renderPanel(); renderPreview();
@@ -720,6 +917,7 @@ function cadAddProduct() {
 }
 function cadDeleteProduct(id) {
   TODOS_PRODUTOS = TODOS_PRODUTOS.filter(p => p.id !== id);
+  catalogoProdutosRevisao++;
   pages.forEach(pg => { pg.produtos = pg.produtos.filter(pid => pid !== id); });
   delete prodImages[id];
   renderCadList(); renderProdImgList(); renderPanel(); renderPreview();
@@ -746,8 +944,16 @@ function renderCadList() {
 
 // ── PÁGINAS ──
 function addPage() {
-  pages.push({ id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [], cor: null });
-  renderPanel(); renderPreview();
+  const referencia = pages.find(p => p.id === openPage);
+  if (referencia) {
+    const nova = criarPaginaDepoisDa(referencia, '');
+    openPage = nova.id;
+  } else {
+    const nova = { id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [], cor: null };
+    pages.push(nova);
+    openPage = nova.id;
+  }
+  renderPanel(); renderPreview(); salvarDebounce();
 }
 function updatePageTitulo(pid, val) {
   const pg = pages.find(p => p.id === pid);
@@ -778,29 +984,17 @@ function removeProductFromPage(pid, prodId) {
   salvarDebounce()
 }
 function addProductToPage(pid, prodId) {
-  pages.forEach(p => { p.produtos = p.produtos.filter(id => id !== prodId); });
-  const pg = pages.find(p => p.id === pid);
-  if (pg) pg.produtos.push(prodId);
-  renderPanel(); renderPreview();
-  salvarDebounce()
+  const resultado = moverProdutosParaPaginaComOverflow(pid, [prodId]);
+  renderPanel(); renderPreview(); salvarDebounce();
+  if (resultado.novasPaginas) showToast('Página cheia: criei a próxima página com o mesmo título.');
 }
 
 // ── POOL ──
 function renderPool() {
   const list = document.getElementById('poolList');
   if (!list) return;
-  const assigned  = assignedPages();
-  const catFilter = (document.getElementById('poolCatFilter') || {}).value || '';
-  const searchRaw = (document.getElementById('poolSearch') || {}).value || '';
-
-  // ── Busca múltipla: separa por vírgula e filtra termos não vazios ──
-  const termos = searchRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-
-  const filtered = TODOS_PRODUTOS.filter(p => {
-    const matchCat = !catFilter || p.categoria === catFilter;
-    const matchText = termos.length === 0 || termos.some(t => p.nome.toLowerCase().includes(t));
-    return matchCat && matchText;
-  });
+  const assigned = assignedPages();
+  const { filtered } = produtosFiltradosDoPool();
 
   list.innerHTML = filtered.length === 0
     ? '<div style="font-size:10px;color:#BDBDBD;text-align:center;padding:10px">Nenhum produto encontrado</div>'
@@ -815,45 +1009,57 @@ function renderPool() {
   });
 }
 function adicionarTodosFiltrados() {
+  const { filtered, analise } = produtosFiltradosDoPool();
   const catFilter = (document.getElementById('poolCatFilter') || {}).value || '';
-  const searchRaw = (document.getElementById('poolSearch') || {}).value || '';
-  const termos = searchRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-
-  const filtered = TODOS_PRODUTOS.filter(p => {
-    const matchCat  = !catFilter || p.categoria === catFilter;
-    const matchText = termos.length === 0 || termos.some(t => p.nome.toLowerCase().includes(t));
-    return matchCat && matchText;
-  });
-
+  const searchRaw = ((document.getElementById('poolSearch') || {}).value || '').trim();
+  if (!analise.ativo && !catFilter && !searchRaw) {
+    showToast('Cole uma lista, escolha uma categoria ou faça uma busca antes de adicionar em massa.');
+    return;
+  }
   const targetId = openPage || pages[0].id;
   const pg = pages.find(p => p.id === targetId);
   if (!pg) return;
+  if (!filtered.length) { showToast('Nenhum produto encontrado para adicionar.'); return; }
 
-  let adicionados = 0;
-  filtered.forEach(p => {
-    // Remove de outras páginas e adiciona na atual
-    pages.forEach(pg2 => { pg2.produtos = pg2.produtos.filter(id => id !== p.id); });
-    if (!pg.produtos.includes(p.id)) { pg.produtos.push(p.id); adicionados++; }
-  });
-
+  const resultado = moverProdutosParaPaginaComOverflow(targetId, filtered);
   renderPanel(); renderPreview(); salvarDebounce();
-  showToast(`${adicionados} produto${adicionados !== 1 ? 's' : ''} adicionado${adicionados !== 1 ? 's' : ''}!`);
+  showToast(`${resultado.adicionados} produto${resultado.adicionados !== 1 ? 's' : ''} adicionado${resultado.adicionados !== 1 ? 's' : ''}${resultado.novasPaginas ? ` · ${resultado.novasPaginas} nova${resultado.novasPaginas !== 1 ? 's' : ''} página${resultado.novasPaginas !== 1 ? 's' : ''} criada${resultado.novasPaginas !== 1 ? 's' : ''}` : ''}!`);
 }
 function distribuirTodosPorCategoria() {
   let distribuidos = 0, semPagina = 0;
   const semPaginaCats = new Set();
 
+  const grupos = new Map();
   TODOS_PRODUTOS.forEach(p => {
-    const pg = pages.find(pg2 => pg2.titulo === p.categoria);
-    if (!pg) { semPagina++; semPaginaCats.add(p.categoria); return; }
-    // tira o produto de qualquer página que ele esteja
-    pages.forEach(pg2 => { pg2.produtos = pg2.produtos.filter(id => id !== p.id); });
-    pg.produtos.push(p.id);
-    distribuidos++;
+    if (!grupos.has(p.categoria)) grupos.set(p.categoria, []);
+    grupos.get(p.categoria).push(p.id);
+  });
+
+  grupos.forEach((ids, categoria) => {
+    let paginasCategoria = pages.filter(pg => pg.titulo === categoria);
+    if (!paginasCategoria.length) {
+      semPagina += ids.length;
+      semPaginaCats.add(categoria);
+      return;
+    }
+
+    const idsSet = new Set(ids);
+    pages.forEach(pg => { pg.produtos = pg.produtos.filter(id => !idsSet.has(id)); });
+
+    let indicePagina = 0;
+    ids.forEach(id => {
+      while (indicePagina < paginasCategoria.length && paginasCategoria[indicePagina].produtos.length >= MAX_PRODUTOS_POR_PAGINA) indicePagina++;
+      if (indicePagina >= paginasCategoria.length) {
+        const nova = criarPaginaDepoisDa(paginasCategoria[paginasCategoria.length - 1], '');
+        paginasCategoria.push(nova);
+      }
+      paginasCategoria[indicePagina].produtos.push(id);
+      distribuidos++;
+    });
   });
 
   renderPanel(); renderPreview(); salvarDebounce();
-  showToast(`${distribuidos} produto${distribuidos !== 1 ? 's' : ''} distribuído${distribuidos !== 1 ? 's' : ''} por categoria` + (semPagina ? ` · ${semPagina} sem página correspondente` : ''));
+  showToast(`${distribuidos} produto${distribuidos !== 1 ? 's' : ''} distribuído${distribuidos !== 1 ? 's' : ''} em páginas de até ${MAX_PRODUTOS_POR_PAGINA}` + (semPagina ? ` · ${semPagina} sem página correspondente` : ''));
   if (semPaginaCats.size) console.warn('Categorias sem página correspondente:', Array.from(semPaginaCats));
 }
 // ── DRAG PRODUTOS ENTRE PÁGINAS ──
@@ -866,9 +1072,17 @@ function onDropZone(e, pid) {
   const from = pages.find(p => p.id === dragFromPage);
   if (from) from.produtos = from.produtos.filter(id => id !== dragProdId);
   const to = pages.find(p => p.id === pid);
-  if (to && !to.produtos.includes(dragProdId)) to.produtos.push(dragProdId);
+  if (to && !to.produtos.includes(dragProdId)) {
+    if (to.produtos.length >= MAX_PRODUTOS_POR_PAGINA) {
+      const nova = criarPaginaDepoisDa(to, '');
+      nova.produtos.push(dragProdId);
+      showToast('Página cheia: o produto foi colocado na próxima página.');
+    } else {
+      to.produtos.push(dragProdId);
+    }
+  }
   dragProdId = null; dragFromPage = null;
-  renderPanel(); renderPreview();
+  renderPanel(); renderPreview(); salvarDebounce();
 }
 
 // ── RENDER PAINEL ──
@@ -914,8 +1128,8 @@ function renderPanel() {
         <span class="page-color-strip" style="background:${pg.cor || colors_state.verdeEscuro}" onclick="event.stopPropagation()">
           <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
         </span>
-        <span class="page-title">${pg.titulo}</span>
-        <span class="page-count">${prods.length} prod.</span>
+        <span class="page-title-wrap"><span class="page-title">${pg.titulo}</span>${pg.subtitulo ? `<span class="page-subtitle">${pg.subtitulo}</span>` : ''}</span>
+        <span class="page-count">${prods.length}/${MAX_PRODUTOS_POR_PAGINA}</span>
         <div class="page-actions" onclick="event.stopPropagation()">
           ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
           <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
@@ -925,8 +1139,8 @@ function renderPanel() {
       <div class="page-edit-fields">
         <label>Título</label>
         <input type="text" value="${pg.titulo.replace(/"/g,'&quot;')}" oninput="updatePageTitulo(${pg.id}, this.value)">
-        <label>Subtítulo</label>
-        <textarea rows="2" oninput="updatePageSubtitulo(${pg.id}, this.value)">${pg.subtitulo||''}</textarea>
+        <label>Subtítulo / segunda categoria</label>
+        <textarea rows="2" placeholder="Ex.: Embalagens para pizza, Escritório, Limpeza..." oninput="updatePageSubtitulo(${pg.id}, this.value)">${pg.subtitulo||''}</textarea>
       </div>
       <div class="page-products">
         ${prods.map(p => `<div class="product-tag" draggable="true" ondragstart="onDragStart(event,${pg.id},${p.id})">
@@ -974,7 +1188,7 @@ function renderPreview() {
   const wrap = document.getElementById('previewWrap');
   if (!wrap) return;
   wrap.innerHTML = '';
-  const PROD_POR_PAGINA = 25;
+  const PROD_POR_PAGINA = MAX_PRODUTOS_POR_PAGINA;
   let paginaGlobal = 0;
   let cardDragProdId = null, cardDragPageId = null;
 
@@ -983,12 +1197,11 @@ function renderPreview() {
     const fatias = prods.length === 0 ? [[]] : [];
     if (prods.length > 0) for (let i = 0; i < prods.length; i += PROD_POR_PAGINA) fatias.push(prods.slice(i, i+PROD_POR_PAGINA));
 
-    fatias.forEach((fatia, fi) => {
+    fatias.forEach((fatia) => {
       paginaGlobal++;
-      const sufixo = fatias.length > 1 ? ` (${fi+1}/${fatias.length})` : '';
       const label = document.createElement('div');
       label.className = 'preview-label';
-      label.textContent = `Página ${paginaGlobal} — ${pg.titulo}${sufixo}`;
+      label.textContent = `Página ${paginaGlobal} — ${pg.titulo}${pg.subtitulo ? ` · ${pg.subtitulo}` : ''}`;
       wrap.appendChild(label);
 
       const a4 = document.createElement('div'); a4.className = 'a4';
@@ -996,7 +1209,7 @@ function renderPreview() {
         <div class="a4-header">
           <div class="a4-logo-box">${logoDataUrl?`<img src="${logoDataUrl}" style="width:100%;height:100%;object-fit:contain">`:'PMG'}</div>
           <div class="a4-header-text">
-            <div class="a4-title">${pg.titulo}${sufixo}</div>
+            <div class="a4-title">${pg.titulo}</div>
             <div class="a4-subs">${pg.subtitulo||''}</div>
           </div>
         </div>`;
@@ -1105,12 +1318,21 @@ function buildPanel() {
       </div>
       <div class="catalog-product-tools">
         <div class="catalog-section-label">Produtos disponíveis</div>
-      <select id="poolCatFilter" class="pool-cat-filter" onchange="renderPool()">
-        <option value="">Todas as categorias</option>
-        ${CATEGORIAS.map(c=>`<option value="${c}">${c}</option>`).join('')}
-      </select>
-      <input id="poolSearch" class="pool-search" placeholder="Buscar produto..." oninput="renderPool()" style="margin-bottom:6px">
-      <div class="pool-list" id="poolList"></div>
+        <label class="pool-bulk-label" for="poolBulkFilter">Filtrar por lista</label>
+        <textarea id="poolBulkFilter" class="pool-bulk-filter" rows="5" placeholder="Cole aqui os nomes separados por vírgula. Ex.: PRODUTO A, PRODUTO B, PRODUTO C" oninput="renderPool()"></textarea>
+        <div class="pool-bulk-meta">
+          <span id="poolBulkStatus">Cole uma lista para mostrar somente os produtos dela.</span>
+          <div class="pool-bulk-actions">
+            <button type="button" onclick="limparListaProdutos()">Limpar</button>
+            <button type="button" id="btnCopyMissing" onclick="copiarProdutosNaoEncontrados()" hidden>Copiar não encontrados</button>
+          </div>
+        </div>
+        <select id="poolCatFilter" class="pool-cat-filter" onchange="renderPool()">
+          <option value="">Todas as categorias</option>
+          ${CATEGORIAS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+        <input id="poolSearch" class="pool-search" placeholder="Buscar dentro dos resultados..." oninput="renderPool()" style="margin-bottom:6px">
+        <div class="pool-list" id="poolList"></div>
         <button class="catalog-action-primary" onclick="adicionarTodosFiltrados()">+ Adicionar todos encontrados</button>
       </div>
     </div>
@@ -1221,11 +1443,14 @@ function carregarEstado() {
     const estado = JSON.parse(raw);
     if (!estado || !estado.pages || estado.pages.length === 0) return false;
     pages        = estado.pages;
-    nextPageId   = estado.nextPageId || pages.length + 1;
+    const maiorIdPagina = pages.reduce((maior, pg) => Math.max(maior, Number(pg.id) || 0), 0);
+    nextPageId   = Math.max(Number(estado.nextPageId) || 0, maiorIdPagina + 1, pages.length + 1);
+    const paginasMigradas = normalizarPaginasParaLimite();
     openPage     = estado.openPage || null;
     colors_state = estado.colors_state || colors_state;
     logoDataUrl  = estado.logoDataUrl || null;
     applyColors();
+    if (paginasMigradas) salvarEstado();
     return true;
   } catch (err) {
     console.error('Erro ao carregar estado:', err);
@@ -1292,6 +1517,7 @@ async function sincronizarAPI() {
     adicionados++;
   });
 
+  catalogoProdutosRevisao++;
   if (TODOS_PRODUTOS.length > 0) {
     const maxId = TODOS_PRODUTOS.reduce((acc, p) => p.id > acc ? p.id : acc, 0);
     if (nextProdId <= maxId) nextProdId = maxId + 1;
@@ -1300,6 +1526,7 @@ async function sincronizarAPI() {
   if (status) status.innerHTML = `✅ ${adicionados} produtos · ${semCategoria} sem categoria`;
   if (idsSemMapa.size > 0) console.warn('IDs sem mapa:', Array.from(idsSemMapa));
   showToast(`Sincronizado! ${adicionados} produtos carregados.`);
+  renderPool();
   if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
 }
 
