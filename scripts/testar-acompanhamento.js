@@ -42,15 +42,15 @@ for (const missingError of [
 if (sandbox.__PMG_TEST__.isMissingSetupError({ code:'42501', message:'permission denied' })) throw new Error('Erro de permissão confundido com instalação ausente');
 
 
-// Regressão V2.5.4: a Central não pode ficar presa eternamente no boot e o importador oficial deve ser simples.
+// Regressão V2.5.5: a Central não pode ficar presa eternamente no boot e o importador oficial deve ser simples.
 for (const requiredUxContract of [
   "withTimeout(fetchAll(client), 25000",
   "A Central demorou demais para carregar",
   "Escolha o Excel e confirme.",
   "Importar planilha",
-  "Modelo não reconhecido. Use uma planilha Fornecedores 20XX ou MKTG 2026",
+  "Modelo não reconhecido. Use Fornecedores 20XX, MKTG 2026 ou o modelo de Fechamento da PMG.",
 ]) {
-  if (!original.includes(requiredUxContract)) throw new Error(`Contrato V2.5.4 ausente: ${requiredUxContract}`);
+  if (!original.includes(requiredUxContract)) throw new Error(`Contrato V2.5.5 ausente: ${requiredUxContract}`);
 }
 if (original.includes('Confirme o que cada coluna significa')) throw new Error('Importador oficial ainda exibe mapeamento técnico na interface ativa');
 
@@ -90,6 +90,21 @@ if (!importedRevenueProbe.registro.fingerprint.includes('marketing|fornecedores|
 if (importedRevenueProbe.pagamentos[0]?.status !== 'pago' || Math.abs(Number(importedRevenueProbe.pagamentos[0]?.valor_pago) - 51666.68) > .01) throw new Error('Importação de Fornecedores não alimentou Pagamentos');
 if (!importedCostProbe || Math.abs(Number(importedCostProbe.registro.valor_acordado) - 10000) > .01 || importedCostProbe.registro.impacta_totais !== false) throw new Error('Importação não preservou o VALOR específico como detalhamento dentro da verba');
 
+
+// Regressão V2.5.5: o modelo de Fechamento de aba única precisa entrar direto em Pagamentos sem mapeamento técnico.
+const closingProbe = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(closingProbe, XLSX.utils.aoa_to_sheet([
+  ['CAMPANHA','FORNECEDOR','VERBA','NF','VALOR'],
+  ['COTA','AJINOMOTO',51666.68,'NF 321',0],
+  ['INCENTIVO','BUNGE',25000,'DEPÓSITO',0],
+]), 'Planilha1');
+const closingDetected = sandbox.__PMG_TEST__.parseOfficialWorkbook('Teste fechamento.xlsx', closingProbe, { forcedMonthIndex:7 });
+if (!closingDetected || closingDetected.kind !== 'fechamento') throw new Error('Importador não reconheceu o modelo de Fechamento em aba única');
+if (closingDetected.items.length !== 2) throw new Error(`Modelo de Fechamento deveria gerar 2 lançamentos, gerou ${closingDetected.items.length}`);
+if (closingDetected.competenceMonthIndex !== 7) throw new Error('Modelo de Fechamento não preservou a competência escolhida');
+const closingAjinomoto = closingDetected.items.find(item => item.registro.fornecedor === 'Ajinomoto');
+if (!closingAjinomoto || closingAjinomoto.pagamentos[0]?.status !== 'pago') throw new Error('Fechamento não alimentou Pagamentos como recebido');
+if (!closingAjinomoto.registro.fingerprint.includes('marketing|fornecedores|2026|agosto|ajinomoto|cota')) throw new Error(`Fingerprint de Fechamento incompatível com Fornecedores: ${closingAjinomoto?.registro?.fingerprint}`);
 
 // Regressão V2.5.0: duas linhas do mesmo fornecedor/mês não podem herdar a mesma baixa oficial.
 const multiLineSource = {

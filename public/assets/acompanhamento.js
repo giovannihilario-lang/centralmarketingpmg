@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.5.4 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.5.5 / React + HTM */
 (() => {
   'use strict';
 
@@ -3106,6 +3106,95 @@
     return { kind:'mktg', label:'Modelo oficial MKTG 2026', modelFile:canonicalFile, control:'marcos', year:2026, items, totals:[], warnings:[] };
   }
 
+  function detectClosingWorkbookLayout(workbook) {
+    const firstSheetName = workbook.SheetNames?.[0];
+    if (!firstSheetName || workbook.SheetNames.length !== 1) return null;
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], { header:1, defval:null, raw:true, blankrows:false });
+    const probe = rows.slice(0, 20);
+    const headerIndex = probe.findIndex(row => {
+      const cells = (row || []).map(normalize).filter(Boolean);
+      return cells.some(value => value.includes('fornecedor'))
+        && cells.some(value => value === 'verba' || value === 'valor' || value.includes('valor'))
+        && cells.some(value => value.includes('campanha') || value.includes('categoria') || value.includes('tipo'));
+    });
+    if (headerIndex < 0) return null;
+    const headers = (rows[headerIndex] || []).map(normalize);
+    const findColumn = aliases => {
+      const normalizedAliases = aliases.map(normalize).filter(Boolean);
+      const exact = headers.findIndex(value => Boolean(value) && normalizedAliases.includes(value));
+      if (exact >= 0) return exact;
+      return headers.findIndex(value => Boolean(value) && normalizedAliases.some(alias => alias && (value.includes(alias) || alias.includes(value))));
+    };
+    const supplierIndex = findColumn(['fornecedor','parceiro','empresa']);
+    const categoryIndex = findColumn(['campanha','categoria','tipo','ação','acao']);
+    let primaryValueIndex = findColumn(['verba','verba recebida','receita','valor verba']);
+    if (primaryValueIndex < 0) primaryValueIndex = findColumn(['valor']);
+    const documentIndex = findColumn(['nf','nota fiscal','documento','nº nf','numero nf']);
+    const competenceIndex = findColumn(['competência','competencia','mês','mes','referência','referencia']);
+    let specificValueIndex = findColumn(['valor específico','valor especifico','investimento específico','investimento especifico']);
+    if (specificValueIndex < 0 && primaryValueIndex >= 0 && normalize(headers[primaryValueIndex]) !== 'valor') {
+      const plainValue = headers.findIndex((value, index) => value === 'valor' && index !== primaryValueIndex);
+      if (plainValue >= 0) specificValueIndex = plainValue;
+    }
+    if (supplierIndex < 0 || categoryIndex < 0 || primaryValueIndex < 0) return null;
+    return { firstSheetName, rows, headerIndex, supplierIndex, categoryIndex, primaryValueIndex, documentIndex, competenceIndex, specificValueIndex };
+  }
+
+  function parseOfficialClosingWorkbook(fileName, workbook, year, forcedMonthIndex = null) {
+    const layout = detectClosingWorkbookLayout(workbook);
+    if (!layout) return null;
+    const canonicalFile = `Fornecedores ${year}.xlsx`;
+    const items = []; const totals = [];
+    const dataRows = layout.rows.slice(layout.headerIndex + 1);
+    const filenameMonth = monthIndexFromText(fileName);
+    const sheetMonth = monthIndexFromText(layout.firstSheetName);
+    const defaultMonthIndex = Number.isInteger(forcedMonthIndex) && forcedMonthIndex >= 0 ? forcedMonthIndex : (filenameMonth >= 0 ? filenameMonth : sheetMonth);
+    let needsCompetence = defaultMonthIndex < 0 && layout.competenceIndex < 0;
+    let recognizedRows = 0;
+
+    dataRows.forEach((row, offset) => {
+      const supplierRaw = String(row[layout.supplierIndex] ?? '').trim();
+      const categoryRaw = String(row[layout.categoryIndex] ?? '').trim() || 'COTA';
+      if (!supplierRaw || normalize(supplierRaw) === 'fornecedor' || normalize(categoryRaw) === 'total') return;
+      const value = officialMoney(row[layout.primaryValueIndex]);
+      if (value <= 0) return;
+      let monthIndex = defaultMonthIndex;
+      if (layout.competenceIndex >= 0) {
+        const cellMonth = monthIndexFromText(String(row[layout.competenceIndex] ?? ''));
+        if (cellMonth >= 0) monthIndex = cellMonth;
+      }
+      if (monthIndex < 0) { needsCompetence = true; return; }
+      recognizedRows += 1;
+      const monthLabel = OFFICIAL_MONTHS[monthIndex][1];
+      const line = layout.headerIndex + offset + 2;
+      const supplier = officialSupplierName(supplierRaw);
+      const document = layout.documentIndex >= 0 ? String(row[layout.documentIndex] ?? '').trim() : '';
+      const highlighted = layout.specificValueIndex >= 0 ? officialMoney(row[layout.specificValueIndex]) : 0;
+      const recordFingerprint = fingerprint(['marketing','fornecedores',year,monthLabel,supplier,categoryRaw]);
+      items.push(officialItem({
+        controle:'marketing', ano_referencia:year, fornecedor:supplier, natureza:'receita', impacta_totais:true,
+        categoria:inferCategory(categoryRaw), titulo:`${categoryRaw.replace(/\s+/g,' ').trim()} — ${supplier} — ${monthLabel} ${year}`,
+        descricao:'Fechamento de fornecedor importado para Pagamentos e conciliado com a Receita.', referencia:categoryRaw,
+        status:'concluido', data_inicio:officialMonthStart(year, monthIndex), data_fim:officialMonthEnd(year, monthIndex),
+        valor_acordado:value, numero_documento:document, tags:['marketing','fornecedores','fechamento',String(year),normalize(monthLabel),...officialTags(categoryRaw)],
+        observacoes:highlighted > 0 ? `Centro de custo destacado: ${money(highlighted)}.` : '', origem_importacao:canonicalFile, linha_origem:line,
+        fingerprint:recordFingerprint,
+        dados_originais:{ arquivo:canonicalFile, arquivo_enviado:fileName, aba:layout.firstSheetName, linha:line, campanha:categoryRaw, fornecedor_original:supplierRaw, verba:value, nf:document, valor_especifico:highlighted || null },
+      }, [{
+        parcela:1, descricao:`Competência ${monthLabel} ${year}`, valor_previsto:value, valor_pago:value,
+        vencimento:officialMonthEnd(year, monthIndex), pago_em:officialMonthEnd(year, monthIndex), status:'pago', forma_pagamento:officialMethod(document),
+        favorecido:supplier, numero_documento:document, observacoes:'Importado do modelo de Fechamento; a competência é considerada recebida.',
+        fingerprint:fingerprint([recordFingerprint,'competencia',year,monthIndex + 1]),
+      }]));
+    });
+
+    return {
+      kind:'fechamento', label:`Modelo de Fechamento ${year}`, modelFile:canonicalFile, control:'marketing', year, items, totals, warnings:[],
+      needsCompetence, competenceMonthIndex:defaultMonthIndex >= 0 ? defaultMonthIndex : null, recognizedRows,
+      sourceSheet:layout.firstSheetName,
+    };
+  }
+
   function normalizeImportItem(item) {
     const source = item && typeof item === 'object' ? item : {};
     const rawRecord = source.registro && typeof source.registro === 'object' ? source.registro : {};
@@ -3130,17 +3219,21 @@
     return { ...source, registro:record, pagamentos:payments };
   }
 
-  function parseOfficialWorkbook(fileName, workbook) {
+  function parseOfficialWorkbook(fileName, workbook, options = {}) {
     const supplierMatch = fileName.match(/fornecedores\D*(20\d{2})/i);
+    const yearMatch = fileName.match(/(20\d{2})/);
+    const inferredYear = Number(yearMatch?.[1] || new Date().getFullYear());
     let parsed = null;
     if (supplierMatch) parsed = parseOfficialSupplierWorkbook(fileName, workbook, Number(supplierMatch[1]));
     else if (/mktg|marketing/i.test(fileName) && workbook.Sheets.RECEITA && workbook.Sheets.Planejamento) parsed = parseOfficialMarcosWorkbook(fileName, workbook);
+    else if (/fechamento/i.test(fileName) || detectClosingWorkbookLayout(workbook)) parsed = parseOfficialClosingWorkbook(fileName, workbook, inferredYear, options.forcedMonthIndex);
     if (!parsed) return null;
     return { ...parsed, items:(parsed.items || []).map(normalizeImportItem), warnings:Array.isArray(parsed.warnings) ? parsed.warnings.map(value => String(value)) : [], totals:Array.isArray(parsed.totals) ? parsed.totals : [] };
   }
 
   function ImportView({ context }) {
     const inputRef = useRef(null);
+    const workbookRef = useRef(null);
     const [file, setFile] = useState(null);
     const [official, setOfficial] = useState(null);
     const [reading, setReading] = useState(false);
@@ -3148,10 +3241,11 @@
     const [result, setResult] = useState(null);
     const [localError, setLocalError] = useState('');
     const [dragging, setDragging] = useState(false);
-    useLucide([file?.name, official?.kind, reading, importing, result, localError, dragging]);
+    const [closingMonth, setClosingMonth] = useState(new Date().getMonth());
+    useLucide([file?.name, official?.kind, reading, importing, result, localError, dragging, closingMonth]);
 
     const resetFile = () => {
-      setFile(null); setOfficial(null); setResult(null); setLocalError(''); setReading(false); setImporting(false);
+      setFile(null); setOfficial(null); setResult(null); setLocalError(''); setReading(false); setImporting(false); workbookRef.current = null;
       if (inputRef.current) inputRef.current.value = '';
     };
 
@@ -3168,8 +3262,11 @@
         const buffer = await withTimeout(nextFile.arrayBuffer(), 10000, 'A leitura do arquivo demorou demais.');
         const workbook = XLSX.read(buffer, { type:'array', cellDates:true, cellStyles:true, bookFiles:true });
         if (!Array.isArray(workbook?.SheetNames) || !workbook.SheetNames.length) throw new Error('A planilha não possui abas legíveis.');
-        const detected = parseOfficialWorkbook(nextFile.name, workbook);
-        if (!detected) throw new Error('Modelo não reconhecido. Use uma planilha Fornecedores 20XX ou MKTG 2026 no padrão da PMG.');
+        workbookRef.current = workbook;
+        let detected = parseOfficialWorkbook(nextFile.name, workbook);
+        if (detected?.kind === 'fechamento' && detected.needsCompetence) detected = parseOfficialWorkbook(nextFile.name, workbook, { forcedMonthIndex:closingMonth });
+        if (detected?.kind === 'fechamento' && Number.isInteger(detected.competenceMonthIndex)) setClosingMonth(detected.competenceMonthIndex);
+        if (!detected) throw new Error('Modelo não reconhecido. Use Fornecedores 20XX, MKTG 2026 ou o modelo de Fechamento da PMG.');
         if (detected.warnings?.length) throw new Error(detected.warnings.join(' · '));
         setOfficial(detected);
       } catch (error) {
@@ -3230,12 +3327,19 @@
       return confirmed;
     }
 
+    function updateClosingMonth(monthIndex) {
+      const nextMonth = Number(monthIndex); setClosingMonth(nextMonth); setResult(null); setLocalError('');
+      if (!file || !workbookRef.current) return;
+      const reparsed = parseOfficialWorkbook(file.name, workbookRef.current, { forcedMonthIndex:nextMonth });
+      if (reparsed) setOfficial(reparsed);
+    }
+
     async function runImport() {
       if (!official || !file) return;
       const payload = official.items || [];
       if (!payload.length) { setLocalError('Nenhum lançamento válido foi encontrado.'); return; }
       if (DEMO_MODE) {
-        const demoResult = { criadas:payload.length, atualizadas:0, ignoradas:0, arquivadas:0, confirmadas:official.kind === 'fornecedores' ? supplierRevenueFingerprints(payload).length : 0, erros:[] };
+        const demoResult = { criadas:payload.length, atualizadas:0, ignoradas:0, arquivadas:0, confirmadas:['fornecedores','fechamento'].includes(official.kind) ? supplierRevenueFingerprints(payload).length : 0, erros:[] };
         setResult(demoResult); return;
       }
       setImporting(true); setLocalError(''); setResult(null);
@@ -3259,7 +3363,7 @@
         );
         if (reconcileError) throw reconcileError;
         total.arquivadas = Number(archived) || 0;
-        if (official.kind === 'fornecedores') total.confirmadas = await confirmOfficialSupplierRows(payload);
+        if (['fornecedores','fechamento'].includes(official.kind)) total.confirmadas = await confirmOfficialSupplierRows(payload);
         if (official.kind === 'mktg') {
           const { error:syncError } = await withTimeout(context.client.rpc('sincronizar_confirmacoes_mktg_2026_v1'), 15000, 'A sincronização da Receita demorou para responder.');
           if (syncError) {
@@ -3279,11 +3383,11 @@
       } finally { setImporting(false); }
     }
 
-    const openImportedData = () => official?.kind === 'fornecedores'
+    const openImportedData = () => ['fornecedores','fechamento'].includes(official?.kind)
       ? context.navigatePayments({ year:Number(official.year || 2026), pending:false })
       : context.setView('receita');
     const movementCount = official ? sum(official.items || [], item => Array.isArray(item?.pagamentos) ? item.pagamentos.length : 0) : 0;
-    const destination = official?.kind === 'fornecedores' ? 'Pagamentos → Receita → Dashboard' : 'Planejamento → Receita → Dashboard';
+    const destination = ['fornecedores','fechamento'].includes(official?.kind) ? 'Pagamentos → Receita → Dashboard' : 'Planejamento → Receita → Dashboard';
 
     return html`<section className="import-simple">
       <div className="import-simple-head"><div><span className="eyebrow">Importar planilha</span><h2>Escolha o Excel e confirme.</h2><p>A Central identifica o modelo e envia os dados para as abas certas.</p></div></div>
@@ -3291,7 +3395,7 @@
         <input ref=${inputRef} hidden type="file" accept=".xlsx,.xls,.xlsm" onChange=${event => loadFile(event.target.files[0])}/>
         <span className="import-simple-icon"><${Icon} name="file-spreadsheet" size=${28}/></span>
         <h3>Selecionar planilha</h3>
-        <p>Fornecedores 20XX ou MKTG 2026</p>
+        <p>Fornecedores 20XX, Fechamento ou MKTG 2026</p>
         <button type="button" className="button primary"><${Icon} name="folder-open"/>Escolher arquivo</button>
         ${localError && html`<div className="import-simple-error"><${Icon} name="triangle-alert"/>${localError}</div>`}
       </div>` : html`<div className="import-simple-card">
@@ -3302,9 +3406,10 @@
             <div><span>Lançamentos</span><strong>${int(official.items.length)}</strong></div>
             <div><span>Movimentos</span><strong>${int(movementCount)}</strong></div>
             <div className="wide"><span>Vai atualizar</span><strong>${destination}</strong></div>
+            ${official.kind === 'fechamento' && html`<label className="import-competence"><span>Competência</span><select value=${closingMonth} disabled=${importing || Boolean(result)} onChange=${event => updateClosingMonth(event.target.value)}>${OFFICIAL_MONTHS.map(([, label], index) => html`<option value=${index}>${label} ${official.year}</option>`)}</select><small>Escolha o mês deste fechamento.</small></label>`}
           </div>
           ${result ? html`<div className="import-simple-success"><${Icon} name="circle-check-big"/><div><strong>Importação concluída</strong><p>${int(result.criadas)} novos · ${int(result.atualizadas)} atualizados · ${int(result.arquivadas || 0)} arquivados${Number(result.confirmadas || 0) ? ` · ${int(result.confirmadas)} confirmados` : ''}</p></div></div>` : null}
-          <div className="import-simple-actions">${result ? html`<button type="button" className="button primary large" onClick=${openImportedData}>${official.kind === 'fornecedores' ? 'Abrir Pagamentos' : 'Abrir Receita'}<${Icon} name="arrow-right"/></button>` : html`<button type="button" className="button primary large" onClick=${runImport} disabled=${importing}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="upload"/>`}${importing ? 'Importando...' : 'Importar planilha'}</button>`}</div>
+          <div className="import-simple-actions">${result ? html`<button type="button" className="button primary large" onClick=${openImportedData}>${['fornecedores','fechamento'].includes(official.kind) ? 'Abrir Pagamentos' : 'Abrir Receita'}<${Icon} name="arrow-right"/></button>` : html`<button type="button" className="button primary large" onClick=${runImport} disabled=${importing}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="upload"/>`}${importing ? 'Importando...' : 'Importar planilha'}</button>`}</div>
         ` : null}
       </div>`}
       <p className="import-simple-note"><${Icon} name="shield-check"/>Selecionar o arquivo não altera nada. Os dados só são gravados depois de clicar em <b>Importar planilha</b>.</p>
