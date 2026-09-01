@@ -1987,3 +1987,6 @@ body{font-size:14px!important}
 .import-section .official-ok{margin-top:12px}
 @media(max-width:1180px){.topbar-import{width:36px!important;padding:0!important}.topbar-import span{display:none}}
 @media(max-width:900px){.topbar-import{width:36px!important;min-width:36px!important;padding:0!important}.topbar-import span{display:none}.import-targets{display:grid;grid-template-columns:1fr}.import-targets span{justify-content:flex-start}}
+
+/* V2.5.3 — recuperação isolada do importador */
+.import-recovery{max-width:980px;margin:24px auto}.import-recovery .official-detection-icon.danger{background:#fff0ef;color:#b83a32}.import-recovery .fatal-actions{justify-content:flex-start;margin-top:14px}.import-error-detail{margin-top:14px;border-top:1px solid var(--line-soft);padding-top:10px;color:var(--muted);font-size:9px}.import-error-detail summary{cursor:pointer;font-weight:800;color:var(--forest-700)}.import-error-detail code{display:block;margin-top:8px;padding:9px 10px;border-radius:8px;background:#f6f8f6;white-space:pre-wrap;word-break:break-word;color:#5e6d64}

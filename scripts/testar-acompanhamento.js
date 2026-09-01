@@ -48,8 +48,10 @@ for (const requiredImportContract of [
   "confirmOfficialSupplierRows",
   "confirmar_pagamentos_lote_v1",
   "supplierRevenueFingerprints",
+  "ImportErrorBoundary",
+  "normalizeImportItem",
 ]) {
-  if (!original.includes(requiredImportContract)) throw new Error(`V2.5.2 sem contrato de confirmação automática: ${requiredImportContract}`);
+  if (!original.includes(requiredImportContract)) throw new Error(`Importador sem contrato de segurança: ${requiredImportContract}`);
 }
 
 // Regressão V2.5.2: arquivo renomeado pelo navegador, como "Fornecedores 2026(4).xlsx", deve ser reconhecido
@@ -71,6 +73,7 @@ if (importedProbe.totals.length !== 1 || importedProbe.totals[0].sheet !== 'Jane
 const importedRevenueProbe = importedProbe.items.find(item => item.registro.natureza === 'receita');
 const importedCostProbe = importedProbe.items.find(item => item.registro.natureza === 'despesa');
 if (!importedRevenueProbe || importedRevenueProbe.registro.fornecedor !== 'Ajinomoto' || Math.abs(Number(importedRevenueProbe.registro.valor_acordado) - 51666.68) > .01) throw new Error('Importação de Fornecedores não criou a receita esperada');
+if (!importedRevenueProbe.registro.fingerprint.includes('marketing|fornecedores|2026|janeiro|ajinomoto|incentivo')) throw new Error(`Fingerprint de Fornecedores incompatível com histórico: ${importedRevenueProbe.registro.fingerprint}`);
 if (importedRevenueProbe.pagamentos[0]?.status !== 'pago' || Math.abs(Number(importedRevenueProbe.pagamentos[0]?.valor_pago) - 51666.68) > .01) throw new Error('Importação de Fornecedores não alimentou Pagamentos');
 if (!importedCostProbe || Math.abs(Number(importedCostProbe.registro.valor_acordado) - 10000) > .01 || importedCostProbe.registro.impacta_totais !== false) throw new Error('Importação não preservou o VALOR específico como detalhamento dentro da verba');
 
