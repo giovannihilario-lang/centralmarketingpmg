@@ -41,6 +41,39 @@ for (const missingError of [
 }
 if (sandbox.__PMG_TEST__.isMissingSetupError({ code:'42501', message:'permission denied' })) throw new Error('Erro de permissão confundido com instalação ausente');
 
+// A importação de Fornecedores precisa persistir a confirmação na própria linha,
+// porque desde a V1.9.5 essa é a fonte de verdade de Receita/Dashboard.
+for (const requiredImportContract of [
+  "preflightOfficialSupplierImport",
+  "confirmOfficialSupplierRows",
+  "confirmar_pagamentos_lote_v1",
+  "supplierRevenueFingerprints",
+]) {
+  if (!original.includes(requiredImportContract)) throw new Error(`V2.5.2 sem contrato de confirmação automática: ${requiredImportContract}`);
+}
+
+// Regressão V2.5.2: arquivo renomeado pelo navegador, como "Fornecedores 2026(4).xlsx", deve ser reconhecido
+// e somente abas mensais podem alimentar Pagamentos/Receita.
+const importProbe = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(importProbe, XLSX.utils.aoa_to_sheet([
+  ['CONTROLE DE FORNECEDORES 2026'],
+  ['CAMPANHA','FORNECEDOR','VERBA','NF','VALOR'],
+  ['INCENTIVO','AJINOMOTO',51666.68,'NF 123',10000],
+  ['TOTAL','',51666.68,'',''],
+]), 'Janeiro');
+XLSX.utils.book_append_sheet(importProbe, XLSX.utils.aoa_to_sheet([
+  ['FORNECEDOR','VERBA'],['IGNORAR ESTA ABA',999],
+]), 'Notas');
+const importedProbe = sandbox.__PMG_TEST__.parseOfficialWorkbook('Fornecedores 2026(4).xlsx', importProbe);
+if (!importedProbe || importedProbe.kind !== 'fornecedores') throw new Error('Importador não reconheceu Fornecedores 2026 com sufixo de cópia');
+if (importedProbe.warnings.length) throw new Error(`Importador oficial gerou alerta inesperado: ${importedProbe.warnings.join(' · ')}`);
+if (importedProbe.totals.length !== 1 || importedProbe.totals[0].sheet !== 'Janeiro') throw new Error('Importador processou aba que não representa competência mensal');
+const importedRevenueProbe = importedProbe.items.find(item => item.registro.natureza === 'receita');
+const importedCostProbe = importedProbe.items.find(item => item.registro.natureza === 'despesa');
+if (!importedRevenueProbe || importedRevenueProbe.registro.fornecedor !== 'Ajinomoto' || Math.abs(Number(importedRevenueProbe.registro.valor_acordado) - 51666.68) > .01) throw new Error('Importação de Fornecedores não criou a receita esperada');
+if (importedRevenueProbe.pagamentos[0]?.status !== 'pago' || Math.abs(Number(importedRevenueProbe.pagamentos[0]?.valor_pago) - 51666.68) > .01) throw new Error('Importação de Fornecedores não alimentou Pagamentos');
+if (!importedCostProbe || Math.abs(Number(importedCostProbe.registro.valor_acordado) - 10000) > .01 || importedCostProbe.registro.impacta_totais !== false) throw new Error('Importação não preservou o VALOR específico como detalhamento dentro da verba');
+
 
 // Regressão V2.5.0: duas linhas do mesmo fornecedor/mês não podem herdar a mesma baixa oficial.
 const multiLineSource = {

@@ -1976,3 +1976,14 @@ body{font-size:14px!important}
 .topbar-export svg{width:15px!important;height:15px!important;margin:0!important}.topbar-export:disabled{opacity:.7;cursor:wait}.topbar-export:disabled svg{animation:spin .8s linear infinite}
 @media(max-width:1180px){.topbar-export{width:36px!important;padding:0!important}.topbar-export span{display:none}}
 @media(max-width:900px){.topbar-export{width:36px!important;min-width:36px!important;padding:0!important}.topbar-export span{display:none}}
+
+/* V2.5.2 — importação integrada */
+.topbar-import{min-height:36px!important;height:36px!important;display:inline-flex!important;align-items:center;justify-content:center;gap:7px;padding:0 11px!important;border-radius:10px!important;white-space:nowrap;font-size:9.5px!important;font-weight:800!important}
+.topbar-import svg{width:15px!important;height:15px!important;margin:0!important}
+.import-targets{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0 4px}
+.import-targets span{display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:0 9px;border:1px solid #cce8d4;border-radius:999px;background:#fff;color:var(--forest-700);font-size:8.5px;font-weight:800}
+.import-targets svg{width:12px;height:12px}
+.import-section .official-warning{margin-top:12px}
+.import-section .official-ok{margin-top:12px}
+@media(max-width:1180px){.topbar-import{width:36px!important;padding:0!important}.topbar-import span{display:none}}
+@media(max-width:900px){.topbar-import{width:36px!important;min-width:36px!important;padding:0!important}.topbar-import span{display:none}.import-targets{display:grid;grid-template-columns:1fr}.import-targets span{justify-content:flex-start}}
