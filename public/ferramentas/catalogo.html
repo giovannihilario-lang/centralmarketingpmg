@@ -68,10 +68,10 @@
   .preview-wrap { flex: 1; overflow-y: auto; padding: 28px 32px; display: flex; flex-direction: column; align-items: center; gap: 28px; }
   .preview-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #9E9E9E; margin-bottom: -18px; align-self: flex-start; }
   .a4 { width: 595px; min-height: 842px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,.12); border-radius: 3px; position: relative; overflow: hidden; flex-shrink: 0; display: flex; flex-direction: column; }
-  .a4-header { background: var(--verde-escuro); height: 86px; display: flex; align-items: center; padding: 0 45px; gap: 16px; position: relative; flex-shrink: 0; }
+  .a4-header { background: var(--verde-escuro); height: 86px; display: flex; align-items: center; justify-content: center; padding: 0 45px; gap: 16px; position: relative; flex-shrink: 0; }
   .a4-header::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 4px; background: var(--accent); }
-  .a4-logo-box { width: 51px; height: 51px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--verde-escuro); flex-shrink: 0; overflow: hidden; }
-  .a4-header-text { flex: 1; text-align: center; }
+  .a4-logo-box { width: 51px; height: 51px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--verde-escuro); flex-shrink: 0; overflow: hidden; position: absolute; left: 45px; top: 50%; transform: translateY(-50%); z-index: 1; }
+  .a4-header-text { width: 100%; flex: none; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 88px; }
   .a4-title { font-size: 24px; font-weight: 700; color: white; line-height: 1; }
   .a4-subs  { font-size: 8.4px; color: var(--accent); margin-top: 5px; letter-spacing: .3px; line-height: 1.25; }
   .a4-footer { background: var(--verde-escuro); height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 45px; position: relative; flex-shrink: 0; }
@@ -87,7 +87,7 @@
   .card-img img { width: 100%; height: 100%; object-fit: cover; }
   .card-body { padding: 6px 7px; flex: 1; display: flex; align-items: center; }
   .card-nome { font-size: 7px; font-weight: 700; color: #212121; line-height: 1.35; }
-  .card-badge { background: var(--verde-suave); border-top: 1px solid var(--verde-claro); padding: 4px 6px; text-align: center; font-size: 6.5px; font-weight: 700; color: var(--verde-escuro); flex-shrink: 0; }
+  .card-badge { background: var(--verde-suave); border-top: 1px solid var(--verde-claro); padding: 4px 6px; text-align: center; font-size: 6.5px; font-weight: 700; color: var(--verde-escuro); flex-shrink: 0; border-radius: 0 0 7px 7px; overflow: hidden; line-height: 1.1; }
   .card-empty { border: 1.5px dashed #E0E0E0; border-radius: 7px; height: 120px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #CCC; }
   .card-check { position: absolute; top: 5px; right: 5px; width: 16px; height: 16px; background: white; border: 2px solid #DDD; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: transparent; pointer-events: none; transition: all .12s; }
   .card.selecionado { outline: 2.5px solid #E53935; outline-offset: -2px; background: #FFEBEE; }
@@ -1692,7 +1692,7 @@ function buildPanel() {
 // Não existe mais screenshot de DOM no caminho principal. O navegador já
 // calculou o layout do preview; usamos essas coordenadas reais e desenhamos a
 // folha diretamente em canvas. Isso elimina o maior gargalo de catálogos longos.
-const CATALOGO_EXPORT_BUILD = '2026-09-01-export-a4-indesign-v6';
+const CATALOGO_EXPORT_BUILD = '2026-09-01-layout-card-badge-v62';
 const PERFIL_PDF_HQ = { escala: 2.0, qualidade: 0.93 };
 const PERFIL_PDF_RAPIDO = { escala: 1.25, qualidade: 0.86 };
 const PERFIL_PNG_HQ = { escala: 2.0, qualidade: 1 };
@@ -1978,7 +1978,12 @@ async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.8
       if (badge) {
         const br = retanguloRelativo(badge, baseRect);
         const bst = getComputedStyle(badge);
-        ctx.fillStyle = corCSS(bst.backgroundColor, vars.getPropertyValue('--verde-suave').trim() || '#F1F8F1'); ctx.fillRect(br.x,br.y,br.w,br.h);
+        ctx.save();
+        caminhoArredondado(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+        ctx.clip();
+        ctx.fillStyle = corCSS(bst.backgroundColor, vars.getPropertyValue('--verde-suave').trim() || '#F1F8F1');
+        ctx.fillRect(br.x, br.y, br.w, br.h);
+        ctx.restore();
         ctx.save();ctx.strokeStyle=vars.getPropertyValue('--verde-claro').trim() || '#C8E6C9';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(br.x,br.y);ctx.lineTo(br.x+br.w,br.y);ctx.stroke();ctx.restore();
         desenharTextoElemento(ctx, badge, baseRect, { align:'center', singleLine:true });
       }
