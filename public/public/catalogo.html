@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- PMG CATALOGO BUILD: 2026-09-01-export-ultra-v4 -->
+<!-- PMG CATALOGO BUILD: 2026-09-01-export-hq-v5 -->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -474,9 +474,13 @@ body:not(.catalog-dark) .theme-btn .sun-icon{display:none}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/></svg>
         <span>Exportar</span>
       </button>
-      <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:1000;background:#fff;border:1px solid #dfe8e1;border-radius:12px;padding:6px;min-width:170px;box-shadow:0 12px 32px rgba(0,0,0,.16)">
-        <button type="button" onclick="exportPDF();fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">Exportar PDF</button>
-        <button type="button" onclick="exportPNG();fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">Exportar PNG</button>
+      <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:1000;background:#fff;border:1px solid #dfe8e1;border-radius:12px;padding:6px;min-width:190px;box-shadow:0 12px 32px rgba(0,0,0,.16)">
+        <button type="button" onclick="exportPDF('indesign');fecharExportMenu()" style="width:100%;border:0;background:#f3faf5;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:800;color:#173d29">PDF A4 300 DPI · InDesign</button>
+        <button type="button" onclick="exportPNG('indesign');fecharExportMenu()" style="width:100%;border:0;background:#f3faf5;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:800;color:#173d29">PNG A4 300 DPI</button>
+        <div style="height:1px;background:#e7eee9;margin:5px 3px"></div>
+        <button type="button" onclick="exportPDF('hq');fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">PDF alta qualidade</button>
+        <button type="button" onclick="exportPDF('rapido');fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">PDF rápido</button>
+        <button type="button" onclick="exportPNG('hq');fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">PNG alta qualidade</button>
       </div>
     </div>
   </div>
@@ -1688,7 +1692,11 @@ function buildPanel() {
 // Não existe mais screenshot de DOM no caminho principal. O navegador já
 // calculou o layout do preview; usamos essas coordenadas reais e desenhamos a
 // folha diretamente em canvas. Isso elimina o maior gargalo de catálogos longos.
-const CATALOGO_EXPORT_BUILD = '2026-09-01-export-ultra-v4';
+const CATALOGO_EXPORT_BUILD = '2026-09-01-export-a4-indesign-v6';
+const PERFIL_PDF_HQ = { escala: 2.0, qualidade: 0.93 };
+const PERFIL_PDF_RAPIDO = { escala: 1.25, qualidade: 0.86 };
+const PERFIL_PNG_HQ = { escala: 2.0, qualidade: 1 };
+const PERFIL_A4_IND = { larguraPx: 2480, alturaPx: 3508, qualidade: 0.96 }; // A4 a 300 DPI
 const exportPageRasterCache = new Map();
 let exportPrewarmTimer = null;
 let exportPrewarmGeneration = 0;
@@ -1892,16 +1900,20 @@ async function canvasParaBlobAsync(canvas, tipo = 'image/jpeg', qualidade = 0.82
   return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao codificar página.')), tipo, qualidade));
 }
 
-async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1) {
+async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1, dimensoes = null) {
   const baseRect = folha.getBoundingClientRect();
-  const outW = Math.max(595, Math.round(595 * escala));
-  const outH = Math.max(842, Math.round(842 * escala));
+  const outW = dimensoes?.larguraPx || Math.max(595, Math.round(595 * escala));
+  const outH = dimensoes?.alturaPx || Math.max(842, Math.round(842 * escala));
   const canvas = typeof OffscreenCanvas === 'function'
     ? new OffscreenCanvas(outW, outH)
     : Object.assign(document.createElement('canvas'), { width: outW, height: outH });
   const ctx = canvas.getContext('2d', { alpha: tipo === 'image/png' });
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = 'high'; } catch (_) {}
   ctx.save();
-  ctx.scale(escala, escala);
+  const escalaX = outW / 595;
+  const escalaY = outH / 842;
+  ctx.scale(escalaX, escalaY);
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, 595, 842);
 
@@ -1991,10 +2003,11 @@ async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.8
   return await canvasParaBlobAsync(canvas, tipo, qualidade);
 }
 
-async function renderizarFolhaBlob(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1) {
-  const chave = chaveRasterFolha(folha, tipo, escala, qualidade);
+async function renderizarFolhaBlob(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1, dimensoes = null) {
+  const chaveEscala = dimensoes ? `${dimensoes.larguraPx}x${dimensoes.alturaPx}` : escala;
+  const chave = chaveRasterFolha(folha, tipo, chaveEscala, qualidade);
   if (exportPageRasterCache.has(chave)) return exportPageRasterCache.get(chave);
-  const promessa = renderizarFolhaDireta(folha, tipo, qualidade, escala);
+  const promessa = renderizarFolhaDireta(folha, tipo, qualidade, escala, dimensoes);
   exportPageRasterCache.set(chave, promessa);
   podarCacheRaster();
   try { return await promessa; }
@@ -2013,16 +2026,16 @@ function agendarPreRenderExportacao() {
     const executar = async () => {
       if (exportacaoEmAndamento || geracao !== exportPrewarmGeneration) return;
       const folhas = folhasComProdutos();
-      const faltante = folhas.find(f => !exportPageRasterCache.has(chaveRasterFolha(f,'image/jpeg',1,0.82)));
+      const faltante = folhas.find(f => !exportPageRasterCache.has(chaveRasterFolha(f,'image/jpeg',PERFIL_PDF_HQ.escala,PERFIL_PDF_HQ.qualidade)));
       if (!faltante) return;
-      try { await renderizarFolhaBlob(faltante,'image/jpeg',0.82,1); } catch (_) {}
+      try { await renderizarFolhaBlob(faltante,'image/jpeg',PERFIL_PDF_HQ.qualidade,PERFIL_PDF_HQ.escala); } catch (_) {}
       if (geracao !== exportPrewarmGeneration || exportacaoEmAndamento) return;
       if (typeof requestIdleCallback === 'function') requestIdleCallback(executar,{timeout:800});
       else setTimeout(executar,80);
     };
     if (typeof requestIdleCallback === 'function') requestIdleCallback(executar,{timeout:800});
     else setTimeout(executar,80);
-  }, 1200);
+  }, 700);
 }
 
 function baixarBlob(blob, nome) {
@@ -2034,60 +2047,106 @@ function nomeArquivoSeguro(valor) {
   return String(valor || 'catalogo').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,70)||'catalogo';
 }
 
-async function exportPDF() {
+async function exportPDF(modo = 'hq') {
   const btn=document.querySelector('.btn-export'); if(btn?.disabled)return;
   const folhas=folhasComProdutos(); if(!folhas.length){showToast('Adicione produtos antes de exportar.');return;}
+  const perfil = modo === 'rapido' ? PERFIL_PDF_RAPIDO : PERFIL_PDF_HQ;
+  const perfilIndesign = modo === 'indesign' ? PERFIL_A4_IND : null;
   const original=btn?.innerHTML; exportacaoEmAndamento=true; cancelarPreRenderExportacao();
+
   try {
     if(btn){btn.disabled=true;btn.style.opacity='.65';}
     if(document.fonts?.ready) await document.fonts.ready;
-    atualizarTextoExportacao(btn,'Carregando imagens...');
-    await aguardarImagensPreview(folhas,450);
-    let prontas=0;
-    const blobs=await mapComConcorrencia(folhas,concorrenciaExportacao(),async folha=>{
-      const blob=await renderizarFolhaBlob(folha,'image/jpeg',0.82,1);
-      prontas++; atualizarTextoExportacao(btn,`Páginas ${prontas}/${folhas.length}`); return blob;
-    });
-    atualizarTextoExportacao(btn,'Montando PDF...');
+
+    atualizarTextoExportacao(btn,'Preparando imagens...');
+    await aguardarImagensPreview(folhas, modo === 'rapido' ? 300 : modo === 'indesign' ? 900 : 700);
+
     const {jsPDF}=window.jspdf;
-    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:false,putOnlyUsedFonts:true});
+    const doc=new jsPDF({
+      orientation:'portrait',
+      unit:'mm',
+      format:'a4',
+      compress:false,
+      putOnlyUsedFonts:true
+    });
+
+    const cores = Math.max(2, Number(navigator.hardwareConcurrency) || 4);
+    const loteTam = modo === 'rapido'
+      ? Math.max(2, Math.min(5, Math.floor(cores / 2)))
+      : modo === 'indesign'
+        ? Math.max(1, Math.min(2, Math.floor(cores / 4) || 1))
+        : Math.max(1, Math.min(3, Math.floor(cores / 3) || 2));
+
     let adicionadas=0;
-    for(let i=0;i<blobs.length;i++){
-      const blob=blobs[i]; if(!blob)continue;
-      if(adicionadas>0)doc.addPage('a4','portrait');
-      doc.addImage(new Uint8Array(await blob.arrayBuffer()),'JPEG',0,0,210,297,undefined,'NONE');
-      adicionadas++;
+    for(let inicio=0; inicio<folhas.length; inicio+=loteTam){
+      const lote=folhas.slice(inicio,inicio+loteTam);
+      const blobs=await Promise.all(lote.map(folha =>
+        renderizarFolhaBlob(
+          folha,
+          'image/jpeg',
+          perfilIndesign ? perfilIndesign.qualidade : perfil.qualidade,
+          perfilIndesign ? 1 : perfil.escala,
+          perfilIndesign ? { larguraPx: perfilIndesign.larguraPx, alturaPx: perfilIndesign.alturaPx } : null
+        )
+      ));
+
+      for(let j=0;j<blobs.length;j++){
+        const blob=blobs[j]; if(!blob) continue;
+        if(adicionadas>0) doc.addPage('a4','portrait');
+        doc.addImage(
+          new Uint8Array(await blob.arrayBuffer()),
+          'JPEG',0,0,210,297,undefined,'NONE'
+        );
+        adicionadas++;
+        atualizarTextoExportacao(btn,`Páginas ${adicionadas}/${folhas.length}`);
+      }
+
+      // Libera a thread entre lotes e evita picos de memória/GC em catálogos longos.
+      await new Promise(resolve => requestAnimationFrame(() => resolve()));
     }
+
     atualizarTextoExportacao(btn,'Finalizando...');
-    baixarBlob(doc.output('blob'),'catalogo-pmg.pdf');
-    showToast(`PDF gerado com ${adicionadas} página${adicionadas!==1?'s':''}.`);
-  } catch(err){console.error('Erro ao exportar PDF:',err);showToast('Erro ao gerar PDF. Confira o console.');}
-  finally{exportacaoEmAndamento=false;if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}agendarPreRenderExportacao();}
+    baixarBlob(
+      doc.output('blob'),
+      modo === 'rapido' ? 'catalogo-pmg-rapido.pdf' : modo === 'indesign' ? 'catalogo-pmg-a4-300dpi-indesign.pdf' : 'catalogo-pmg.pdf'
+    );
+    showToast(`${modo === 'rapido' ? 'PDF rápido' : modo === 'indesign' ? 'PDF A4 300 DPI' : 'PDF em alta qualidade'} gerado com ${adicionadas} página${adicionadas!==1?'s':''}.`);
+  } catch(err){
+    console.error('Erro ao exportar PDF:',err);
+    showToast('Erro ao gerar PDF. Confira o console.');
+  } finally {
+    exportacaoEmAndamento=false;
+    if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}
+    agendarPreRenderExportacao();
+  }
 }
 
 function toggleExportMenu(event){event?.stopPropagation();const menu=document.getElementById('exportMenu');if(menu)menu.style.display=menu.style.display==='block'?'none':'block';}
 function fecharExportMenu(){const menu=document.getElementById('exportMenu');if(menu)menu.style.display='none';}
 document.addEventListener('click',e=>{if(!e.target.closest('.export-menu-wrap'))fecharExportMenu();});
 
-async function exportPNG() {
+async function exportPNG(modo = 'hq') {
   const btn=document.querySelector('.btn-export');if(btn?.disabled)return;
   const folhas=folhasComProdutos();if(!folhas.length){showToast('Adicione produtos antes de exportar.');return;}
   const original=btn?.innerHTML;exportacaoEmAndamento=true;cancelarPreRenderExportacao();
   try{
     if(btn){btn.disabled=true;btn.style.opacity='.65';}
     if(document.fonts?.ready)await document.fonts.ready;
-    atualizarTextoExportacao(btn,'Carregando imagens...');await aguardarImagensPreview(folhas,450);
+    atualizarTextoExportacao(btn,'Carregando imagens...');await aguardarImagensPreview(folhas,modo === 'indesign' ? 900 : 450);
     let prontas=0;
-    const blobs=await mapComConcorrencia(folhas,Math.min(3,concorrenciaExportacao()),async folha=>{
-      const blob=await renderizarFolhaBlob(folha,'image/png',1,1.15);prontas++;atualizarTextoExportacao(btn,`PNG ${prontas}/${folhas.length}`);return blob;
+    const blobs=await mapComConcorrencia(folhas,Math.min(2,concorrenciaExportacao()),async folha=>{
+      const blob = modo === 'indesign'
+        ? await renderizarFolhaBlob(folha,'image/png',1,1,{larguraPx:PERFIL_A4_IND.larguraPx,alturaPx:PERFIL_A4_IND.alturaPx})
+        : await renderizarFolhaBlob(folha,'image/png',PERFIL_PNG_HQ.qualidade,PERFIL_PNG_HQ.escala);
+      prontas++;atualizarTextoExportacao(btn,`PNG ${prontas}/${folhas.length}`);return blob;
     });
-    const arquivos=blobs.map((blob,i)=>({nome:`catalogo-${nomeArquivoSeguro(folhas[i].querySelector('.a4-title')?.textContent||'catalogo')}-${String(i+1).padStart(2,'0')}.png`,blob})).filter(x=>x.blob);
+    const arquivos=blobs.map((blob,i)=>({nome:`catalogo-${nomeArquivoSeguro(folhas[i].querySelector('.a4-title')?.textContent||'catalogo')}-${String(i+1).padStart(2,'0')}${modo==='indesign'?'-a4-300dpi':''}.png`,blob})).filter(x=>x.blob);
     if(arquivos.length===1)baixarBlob(arquivos[0].blob,arquivos[0].nome);
     else{
       if(!window.JSZip)throw new Error('JSZip indisponível.');const zip=new JSZip();arquivos.forEach(a=>zip.file(a.nome,a.blob,{compression:'STORE'}));
-      atualizarTextoExportacao(btn,'Empacotando...');const z=await zip.generateAsync({type:'blob',compression:'STORE',streamFiles:true});baixarBlob(z,'catalogo-pmg-png.zip');
+      atualizarTextoExportacao(btn,'Empacotando...');const z=await zip.generateAsync({type:'blob',compression:'STORE',streamFiles:true});baixarBlob(z,modo==='indesign'?'catalogo-pmg-png-a4-300dpi.zip':'catalogo-pmg-png.zip');
     }
-    showToast(`${arquivos.length} PNG${arquivos.length!==1?'s':''} gerado${arquivos.length!==1?'s':''}.`);
+    showToast(`${arquivos.length} PNG${arquivos.length!==1?'s':''} ${modo==='indesign'?'A4 300 DPI ':''}gerado${arquivos.length!==1?'s':''}.`);
   }catch(err){console.error('Erro ao exportar PNG:',err);showToast('Erro ao gerar PNG. Confira o console.');}
   finally{exportacaoEmAndamento=false;if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}agendarPreRenderExportacao();}
 }
