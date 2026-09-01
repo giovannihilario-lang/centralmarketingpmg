@@ -1687,11 +1687,12 @@ function buildPanel() {
 // espaçamento, alinhamento e proporções ficam idênticos ao preview.
 // Antes da captura, imagens remotas são convertidas em data URLs e reutilizadas
 // em cache para impedir que fotos desapareçam por timeout durante a exportação.
+const CATALOGO_EXPORT_BUILD = '2026-09-01-export-performance-v2';
 const exportImageCache = new Map();
 
 function exportWait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-async function fetchComTimeout(url, timeoutMs = 12000) {
+async function fetchComTimeout(url, timeoutMs = 2800) {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
@@ -1714,7 +1715,7 @@ function blobParaDataURL(blob) {
   });
 }
 
-function carregarImagemElemento(src, timeoutMs = 12000) {
+function carregarImagemElemento(src, timeoutMs = 900) {
   return new Promise(resolve => {
     const img = new Image();
     let terminou = false;
@@ -1733,38 +1734,72 @@ function carregarImagemElemento(src, timeoutMs = 12000) {
   });
 }
 
-async function resolverImagemExportacao(src) {
+function imagemElementoParaDataURL(img, maxDim = 360, preservarPNG = false) {
+  try {
+    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
+    const escala = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * escala));
+    const h = Math.max(1, Math.round(img.naturalHeight * escala));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d', { alpha: preservarPNG });
+    if (!preservarPNG) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.drawImage(img, 0, 0, w, h);
+    return preservarPNG ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.84);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function resolverImagemExportacao(src, elementoOrigem = null, preservarPNG = false) {
   if (!src) return null;
   if (/^data:/i.test(src)) return src;
   if (exportImageCache.has(src)) return exportImageCache.get(src);
 
   const promessa = (async () => {
-    // O proxy da PMG é same-origin. Fetch + blob é mais confiável que depender
-    // do html2canvas refazer requisições enquanto o PDF está sendo montado.
-    for (let tentativa = 0; tentativa < 3; tentativa++) {
-      try {
-        const resp = await fetchComTimeout(src, 12000 + tentativa * 3000);
-        if (resp.ok) {
-          const blob = await resp.blob();
-          if (blob.size > 0) return await blobParaDataURL(blob);
-        }
-      } catch (_) {}
-      if (tentativa < 2) await exportWait(350 * (tentativa + 1));
+    // Caminho rápido: reaproveita a imagem que JÁ ESTÁ carregada no preview.
+    // Evita baixar novamente centenas de imagens antes de exportar.
+    if (elementoOrigem?.complete && elementoOrigem.naturalWidth > 0) {
+      const data = imagemElementoParaDataURL(elementoOrigem, preservarPNG ? 420 : 320, preservarPNG);
+      if (data) return data;
     }
 
-    // Fallback para URLs/blob que já estejam carregáveis pelo navegador.
-    try {
-      const img = await carregarImagemElemento(src, 12000);
-      if (!img) return null;
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, img.naturalWidth);
-      canvas.height = Math.max(1, img.naturalHeight);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      return canvas.toDataURL('image/png');
-    } catch (_) {
-      return null;
+    // Dá uma janela curta para imagens que ainda estão terminando de carregar.
+    if (elementoOrigem && !elementoOrigem.complete) {
+      await Promise.race([
+        elementoOrigem.decode?.().catch(() => {}) || Promise.resolve(),
+        exportWait(650)
+      ]);
+      if (elementoOrigem.complete && elementoOrigem.naturalWidth > 0) {
+        const data = imagemElementoParaDataURL(elementoOrigem, preservarPNG ? 420 : 320, preservarPNG);
+        if (data) return data;
+      }
     }
+
+    // Só tenta a rede UMA vez e por pouco tempo. Imagem quebrada não pode segurar
+    // um catálogo de 50 páginas por dezenas de segundos.
+    try {
+      const resp = await fetchComTimeout(src, 2800);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob.size > 0) {
+          const url = URL.createObjectURL(blob);
+          try {
+            const img = await carregarImagemElemento(url, 1200);
+            if (img) {
+              const data = imagemElementoParaDataURL(img, preservarPNG ? 420 : 320, preservarPNG);
+              if (data) return data;
+            }
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
   })();
 
   exportImageCache.set(src, promessa);
@@ -1791,22 +1826,28 @@ function folhasComProdutos() {
 }
 
 async function prepararImagensDasFolhas(folhas, btn) {
-  const urls = [];
+  const itens = [];
   const vistos = new Set();
   folhas.forEach(folha => folha.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || img.src;
-    if (src && !vistos.has(src)) { vistos.add(src); urls.push(src); }
+    if (!src || vistos.has(src)) return;
+    vistos.add(src);
+    itens.push({
+      src,
+      img,
+      preservarPNG: !!img.closest('.a4-logo-box')
+    });
   }));
 
   let prontas = 0;
-  const resultados = await mapComConcorrencia(urls, 6, async src => {
-    const data = await resolverImagemExportacao(src);
+  const resultados = await mapComConcorrencia(itens, 12, async item => {
+    const data = await resolverImagemExportacao(item.src, item.img, item.preservarPNG);
     prontas++;
     const span = btn?.querySelector('span');
-    if (span && (prontas === urls.length || prontas % 4 === 0)) {
-      span.textContent = `Imagens ${prontas}/${urls.length}`;
+    if (span && (prontas === itens.length || prontas % 10 === 0)) {
+      span.textContent = `Imagens ${prontas}/${itens.length}`;
     }
-    return [src, data];
+    return [item.src, data];
   });
   return new Map(resultados.filter(item => item && item[1]));
 }
@@ -1855,16 +1896,19 @@ async function criarCloneExportacao(folha, imagensResolvidas) {
   });
 
   document.body.appendChild(clone);
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await new Promise(resolve => requestAnimationFrame(resolve));
 
-  // Garante que data URLs já foram decodificadas antes do html2canvas.
+  // As imagens já chegam como data URLs pequenas. Não faz sentido esperar
+  // segundos por decode a cada uma delas em cada página.
   await Promise.all(Array.from(clone.querySelectorAll('img')).map(img => {
     if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-    if (typeof img.decode === 'function') return img.decode().catch(() => {});
-    return new Promise(resolve => {
-      const t = setTimeout(resolve, 2500);
-      img.onload = img.onerror = () => { clearTimeout(t); resolve(); };
-    });
+    if (typeof img.decode === 'function') {
+      return Promise.race([img.decode().catch(() => {}), exportWait(350)]);
+    }
+    return Promise.race([
+      new Promise(resolve => { img.onload = img.onerror = resolve; }),
+      exportWait(350)
+    ]);
   }));
   return clone;
 }
@@ -1910,9 +1954,9 @@ async function exportPDF() {
     for (let i = 0; i < folhas.length; i++) {
       const span = btn?.querySelector('span');
       if (span) span.textContent = `Página ${i + 1}/${folhas.length}`;
-      const canvas = await capturarFolha(folhas[i], imagens, 1.45);
+      const canvas = await capturarFolha(folhas[i], imagens, 1.05);
       if (i > 0) doc.addPage('a4', 'portrait');
-      doc.addImage(canvas.toDataURL('image/jpeg', 0.90), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      doc.addImage(canvas.toDataURL('image/jpeg', 0.84), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       canvas.width = 1; canvas.height = 1;
       if (i % 2 === 1) await new Promise(r => requestAnimationFrame(r));
     }
@@ -1983,7 +2027,7 @@ async function exportPNG() {
     for (let i = 0; i < folhas.length; i++) {
       const span = btn?.querySelector('span');
       if (span) span.textContent = `PNG ${i + 1}/${folhas.length}`;
-      const canvas = await capturarFolha(folhas[i], imagens, 1.6);
+      const canvas = await capturarFolha(folhas[i], imagens, 1.2);
       const blob = await canvasParaBlob(canvas, 'image/png');
       const titulo = folhas[i].querySelector('.a4-title')?.textContent || 'catalogo';
       arquivos.push({
