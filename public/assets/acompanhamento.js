@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.4.0 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.5.0 / React + HTM */
 (() => {
   'use strict';
 
@@ -12,9 +12,6 @@
     planejamento: { label: 'Planejamento PMG', eyebrow: 'Matriz oficial · 2026', icon: 'target' },
     receita: { label: 'Receita anual', eyebrow: 'Previsão e pagamentos por fornecedor', icon: 'landmark' },
     documentos: { label: 'Documentos', eyebrow: 'Leitura e conferência', icon: 'scan-line' },
-    fechamento: { label: 'Conferência mensal', eyebrow: 'Assinaturas e divergências', icon: 'badge-check' },
-    registros: { label: 'Base completa', eyebrow: 'Registros técnicos', icon: 'rows-3' },
-    financeiro: { label: 'Agenda financeira', eyebrow: 'Parcelas e previsões', icon: 'wallet-cards' },
   };
   const NAV_VIEW_KEYS = ['dashboard', 'pagamentos', 'planejamento', 'receita', 'documentos'];
 
@@ -129,7 +126,71 @@
   const recordRealized = (payments, record) => sum(realizedPayments(payments, record.id), paymentValue);
   const monthKeyToDate = key => key ? `${key}-01` : '';
   const monthLong = key => key ? new Intl.DateTimeFormat('pt-BR', { month:'long', year:'numeric' }).format(new Date(`${key}-01T12:00:00`)) : 'Sem competência';
-  const supplierKey = value => normalize(value).replace(/\s+/g, ' ');
+  const supplierKey = value => normalize(officialSupplierName(value) || value).replace(/\s+/g, ' ');
+  const supplierRecordIdentity = record => supplierKey(record?.fornecedor || '');
+  const cents = value => Math.round(Number(value || 0) * 100);
+  const revenueLineMatchKey = (record, payment = null) => {
+    const documentNumber = normalize(payment?.numero_documento || record?.numero_documento || '');
+    const discriminator = documentNumber ? `doc:${documentNumber}` : `ref:${normalize(record?.referencia || record?.categoria || '')}`;
+    return [supplierKey(record?.fornecedor || ''), sourceMonthKey(record), discriminator, cents(record?.valor_acordado || payment?.valor_previsto || payment?.valor_pago || 0)].join('|');
+  };
+
+  const loadedAssets = new Map();
+  function loadAsset(url, type = 'script') {
+    if (loadedAssets.has(url)) return loadedAssets.get(url);
+    const promise = new Promise((resolve, reject) => {
+      if (type === 'style') {
+        const existing = [...document.querySelectorAll('link[rel=\"stylesheet\"]')].find(item => item.href?.includes(url.split('?')[0]));
+        if (existing) return resolve(existing);
+        const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = url;
+        link.onload = () => resolve(link); link.onerror = () => reject(new Error(`Falha ao carregar ${url}`)); document.head.appendChild(link);
+        return;
+      }
+      const existing = [...document.scripts].find(item => item.src?.includes(url.split('?')[0]));
+      if (existing?.dataset?.loaded === '1') return resolve(existing);
+      const script = existing || document.createElement('script'); script.src = url; script.defer = true;
+      script.onload = () => { script.dataset.loaded = '1'; resolve(script); }; script.onerror = () => reject(new Error(`Falha ao carregar ${url}`));
+      if (!existing) document.head.appendChild(script);
+    });
+    loadedAssets.set(url, promise);
+    return promise;
+  }
+
+  let documentAssetsPromise = null;
+  function ensureDocumentAssets() {
+    if (window.PMGDocumentModule?.DocumentInbox) return Promise.resolve(true);
+    if (documentAssetsPromise) return documentAssetsPromise;
+    documentAssetsPromise = (async () => {
+      await loadAsset('/assets/acompanhamento-documentos.css?v=1.2.9', 'style');
+      await Promise.all([
+        window.XLSX ? Promise.resolve() : loadAsset('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'),
+        window.pdfjsLib ? Promise.resolve() : loadAsset('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'),
+        window.Tesseract ? Promise.resolve() : loadAsset('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'),
+      ]);
+      if (!window.PMGAcompanhamentoOCR) await loadAsset('/assets/acompanhamento-ocr.js?v=1.2.6');
+      if (!window.PMGDocumentModule?.DocumentInbox) await loadAsset('/assets/acompanhamento-documentos.js?v=1.2.10');
+      return Boolean(window.PMGDocumentModule?.DocumentInbox);
+    })();
+    return documentAssetsPromise;
+  }
+
+  let xlsxAssetPromise = null;
+  function ensureXlsxAsset() {
+    if (window.XLSX) return Promise.resolve(true);
+    if (!xlsxAssetPromise) xlsxAssetPromise = loadAsset('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js').then(() => true);
+    return xlsxAssetPromise;
+  }
+
+  function useMediaQuery(query) {
+    const [matches, setMatches] = useState(() => typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false);
+    useEffect(() => {
+      if (typeof window.matchMedia !== 'function') return undefined;
+      const media = window.matchMedia(query); const update = () => setMatches(media.matches); update();
+      media.addEventListener?.('change', update);
+      return () => media.removeEventListener?.('change', update);
+    }, [query]);
+    return matches;
+  }
 
   function costCenterFromCampaign(value) {
     const text = normalize(value);
@@ -393,33 +454,53 @@
       fetchAllPages(() => db.from('acompanhamento_painel').select('*').order('atualizado_em', { ascending:false }).order('id')),
       fetchAllPages(() => db.from('acompanhamento_pagamentos').select('*').order('vencimento', { ascending:true }).order('id')),
       db.from('colaboradores').select('id,nome,foto_url,cargo,role,ativo').eq('ativo', true).order('nome'),
-      fetchAllPages(() => db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).order('id')),
-      db.from('acompanhamento_atividades').select('*').order('criado_em', { ascending:false }).limit(300),
-      db.from('acompanhamento_importacoes').select('*').order('criado_em', { ascending:false }).limit(30),
       fetchAllPages(() => db.from('acompanhamento_registros').select('id,pagamento_confirmado,pagamento_confirmado_em,pagamento_confirmado_por').order('id')),
     ]);
     const failed = queries.find(result => result.error);
     if (failed) throw failed.error;
-    const documentQueries = await Promise.all([
-      fetchAllPages(() => db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).order('id')),
-      fetchAllPages(() => db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).order('id')),
-    ]);
-    const documentFailure = documentQueries.find(result => result.error);
-    const documentsSetupMissing = Boolean(documentFailure && isMissingDocumentSetupError(documentFailure.error));
-    if (documentFailure && !documentsSetupMissing) throw documentFailure.error;
     const conferenceQuery = await fetchAllPages(() => db.from('acompanhamento_conferencias').select('*').order('competencia', { ascending:false }).order('id'));
     const conferencesSetupMissing = Boolean(conferenceQuery.error && isMissingConferenceSetupError(conferenceQuery.error));
     if (conferenceQuery.error && !conferencesSetupMissing) throw conferenceQuery.error;
-    const confirmationMap = new Map((queries[6].data || []).map(item => [item.id, item]));
+
+    let documentPendingCount = 0; let documentsSetupMissing = false;
+    const documentCount = await db.from('acompanhamento_documentos_itens').select('id', { count:'exact', head:true }).eq('status','aguardando_conferencia');
+    if (documentCount.error) {
+      documentsSetupMissing = isMissingDocumentSetupError(documentCount.error);
+      if (!documentsSetupMissing) console.warn('[Acompanhamento] Não foi possível consultar a contagem de documentos.', documentCount.error);
+    } else documentPendingCount = Number(documentCount.count || 0);
+
+    const confirmationMap = new Map((queries[3].data || []).map(item => [item.id, item]));
     const rawRecords = (queries[0].data || []).map(record => ({ ...record, ...(confirmationMap.get(record.id) || {}) }));
     const records = decorateOfficialRevenueTruth(rawRecords);
     return {
       records, payments:queries[1].data || [], collaborators:queries[2].data || [],
-      attachments:queries[3].data || [], activities:queries[4].data || [], imports:queries[5].data || [],
+      attachments:[], activities:[], imports:[], auxiliaryLoaded:false,
       conferences:conferencesSetupMissing ? [] : (conferenceQuery.data || []), conferencesSetupMissing,
-      documents:documentsSetupMissing ? [] : (documentQueries[0].data || []),
-      documentItems:documentsSetupMissing ? [] : (documentQueries[1].data || []), documentsSetupMissing
+      documents:[], documentItems:[], documentsLoaded:false, documentsSetupMissing, documentPendingCount
     };
+  }
+
+  async function fetchAuxiliary(db) {
+    const queries = await Promise.all([
+      fetchAllPages(() => db.from('acompanhamento_anexos').select('*').order('criado_em', { ascending:false }).order('id')),
+      db.from('acompanhamento_atividades').select('*').order('criado_em', { ascending:false }).limit(300),
+      db.from('acompanhamento_importacoes').select('*').order('criado_em', { ascending:false }).limit(30),
+    ]);
+    const failed = queries.find(result => result.error); if (failed) throw failed.error;
+    return { attachments:queries[0].data || [], activities:queries[1].data || [], imports:queries[2].data || [], auxiliaryLoaded:true };
+  }
+
+  async function fetchDocuments(db) {
+    const queries = await Promise.all([
+      fetchAllPages(() => db.from('acompanhamento_documentos_entrada').select('*').order('criado_em', { ascending:false }).order('id')),
+      fetchAllPages(() => db.from('acompanhamento_documentos_itens').select('*,entrada:acompanhamento_documentos_entrada(id,nome_arquivo,caminho,mime_type,tamanho_bytes,total_paginas,status,criado_em)').order('criado_em', { ascending:false }).order('id')),
+    ]);
+    const failed = queries.find(result => result.error);
+    const documentsSetupMissing = Boolean(failed && isMissingDocumentSetupError(failed.error));
+    if (failed && !documentsSetupMissing) throw failed.error;
+    const documents = documentsSetupMissing ? [] : (queries[0].data || []);
+    const documentItems = documentsSetupMissing ? [] : (queries[1].data || []);
+    return { documents, documentItems, documentsLoaded:true, documentsSetupMissing, documentPendingCount:documentItems.filter(item => item.status === 'aguardando_conferencia').length };
   }
 
   function isMissingConferenceSetupError(fetchError) {
@@ -518,6 +599,9 @@
   function liveRevenueSnapshot(records, payments, conferences, year = 2026) {
     const official = officialRevenueSnapshot(records, year);
     const localBySupplier = new Map();
+    const importedLineKeys = new Set((records || []).filter(record => Number(record?.ano_referencia) === Number(year) && isSupplierRevenueRecord(record)
+      && !hasTag(record,'manual') && !normalize(record.origem_importacao).includes('cadastro manual'))
+      .map(record => revenueLineMatchKey(record, supplierRowPayment(payments,record,year,sourceMonthIndex(record)))));
     (records || []).filter(record => Number(record?.ano_referencia) === Number(year) && isSupplierRevenueRecord(record)).forEach(record => {
       if (!record?.fornecedor) return;
       const monthIndex = sourceMonthIndex(record);
@@ -526,6 +610,7 @@
 
       const manual = hasTag(record, 'manual') || normalize(record.origem_importacao).includes('cadastro manual');
       const explicitlyConfirmed = record?.pagamento_confirmado === true;
+      if (manual && importedLineKeys.has(revenueLineMatchKey(record,payment))) return;
       // Se a fonte oficial já confirmou a linha, ela já está dentro do snapshot. Recontá-la aqui
       // faria pequenas diferenças históricas virarem receita nova. Só entram deltas realmente locais.
       if (official.hasData && record?._oficial_confirmado === true && !manual) return;
@@ -566,29 +651,110 @@
     return { ...official, bySupplier, supplierMonthlyTotals, sourceAdjustments, monthlyTotals, total, hasData:official.hasData || localBySupplier.size > 0, live:true };
   }
 
-  function sourceConfirmsSupplierRow(record, snapshot) {
+  function buildOfficialConfirmationAllocation(records, snapshot, year = 2026) {
+    const confirmedIds = new Set();
+    const groups = new Map();
+    (records || []).filter(record => Number(record?.ano_referencia) === Number(year) && isSupplierRevenueRecord(record)
+      && !hasTag(record,'manual') && !normalize(record.origem_importacao).includes('cadastro manual')).forEach(record => {
+      const key = `${supplierKey(record.fornecedor)}|${sourceMonthIndex(record)}`;
+      const list = groups.get(key) || []; list.push(record); groups.set(key,list);
+    });
+
+    groups.forEach((rows,key) => {
+      const [supplier,monthRaw] = key.split('|'); const monthIndex = Number(monthRaw);
+      const target = cents(snapshot?.bySupplier?.get(supplier)?.months?.[monthIndex] || 0);
+      if (target <= 101) return; // R$ 1,00 é marcador, não baixa financeira.
+      const values = rows.map(record => Math.max(0,cents(record.valor_acordado)));
+      const total = values.reduce((acc,value) => acc + value,0);
+      if (Math.abs(target - total) <= 1) { rows.forEach(record => confirmedIds.add(record.id)); return; }
+
+      const exactIndex = values.findIndex(value => Math.abs(value-target) <= 1);
+      if (exactIndex >= 0) { confirmedIds.add(rows[exactIndex].id); return; }
+
+      // Procura uma combinação exata/centavo a centavo sem explodir memória.
+      const states = new Map([[0,[]]]); let exact = null;
+      for (let index=0; index<values.length && !exact; index += 1) {
+        const value = values[index];
+        if (!value || value > target + 1) continue;
+        const snapshotStates = [...states.entries()];
+        for (const [subtotal,indexes] of snapshotStates) {
+          const next = subtotal + value;
+          if (next > target + 1 || states.has(next)) continue;
+          const nextIndexes = [...indexes,index]; states.set(next,nextIndexes);
+          if (Math.abs(next-target) <= 1) { exact = nextIndexes; break; }
+          if (states.size > 50000) break;
+        }
+        if (states.size > 50000) break;
+      }
+      if (exact) { exact.forEach(index => confirmedIds.add(rows[index].id)); return; }
+
+      // Sem combinação exata, não adivinha qual linha foi paga. A divergência fica explícita
+      // no indicador de integridade até existir um identificador/documento que permita conciliar.
+    });
+    return confirmedIds;
+  }
+
+  function sourceConfirmsSupplierRow(record, snapshot, allocation = null) {
     if (!snapshot?.hasData || !record?.fornecedor) return false;
-    // Linhas manuais precisam de confirmação explícita. Nunca herdam a baixa de outra linha
-    // do mesmo fornecedor/mês só porque a fonte oficial já possuía valor naquela competência.
     if (hasTag(record, 'manual') || normalize(record.origem_importacao).includes('cadastro manual')) return false;
+    if (allocation) return allocation.has(record.id);
     const source = snapshot.bySupplier.get(supplierKey(record.fornecedor));
-    const monthIndex = sourceMonthIndex(record);
-    // R$ 1,00 é marcador da planilha, não uma linha financeira real da planilha Fornecedores.
-    return Number(source?.months?.[monthIndex] || 0) > 1.01;
+    return Number(source?.months?.[sourceMonthIndex(record)] || 0) > 1.01;
   }
 
   function decorateOfficialRevenueTruth(records) {
     const sourceRecords = records || [];
-    const snapshots = new Map();
-    return sourceRecords.map(record => {
-      if (!isSupplierRevenueRecord(record) || Number(record?.ano_referencia || 0) < 2026) return record;
+    const snapshots = new Map(); const allocations = new Map();
+    sourceRecords.forEach(record => {
+      if (!isSupplierRevenueRecord(record) || Number(record?.ano_referencia || 0) < 2026) return;
       const year = Number(record.ano_referencia);
       if (!snapshots.has(year)) snapshots.set(year, officialRevenueSnapshot(sourceRecords, year));
-      const snapshot = snapshots.get(year);
-      if (!sourceConfirmsSupplierRow(record, snapshot)) return record;
-      const source = snapshot.bySupplier.get(supplierKey(record.fornecedor));
-      return { ...record, _oficial_confirmado:true, _oficial_valor_fonte:Number(source?.months?.[sourceMonthIndex(record)] || 0) };
     });
+    snapshots.forEach((snapshot,year) => allocations.set(year, buildOfficialConfirmationAllocation(sourceRecords,snapshot,year)));
+    return sourceRecords.map(record => {
+      if (!isSupplierRevenueRecord(record) || Number(record?.ano_referencia || 0) < 2026) return record;
+      const year = Number(record.ano_referencia); const snapshot = snapshots.get(year); const allocation = allocations.get(year);
+      if (!sourceConfirmsSupplierRow(record, snapshot, allocation)) return { ...record, _oficial_confirmado:false };
+      const source = snapshot.bySupplier.get(supplierKey(record.fornecedor));
+      return { ...record, _oficial_confirmado:true, _oficial_valor_fonte:Number(source?.months?.[sourceMonthIndex(record)] || 0), _oficial_line_identity:revenueLineMatchKey(record) };
+    });
+  }
+
+  function buildIntegrityReport(records, payments, conferences, year = 2026) {
+    const issues = [];
+    const supplierRows = (records || []).filter(record => Number(record?.ano_referencia) === Number(year) && isSupplierRevenueRecord(record));
+    const live = liveRevenueSnapshot(records,payments,conferences,year);
+    const paymentMonthly = OFFICIAL_MONTHS.map((_,monthIndex) => sum(supplierRows.filter(record => sourceMonthIndex(record) === monthIndex), record => {
+      const payment = supplierRowPayment(payments,record,year,monthIndex); return supplierRowConfirmed(record,payment) ? supplierConfirmedValue(record,payment) : 0;
+    }));
+    const revenueMonthly = live.supplierMonthlyTotals || live.monthlyTotals || Array(12).fill(0);
+    const divergentMonths = OFFICIAL_MONTHS.map(([,label],index) => ({ label,index,diff:Math.round((Number(paymentMonthly[index]||0)-Number(revenueMonthly[index]||0))*100)/100 }))
+      .filter(item => Math.abs(item.diff) > .01);
+    if (divergentMonths.length) issues.push({ severity:'critical', code:'reconciliation', title:`${divergentMonths.length} competência(s) com divergência`, detail:divergentMonths.map(item => `${item.label}: ${money(Math.abs(item.diff))}`).join(' · ') });
+
+    const forecastKeys = new Set((records || []).filter(record => Number(record?.ano_referencia) === Number(year) && record.controle === 'marcos' && record.natureza === 'receita' && record.fornecedor && hasTag(record,'previsão') && hasTag(record,'fornecedor') && record.status !== 'cancelado').map(record => supplierKey(record.fornecedor)));
+    const noForecast = [...live.bySupplier.entries()].filter(([key,row]) => Number(row.total||0) > .01 && !forecastKeys.has(key));
+    if (noForecast.length) issues.push({ severity:'warning', code:'without-forecast', title:`${noForecast.length} fornecedor(es) sem previsão`, detail:noForecast.slice(0,5).map(([,row])=>row.name).join(', ') + (noForecast.length>5?'…':'') });
+
+    const fingerprints = new Map();
+    (records || []).filter(record => record?.fingerprint && record.status !== 'cancelado').forEach(record => { const list=fingerprints.get(record.fingerprint)||[]; list.push(record); fingerprints.set(record.fingerprint,list); });
+    const duplicated = [...fingerprints.values()].filter(list => list.length > 1);
+    if (duplicated.length) issues.push({ severity:'warning', code:'fingerprint', title:`${duplicated.length} fingerprint(s) duplicado(s)`, detail:'Há registros tecnicamente repetidos que merecem conferência.' });
+
+    const nameGroups = new Map();
+    (records || []).filter(record => record.fornecedor).forEach(record => { const key=supplierKey(record.fornecedor); const names=nameGroups.get(key)||new Set(); names.add(String(record.fornecedor).trim()); nameGroups.set(key,names); });
+    const aliases = [...nameGroups.values()].filter(names => names.size > 1);
+    if (aliases.length) issues.push({ severity:'info', code:'aliases', title:`${aliases.length} fornecedor(es) com grafias conciliadas`, detail:'A Central está usando o nome canônico para manter as abas alinhadas.' });
+
+    const sourceAdjustmentTotal = sum(live.sourceAdjustments || [], value => Math.abs(value));
+    if (sourceAdjustmentTotal > .01) issues.push({ severity:'info', code:'source-adjustments', title:'Ajustes da fonte oficial preservados', detail:`${money(sourceAdjustmentTotal)} não estão vinculados a uma linha individual de fornecedor.` });
+
+    const planningSnapshot = buildPlanningSnapshot(records || [], payments || [], year);
+    if (planningSnapshot.fallbackCount > 0) issues.push({ severity:'warning', code:'planning-fallback', title:`${planningSnapshot.fallbackCount} frente(s) usando recuperação do Planejamento`, detail:'Os valores aparecem, mas a origem persistida precisa ser atualizada para eliminar o fallback local.' });
+
+    const critical = issues.filter(item => item.severity === 'critical').length;
+    const warning = issues.filter(item => item.severity === 'warning').length;
+    return { status:critical ? 'critical' : warning ? 'warning' : 'ok', issues, critical, warning, paymentMonthly, revenueMonthly, noForecastCount:noForecast.length, fallbackCount:planningSnapshot.fallbackCount, checkedAt:new Date().toISOString() };
   }
 
   const conferenceForSupplierRecord = (conferences, record, year = Number(record?.ano_referencia || 0), monthIndex = sourceMonthIndex(record)) => {
@@ -651,16 +817,20 @@
     const [setupMissing, setSetupMissing] = useState(false);
     const [client, setClient] = useState(null);
     const [me, setMe] = useState(null);
-    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:false, documents:[], documentItems:[], documentsSetupMissing:false });
+    const [data, setData] = useState({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], auxiliaryLoaded:false, conferences:[], conferencesSetupMissing:false, documents:[], documentItems:[], documentsLoaded:false, documentsSetupMissing:false, documentPendingCount:0 });
     const [control, setControl] = useState('todos');
     const [year, setYear] = useState(new Date().getFullYear());
     const [search, setSearch] = useState('');
     const [recordModal, setRecordModal] = useState(null);
     const [paymentModal, setPaymentModal] = useState(null);
     const [supplierRowModal, setSupplierRowModal] = useState(null);
+    const [forecastGroup, setForecastGroup] = useState(null);
     const [selectedId, setSelectedId] = useState(null);
     const [supplierSelected, setSupplierSelected] = useState(null);
     const [paymentJump, setPaymentJump] = useState(null);
+    const [revenueJump, setRevenueJump] = useState(null);
+    const [integrityOpen, setIntegrityOpen] = useState(false);
+    const [documentAssetsState, setDocumentAssetsState] = useState('idle');
     const [toast, setToast] = useState(null);
     const [saving, setSaving] = useState(false);
     const subscriptionRef = useRef(null);
@@ -679,13 +849,23 @@
       try {
         const nextData = await fetchAll(client);
         if (requestSeq !== reloadSeqRef.current) return;
-        setData(nextData);
+        setData(current => ({
+          ...nextData,
+          attachments:current.auxiliaryLoaded ? current.attachments : nextData.attachments,
+          activities:current.auxiliaryLoaded ? current.activities : nextData.activities,
+          imports:current.auxiliaryLoaded ? current.imports : nextData.imports,
+          auxiliaryLoaded:current.auxiliaryLoaded || nextData.auxiliaryLoaded,
+          documents:current.documentsLoaded ? current.documents : nextData.documents,
+          documentItems:current.documentsLoaded ? current.documentItems : nextData.documentItems,
+          documentsLoaded:current.documentsLoaded || nextData.documentsLoaded,
+          documentPendingCount:current.documentsLoaded ? current.documentItems.filter(item => item.status === 'aguardando_conferencia').length : nextData.documentPendingCount,
+        }));
         setError(null); setSetupMissing(false);
         return true;
       } catch (fetchError) {
         if (requestSeq !== reloadSeqRef.current) return;
         const missing = isMissingSetupError(fetchError);
-        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], conferences:[], conferencesSetupMissing:true, documents:[], documentItems:[], documentsSetupMissing:true });
+        if (missing) setData({ records:[], payments:[], collaborators:[], attachments:[], activities:[], imports:[], auxiliaryLoaded:false, conferences:[], conferencesSetupMissing:true, documents:[], documentItems:[], documentsLoaded:false, documentsSetupMissing:true, documentPendingCount:0 });
         setSetupMissing(missing);
         setError(fetchError);
         return false;
@@ -693,6 +873,27 @@
         if (requestSeq === reloadSeqRef.current && !quiet) setLoading(false);
       }
     }, [client]);
+
+    const ensureAuxiliary = useCallback(async () => {
+      if (!client || DEMO_MODE || data.auxiliaryLoaded) return true;
+      try { const extra = await fetchAuxiliary(client); setData(current => ({ ...current, ...extra })); return true; }
+      catch (auxError) { notify(auxError.message || 'Não foi possível carregar os detalhes auxiliares.', 'error'); return false; }
+    }, [client, data.auxiliaryLoaded, notify]);
+
+    const ensureDocumentsData = useCallback(async () => {
+      if (!client || DEMO_MODE || data.documentsLoaded || data.documentsSetupMissing) return true;
+      try { const extra = await fetchDocuments(client); setData(current => ({ ...current, ...extra })); return true; }
+      catch (documentError) { notify(documentError.message || 'Não foi possível carregar os documentos.', 'error'); return false; }
+    }, [client, data.documentsLoaded, data.documentsSetupMissing, notify]);
+
+    useEffect(() => {
+      if (view === 'documentos') {
+        setDocumentAssetsState(window.PMGDocumentModule?.DocumentInbox ? 'ready' : 'loading');
+        Promise.all([ensureDocumentAssets(), ensureDocumentsData()]).then(() => setDocumentAssetsState('ready')).catch(assetError => {
+          console.error(assetError); setDocumentAssetsState('error'); notify('Não foi possível carregar o módulo de Documentos.', 'error');
+        });
+      }
+    }, [view, ensureDocumentsData, notify]);
 
     useEffect(() => {
       let alive = true;
@@ -714,6 +915,7 @@
     }, []);
 
     useEffect(() => { if (client) void reload(); }, [client, reload]);
+    useEffect(() => { setSearch(''); }, [view]);
 
     useEffect(() => {
       const shortcut = event => {
@@ -729,20 +931,31 @@
     useEffect(() => {
       if (!client || DEMO_MODE) return undefined;
       subscriptionRef.current?.unsubscribe?.();
+      const patchCollection = (current, payload) => {
+        const id = payload?.new?.id || payload?.old?.id; if (!id) return current;
+        if (payload.eventType === 'DELETE') return current.filter(item => item.id !== id);
+        const incoming = payload.new || {};
+        return current.some(item => item.id === id) ? current.map(item => item.id === id ? { ...item, ...incoming } : item) : [...current, incoming];
+      };
+      const onRecord = payload => setData(current => ({ ...current, records:decorateOfficialRevenueTruth(patchCollection(current.records,payload)) }));
+      const onPayment = payload => setData(current => ({ ...current, payments:patchCollection(current.payments,payload) }));
+      const onConference = payload => setData(current => ({ ...current, conferences:patchCollection(current.conferences,payload) }));
+      const onDocument = payload => setData(current => current.documentsLoaded ? ({ ...current, documents:patchCollection(current.documents,payload) }) : current);
+      const onDocumentItem = payload => setData(current => {
+        if (!current.documentsLoaded) return current;
+        const documentItems = patchCollection(current.documentItems,payload);
+        return { ...current, documentItems, documentPendingCount:documentItems.filter(item => item.status === 'aguardando_conferencia').length };
+      });
       let channel = client.channel('central-acompanhamento-live')
-        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_registros' }, () => void reload(true))
-        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_pagamentos' }, () => void reload(true));
-      if (!data.conferencesSetupMissing) {
-        channel = channel.on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_conferencias' }, () => void reload(true));
-      }
-      if (!data.documentsSetupMissing) {
-        channel = channel
-          .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_entrada' }, () => void reload(true))
-          .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_itens' }, () => void reload(true));
-      }
+        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_registros' }, onRecord)
+        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_pagamentos' }, onPayment);
+      if (!data.conferencesSetupMissing) channel = channel.on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_conferencias' }, onConference);
+      if (!data.documentsSetupMissing && data.documentsLoaded) channel = channel
+        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_entrada' }, onDocument)
+        .on('postgres_changes', { event:'*', schema:'public', table:'acompanhamento_documentos_itens' }, onDocumentItem);
       subscriptionRef.current = channel.subscribe();
       return () => subscriptionRef.current?.unsubscribe?.();
-    }, [client, reload, data.documentsSetupMissing, data.conferencesSetupMissing]);
+    }, [client, data.documentsSetupMissing, data.conferencesSetupMissing, data.documentsLoaded]);
 
     const years = useMemo(() => uniq(data.records.map(item => item.ano_referencia)).sort((a, b) => b - a), [data.records]);
     const filteredRecords = useMemo(() => {
@@ -757,13 +970,17 @@
 
     const selected = useMemo(() => data.records.find(item => item.id === selectedId) || null, [data.records, selectedId]);
     const navigatePayments = useCallback((options = {}) => {
-      setPaymentJump({ ...options, token:Date.now() });
-      setView('pagamentos');
+      setPaymentJump({ ...options, token:Date.now() }); setView('pagamentos');
       requestAnimationFrame(() => window.scrollTo({ top:0, behavior:'smooth' }));
     }, []);
-    const openSupplier = useCallback(name => { if (name) { setSelectedId(null); setSupplierSelected(name); } }, []);
-    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, reload, notify, saving, setSaving, paymentJump, navigatePayments, openSupplier,
-      openRecord:record => setSelectedId(record.id), editRecord:record => setRecordModal(record), newRecord:(defaults = {}) => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year, ...defaults }),
+    const navigateRevenue = useCallback((options = {}) => {
+      setRevenueJump({ ...options, token:Date.now() }); setView('receita');
+      requestAnimationFrame(() => window.scrollTo({ top:0, behavior:'smooth' }));
+    }, []);
+    const integrity = useMemo(() => buildIntegrityReport(data.records,data.payments,data.conferences,2026), [data.records,data.payments,data.conferences]);
+    const openSupplier = useCallback(name => { if (name) { void ensureAuxiliary(); setSelectedId(null); setSupplierSelected(name); } }, [ensureAuxiliary]);
+    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, reload, notify, saving, setSaving, paymentJump, revenueJump, navigatePayments, navigateRevenue, openSupplier, integrity, openIntegrity:() => setIntegrityOpen(true), openForecastGroup:group => setForecastGroup(group), ensureAuxiliary,
+      openRecord:record => { void ensureAuxiliary(); setSelectedId(record.id); }, editRecord:record => setRecordModal(record), newRecord:(defaults = {}) => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year, ...defaults }),
       newSupplierRow:(defaults = {}) => setSupplierRowModal(defaults),
       newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), saveConference, setView,
       quickUpdateRecord, quickUpdatePayment, quickUpsertPayment, quickTogglePlanningPaid, quickTogglePaid, quickBulkConfirm, quickBulkNF, quickBulkArchive, quickUpdateSupplierRow, quickUpdateSpecificValue };
@@ -783,7 +1000,7 @@
     }
 
     async function saveSupplierRow(payload) {
-      const supplier = String(payload.fornecedor || '').trim();
+      const supplier = officialSupplierName(payload.fornecedor || '');
       const amount = Math.max(0, Number(payload.valor_acordado || 0));
       const yearValue = Number(payload.ano_referencia || 2026);
       const monthIndex = Math.max(0, Math.min(11, Number(payload.monthIndex || 0)));
@@ -809,10 +1026,9 @@
             : ['marketing','fornecedores',String(yearValue),monthName.toLocaleLowerCase('pt-BR'),...officialTags(categoryLabel),'manual'],
           origem_importacao:'cadastro-manual',
           fingerprint:fingerprint(['marketing','manual',yearValue,monthIndex + 1,supplier,categoryKey,String(payload.numero_documento || ''),Date.now()]),
-          dados_originais:{ origem:'cadastro_manual', competencia:monthKey(yearValue, monthIndex), categoria_manual:categoryKey, tipo_documento:String(payload.tipo_documento || 'nota_fiscal') }
+          dados_originais:{ origem:'cadastro_manual', competencia:monthKey(yearValue, monthIndex), categoria_manual:categoryKey, tipo_documento:String(payload.tipo_documento || 'nota_fiscal'), fornecedor_id:supplierKey(supplier) }
         });
         await rpcRecord(null, recordPayload);
-        await reload(true);
         setSupplierRowModal(null);
         notify(isPendency ? 'Pendência adicionada.' : 'Linha adicionada. Confirme o pagamento quando o valor for recebido.');
       } catch (saveError) { notify(saveError.message || 'Não foi possível adicionar a linha.', 'error'); }
@@ -842,9 +1058,12 @@
       if (saveError) throw saveError;
       const id = idSaved || record?.id;
       reloadSeqRef.current += 1;
-      setData(current => ({ ...current, records:current.records.some(item => item.id === id)
-        ? current.records.map(item => item.id === id ? { ...item, ...patch } : item)
-        : [...current.records, { id, ...buildRecordPayload(record || {}, patch) }] }));
+      setData(current => {
+        const nextRecords = current.records.some(item => item.id === id)
+          ? current.records.map(item => item.id === id ? { ...item, ...patch } : item)
+          : [...current.records, { id, ...buildRecordPayload(record || {}, patch) }];
+        return { ...current, records:decorateOfficialRevenueTruth(nextRecords) };
+      });
       return id;
     }
 
@@ -873,10 +1092,6 @@
       setSaving(true);
       try {
         await action();
-        if (!DEMO_MODE && await reload(true) === false) {
-          notify('Alteração salva. Não foi possível atualizar o restante da base; tente recarregar a página.', 'info');
-          return true;
-        }
         notify(message); return true;
       }
       catch (quickError) { notify(quickError.message || 'Não foi possível salvar a alteração.', 'error'); return false; }
@@ -1030,17 +1245,8 @@
           if (bulkError) {
             const details = [bulkError.message, bulkError.details, bulkError.hint, bulkError.code].filter(Boolean).join(' · ');
             const missingBulkRpc = /confirmar_pagamentos_lote_v1|PGRST202|schema cache|could not find the function/i.test(details);
-            if (!missingBulkRpc) throw new Error(details || 'O Supabase recusou a confirmação em lote.');
-
-            // Compatibilidade: se o SQL novo ainda não foi instalado, confirma em paralelo
-            // em pequenos grupos, evitando o caminho sequencial antigo.
-            const concurrency = 6;
-            for (let index = 0; index < recordIds.length; index += concurrency) {
-              const batch = recordIds.slice(index, index + concurrency);
-              const results = await Promise.all(batch.map(id => client.rpc('confirmar_pagamento_linha_v1', { p_registro_id:id, p_confirmado:confirmed })));
-              const failed = results.find(result => result.error);
-              if (failed?.error) throw failed.error;
-            }
+            if (missingBulkRpc) throw new Error('A confirmação em lote segura ainda não está instalada. Instale confirmar_pagamentos_lote_v1; nenhum pagamento foi alterado.');
+            throw new Error(details || 'O Supabase recusou a confirmação em lote.');
           } else if (bulkData && Number(bulkData.total || bulkData.count || valid.length) < valid.length) {
             throw new Error('O banco confirmou menos linhas do que o solicitado.');
           }
@@ -1064,7 +1270,6 @@
           await rpcRecord(row.record, { numero_documento:doc });
           if (row.payment) await rpcPayment(row.payment, row.record.id, { numero_documento:doc, forma_pagamento:officialMethod(doc) });
         }
-        if (!DEMO_MODE) await reload(true);
         notify(`NF/documento aplicado em ${valid.length} linha(s).`);
         return true;
       } catch (error) {
@@ -1079,7 +1284,6 @@
       setSaving(true);
       try {
         for (const record of valid) await rpcRecord(record, { status:'cancelado' });
-        if (!DEMO_MODE) await reload(true);
         notify(`${valid.length} linha(s) arquivada(s).`, 'info');
         return true;
       } catch (error) {
@@ -1096,7 +1300,7 @@
         return quickUpdateRecord(record, { referencia:reference, titulo:`${reference} — ${supplier} — ${OFFICIAL_MONTHS[monthIndex][1]} ${record.ano_referencia}` });
       }
       if (field === 'fornecedor') {
-        const supplier = String(rawValue || '').trim();
+        const supplier = officialSupplierName(rawValue || '');
         return runQuick(async () => {
           await rpcRecord(record, { fornecedor:supplier, titulo:`${record.referencia || 'COTA'} — ${supplier} — ${OFFICIAL_MONTHS[monthIndex][1]} ${record.ano_referencia}` });
           if (payment) await rpcPayment(payment, record.id, { favorecido:supplier });
@@ -1187,32 +1391,30 @@
     return html`
       <div className=${`ac-app ${['pagamentos','planejamento','receita'].includes(view) ? 'sheet-mode' : ''}`}>
         <div className="ambient ambient-one"></div><div className="ambient ambient-two"></div>
-        <${Sidebar} view=${view} setView=${setView} open=${mobileNav} setOpen=${setMobileNav} me=${me} records=${data.records} documentItems=${data.documentItems}/>
+        <${Sidebar} view=${view} setView=${setView} open=${mobileNav} setOpen=${setMobileNav} me=${me} records=${data.records} documentItems=${data.documentItems} documentPendingCount=${data.documentPendingCount}/>
         <div className="ac-main">
           <${Topbar} view=${view} search=${search} setSearch=${setSearch} setMobileNav=${setMobileNav} me=${me} context=${context} openCommand=${() => setCommandOpen(true)}/>
           <main className="ac-content">
-            ${!['dashboard','pagamentos','documentos','planejamento','receita','fechamento'].includes(view) && html`<${FilterBand} control=${control} setControl=${setControl} year=${year} setYear=${setYear} years=${years} count=${filteredRecords.length}/>`}
             ${setupMissing ? html`<${SetupState}/>` : html`
               <div className="view-stage" key=${view}>
                 ${view === 'dashboard' && html`<${OverviewDashboard} context=${context}/>`}
                 ${view === 'pagamentos' && html`<${PaymentsView} context=${context}/>`}
                 ${view === 'planejamento' && html`<${PlanningView} context=${context}/>`}
                 ${view === 'receita' && html`<${RevenueView} context=${context}/>`}
-                ${view === 'fechamento' && html`<${ClosingView} context=${context}/>`}
-                ${view === 'registros' && html`<${RecordsView} context=${context}/>`}
-                ${view === 'financeiro' && html`<${FinanceView} context=${context}/>`}
-                ${view === 'documentos' && window.PMGDocumentModule?.DocumentInbox && html`<${DocumentErrorBoundary} onBack=${() => setView('dashboard')}><${window.PMGDocumentModule.DocumentInbox} context=${context}/></${DocumentErrorBoundary}>`}
-                ${view === 'documentos' && !window.PMGDocumentModule?.DocumentInbox && html`<${MiniEmpty} icon="scan-line" title="Módulo de documentos indisponível" text="Atualize a página para carregar a Caixa de Entrada."/>`}
-                ${view === 'importar' && html`<${ImportView} context=${context} defaultControl=${control} defaultYear=${year}/>`}
+                ${view === 'documentos' && documentAssetsState === 'ready' && window.PMGDocumentModule?.DocumentInbox && html`<${DocumentErrorBoundary} onBack=${() => setView('dashboard')}><${window.PMGDocumentModule.DocumentInbox} context=${context}/></${DocumentErrorBoundary}>`}
+                ${view === 'documentos' && documentAssetsState === 'loading' && html`<${MiniEmpty} icon="scan-line" title="Carregando a Caixa de Documentos" text="OCR, PDF e anexos são carregados só quando você entra aqui. A Central abre mais leve nas outras abas."/>`}
+                ${view === 'documentos' && documentAssetsState === 'error' && html`<${MiniEmpty} icon="triangle-alert" title="Módulo de documentos indisponível" text="Não foi possível carregar os recursos de leitura. Recarregue a página e tente novamente."/>`}
               </div>`}
           </main>
         </div>
         ${recordModal && html`<${RecordModal} record=${recordModal} collaborators=${data.collaborators} onClose=${() => setRecordModal(null)} onSave=${saveRecord} saving=${saving}/>`}
         ${paymentModal && html`<${PaymentModal} payment=${paymentModal} records=${data.records} onClose=${() => setPaymentModal(null)} onSave=${savePayment} saving=${saving}/>`}
         ${supplierRowModal && html`<${SupplierRowModal} defaults=${supplierRowModal} records=${data.records} onClose=${() => setSupplierRowModal(null)} onSave=${saveSupplierRow} saving=${saving}/>`}
+        ${forecastGroup && html`<${ForecastGroupModal} group=${forecastGroup} context=${context} onClose=${() => setForecastGroup(null)}/>`}
         ${selected && html`<${RecordDrawer} record=${selected} context=${context} onClose=${() => setSelectedId(null)}/>`}
         ${supplierSelected && html`<${SupplierDrawer} supplier=${supplierSelected} context=${context} onClose=${() => setSupplierSelected(null)}/>`}
         ${commandOpen && html`<${CommandPalette} context=${context} onClose=${() => setCommandOpen(false)}/>`}
+        ${integrityOpen && html`<${IntegrityModal} report=${integrity} onClose=${() => setIntegrityOpen(false)}/>`}
         ${toast && html`<${Toast} toast=${toast}/>`}
       </div>`;
   }
@@ -1232,9 +1434,9 @@
     return html`<section className="setup-state"><div className="setup-orbit"><span></span><span></span><i><${Icon} name="database-zap" size=${32}/></i></div><div><p className="eyebrow">Uma etapa para ativar</p><h2>A interface está pronta. Falta criar a estrutura no banco.</h2><p>Execute <code>sql/06-CENTRAL-ACOMPANHAMENTO.sql</code> no SQL Editor do Supabase. Depois, carregue os dados pelos arquivos numerados da pasta <code>sql/carga-acompanhamento-sql-editor</code>. A carga integral foi dividida para respeitar o limite do editor.</p><div className="setup-steps"><span><b>1</b>Executar o SQL 06</span><span><b>2</b>Carregar os lotes 07</span><span><b>3</b>Atualizar esta página</span></div><button className="button primary" onClick=${() => location.reload()}><${Icon} name="refresh-cw"/>Já executei, verificar agora</button></div></section>`;
   }
 
-  function Sidebar({ view, setView, open, setOpen, me, records, documentItems = [] }) {
+  function Sidebar({ view, setView, open, setOpen, me, records, documentItems = [], documentPendingCount = 0 }) {
     const overdue = records.filter(record => record.situacao_financeira === 'atrasado').length;
-    const pendingDocuments = documentItems.filter(item => item.status === 'aguardando_conferencia').length;
+    const pendingDocuments = documentItems.length ? documentItems.filter(item => item.status === 'aguardando_conferencia').length : Number(documentPendingCount || 0);
     const openCount = records.filter(record => !['concluido', 'cancelado'].includes(record.status)).length;
     const navigate = next => { setView(next); setOpen(false); window.scrollTo({ top:0, behavior:'smooth' }); };
     useLucide([view, open, records.length]);
@@ -1262,11 +1464,9 @@
   }
 
   function Topbar({ view, search, setSearch, setMobileNav, me, context, openCommand }) {
-    const meta = VIEWS[view];
-    useLucide([view]);
-    const documentView = view === 'documentos';
-    const createAction = documentView ? () => window.dispatchEvent(new CustomEvent('pmg:document-upload')) : context.newRecord;
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="search"/><span><b>Busca rápida</b><small>Fornecedor, NF, pendentes...</small></span><kbd>Ctrl K</kbd></button><label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder="Filtrar visão..."/></label>${view !== 'pagamentos' && html`<button className="button primary topbar-create" onClick=${createAction}><${Icon} name=${documentView ? 'file-up' : 'plus'}/>${documentView ? 'Enviar PDF' : 'Novo'}</button>`}<div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    const meta = VIEWS[view]; const searchable = ['pagamentos','receita'].includes(view); const documentView = view === 'documentos';
+    useLucide([view,context.integrity?.status]);
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="search"/><span><b>Busca rápida</b><small>Fornecedor, NF, pendentes...</small></span><kbd>Ctrl K</kbd></button>${searchable && html`<label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder=${view === 'receita' ? 'Filtrar fornecedor...' : 'Filtrar pagamento...'}/></label>`}<button className=${`integrity-badge ${context.integrity?.status || 'ok'}`} onClick=${context.openIntegrity} title="Verificar conciliação entre Pagamentos, Receita e Planejamento"><${Icon} name=${context.integrity?.status === 'critical' ? 'shield-alert' : context.integrity?.status === 'warning' ? 'shield-check' : 'badge-check'}/><span>${context.integrity?.status === 'ok' ? 'Dados conciliados' : `${Number(context.integrity?.critical||0)+Number(context.integrity?.warning||0)} alerta(s)`}</span></button>${documentView && html`<button className="button primary topbar-create" onClick=${() => window.dispatchEvent(new CustomEvent('pmg:document-upload'))}><${Icon} name="file-up"/>Enviar PDF</button>`}<div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
   }
 
   function CommandPalette({ context, onClose }) {
@@ -1280,15 +1480,15 @@
     const nfNeedle = needle.match(/\bnf\s+(.+)/)?.[1] || '';
 
     const recordMap = useMemo(() => Object.fromEntries(context.allRecords.map(item => [item.id,item])), [context.allRecords]);
-    const supplierNames = useMemo(() => uniq(context.allRecords.map(item => item.fornecedor)).filter(Boolean).sort(supplierCompare), [context.allRecords]);
+    const supplierNames = useMemo(() => uniq(context.allRecords.map(item => officialSupplierName(item.fornecedor)).filter(Boolean)).sort(supplierCompare), [context.allRecords]);
     const supplierHits = needle ? supplierNames.filter(name => normalize(name).includes(needle.replace(/^fornecedor\s+/,''))).slice(0,4) : [];
     const nfRecords = nfNeedle ? uniq(context.payments.filter(payment => normalize(payment.numero_documento).includes(nfNeedle)).map(payment => payment.registro_id)).map(id => recordMap[id]).filter(Boolean).slice(0,5) : [];
     const recordResults = needle ? context.allRecords.filter(record => normalize([record.codigo,record.fornecedor,record.titulo,record.referencia,record.numero_documento,...(record.tags||[])].join(' ')).includes(needle)).slice(0,7) : [];
 
     const smart = [];
     if (monthIndex >= 0) smart.push({ type:'smart', icon:wantsPending ? 'circle-dollar-sign' : 'calendar-range', label:`${wantsPending ? 'Pendentes de' : 'Abrir'} ${OFFICIAL_MONTHS[monthIndex][1]}`, detail:wantsPending ? 'Planilha já filtrada somente no que falta confirmar' : 'Ir direto para a competência', action:() => context.navigatePayments({ year:2026, month:monthIndex, pending:wantsPending }) });
-    if (/acima da previsao|superou a previsao|mais que previsto/.test(needle)) smart.push({ type:'smart', icon:'trending-up', label:'Fornecedores acima da previsão', detail:'Abrir Receita anual para comparar previsto x realizado', action:() => context.setView('receita') });
-    if (/abaixo da previsao|falta receber|menos que previsto/.test(needle)) smart.push({ type:'smart', icon:'trending-down', label:'Fornecedores abaixo da previsão', detail:'Abrir Receita anual e localizar diferenças', action:() => context.setView('receita') });
+    if (/acima da previsao|superou a previsao|mais que previsto/.test(needle)) smart.push({ type:'smart', icon:'trending-up', label:'Fornecedores acima da previsão', detail:'Abrir Receita anual para comparar previsto x realizado', action:() => context.navigateRevenue({above:true}) });
+    if (/abaixo da previsao|falta receber|menos que previsto/.test(needle)) smart.push({ type:'smart', icon:'trending-down', label:'Fornecedores abaixo da previsão', detail:'Abrir Receita anual e localizar diferenças', action:() => context.navigateRevenue({below:true}) });
     if (wantsConfirmed && monthIndex >= 0) smart.push({ type:'smart', icon:'badge-check', label:`Confirmados de ${OFFICIAL_MONTHS[monthIndex][1]}`, detail:'Abrir a competência completa', action:() => context.navigatePayments({ year:2026, month:monthIndex, pending:false }) });
 
     const supplierResults = supplierHits.map(name => ({ type:'supplier', icon:'building-2', label:name, detail:'Abrir painel completo do fornecedor', action:() => context.openSupplier(name) }));
@@ -1325,6 +1525,13 @@
   function Toast({ toast }) {
     useLucide([toast.id]);
     return html`<div className=${`ac-toast ${toast.tone}`}><span><${Icon} name=${toast.tone === 'error' ? 'circle-alert' : toast.tone === 'info' ? 'info' : 'circle-check'} /></span><p>${toast.message}</p></div>`;
+  }
+
+
+  function IntegrityModal({ report, onClose }) {
+    const issues = report?.issues || [];
+    useLucide([report?.status, issues.length]);
+    return html`<${ModalShell} title="Integridade dos dados" eyebrow="Pagamentos · Receita · Planejamento" icon=${report?.status === 'critical' ? 'shield-alert' : 'shield-check'} onClose=${onClose}><div className="integrity-modal"><div className=${`integrity-summary ${report?.status || 'ok'}`}><span><${Icon} name=${report?.status === 'ok' ? 'badge-check' : 'triangle-alert'}/></span><div><strong>${report?.status === 'ok' ? 'Dados conciliados' : report?.status === 'critical' ? 'Há divergência que exige conferência' : 'Dados utilizáveis, com pontos de atenção'}</strong><p>${report?.status === 'ok' ? 'Pagamentos e Receita estão equivalentes e não há alerta estrutural ativo.' : `${report?.critical || 0} crítico(s) · ${report?.warning || 0} atenção(ões)`}</p></div></div>${issues.length ? html`<div className="integrity-issues">${issues.map(item => html`<article className=${item.severity}><span><${Icon} name=${item.severity === 'critical' ? 'circle-alert' : item.severity === 'warning' ? 'triangle-alert' : 'info'}/></span><div><strong>${item.title}</strong><p>${item.detail}</p></div></article>`)}</div>` : html`<div className="integrity-clean"><${Icon} name="circle-check-big"/><span>Nenhuma divergência detectada nesta verificação.</span></div>`}<div className="integrity-note"><${Icon} name="refresh-cw"/><span>A verificação é recalculada automaticamente quando um pagamento, previsão ou item do planejamento muda.</span></div></div></${ModalShell}>`;
   }
 
   function MetricCard({ label, value, format = 'money', icon, tone, hint, pulse = false }) {
@@ -1446,14 +1653,16 @@
     const now = new Date();
     const year = context.allRecords.some(record => Number(record.ano_referencia) === 2026) ? 2026 : Math.max(...context.allRecords.map(record => Number(record.ano_referencia) || 0), now.getFullYear());
     const currentMonth = now.getFullYear() === year ? now.getMonth() : Math.max(0, ...context.allRecords.filter(record => Number(record.ano_referencia) === year).map(sourceMonthIndex));
+    const monthInProgress = now.getFullYear() === year && currentMonth === now.getMonth();
+    const lastClosedMonth = now.getFullYear() === year ? now.getMonth() - 1 : 11;
     const forecastRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.controle === 'marcos' && record.natureza === 'receita' && record.fornecedor && hasTag(record,'previsão') && hasTag(record,'fornecedor') && record.status !== 'cancelado');
     const forecastRevenueBase = sum(forecastRecords, record => record.valor_acordado);
-    const planningRecords = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.natureza === 'despesa' && hasTag(record,'planejamento') && record.status !== 'cancelado');
-    const planningBase = sum(planningRecords, record => record.valor_acordado);
     const indicators = context.allRecords.filter(record => Number(record.ano_referencia) === year && record.natureza === 'indicador');
     const indicator = tag => Number(indicators.find(record => hasTag(record,tag))?.valor_acordado || 0);
     const forecastRevenue = forecastRecords.length ? forecastRevenueBase : indicator('receita');
-    const forecastInvestment = planningRecords.length ? planningBase : indicator('investimento');
+    const planningSnapshot = buildPlanningSnapshot(context.allRecords,context.payments,year);
+    const forecastInvestment = planningSnapshot.planning.length ? planningSnapshot.grandTotal : indicator('investimento');
+    const realizedInvestment = planningSnapshot.paidTotal;
     const forecastBalance = forecastRevenue - forecastInvestment;
 
     const officialRevenue = liveRevenueSnapshot(context.allRecords, context.payments, context.conferences, year);
@@ -1466,7 +1675,7 @@
     const confirmedRows=stages.filter(item=>item.stage==='confirmado'); const openRows=stages.filter(item=>item.stage==='a_receber');
     const received=officialRevenue.hasData ? officialRevenue.total : sum(confirmedRows,item=>item.value);
     const toReceiveAmount=Math.max(0, forecastRevenue-received); const realizationPct=forecastRevenue?received/forecastRevenue*100:0;
-    const difference=received-forecastRevenue;
+    const realizedBalance=received-realizedInvestment; const planningPct=forecastInvestment?realizedInvestment/forecastInvestment*100:0;
     const currentRows=stages.filter(item=>item.monthIndex===currentMonth); const currentConfirmed=currentRows.filter(item=>item.stage==='confirmado');
     const currentConfirmedAmount=officialRevenue.hasData ? Number(officialRevenue.monthlyTotals[currentMonth] || 0) : sum(currentConfirmed,item=>item.value); const currentOpen=currentRows.filter(item=>item.stage==='a_receber');
     const pendingRecords=context.allRecords.filter(record=>Number(record.ano_referencia)===year&&record.categoria==='pendencia'&&!['concluido','cancelado'].includes(record.status));
@@ -1475,37 +1684,47 @@
     if (officialRevenue.hasData) officialRevenue.bySupplier.forEach((source,key)=>confirmedBySupplier.set(key,{name:source.name,value:source.total}));
     else confirmedRows.forEach(({record,value})=>{ if(!record.fornecedor)return; const key=supplierKey(record.fornecedor); const row=confirmedBySupplier.get(key)||{name:record.fornecedor,value:0}; row.value+=value; confirmedBySupplier.set(key,row); });
     const forecastBySupplier=new Map(); forecastRecords.forEach(record=>{ const key=supplierKey(record.fornecedor); const row=forecastBySupplier.get(key)||{name:record.fornecedor,forecast:0}; row.forecast+=Number(record.valor_acordado||0); forecastBySupplier.set(key,row); });
-    const supplierPerformance=[...forecastBySupplier.entries()].map(([key,row])=>({ ...row, confirmed:confirmedBySupplier.get(key)?.value||0, diff:(confirmedBySupplier.get(key)?.value||0)-row.forecast })).sort((a,b)=>a.diff-b.diff);
-    const belowSuppliers=supplierPerformance.filter(item=>item.diff<-.01); const aboveSuppliers=supplierPerformance.filter(item=>item.diff>.01);
+    const performanceKeys=new Set([...forecastBySupplier.keys(),...confirmedBySupplier.keys()]);
+    const supplierPerformance=[...performanceKeys].map(key=>{const forecastRow=forecastBySupplier.get(key)||{name:confirmedBySupplier.get(key)?.name||key,forecast:0};const confirmed=confirmedBySupplier.get(key)?.value||0;return {...forecastRow,confirmed,diff:confirmed-forecastRow.forecast};}).sort((a,b)=>a.diff-b.diff);
+    const belowSuppliers=supplierPerformance.filter(item=>item.forecast>0&&item.diff<-.01); const aboveSuppliers=supplierPerformance.filter(item=>item.forecast>0&&item.diff>.01); const noForecastSuppliers=supplierPerformance.filter(item=>item.forecast<=0&&item.confirmed>.01);
     const topSuppliers=[...confirmedBySupplier.values()].sort((a,b)=>b.value-a.value).slice(0,5); const maxSupplier=topSuppliers[0]?.value||1;
     const monthly=OFFICIAL_MONTHS.map(([,label],index)=>{ const rows=stages.filter(item=>item.monthIndex===index); const amount=sum(rows,item=>item.expected); const localConfirmed=sum(rows.filter(item=>item.stage==='confirmado'),item=>item.value); const confirmed=officialRevenue.hasData ? Number(officialRevenue.monthlyTotals[index] || 0) : localConfirmed; const count=rows.length; const confirmedCount=rows.filter(item=>item.stage==='confirmado').length; const pct=amount?Math.min(100,confirmed/amount*100):0; const state=!count&&!confirmed?'empty':count&&confirmedCount===count?'complete':confirmed?'partial':'pending'; return {label,index,amount,confirmed,count,confirmedCount,pct,state,active:index===currentMonth}; });
 
-    useLucide([context.allRecords.length,context.payments.length,currentMonth,pendingRecords.length,openRows.length]);
+    useLucide([context.allRecords.length,context.payments.length,currentMonth,pendingRecords.length,openRows.length,context.integrity?.status]);
     return html`<section className="overview-dashboard ux-dashboard-v2">
       <header className="executive-hero">
-        <div className="executive-copy"><span className="overview-kicker"><i></i>Central de Acompanhamentos · ${year}</span><h2>Previsto, confirmado e o que exige ação.</h2><p>Uma leitura rápida do ano, com cada número abrindo exatamente a planilha que o explica.</p><div className="executive-actions"><button className="button primary" onClick=${() => context.navigatePayments({year,month:currentMonth})}><${Icon} name="table-2"/>Trabalhar ${OFFICIAL_MONTHS[currentMonth][1]}</button><button className="button secondary hero-secondary" onClick=${() => context.setView('receita')}><${Icon} name="landmark"/>Ver Receita anual</button></div></div>
-        <div className="executive-flow"><div><small>Receita prevista</small><strong>${money(forecastRevenue)}</strong></div><span><${Icon} name="arrow-right"/></span><div className="confirmed"><small>Confirmada</small><strong>${money(received)}</strong><em>${Math.round(realizationPct)}%</em></div><span><${Icon} name="arrow-right"/></span><div className=${difference>=0?'positive':'remaining'}><small>${difference>=0?'Acima da previsão':'Ainda falta'}</small><strong>${money(Math.abs(difference))}</strong></div><i><b style=${{width:`${Math.min(100,Math.max(0,realizationPct))}%`}}></b></i></div>
+        <div className="executive-copy"><span className="overview-kicker"><i></i>Central de Acompanhamentos · ${year}</span><h2>Previsto, realizado e o que exige ação.</h2><p>Uma leitura rápida do ano com Pagamentos, Planejamento e Receita usando a mesma base.</p><div className="executive-actions"><button className="button primary" onClick=${() => context.navigatePayments({year,month:currentMonth})}><${Icon} name="table-2"/>Trabalhar ${OFFICIAL_MONTHS[currentMonth][1]}</button><button className="button secondary hero-secondary" onClick=${() => context.navigateRevenue()}><${Icon} name="landmark"/>Ver Receita anual</button></div></div>
+        <div className="executive-flow"><div><small>Receita prevista</small><strong>${money(forecastRevenue)}</strong></div><span><${Icon} name="arrow-right"/></span><div className="confirmed"><small>Confirmada</small><strong>${money(received)}</strong><em>${Math.round(realizationPct)}%</em></div><span><${Icon} name="arrow-right"/></span><div className=${realizedBalance>=0?'positive':'remaining'}><small>Saldo realizado</small><strong>${money(realizedBalance)}</strong></div><i><b style=${{width:`${Math.min(100,Math.max(0,realizationPct))}%`}}></b></i></div>
       </header>
 
-      <div className="executive-metrics">
-        <button onClick=${() => context.navigatePayments({year,month:currentMonth,pending:true})}><span className="metric-glyph amber"><${Icon} name="circle-dollar-sign"/></span><div><small>FALTA P/ PREVISÃO</small><strong>${money(toReceiveAmount)}</strong><p>Base oficial do MKTG 2026</p></div><${Icon} name="arrow-up-right"/></button>
-        <button onClick=${() => context.navigatePayments({year,month:currentMonth})}><span className="metric-glyph green"><${Icon} name="calendar-check"/></span><div><small>CONFIRMADO EM ${OFFICIAL_MONTHS[currentMonth][1].toUpperCase()}</small><strong>${money(currentConfirmedAmount)}</strong><p>${currentConfirmed.length} pagamento(s) confirmado(s)</p></div><${Icon} name="arrow-up-right"/></button>
-        <button onClick=${() => context.setView('receita')}><span className="metric-glyph dark"><${Icon} name="trending-down"/></span><div><small>ABAIXO DA PREVISÃO</small><strong>${int(belowSuppliers.length)}</strong><p>${aboveSuppliers.length} fornecedor(es) acima</p></div><${Icon} name="arrow-up-right"/></button>
-        <button onClick=${() => context.setView('planejamento')}><span className="metric-glyph violet"><${Icon} name="target"/></span><div><small>INVESTIMENTO PREVISTO</small><strong>${money(forecastInvestment)}</strong><p>Saldo previsto ${money(forecastBalance)}</p></div><${Icon} name="arrow-up-right"/></button>
+      <div className="executive-metrics executive-metrics-six">
+        <button onClick=${() => context.navigateRevenue()}><span className="metric-glyph green"><${Icon} name="landmark"/></span><div><small>RECEITA PREVISTA</small><strong>${money(forecastRevenue)}</strong><p>Base anual de fornecedores</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.navigateRevenue()}><span className="metric-glyph dark"><${Icon} name="badge-check"/></span><div><small>RECEITA CONFIRMADA</small><strong>${money(received)}</strong><p>${Math.round(realizationPct)}% da previsão</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.setView('planejamento')}><span className="metric-glyph violet"><${Icon} name="target"/></span><div><small>INVESTIMENTO PREVISTO</small><strong>${money(forecastInvestment)}</strong><p>${planningSnapshot.planning.length} frentes</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.setView('planejamento')}><span className="metric-glyph amber"><${Icon} name="circle-dollar-sign"/></span><div><small>INVESTIMENTO PAGO</small><strong>${money(realizedInvestment)}</strong><p>${Math.round(planningPct)}% executado</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.navigateRevenue()}><span className="metric-glyph green"><${Icon} name="scale"/></span><div><small>SALDO PREVISTO</small><strong>${money(forecastBalance)}</strong><p>Receita prevista − investimento</p></div><${Icon} name="arrow-up-right"/></button>
+        <button onClick=${() => context.navigateRevenue()}><span className="metric-glyph ${realizedBalance>=0?'green':'amber'}"><${Icon} name="wallet-cards"/></span><div><small>SALDO REALIZADO</small><strong>${money(realizedBalance)}</strong><p>Recebido − investimento pago</p></div><${Icon} name="arrow-up-right"/></button>
+      </div>
+
+      <div className="execution-strip">
+        <button onClick=${() => context.navigateRevenue({below:true})}><small>A RECEBER VS. PREVISÃO</small><strong>${money(toReceiveAmount)}</strong><span>${belowSuppliers.length} fornecedor(es) abaixo</span></button>
+        <div><small>EXECUÇÃO DA RECEITA</small><strong>${Math.round(realizationPct)}%</strong><i><b style=${{width:`${Math.min(100,Math.max(0,realizationPct))}%`}}></b></i></div>
+        <div><small>EXECUÇÃO DO PLANEJAMENTO</small><strong>${Math.round(planningPct)}%</strong><i><b style=${{width:`${Math.min(100,Math.max(0,planningPct))}%`}}></b></i></div>
+        <button className=${noForecastSuppliers.length?'warning':''} onClick=${() => context.navigateRevenue({withoutForecast:true})}><small>SEM PREVISÃO</small><strong>${noForecastSuppliers.length}</strong><span>receita sem meta cadastrada</span></button>
       </div>
 
       <div className="dashboard-grid-v2">
-        <article className="overview-panel overview-evolution"><div className="overview-panel-head"><div><span>EVOLUÇÃO</span><h3>Receita confirmada por mês</h3><p>Clique no gráfico para abrir a competência.</p></div><button onClick=${() => context.setView('receita')}>Matriz anual <${Icon} name="arrow-up-right"/></button></div><${RevenueComparisonChart} context=${context}/></article>
-        <article className="overview-panel attention-v2"><div className="overview-panel-head"><div><span>ATENÇÃO AGORA</span><h3>O que vale abrir primeiro</h3><p>Sem KPI inventado. Só coisa que pede ação.</p></div></div>
-          <button className=${currentOpen.length?'attention-item warning':'attention-item ok'} onClick=${() => context.navigatePayments({year,month:currentMonth,pending:true})}><span><${Icon} name=${currentOpen.length?'circle-dollar-sign':'circle-check'}/></span><div><strong>${currentOpen.length} pendente(s) em ${OFFICIAL_MONTHS[currentMonth][1]}</strong><small>${currentOpen.length?`${money(sum(currentOpen,item=>item.expected))} aguardando confirmação`:'Competência em dia'}</small></div><${Icon} name="chevron-right"/></button>
+        <article className="overview-panel overview-evolution"><div className="overview-panel-head"><div><span>EVOLUÇÃO</span><h3>Receita confirmada por mês</h3><p>Comparação usa meses fechados; ${OFFICIAL_MONTHS[currentMonth][1]} está ${monthInProgress?'em andamento':'fechado'}.</p></div><button onClick=${() => context.navigateRevenue()}>Matriz anual <${Icon} name="arrow-up-right"/></button></div><${RevenueComparisonChart} context=${context}/></article>
+        <article className="overview-panel attention-v2"><div className="overview-panel-head"><div><span>ATENÇÃO AGORA</span><h3>O que vale abrir primeiro</h3><p>Somente o que pede ação.</p></div></div>
+          ${context.integrity?.status !== 'ok' && html`<button className=${context.integrity?.status==='critical'?'attention-item danger':'attention-item warning'} onClick=${context.openIntegrity}><span><${Icon} name="shield-alert"/></span><div><strong>Integridade dos dados precisa de atenção</strong><small>${context.integrity?.critical||0} crítico(s) · ${context.integrity?.warning||0} alerta(s)</small></div><${Icon} name="chevron-right"/></button>`}
+          <button className=${currentOpen.length?'attention-item warning':'attention-item ok'} onClick=${() => context.navigatePayments({year,month:currentMonth,pending:true})}><span><${Icon} name=${currentOpen.length?'circle-dollar-sign':'circle-check'}/></span><div><strong>${currentOpen.length} pendente(s) em ${OFFICIAL_MONTHS[currentMonth][1]}${monthInProgress?' · em andamento':''}</strong><small>${currentOpen.length?`${money(sum(currentOpen,item=>item.expected))} aguardando confirmação`:'Competência em dia'}</small></div><${Icon} name="chevron-right"/></button>
           <button className=${pendingRecords.length?'attention-item danger':'attention-item ok'} onClick=${() => context.navigatePayments({year,month:currentMonth})}><span><${Icon} name=${pendingRecords.length?'triangle-alert':'circle-check'}/></span><div><strong>${pendingRecords.length} pendência(s) registradas</strong><small>${pendingRecords.length?'Observações abertas nas planilhas':'Nenhuma pendência aberta'}</small></div><${Icon} name="chevron-right"/></button>
-          <button className=${belowSuppliers.length?'attention-item neutral':'attention-item ok'} onClick=${() => context.setView('receita')}><span><${Icon} name="trending-down"/></span><div><strong>${belowSuppliers.length} fornecedor(es) abaixo da previsão</strong><small>${aboveSuppliers.length} já estão acima do previsto</small></div><${Icon} name="chevron-right"/></button>
+          <button className=${belowSuppliers.length?'attention-item neutral':'attention-item ok'} onClick=${() => context.navigateRevenue({below:true})}><span><${Icon} name="trending-down"/></span><div><strong>${belowSuppliers.length} fornecedor(es) abaixo da previsão</strong><small>${aboveSuppliers.length} acima · ${noForecastSuppliers.length} sem previsão</small></div><${Icon} name="chevron-right"/></button>
         </article>
 
-        <article className="overview-panel annual-timeline-panel"><div className="overview-panel-head"><div><span>COMPETÊNCIAS</span><h3>Janeiro → Dezembro</h3><p>Estado e confirmação do ano inteiro sem trocar de zoom.</p></div></div><div className="annual-timeline">${monthly.map(item=>html`<button className=${`${item.state} ${item.active?'active':''}`} onClick=${() => context.navigatePayments({year,month:item.index})} title=${item.amount?`${money(item.confirmed)} confirmado de ${money(item.amount)}`:'Sem dados'}><span><b>${item.label.slice(0,3)}</b><em>${item.active?'Agora':item.state==='complete'?'Fechado':item.state==='partial'?'Parcial':item.state==='pending'?'Pendente':'—'}</em></span><strong>${item.amount?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.count?`${item.confirmedCount}/${item.count} linhas`:'sem dados'}</small></button>`)}</div></article>
-        <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Clique em um parceiro para abrir os detalhes sem sair do Dashboard.</p></div></div><div className="top-supplier-list interactive">${topSuppliers.length?topSuppliers.map((item,index)=>html`<button onClick=${() => context.openSupplier(item.name)}><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small><${Icon} name="chevron-right"/></button>`):html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
+        <article className="overview-panel annual-timeline-panel"><div className="overview-panel-head"><div><span>COMPETÊNCIAS</span><h3>Janeiro → Dezembro</h3><p>${lastClosedMonth>=0?`Último mês fechado: ${OFFICIAL_MONTHS[lastClosedMonth][1]}.`:'Ainda não há mês fechado neste ano.'}</p></div></div><div className="annual-timeline">${monthly.map(item=>html`<button className=${`${item.state} ${item.active?'active':''}`} onClick=${() => context.navigatePayments({year,month:item.index})} title=${item.amount?`${money(item.confirmed)} confirmado de ${money(item.amount)}`:'Sem dados'}><span><b>${item.label.slice(0,3)}</b><em>${item.active&&monthInProgress?'Em andamento':item.state==='complete'?'Fechado':item.state==='partial'?'Parcial':item.state==='pending'?'Pendente':'—'}</em></span><strong>${item.amount?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.count?`${item.confirmedCount}/${item.count} linhas`:'sem dados'}</small></button>`)}</div></article>
+        <article className="overview-panel overview-suppliers"><div className="overview-panel-head"><div><span>FORNECEDORES</span><h3>Maiores receitas confirmadas</h3><p>Clique em um parceiro para abrir os detalhes.</p></div></div><div className="top-supplier-list interactive">${topSuppliers.length?topSuppliers.map((item,index)=>html`<button onClick=${() => context.openSupplier(item.name)}><b>${String(index+1).padStart(2,'0')}</b><span><strong>${item.name}</strong><i><em style=${{width:`${item.value/maxSupplier*100}%`}}></em></i></span><small>${money(item.value)}</small><${Icon} name="chevron-right"/></button>`):html`<div className="overview-empty">Nenhuma receita confirmada ainda.</div>`}</div></article>
       </div>
-
     </section>`;
   }
 
@@ -1533,12 +1752,14 @@
 
     const monthSnapshots=useMemo(()=>OFFICIAL_MONTHS.map(([,label],index)=>{ const records=supplierRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&sourceMonthIndex(record)===index); const total=sum(records,record=>record.valor_acordado); const confirmedRecords=records.filter(record=>supplierRowConfirmed(record,supplierRowPayment(context.payments,record,sheetYear,index))); const confirmed=sum(confirmedRecords,record=>supplierConfirmedValue(record,supplierRowPayment(context.payments,record,sheetYear,index))); const state=!records.length?'empty':confirmedRecords.length===records.length?'complete':confirmedRecords.length?'partial':'pending'; return {index,label,total,confirmed,count:records.length,confirmedCount:confirmedRecords.length,pct:total?Math.min(100,confirmed/total*100):0,state}; }),[supplierRecords,context.payments,sheetYear]);
     const currentKey=monthKey(sheetYear,sheetMonth); const needle=normalize(context.search);
-    let rows=supplierRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&sourceMonthIndex(record)===sheetMonth).map(record=>({record,payment:supplierRowPayment(context.payments,record,sheetYear,sheetMonth)})).sort((a,b)=>supplierCompare(a.record,b.record)||String(a.record.referencia||'').localeCompare(String(b.record.referencia||''),'pt-BR'));
+    const allMonthRows=supplierRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&sourceMonthIndex(record)===sheetMonth).map(record=>({record,payment:supplierRowPayment(context.payments,record,sheetYear,sheetMonth)})).sort((a,b)=>supplierCompare(a.record,b.record)||String(a.record.referencia||'').localeCompare(String(b.record.referencia||''),'pt-BR'));
+    let rows=[...allMonthRows];
     if(needle)rows=rows.filter(row=>normalize([row.record.fornecedor,row.record.referencia,row.record.numero_documento,row.payment?.numero_documento,row.record.titulo].join(' ')).includes(needle));
     if(supplierDrill)rows=rows.filter(row=>supplierKey(row.record.fornecedor)===supplierKey(supplierDrill));
     if(onlyPending)rows=rows.filter(row=>!supplierRowConfirmed(row.record,row.payment));
 
-    const monthTotal=sum(rows,row=>row.record.valor_acordado); const confirmedRows=rows.filter(row=>supplierRowConfirmed(row.record,row.payment)); const confirmedCount=confirmedRows.length; const confirmedAmount=sum(confirmedRows,row=>supplierConfirmedValue(row.record,row.payment)); const pendingAmount=Math.max(0,monthTotal-confirmedAmount);
+    const monthTotal=sum(allMonthRows,row=>row.record.valor_acordado); const allConfirmedRows=allMonthRows.filter(row=>supplierRowConfirmed(row.record,row.payment)); const confirmedCount=allConfirmedRows.length; const confirmedAmount=sum(allConfirmedRows,row=>supplierConfirmedValue(row.record,row.payment)); const pendingAmount=Math.max(0,monthTotal-confirmedAmount);
+    const visibleTotal=sum(rows,row=>row.record.valor_acordado); const visibleConfirmedRows=rows.filter(row=>supplierRowConfirmed(row.record,row.payment)); const visibleConfirmedAmount=sum(visibleConfirmedRows,row=>supplierConfirmedValue(row.record,row.payment)); const filteredView=Boolean(needle||supplierDrill||onlyPending);
     const pendingRecords=context.allRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&record.categoria==='pendencia'&&record.status!=='cancelado'&&(!record.data_inicio||String(record.data_inicio).startsWith(currentKey)));
     const monthLabelLong=OFFICIAL_MONTHS[sheetMonth]?.[1]||'';
     const addRow=()=>context.newSupplierRow({ ano_referencia:sheetYear, monthIndex:sheetMonth, categoria:'cota_anual' });
@@ -1560,15 +1781,15 @@
 
       <div className="workbook-tabs annual-workbook-tabs" role="tablist">${monthSnapshots.map(item=>{const isNow=Number(sheetYear)===new Date().getFullYear()&&item.index===new Date().getMonth();return html`<button role="tab" aria-selected=${sheetMonth===item.index} className=${`${sheetMonth===item.index?'active':''} ${item.state} ${isNow?'is-now':''}`} onClick=${()=>setSheetMonth(item.index)}><span>${item.label}${isNow&&html`<em>Atual</em>`}</span><strong>${item.total?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.total?`${compactMoney(item.confirmed)} / ${compactMoney(item.total)}`:'sem dados'}</small></button>`;})}</div>
 
-      <div className="sheet-command-row"><div className="sheet-stats compact-stats"><span className="stat-total"><small>Total</small><strong>${money(monthTotal)}</strong></span><span className="stat-confirmed-value"><small>Confirmado</small><strong>${money(confirmedAmount)}</strong></span><span className="stat-pending-value"><small>Pendente</small><strong>${money(pendingAmount)}</strong></span><span className=${`stat-signed ${confirmedCount===rows.length&&rows.length?'ok':''}`}><small>Status</small><strong>${confirmedCount}/${rows.length}</strong></span></div><div className="active-sheet-filters">${supplierDrill&&html`<button onClick=${()=>setSupplierDrill('')}><${Icon} name="building-2"/>${supplierDrill}<${Icon} name="x"/></button>`}${onlyPending&&html`<button onClick=${()=>setOnlyPending(false)}><${Icon} name="filter"/>Só pendentes<${Icon} name="x"/></button>`}</div></div>
+      <div className="sheet-command-row"><div className="sheet-stats compact-stats"><span className="stat-total"><small>Total do mês</small><strong>${money(monthTotal)}</strong></span><span className="stat-confirmed-value"><small>Confirmado</small><strong>${money(confirmedAmount)}</strong></span><span className="stat-pending-value"><small>Pendente</small><strong>${money(pendingAmount)}</strong></span><span className=${`stat-signed ${confirmedCount===allMonthRows.length&&allMonthRows.length?'ok':''}`}><small>Status</small><strong>${confirmedCount}/${allMonthRows.length}</strong></span></div><div className="active-sheet-filters">${filteredView&&html`<span className="filtered-sheet-summary"><${Icon} name="list-filter"/>Exibindo ${rows.length}/${allMonthRows.length} · ${money(visibleTotal)}${visibleConfirmedAmount?` · ${money(visibleConfirmedAmount)} confirmado`:''}</span>`}${supplierDrill&&html`<button onClick=${()=>setSupplierDrill('')}><${Icon} name="building-2"/>${supplierDrill}<${Icon} name="x"/></button>`}${onlyPending&&html`<button onClick=${()=>setOnlyPending(false)}><${Icon} name="filter"/>Só pendentes<${Icon} name="x"/></button>`}</div></div>
 
-      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll assisted-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas visíveis" checked=${rows.length>0&&rows.every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>NF</th><th>STATUS</th><th></th></tr></thead><tbody>
+      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll assisted-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas visíveis" checked=${rows.length>0&&rows.every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>DOCUMENTO</th><th>STATUS</th><th></th></tr></thead><tbody>
         ${rows.length?rows.map((row,index)=>{const isPaid=supplierRowConfirmed(row.record,row.payment);const sourcePaid=Boolean(row.record._oficial_confirmado);return html`<tr key=${row.record.id} className=${`${isPaid?'signed-row':''} ${selectedRows.has(row.record.id)?'selected-row':''}`} style=${{'--row-delay':`${Math.min(index,35)*12}ms`}}><td className="select-col"><input type="checkbox" checked=${selectedRows.has(row.record.id)} onChange=${()=>toggleSelected(row.record.id)}/></td><td><${EditableSheetCell} value=${row.record.referencia||'COTA'} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td><td className="supplier-sheet-cell"><div className="supplier-edit-wrap"><${EditableSheetCell} value=${row.record.fornecedor||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/><button className="supplier-peek" title="Ver fornecedor" onClick=${()=>context.openSupplier(row.record.fornecedor)}><${Icon} name="panel-right-open"/></button></div></td><td className="money-col unified-value-cell"><${EditableSheetCell} type="money" value=${row.record.valor_acordado} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td><td><${EditableSheetCell} value=${row.payment?.numero_documento||row.record.numero_documento||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td><td><button disabled=${context.saving} className=${`one-click-status status-simple ${isPaid?'paid':'open'} ${sourcePaid?'source-confirmed':''}`} onClick=${()=>context.quickTogglePaid(row.payment,row.record)} title=${sourcePaid?'Confirmado automaticamente pelo MKTG 2026':isPaid?'Clique para desfazer':'Confirmar pagamento'}><span className="status-dot">${isPaid?'✓':'○'}</span><span>${sourcePaid?'Confirmado · fonte':isPaid?'Confirmado':'Pendente'}</span></button></td><td><button className="sheet-open-row" onClick=${()=>context.openRecord(row.record)} title="Mais detalhes"><${Icon} name="more-horizontal"/></button></td></tr>`;}) : html`<tr className="sheet-empty-row"><td colSpan="7"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>${supplierDrill?'Retire o filtro do fornecedor ou escolha outro mês.':'Crie a primeira linha diretamente por aqui.'}</p><button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button></div></td></tr>`}
-      </tbody><tfoot><tr><th></th><th colSpan="2">TOTAL</th><th className="money-col">${money(monthTotal)}</th><th></th><th>${confirmedCount} confirmados</th><th></th></tr></tfoot></table></div></article>
+      </tbody><tfoot><tr><th></th><th colSpan="2">${filteredView ? 'TOTAL EXIBIDO' : 'TOTAL'}</th><th className="money-col">${money(filteredView ? visibleTotal : monthTotal)}</th><th></th><th>${filteredView ? visibleConfirmedRows.length : confirmedCount} confirmados</th><th></th></tr></tfoot></table></div></article>
 
       ${selectedRows.size>0&&html`<div className="sheet-selection-bar bulk-actions-v2"><div><strong>${selectedRows.size}</strong><span>${selectedRows.size===1?'linha selecionada':'linhas selecionadas'}</span></div><button onClick=${async()=>{const open=chosenRows.filter(row=>!supplierRowConfirmed(row.record,row.payment));await context.quickBulkConfirm(open,true);clearSelected();}} disabled=${context.saving}><${Icon} name="badge-check"/>Confirmar pendentes</button><button onClick=${setBulkNF} disabled=${context.saving}><${Icon} name="receipt-text"/>Definir NF</button><button className="bulk-archive" onClick=${archiveBulk} disabled=${context.saving}><${Icon} name="archive"/>Arquivar</button><button className="selection-clear" onClick=${clearSelected}><${Icon} name="x"/>Limpar</button></div>`}
 
-      <section className="sheet-pendencies"><div className="sheet-section-heading"><div><span>PENDÊNCIAS</span><h3>${monthLabelLong} ${sheetYear}</h3></div><button onClick=${()=>context.newRecord({controle:'marketing',ano_referencia:sheetYear,natureza:'receita',categoria:'pendencia',titulo:`Pendência — ${monthLabelLong} ${sheetYear}`,referencia:'Observação da planilha mensal',status:'negociacao',prioridade:'alta',data_inicio:officialMonthEnd(sheetYear,sheetMonth),tags:['marketing','pendência',String(sheetYear),monthLabelLong.toLocaleLowerCase('pt-BR')]})}><${Icon} name="plus"/>Adicionar pendência</button></div><div className="pendency-sheet-list">${pendingRecords.length?pendingRecords.map(record=>html`<article className=${record.status==='concluido'?'resolved':''}><span className="pendency-mark"><${Icon} name=${record.status==='concluido'?'circle-check':'triangle-alert'}/></span><div><${EditableSheetCell} value=${record.descricao||record.observacoes||record.titulo} onSave=${value=>context.quickUpdateRecord(record,{descricao:value,observacoes:value})}/><small>${record.fornecedor||'Pendência geral'}${record.valor_acordado?` · ${money(record.valor_acordado)}`:''}</small></div><button className="resolve-one-click" onClick=${()=>context.quickUpdateRecord(record,{status:record.status==='concluido'?'negociacao':'concluido'},record.status==='concluido'?'Pendência reaberta.':'Pendência resolvida.')}><${Icon} name="check"/>${record.status==='concluido'?'Reabrir':'Resolver'}</button></article>`):html`<div className="pendency-empty"><${Icon} name="circle-check-big"/><span>Nenhuma pendência nesta competência.</span></div>`}</div></section>
+      <section className="sheet-pendencies"><div className="sheet-section-heading"><div><span>PENDÊNCIAS</span><h3>${monthLabelLong} ${sheetYear}</h3></div><button onClick=${()=>context.newSupplierRow({ano_referencia:sheetYear,monthIndex:sheetMonth,categoria:'pendencia',tipo_documento:'outro'})}><${Icon} name="plus"/>Adicionar pendência</button></div><div className="pendency-sheet-list">${pendingRecords.length?pendingRecords.map(record=>html`<article className=${record.status==='concluido'?'resolved':''}><span className="pendency-mark"><${Icon} name=${record.status==='concluido'?'circle-check':'triangle-alert'}/></span><div><${EditableSheetCell} value=${record.descricao||record.observacoes||record.titulo} onSave=${value=>context.quickUpdateRecord(record,{descricao:value,observacoes:value})}/><small>${record.fornecedor||'Pendência geral'}${record.valor_acordado?` · ${money(record.valor_acordado)}`:''}</small></div><button className="resolve-one-click" onClick=${()=>context.quickUpdateRecord(record,{status:record.status==='concluido'?'negociacao':'concluido'},record.status==='concluido'?'Pendência reaberta.':'Pendência resolvida.')}><${Icon} name="check"/>${record.status==='concluido'?'Reabrir':'Resolver'}</button></article>`):html`<div className="pendency-empty"><${Icon} name="circle-check-big"/><span>Nenhuma pendência nesta competência.</span></div>`}</div></section>
     </section>`;
   }
 
@@ -1658,6 +1879,7 @@
       if (Number(due.slice(0, 4)) !== Number(year) || monthIndex < 0 || monthIndex > 11) return;
       paymentMap.set(`${payment.registro_id}|${monthIndex}`, payment);
     });
+    const fallbackRecords = new Set();
     const planningSourceMeta = record => {
       const candidates = [record?.dados_originais?.categoria_original, record?.referencia, planningName(record)];
       for (const candidate of candidates) {
@@ -1669,12 +1891,14 @@
     const sourcePlanningValue = (record, monthIndex) => {
       const stored = record?.dados_originais?.valores_mensais;
       if (Array.isArray(stored) && stored.length >= 12) return Number(stored[monthIndex] || 0);
-      return Number(planningSourceMeta(record)?.monthly?.[monthIndex] || 0);
+      const fallback = planningSourceMeta(record); if (fallback) fallbackRecords.add(record.id);
+      return Number(fallback?.monthly?.[monthIndex] || 0);
     };
     const sourcePlanningPaid = (record, monthIndex) => {
       const stored = record?.dados_originais?.pagos_mensais;
       if (Array.isArray(stored) && stored.length >= 12) return Boolean(stored[monthIndex]);
-      return Boolean(planningSourceMeta(record)?.paid?.[monthIndex]);
+      const fallback = planningSourceMeta(record); if (fallback) fallbackRecords.add(record.id);
+      return Boolean(fallback?.paid?.[monthIndex]);
     };
     const planningCellValue = (record, monthIndex) => {
       const payment = paymentMap.get(`${record.id}|${monthIndex}`);
@@ -1691,29 +1915,38 @@
     const grandTotal = sum(columnTotals, value => value);
     const paidTotal = sum(paidColumnTotals, value => value);
     const remainingTotal = Math.max(0, grandTotal - paidTotal);
-    return { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal };
+    return { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal, fallbackCount:fallbackRecords.size, fallbackRecords };
   }
 
   function PlanningView({ context }) {
     const planningScrollRef = useRef(null);
-    const { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal } =
-      useMemo(() => buildPlanningSnapshot(context.allRecords, context.payments), [context.allRecords, context.payments]);
-    const currentMonth = new Date().getFullYear() === 2026 ? new Date().getMonth() : -1;
+    const snapshot = useMemo(() => buildPlanningSnapshot(context.allRecords, context.payments), [context.allRecords, context.payments]);
+    const { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal, fallbackCount } = snapshot;
+    const now = new Date();
+    const currentMonth = now.getFullYear() === 2026 ? now.getMonth() : 0;
+    const [mobileMonth, setMobileMonth] = useState(currentMonth);
+    const isMobile = useMediaQuery('(max-width: 900px)');
+    const monthLabel = OFFICIAL_MONTHS[mobileMonth]?.[1] || 'Janeiro';
+    const mobilePaidTotal = sum(planning, record => planningCellPaid(record,mobileMonth) ? planningCellValue(record,mobileMonth) : 0);
+    const mobileOpenTotal = Math.max(0, Number(monthTotals[mobileMonth] || 0) - mobilePaidTotal);
+    const shiftMobileMonth = direction => setMobileMonth(index => Math.max(0, Math.min(11,index + direction)));
     const jumpToPlanningColumn = index => {
       const scroller = planningScrollRef.current; if (!scroller) return;
       const target = scroller.querySelectorAll('.planning-live-sheet thead th')[index + 1]; if (!target) return;
       scroller.scrollTo({ left:Math.max(0, target.offsetLeft - 220), behavior:'smooth' });
     };
-    useLucide([planning.length, context.saving]);
+    useLucide([planning.length, context.saving, mobileMonth, fallbackCount, isMobile]);
     return html`<section className="spreadsheet-view planning-sheet-view">
-      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Meses nas linhas e frentes nas colunas, como na fonte oficial. Edite os valores e use o botão de cada mês para marcar pago ou em aberto." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" title="Abrir Documentos e escolher o PDF para uma nova leitura com IA" onClick=${() => context.setView('documentos')}><${Icon} name="scan-line"/>Reescanear PDF com IA</button>`}/>
+      <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Planejamento" title="PLANEJAMENTO PMG 2026" subtitle="Edite os valores e marque cada competência como paga ou em aberto. As alterações alimentam Receita e Dashboard automaticamente." actions=${html`<span className="sheet-help"><${Icon} name="mouse-pointer-click"/>Clique no valor para editar</span><button className="button secondary" title="Abrir Documentos e escolher o PDF para uma nova leitura com IA" onClick=${() => context.setView('documentos')}><${Icon} name="scan-line"/>Reescanear PDF com IA</button>`}/>
       <div className="planning-summary-line"><span><small>Frentes</small><strong>${planning.length}</strong></span><span><small>Total planejado</small><strong>${money(grandTotal)}</strong></span><span className="paid"><small>Já pago</small><strong>${money(paidTotal)}</strong></span><span className="pending"><small>A pagar</small><strong>${money(remainingTotal)}</strong></span></div>
-      ${planning.length ? html`<section className="planning-fronts-panel"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Vermelho = pago · escuro = em aberto</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])} planejado</small><em>${money(paidColumnTotals[index])} pago</em></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. A atualização deve ser feita pela origem administrativa da Central, sem expor uma aba extra para a operação diária.</p></div></div>`}
-      ${planning.length ? html`<${EasySheetNavigator} scrollRef=${planningScrollRef} focusSelector=".planning-live-sheet .total-head" focusLabel="Ir ao total"/>` : null}
-      ${planning.length ? html`<article className="spreadsheet-card planning-card"><div className="spreadsheet-scroll assisted-scroll" ref=${planningScrollRef}><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${planningName(record)}>${planningName(record)}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
-        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>agora</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Pago: valor atual do planejamento' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><div className="planning-cell-controls"><${EditableSheetCell} type="money" value=${value} disabled=${context.saving} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/>${value > 0 ? html`<button type="button" className=${`planning-payment-toggle ${paid ? 'is-paid' : 'is-open'}`} disabled=${context.saving} aria-label=${`${paid ? 'Marcar em aberto' : 'Marcar como pago'}: ${planningName(record)}, ${label} de 2026, ${money(value)}`} title=${paid ? 'Reabrir este mês sem apagar seu valor' : 'Registrar este valor como pago hoje'} onClick=${() => context.quickTogglePlanningPaid(record,monthIndex)}><span aria-hidden="true">${paid ? '↶' : '✓'}</span>${paid ? 'Marcar em aberto' : 'Marcar como pago'}</button>` : null}</div></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
+      ${fallbackCount > 0 && html`<div className="data-source-warning"><${Icon} name="database-backup"/><div><strong>${fallbackCount} frente(s) usando recuperação local</strong><span>Os valores continuam visíveis, mas a origem persistida do Planejamento precisa ser atualizada. A Central não trata esse fallback como fonte definitiva.</span></div></div>`}
+      ${planning.length ? html`<section className="planning-fronts-panel desktop-sheet-only"><div className="planning-fronts-heading"><div><span>Frentes do planejamento</span><strong>${planning.length} elementos oficiais</strong></div><small>Vermelho = pago · escuro = em aberto</small></div><div className="planning-fronts-grid">${planning.map((record,index)=>html`<button onClick=${()=>jumpToPlanningColumn(index)} title=${`Ir para ${planningName(record)}`}><span>${String(index+1).padStart(2,'0')}</span><div><strong>${planningName(record)}</strong><small>${money(columnTotals[index])} planejado</small><em>${money(paidColumnTotals[index])} pago</em></div><${Icon} name="arrow-right"/></button>`)}</div></section>` : html`<div className="planning-missing"><span><${Icon} name="triangle-alert"/></span><div><strong>As frentes do Planejamento 2026 não foram carregadas.</strong><p>A fonte oficial possui 15 frentes. A atualização deve ser feita pela origem administrativa da Central, sem expor uma aba extra para a operação diária.</p></div></div>`}
+      ${planning.length && html`<section className="mobile-competence-only mobile-planning-mode"><div className="mobile-competence-bar"><button aria-label="Mês anterior" disabled=${mobileMonth===0} onClick=${()=>shiftMobileMonth(-1)}><${Icon} name="chevron-left"/></button><label><small>Competência</small><select value=${mobileMonth} onChange=${event=>setMobileMonth(Number(event.target.value))}>${OFFICIAL_MONTHS.map(([,label],index)=>html`<option value=${index}>${label} 2026${index===currentMonth?' · em andamento':''}</option>`)}</select></label><button aria-label="Próximo mês" disabled=${mobileMonth===11} onClick=${()=>shiftMobileMonth(1)}><${Icon} name="chevron-right"/></button></div><div className="mobile-month-summary"><span><small>Planejado em ${monthLabel}</small><strong>${money(monthTotals[mobileMonth])}</strong></span><span className="paid"><small>Pago</small><strong>${money(mobilePaidTotal)}</strong></span><span><small>Em aberto</small><strong>${money(mobileOpenTotal)}</strong></span></div><div className="mobile-planning-grid">${planning.map(record=>{ const payment=paymentMap.get(`${record.id}|${mobileMonth}`); const value=planningCellValue(record,mobileMonth); const paid=planningCellPaid(record,mobileMonth); return html`<article className=${`mobile-planning-card ${paid?'is-paid':''}`}><header><div><small>${monthLabel.toUpperCase()}</small><strong>${planningName(record)}</strong></div><span>${paid?'PAGO':'EM ABERTO'}</span></header><div className="mobile-planning-value"><small>Valor planejado</small><${EditableSheetCell} type="money" value=${value} disabled=${context.saving} onSave=${next=>context.quickUpsertPayment(record,payment,mobileMonth,next,{status:paid?'pago':'previsto',syncRecordTotal:true,fingerprintLabel:'planejamento'})}/></div>${value>0?html`<button type="button" className=${`planning-payment-toggle ${paid?'is-paid':'is-open'}`} disabled=${context.saving} onClick=${()=>context.quickTogglePlanningPaid(record,mobileMonth)}>${paid?'↶ Marcar em aberto':'✓ Marcar como pago'}</button>`:html`<small className="mobile-empty-value">Sem valor nesta competência</small>`}</article>`;})}</div></section>`}
+      ${planning.length ? html`<div className="desktop-sheet-only"><${EasySheetNavigator} scrollRef=${planningScrollRef} focusSelector=".planning-live-sheet .total-head" focusLabel="Ir ao total"/></div>` : null}
+      ${planning.length ? html`<article className="spreadsheet-card planning-card desktop-sheet-only"><div className="spreadsheet-scroll assisted-scroll" ref=${planningScrollRef}><table className="live-sheet planning-live-sheet"><thead><tr><th className="sticky-first">Programação</th>${planning.map(record => html`<th title=${planningName(record)}>${planningName(record)}</th>`)}<th className="total-head">TOTAL</th></tr></thead><tbody>
+        ${OFFICIAL_MONTHS.map(([,label],monthIndex) => html`<tr className=${currentMonth === monthIndex ? 'current-month-row' : ''}><th className="sticky-first">${label}${currentMonth === monthIndex && html`<small>em andamento</small>`}</th>${planning.map(record => { const payment = paymentMap.get(`${record.id}|${monthIndex}`); const value = planningCellValue(record, monthIndex); const paid = planningCellPaid(record, monthIndex); return html`<td className=${`${value ? 'has-value' : 'blank-value'} ${paid ? 'planning-paid-cell' : (value ? 'planning-planned-cell' : '')}`} title=${paid ? 'Pago: valor atual do planejamento' : (payment ? 'Valor salvo no sistema' : (value ? 'Previsto no MKTG 2026' : ''))}><div className="planning-cell-controls"><${EditableSheetCell} type="money" value=${value} disabled=${context.saving} onSave=${next => context.quickUpsertPayment(record,payment,monthIndex,next,{ status:paid ? 'pago' : 'previsto', syncRecordTotal:true, fingerprintLabel:'planejamento' })}/>${value > 0 ? html`<button type="button" className=${`planning-payment-toggle ${paid ? 'is-paid' : 'is-open'}`} disabled=${context.saving} aria-label=${`${paid ? 'Marcar em aberto' : 'Marcar como pago'}: ${planningName(record)}, ${label} de 2026, ${money(value)}`} title=${paid ? 'Reabrir este mês sem apagar seu valor' : 'Registrar este valor como pago hoje'} onClick=${() => context.quickTogglePlanningPaid(record,monthIndex)}><span aria-hidden="true">${paid ? '↶' : '✓'}</span>${paid ? 'Marcar em aberto' : 'Marcar como pago'}</button>` : null}</div></td>`; })}<td className="row-total">${money(monthTotals[monthIndex])}</td></tr>`)}
       </tbody><tfoot><tr><th className="sticky-first">Total</th>${columnTotals.map(value => html`<th>${money(value)}</th>`)}<th>${money(grandTotal)}</th></tr></tfoot></table></div></article>` : null}
-      ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Vermelho indica pago; escuro indica em aberto. Suas alterações atualizam os totais e prevalecem sobre a leitura inicial. O botão de IA abre a Caixa de Documentos para reescanear um PDF. As alterações feitas aqui atualizam os totais usados em Receita e Dashboard.</span></div>` : null}
+      ${planning.length ? html`<div className="sheet-footnote"><${Icon} name="info"/><span>Vermelho indica pago; escuro indica em aberto. Suas alterações prevalecem sobre a leitura inicial e atualizam Receita e Dashboard. No celular, a Central muda automaticamente para uma competência por vez.</span></div>` : null}
     </section>`;
   }
 
@@ -1732,10 +1965,12 @@
       const cumulative = values => values.map((_, index) => sum(values.slice(0, index + 1), value => value));
       return { 2025:cumulative(baseSeries[2025]), 2026:cumulative(baseSeries[2026]) };
     }, [baseSeries, mode]);
-    const compareThrough = new Date().getFullYear() === 2026 ? new Date().getMonth() : 11;
-    const ytd2026 = sum(baseSeries[2026].slice(0, compareThrough + 1), value => value);
-    const ytd2025 = sum(baseSeries[2025].slice(0, compareThrough + 1), value => value);
+    const now = new Date();
+    const compareThrough = now.getFullYear() === 2026 ? Math.max(-1, now.getMonth() - 1) : (now.getFullYear() > 2026 ? 11 : -1);
+    const ytd2026 = compareThrough >= 0 ? sum(baseSeries[2026].slice(0, compareThrough + 1), value => value) : 0;
+    const ytd2025 = compareThrough >= 0 ? sum(baseSeries[2025].slice(0, compareThrough + 1), value => value) : 0;
     const yoy = ytd2025 ? ((ytd2026 / ytd2025) - 1) * 100 : 0;
+    const closedLabel = compareThrough >= 0 ? OFFICIAL_MONTHS[compareThrough][1] : 'nenhum mês fechado';
     useEffect(() => {
       if (!canvas.current || !window.Chart) return undefined;
       chartRef.current?.destroy();
@@ -1745,16 +1980,35 @@
       ]}, options:{ responsive:true, maintainAspectRatio:false, interaction:{ mode:'index', intersect:false }, onClick:(_,elements) => { const point=elements?.[0]; if(point) context.navigatePayments({ year:2026, month:point.index }); }, onHover:(event,elements) => { if(event?.native?.target) event.native.target.style.cursor = elements?.length ? 'pointer' : 'default'; }, plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:7, font:{ family:'Inter', size:12 } } }, tooltip:{ callbacks:{ label:ctx => `${ctx.dataset.label}: ${money(ctx.raw)}` } } }, scales:{ x:{ grid:{ display:false }, border:{ display:false } }, y:{ beginAtZero:true, border:{ display:false }, grid:{ color:'rgba(16,45,29,.06)' }, ticks:{ font:{ family:'Inter', size:11 }, callback:value => compactMoney(value) } } } } });
       return () => chartRef.current?.destroy();
     }, [series]);
-    return html`<div className="revenue-chart-shell"><div className="revenue-chart-toolbar"><div className="chart-mode-toggle"><button className=${mode==='monthly'?'active':''} onClick=${()=>setMode('monthly')}>Mensal</button><button className=${mode==='cumulative'?'active':''} onClick=${()=>setMode('cumulative')}>Acumulado</button></div><div className="chart-ytd-summary"><span><small>2026 até ${OFFICIAL_MONTHS[compareThrough][1]}</small><strong>${money(ytd2026)}</strong></span><span className=${yoy>=0?'positive':'negative'}><small>Vs. 2025</small><strong>${ytd2025 ? `${yoy>=0?'+':''}${yoy.toFixed(1).replace('.',',')}%` : '—'}</strong></span></div></div><div className="revenue-chart"><canvas ref=${canvas}></canvas></div></div>`;
+    return html`<div className="revenue-chart-shell"><div className="revenue-chart-toolbar"><div className="chart-mode-toggle"><button className=${mode==='monthly'?'active':''} onClick=${()=>setMode('monthly')}>Mensal</button><button className=${mode==='cumulative'?'active':''} onClick=${()=>setMode('cumulative')}>Acumulado</button></div><div className="chart-ytd-summary"><span><small>2026 · fechado até ${closedLabel}</small><strong>${compareThrough>=0?money(ytd2026):'—'}</strong></span><span className=${yoy>=0?'positive':'negative'}><small>Vs. 2025 no mesmo período</small><strong>${ytd2025 ? `${yoy>=0?'+':''}${yoy.toFixed(1).replace('.',',')}%` : '—'}</strong></span></div></div><div className="revenue-chart"><canvas ref=${canvas}></canvas></div></div>`;
   }
 
   function RevenueView({ context }) {
     const revenueScrollRef = useRef(null);
+    const now = new Date();
+    const currentRevenueMonth = now.getFullYear() === 2026 ? now.getMonth() : 0;
+    const [mobileMonth,setMobileMonth] = useState(currentRevenueMonth);
+    const [onlyBelow,setOnlyBelow] = useState(false);
+    const [onlyWithoutForecast,setOnlyWithoutForecast] = useState(false);
+    const [onlyAbove,setOnlyAbove] = useState(false);
+    const jumpToken = useRef(null);
+    const isMobile = useMediaQuery('(max-width: 900px)');
+
+    useEffect(() => {
+      const jump = context.revenueJump;
+      if (!jump?.token || jumpToken.current === jump.token) return;
+      jumpToken.current = jump.token;
+      setOnlyBelow(Boolean(jump.below));
+      setOnlyWithoutForecast(Boolean(jump.withoutForecast));
+      setOnlyAbove(Boolean(jump.above));
+      if (Number.isInteger(jump.month)) setMobileMonth(Math.max(0,Math.min(11,Number(jump.month))));
+    }, [context.revenueJump]);
+
     const forecastRows = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.controle === 'marcos' && record.natureza === 'receita' && record.fornecedor && hasTag(record,'previsão') && hasTag(record,'fornecedor') && record.status !== 'cancelado');
     const forecastsBySupplier = new Map();
     forecastRows.forEach(record => {
       const key = supplierKey(record.fornecedor);
-      const row = forecastsBySupplier.get(key) || { name:record.fornecedor, records:[], total:0 };
+      const row = forecastsBySupplier.get(key) || { name:officialSupplierName(record.fornecedor), records:[], total:0 };
       row.records.push(record); row.total += Number(record.valor_acordado || 0); forecastsBySupplier.set(key,row);
     });
 
@@ -1768,7 +2022,7 @@
         const payment = supplierRowPayment(context.payments, record, 2026, monthIndex);
         const stage = supplierRevenueStage(payment, record, context.conferences, 2026, monthIndex);
         const key = supplierKey(record.fornecedor);
-        const row = map.get(key) || { name:record.fornecedor, records:[], months:OFFICIAL_MONTHS.map(() => ({ confirmed:0, open:0, confirmedCount:0, openCount:0 })) };
+        const row = map.get(key) || { name:officialSupplierName(record.fornecedor), records:[], months:OFFICIAL_MONTHS.map(() => ({ confirmed:0, open:0, confirmedCount:0, openCount:0 })) };
         row.records.push(record);
         const cell = row.months[monthIndex];
         const expected = Number(payment?.valor_previsto || record.valor_acordado || 0);
@@ -1780,7 +2034,7 @@
     }, [context.allRecords, context.payments, context.conferences]);
 
     const supplierKeys = new Set([...forecastsBySupplier.keys(), ...liveRevenue.bySupplier.keys(), ...realizedBySupplier.keys()]);
-    const rowData = [...supplierKeys].map(key => {
+    const allRowData = [...supplierKeys].map(key => {
       const forecastSource = forecastsBySupplier.get(key);
       const status = realizedBySupplier.get(key) || { name:liveRevenue.bySupplier.get(key)?.name || key, records:[], months:OFFICIAL_MONTHS.map(() => ({ confirmed:0, open:0, confirmedCount:0, openCount:0 })) };
       const source = liveRevenue.bySupplier.get(key);
@@ -1793,15 +2047,26 @@
       const total = sum(months,value => value);
       const forecast = Number(forecastSource?.total || 0);
       const record = forecastSource?.records?.[0] || status.records?.[0] || { fornecedor:source?.name || status.name || key };
-      return { key, name:record.fornecedor || source?.name || status.name || key, record, forecastRecord:forecastSource?.records?.[0] || null, months, monthStatus, total, forecast, variance:total-forecast, pct:forecast ? total/forecast*100 : (total > 0 ? 100 : 0) };
+      return { key, name:officialSupplierName(record.fornecedor || source?.name || status.name || key), record, forecastRecords:forecastSource?.records || [], months, monthStatus, total, forecast, variance:forecast ? total-forecast : null, pct:forecast > 0 ? total/forecast*100 : null, hasForecast:forecast > 0 };
     }).sort((a,b)=>supplierCompare(a.name,b.name));
-    const supplierMonthlyTotals = OFFICIAL_MONTHS.map((_,index) => sum(rowData,row => row.months[index]));
+
+    const needle = normalize(context.search || '');
+    const rowData = allRowData.filter(row => {
+      if (needle && !normalize(row.name).includes(needle)) return false;
+      if (onlyBelow && !(row.hasForecast && row.total < row.forecast - .005)) return false;
+      if (onlyWithoutForecast && !(row.total > .005 && !row.hasForecast)) return false;
+      if (onlyAbove && !(row.hasForecast && row.total > row.forecast + .005)) return false;
+      return true;
+    });
+    const isFiltered = Boolean(needle || onlyBelow || onlyWithoutForecast || onlyAbove);
+    const supplierMonthlyTotals = OFFICIAL_MONTHS.map((_,index) => sum(allRowData,row => row.months[index]));
     const monthlyTotals = [...liveRevenue.monthlyTotals];
     const sourceAdjustments = liveRevenue.sourceAdjustments || monthlyTotals.map((value,index) => Math.round((Number(value||0)-Number(supplierMonthlyTotals[index]||0))*100)/100);
     const sourceAdjustmentTotal = sum(sourceAdjustments,value => value);
-    const totalForecast = sum(rowData,row => row.forecast);
+    const totalForecast = sum(allRowData,row => row.forecast);
     const totalReceived = liveRevenue.total;
-    const totalOpen = sum(rowData,row => Math.max(0,row.forecast-row.total));
+    const totalOpen = sum(allRowData,row => row.hasForecast ? Math.max(0,row.forecast-row.total) : 0);
+    const withoutForecastCount = allRowData.filter(row => row.total>.005 && !row.hasForecast).length;
 
     const indicators = context.allRecords.filter(record => Number(record.ano_referencia) === 2026 && record.natureza === 'indicador'); const indicator = tag => Number(indicators.find(record => hasTag(record,tag))?.valor_acordado || 0);
     const planningSnapshot = useMemo(() => buildPlanningSnapshot(context.allRecords, context.payments, 2026), [context.allRecords, context.payments]);
@@ -1813,7 +2078,6 @@
     const closed2025 = context.allRecords.filter(record => Number(record.ano_referencia) === 2025 && record.controle === 'marcos' && record.natureza === 'receita' && record.status !== 'cancelado' && record.impacta_totais !== false);
     const closed2025Total = sum(closed2025,record => record.valor_acordado);
 
-    const currentRevenueMonth = new Date().getMonth();
     const cellState = item => item.open > 0 && item.confirmed === 0 ? 'open' : item.confirmed > 0 ? 'confirmed' : 'empty';
     const cellTitle = (item, label) => {
       const parts = [`${label} 2026`];
@@ -1821,26 +2085,46 @@
       if (item.open) parts.push(`${money(item.open)} pendente`);
       return parts.join(' · ');
     };
+    const forecastCell = row => {
+      if (!row.forecastRecords.length) return html`<span className="forecast-not-set">Sem previsão</span>`;
+      if (row.forecastRecords.length === 1) return html`<${EditableSheetCell} type="money" value=${row.forecast} onSave=${value => context.quickUpdateRecord(row.forecastRecords[0],{ valor_acordado:value },'Previsão atualizada.')}/>`;
+      return html`<button className="forecast-multi" onClick=${()=>context.openForecastGroup({supplier:row.name,recordIds:row.forecastRecords.map(record=>record.id)})} title="Este total é composto por mais de um registro. Abra o detalhamento para editar cada origem com segurança."><strong>${money(row.forecast)}</strong><small>${row.forecastRecords.length} origens · editar</small></button>`;
+    };
+    const varianceCell = row => {
+      if (!row.hasForecast) return html`<td className="balance-cell no-forecast"><span className="variance-value">Sem previsão</span><small>${row.total>.005?'receita não planejada':'sem movimento'}</small></td>`;
+      return html`<td className=${`balance-cell ${row.variance > .005 ? 'above' : row.variance < -.005 ? 'below' : 'on-target'}`}>${row.variance > .005 ? html`<span className="variance-value">+ ${money(row.variance)}</span><small>acima</small>` : row.variance < -.005 ? html`<span className="variance-value">${money(Math.abs(row.variance))}</span><small>abaixo</small>` : html`<span className="variance-value">—</span><small>meta atingida</small>`}</td>`;
+    };
+    const progressCell = row => row.pct === null ? html`<span className="no-forecast-chip">Sem previsão</span>` : html`<span className=${`revenue-progress ${row.pct >= 100 ? 'target-hit' : row.pct >= 80 ? 'near-target' : 'below-target'}`}><i style=${{ width:`${Math.min(100,row.pct)}%` }}></i><b>${Math.round(row.pct)}%</b></span>`;
+    const clearFilters = () => { setOnlyBelow(false); setOnlyWithoutForecast(false); setOnlyAbove(false); context.setSearch(''); };
+    const shiftMobileMonth = direction => setMobileMonth(index => Math.max(0,Math.min(11,index+direction)));
+    const mobileMonthTotal = Number(monthlyTotals[mobileMonth] || 0);
+    const mobileRows = rowData.filter(row => row.months[mobileMonth] || row.monthStatus[mobileMonth]?.open || row.hasForecast);
 
-    useLucide([rowData.length, context.saving, context.conferences?.length]);
+    useLucide([rowData.length, context.saving, context.conferences?.length, mobileMonth, isMobile]);
     return html`<section className="spreadsheet-view revenue-sheet-view">
       <${SpreadsheetTitle} kicker="Fonte oficial · MKTG 2026 / Receita" title="RECEITA ANUAL 2026" subtitle="Receita, Pagamentos e Planejamento usam a mesma base viva. Confirmou em Pagamentos, aparece aqui; alterou Planejamento, os totais acima acompanham." actions=${html`<span className="closed-year-chip"><small>Fechado 2025</small><strong>${money(closed2025Total)}</strong></span>`}/>
       <section className="budget-strip integrated-budget-strip"><div className="budget-title"><span>CONTROLE INTEGRADO</span><small>Planejamento + Pagamentos + Receita</small></div><div className="budget-cell investment"><span>INVESTIMENTO PREVISTO</span><strong>${money(forecastInvestment)}</strong><small>${money(realizedInvestment)} já pago</small></div><div className="budget-cell revenue"><span>RECEITA PREVISTA</span><strong>${money(forecastRevenue)}</strong><small>${money(totalReceived)} confirmado</small></div><div className="budget-cell balance"><span>SALDO PREVISTO</span><strong>${money(forecastBalance)}</strong><small>Saldo realizado ${money(realizedBalance)}</small></div></section>
 
       <div className="revenue-rule-strip">
-        <button className="confirmed" onClick=${() => context.setView('receita')}><i></i><small>Receita confirmada</small><strong>${money(totalReceived)}</strong><em>Pagamentos confirmados</em></button>
-        <button className="open" onClick=${() => context.navigatePayments({ year:2026, month:new Date().getMonth(), pending:true })}><i></i><small>A receber</small><strong>${money(totalOpen)}</strong><em>Aguardando confirmação</em></button>
+        <button className="confirmed" onClick=${clearFilters}><i></i><small>Receita confirmada</small><strong>${money(totalReceived)}</strong><em>Pagamentos confirmados</em></button>
+        <button className="open" onClick=${() => context.navigateRevenue({below:true})}><i></i><small>A receber</small><strong>${money(totalOpen)}</strong><em>Fornecedores abaixo da previsão</em></button>
       </div>
 
-      <${EasySheetNavigator} scrollRef=${revenueScrollRef} focusSelector=".revenue-live-sheet thead .current-month-col" focusLabel="Mês atual"/>
-      <article className="spreadsheet-card revenue-card"><div className="spreadsheet-scroll assisted-scroll" ref=${revenueScrollRef}><table className="live-sheet revenue-live-sheet"><thead><tr><th className="sticky-first supplier-col">FORNECEDORES</th><th className="forecast-col">PREVISÃO</th>${OFFICIAL_MONTHS.map(([,label], monthIndex) => html`<th className=${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}>${label.toUpperCase()}</th>`)}<th className="total-head">TOTAL</th><th className="balance-head">DIFERENÇA VS. PREVISÃO</th><th>%</th></tr></thead><tbody>
-        ${rowData.map(row => html`<tr><th className="sticky-first supplier-col"><button onClick=${() => context.openSupplier(row.name)}>${row.name}<${Icon} name="panel-right-open"/></button></th><td className="forecast-col">${row.forecastRecord ? html`<${EditableSheetCell} type="money" value=${row.forecast} onSave=${value => context.quickUpdateRecord(row.forecastRecord,{ valor_acordado:value },'Previsão atualizada.')}/>` : html`<span className="forecast-not-set">—</span>`}</td>${row.months.map((value,monthIndex) => {
+      <div className="revenue-filter-bar"><button className=${onlyBelow?'active':''} onClick=${()=>{setOnlyBelow(v=>!v);setOnlyWithoutForecast(false);setOnlyAbove(false)}}><${Icon} name="trending-down"/>Abaixo da previsão</button><button className=${onlyAbove?'active':''} onClick=${()=>{setOnlyAbove(v=>!v);setOnlyBelow(false);setOnlyWithoutForecast(false)}}><${Icon} name="trending-up"/>Acima da previsão</button><button className=${onlyWithoutForecast?'active warning':''} onClick=${()=>{setOnlyWithoutForecast(v=>!v);setOnlyBelow(false);setOnlyAbove(false)}}><${Icon} name="circle-help"/>Sem previsão ${withoutForecastCount?`(${withoutForecastCount})`:''}</button>${isFiltered&&html`<button className="clear" onClick=${clearFilters}><${Icon} name="x"/>Limpar</button>`}<span>${isFiltered?`Exibindo ${rowData.length} de ${allRowData.length} fornecedores`:`${allRowData.length} fornecedores em ordem alfabética`}</span></div>
+
+      ${rowData.length===0 && isFiltered ? html`<div className="filtered-empty"><${Icon} name="search-x"/><div><strong>Nenhum fornecedor nesta seleção.</strong><span>Limpe os filtros para voltar à Receita completa.</span></div><button className="button secondary" onClick=${clearFilters}>Limpar filtros</button></div>` : null}
+
+      ${rowData.length>0 && html`<section className="mobile-competence-only mobile-revenue-mode"><div className="mobile-competence-bar"><button aria-label="Mês anterior" disabled=${mobileMonth===0} onClick=${()=>shiftMobileMonth(-1)}><${Icon} name="chevron-left"/></button><label><small>Competência</small><select value=${mobileMonth} onChange=${event=>setMobileMonth(Number(event.target.value))}>${OFFICIAL_MONTHS.map(([,label],index)=>html`<option value=${index}>${label} 2026${index===currentRevenueMonth?' · em andamento':''}</option>`)}</select></label><button aria-label="Próximo mês" disabled=${mobileMonth===11} onClick=${()=>shiftMobileMonth(1)}><${Icon} name="chevron-right"/></button></div><div className="mobile-month-summary"><span><small>Confirmado em ${OFFICIAL_MONTHS[mobileMonth][1]}</small><strong>${money(mobileMonthTotal)}</strong></span><span><small>Fornecedores exibidos</small><strong>${mobileRows.length}</strong></span></div><div className="mobile-revenue-list">${mobileRows.map(row=>{const item=row.monthStatus[mobileMonth]; const confirmed=Number(row.months[mobileMonth]||0); return html`<article className="mobile-revenue-card"><header><button onClick=${()=>context.openSupplier(row.name)}><strong>${row.name}</strong><${Icon} name="panel-right-open"/></button><span className=${cellState(item)}>${cellState(item)==='confirmed'?'Confirmado':cellState(item)==='open'?'Pendente':'Sem movimento'}</span></header><div className="mobile-revenue-kpis"><span><small>Mês</small><button onClick=${()=>context.navigatePayments({year:2026,month:mobileMonth,supplier:row.name})}>${confirmed?money(confirmed):'—'}</button></span><span><small>Previsão anual</small>${forecastCell(row)}</span><span><small>Total anual</small><strong>${money(row.total)}</strong></span></div><div className="mobile-revenue-progress">${row.pct===null?html`<span className="no-forecast-chip">Sem previsão</span>`:html`<span>${Math.round(row.pct)}% da previsão</span>`}${item.open>0&&html`<small>${money(item.open)} pendente nesta competência</small>`}</div></article>`;})}</div></section>`}
+
+      ${rowData.length>0 && html`<div className="desktop-sheet-only"><${EasySheetNavigator} scrollRef=${revenueScrollRef} focusSelector=".revenue-live-sheet thead .current-month-col" focusLabel="Mês atual"/></div>`}
+      ${rowData.length>0 && html`<article className="spreadsheet-card revenue-card desktop-sheet-only"><div className="spreadsheet-scroll assisted-scroll" ref=${revenueScrollRef}><table className="live-sheet revenue-live-sheet"><thead><tr><th className="sticky-first supplier-col">FORNECEDORES</th><th className="forecast-col">PREVISÃO</th>${OFFICIAL_MONTHS.map(([,label], monthIndex) => html`<th className=${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}>${label.toUpperCase()}${monthIndex===currentRevenueMonth?html`<small>em andamento</small>`:''}</th>`)}<th className="total-head">TOTAL</th><th className="balance-head">DIFERENÇA VS. PREVISÃO</th><th>%</th></tr></thead><tbody>
+        ${rowData.map(row => html`<tr><th className="sticky-first supplier-col"><button onClick=${() => context.openSupplier(row.name)}>${row.name}<${Icon} name="panel-right-open"/></button></th><td className="forecast-col">${forecastCell(row)}</td>${row.months.map((value,monthIndex) => {
           const item = row.monthStatus[monthIndex]; const state = cellState(item); const label = OFFICIAL_MONTHS[monthIndex][1];
           return html`<td className=${`derived-revenue-td ${state} ${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}`}><button className="derived-revenue-cell" title=${cellTitle(item,label)} onClick=${() => context.navigatePayments({ year:2026, month:monthIndex, supplier:row.name })}><span>${value ? money(value) : '—'}</span><i></i></button></td>`;
-        })}<td className="row-total">${money(row.total)}</td><td className=${`balance-cell ${row.variance > .005 ? 'above' : row.variance < -.005 ? 'below' : 'on-target'}`}>${row.variance > .005 ? html`<span className="variance-value">+ ${money(row.variance)}</span><small>acima</small>` : row.variance < -.005 ? html`<span className="variance-value">${money(Math.abs(row.variance))}</span><small>abaixo</small>` : html`<span className="variance-value">—</span><small>meta atingida</small>`}</td><td><span className=${`revenue-progress ${row.pct >= 100 ? 'target-hit' : row.pct >= 80 ? 'near-target' : 'below-target'}`}><i style=${{ width:`${Math.min(100,row.pct)}%` }}></i><b>${Math.round(row.pct)}%</b></span></td></tr>`)}
-        ${Math.abs(sourceAdjustmentTotal) > .005 && html`<tr className="source-adjustment-row"><th className="sticky-first supplier-col"><span>AJUSTES DA FONTE</span><small>Marcadores sem fornecedor no MKTG</small></th><td className="forecast-col">—</td>${sourceAdjustments.map((value,monthIndex)=>html`<td className=${monthIndex===currentRevenueMonth?'current-month-col':''}>${Math.abs(value)>.005?money(value):'—'}</td>`)}<td className="row-total">${money(sourceAdjustmentTotal)}</td><td className="balance-cell on-target"><span className="variance-value">Fonte</span><small>SOMA MENSAL</small></td><td>—</td></tr>`}
-      </tbody><tfoot><tr><th className="sticky-first">SOMA MENSAL</th><th>${money(totalForecast)}</th>${monthlyTotals.map((value, monthIndex) => html`<th className=${monthIndex === currentRevenueMonth ? 'current-month-col' : ''}>${money(value)}</th>`)}<th>${money(totalReceived)}</th><th>${totalReceived-totalForecast > .005 ? `+ ${money(totalReceived-totalForecast)} acima` : totalReceived-totalForecast < -.005 ? `${money(Math.abs(totalReceived-totalForecast))} abaixo` : 'Meta atingida'}</th><th>${totalForecast ? `${Math.round(totalReceived/totalForecast*100)}%` : '0%'}</th></tr></tfoot></table></div></article>
-      <div className="sheet-footnote revenue-footnote"><${Icon} name="shield-check"/><span><strong>Base reconciliada:</strong> o MKTG 2026 continua como referência histórica, mas confirmações novas feitas em Pagamentos entram imediatamente no realizado. Quando um valor já existe na fonte oficial, a Central evita somá-lo duas vezes.</span></div>
+        })}<td className="row-total">${money(row.total)}</td>${varianceCell(row)}<td>${progressCell(row)}</td></tr>`)}
+        ${Math.abs(sourceAdjustmentTotal) > .005 && !isFiltered && html`<tr className="source-adjustment-row"><th className="sticky-first supplier-col"><span>AJUSTES DA FONTE</span><small>Marcadores sem fornecedor no MKTG</small></th><td className="forecast-col">—</td>${sourceAdjustments.map((value,monthIndex)=>html`<td className=${monthIndex===currentRevenueMonth?'current-month-col':''}>${Math.abs(value)>.005?money(value):'—'}</td>`)}<td className="row-total">${money(sourceAdjustmentTotal)}</td><td className="balance-cell on-target"><span className="variance-value">Fonte</span><small>SOMA MENSAL</small></td><td>—</td></tr>`}
+      </tbody><tfoot><tr><th className="sticky-first">${isFiltered?'TOTAL EXIBIDO':'SOMA MENSAL'}</th><th>${money(sum(rowData,row=>row.forecast))}</th>${OFFICIAL_MONTHS.map((_,monthIndex)=>html`<th className=${monthIndex===currentRevenueMonth?'current-month-col':''}>${money(sum(rowData,row=>row.months[monthIndex]))}</th>`)}<th>${money(sum(rowData,row=>row.total))}</th><th>${isFiltered?'Seleção filtrada':totalReceived-totalForecast > .005 ? `+ ${money(totalReceived-totalForecast)} acima` : totalReceived-totalForecast < -.005 ? `${money(Math.abs(totalReceived-totalForecast))} abaixo` : 'Meta atingida'}</th><th>${sum(rowData,row=>row.forecast)>0?`${Math.round(sum(rowData,row=>row.total)/sum(rowData,row=>row.forecast)*100)}%`:'—'}</th></tr></tfoot></table></div></article>`}
+      <div className="sheet-footnote revenue-footnote"><${Icon} name="shield-check"/><span><strong>Base reconciliada:</strong> o MKTG 2026 continua como referência histórica, mas confirmações novas feitas em Pagamentos entram imediatamente no realizado. Linhas são conciliadas individualmente para evitar que dois lançamentos do mesmo fornecedor e mês compartilhem a mesma confirmação. Totais compostos por múltiplas previsões são protegidos contra edição consolidada incorreta.</span></div>
     </section>`;
   }
 
@@ -1989,20 +2273,31 @@
       </div></div><footer className="modal-footer"><button type="button" className="button secondary" onClick=${onClose}>Cancelar</button><button type="submit" className="button primary" disabled=${saving}>${saving ? html`<span className="spinner"></span>` : html`<${Icon} name="save"/>`}${editing ? 'Salvar alterações' : 'Criar acompanhamento'}</button></footer></form></${ModalShell}>`;
   }
 
+  function ForecastGroupModal({ group, context, onClose }) {
+    const ids = new Set(group?.recordIds || []);
+    const rows = context.allRecords.filter(record => ids.has(record.id)).sort((a,b)=>String(a.titulo||a.referencia||'').localeCompare(String(b.titulo||b.referencia||''),'pt-BR'));
+    const total = sum(rows,record=>record.valor_acordado);
+    return html`<${ModalShell} title=${group?.supplier || 'Previsão'} eyebrow="Previsão consolidada · origens" icon="layers-3" onClose=${onClose}><div className="forecast-breakdown"><div className="forecast-breakdown-summary"><span><small>Total consolidado</small><strong>${money(total)}</strong></span><p>Este fornecedor possui ${rows.length} registros de previsão. Edite cada origem separadamente para preservar a composição do total.</p></div><div className="forecast-breakdown-list">${rows.map((record,index)=>html`<article><span>${String(index+1).padStart(2,'0')}</span><div><strong>${record.referencia || record.titulo || `Previsão ${index+1}`}</strong><small>${record.titulo && record.titulo !== record.referencia ? record.titulo : 'MKTG 2026'}</small></div><${EditableSheetCell} type="money" value=${Number(record.valor_acordado||0)} disabled=${context.saving} onSave=${value=>context.quickUpdateRecord(record,{valor_acordado:value},'Previsão atualizada.')}/></article>`)}</div><div className="integrity-note"><${Icon} name="shield-check"/><span>A soma exibida na Receita é recalculada automaticamente após cada alteração.</span></div></div></${ModalShell}>`;
+  }
+
   function SupplierRowModal({ defaults = {}, records, onClose, onSave, saving }) {
     const yearValue = Number(defaults.ano_referencia || 2026);
     const monthIndex = Math.max(0, Math.min(11, Number(defaults.monthIndex ?? new Date().getMonth())));
-    const suppliers = useMemo(() => [...new Map(records.map(item => item.fornecedor).filter(Boolean).map(name => [supplierKey(name), name])).values()].sort(supplierCompare), [records]);
+    const [type,setType] = useState(defaults.tipo_documento || 'nota_fiscal');
+    const [categoryKey,setCategoryKey] = useState(defaults.categoria || 'cota_anual');
+    const suppliers = useMemo(() => [...new Map(records.map(item => item.fornecedor).filter(Boolean).map(name => [supplierKey(name), officialSupplierName(name)])).values()].sort(supplierCompare), [records]);
     const submit = event => {
       event.preventDefault(); const form = new FormData(event.currentTarget);
       onSave({ fornecedor:form.get('fornecedor'), categoria:form.get('categoria'), tipo_documento:form.get('tipo_documento'), numero_documento:form.get('numero_documento'), valor_acordado:parseMoney(form.get('valor_acordado')), ano_referencia:yearValue, monthIndex });
     };
+    const documentLabel = type === 'nota_fiscal' ? 'Número da NF' : type === 'deposito' ? 'Comprovante / referência' : 'Documento / referência';
+    const documentHint = type === 'deposito' ? 'opcional para depósito' : 'opcional';
     return html`<${ModalShell} title="Nova linha" eyebrow=${`${OFFICIAL_MONTHS[monthIndex][1]} · ${yearValue}`} icon="plus" onClose=${onClose}><form className="ac-form simple-payment-form" onSubmit=${submit}><div className="simple-form-intro"><strong>Só o que precisa para lançar.</strong><p>O restante é preenchido automaticamente pela Central e entra na mesma base de Pagamentos, Receita e Dashboard.</p></div><div className="form-grid simple-payment-grid">
       <${Field} label="Fornecedor" wide=${true}><input name="fornecedor" list="supplier-options" defaultValue=${defaults.fornecedor || ''} placeholder="Digite ou escolha o fornecedor" required autoFocus/><datalist id="supplier-options">${suppliers.map(name => html`<option value=${name}></option>`)}</datalist></${Field}>
-      <${Field} label="Categoria / a que se refere"><select name="categoria" defaultValue=${defaults.categoria || 'cota_anual'}>${MANUAL_PAYMENT_CATEGORIES.map(key => html`<option value=${key}>${category(key).label}</option>`)}</select></${Field}>
-      <${Field} label="Tipo"><select name="tipo_documento" defaultValue=${defaults.tipo_documento || 'nota_fiscal'}><option value="nota_fiscal">Nota fiscal</option><option value="deposito">Depósito</option><option value="outro">Outro</option></select></${Field}>
-      <${Field} label="NF / documento" hint="opcional para depósito"><input name="numero_documento" defaultValue=${defaults.numero_documento || ''} placeholder="Ex.: 123456 ou deixe em branco"/></${Field}>
-      <${Field} label="Valor"><div className="money-input"><span>R$</span><input name="valor_acordado" inputMode="decimal" defaultValue=${defaults.valor_acordado || ''} placeholder="0,00" required/></div></${Field}>
+      <${Field} label="Categoria / a que se refere"><select name="categoria" value=${categoryKey} onChange=${event=>setCategoryKey(event.target.value)}>${MANUAL_PAYMENT_CATEGORIES.map(key => html`<option value=${key}>${category(key).label}</option>`)}</select></${Field}>
+      <${Field} label="Tipo"><select name="tipo_documento" value=${type} onChange=${event=>setType(event.target.value)}><option value="nota_fiscal">Nota fiscal</option><option value="deposito">Depósito</option><option value="outro">Outro</option></select></${Field}>
+      <${Field} label=${documentLabel} hint=${documentHint}><input name="numero_documento" defaultValue=${defaults.numero_documento || ''} placeholder=${type === 'nota_fiscal' ? 'Ex.: 123456' : type === 'deposito' ? 'Ex.: comprovante, banco ou deixe em branco' : 'Referência opcional'}/></${Field}>
+      <${Field} label="Valor" hint=${categoryKey === 'pendencia' ? 'pode ficar em branco em uma pendência' : ''}><div className="money-input"><span>R$</span><input name="valor_acordado" inputMode="decimal" defaultValue=${defaults.valor_acordado || ''} placeholder="0,00" required=${categoryKey !== 'pendencia'}/></div></${Field}>
       <div className="simple-payment-competence"><${Icon} name="calendar-days"/><span>Competência</span><strong>${OFFICIAL_MONTHS[monthIndex][1]} de ${yearValue}</strong></div>
       </div><footer className="modal-footer"><button type="button" className="button secondary" onClick=${onClose}>Cancelar</button><button type="submit" className="button primary" disabled=${saving}>${saving ? html`<span className="spinner"></span>` : html`<${Icon} name="plus"/>`}Adicionar linha</button></footer></form></${ModalShell}>`;
   }
@@ -2110,6 +2405,7 @@
 
   const OFFICIAL_SUPPLIER_ALIASES = {
     lawbweston:'Lamb Weston', 'lamb weston':'Lamb Weston', quata:'Quatá', 'j macedo':'J. Macêdo',
+    'ajinomoto do brasil':'Ajinomoto', 'ajinomoto do brasil industria e comercio de alimentos':'Ajinomoto', 'ajinomoto do brasil industria e comercio de alimentos ltda':'Ajinomoto',
     'pq alimentos':'PQ Alimentos', 'gl foods':'GL Foods', 'gt foods':'GT Foods', 'mister beef':'Mister Beef',
     'bem brasil':'Bem Brasil', 'gomes da costa':'Gomes da Costa', 'clara milk':'Clara Milk',
     'dauphine farm frites':'Dauphine / Farm Frites', 'azeite lisboa':'Azeite Lisboa', 'arco bello':'Arco Bello',

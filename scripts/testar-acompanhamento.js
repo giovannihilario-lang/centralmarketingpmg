@@ -12,7 +12,7 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 const original = fs.readFileSync(appPath, 'utf8');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);",
-  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, liveRevenueSnapshot, sourceConfirmsSupplierRow, decorateOfficialRevenueTruth };',
+  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, liveRevenueSnapshot, sourceConfirmsSupplierRow, decorateOfficialRevenueTruth, buildOfficialConfirmationAllocation, buildIntegrityReport, buildPlanningSnapshot, revenueLineMatchKey };',
 );
 
 const noop = () => {};
@@ -40,6 +40,31 @@ for (const missingError of [
   if (!sandbox.__PMG_TEST__.isMissingSetupError(missingError)) throw new Error('Falha ao reconhecer estrutura ausente do banco');
 }
 if (sandbox.__PMG_TEST__.isMissingSetupError({ code:'42501', message:'permission denied' })) throw new Error('Erro de permissão confundido com instalação ausente');
+
+
+// Regressão V2.5.0: duas linhas do mesmo fornecedor/mês não podem herdar a mesma baixa oficial.
+const multiLineSource = {
+  id:'source-multiline', controle:'marcos', ano_referencia:2026, fornecedor:'Fornecedor Teste', natureza:'receita',
+  impacto_totais:true, status:'aprovado', valor_acordado:100, tags:['previsão','fornecedor'], data_inicio:'2026-01-01',
+  dados_originais:{ pagamentos_mensais:[100,0,0,0,0,0,0,0,0,0,0,0] },
+};
+const multiLineRows = [
+  { id:'row-100', controle:'marketing', ano_referencia:2026, fornecedor:'Fornecedor Teste', natureza:'receita', impacto_totais:true, status:'concluido', valor_acordado:100, data_inicio:'2026-01-01', numero_documento:'NF-100', tags:['fornecedores'] },
+  { id:'row-50', controle:'marketing', ano_referencia:2026, fornecedor:'Fornecedor Teste', natureza:'receita', impacto_totais:true, status:'concluido', valor_acordado:50, data_inicio:'2026-01-01', numero_documento:'NF-050', tags:['fornecedores'] },
+];
+const multiDecorated = sandbox.__PMG_TEST__.decorateOfficialRevenueTruth([multiLineSource,...multiLineRows]);
+const row100 = multiDecorated.find(item => item.id === 'row-100');
+const row50 = multiDecorated.find(item => item.id === 'row-50');
+if (row100?._oficial_confirmado !== true || row50?._oficial_confirmado !== false) {
+  throw new Error(`Conciliação por linha falhou: 100=${row100?._oficial_confirmado} / 50=${row50?._oficial_confirmado}`);
+}
+const multiLive = sandbox.__PMG_TEST__.liveRevenueSnapshot(multiDecorated, [], [], 2026);
+if (Math.abs(Number(multiLive.bySupplier.get('fornecedor teste')?.months?.[0] || 0) - 100) > 0.01) {
+  throw new Error('Conciliação por linha alterou indevidamente o total oficial do fornecedor');
+}
+const noForecastRow = { id:'manual-sem-previsao', controle:'marketing', ano_referencia:2026, fornecedor:'Receita Sem Previsão', natureza:'receita', impacto_totais:true, status:'concluido', valor_acordado:25, pagamento_confirmado:true, data_inicio:'2026-01-01', origem_importacao:'cadastro-manual', tags:['fornecedores','manual'] };
+const integritySynthetic = sandbox.__PMG_TEST__.buildIntegrityReport([...multiDecorated,noForecastRow], [], [], 2026);
+if (integritySynthetic.noForecastCount < 1) throw new Error('Integridade não detectou receita confirmada sem previsão');
 
 const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
 const fingerprints = new Set(snapshot.items.map(item => item.registro.fingerprint));
