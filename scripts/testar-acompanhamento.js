@@ -12,7 +12,7 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 const original = fs.readFileSync(appPath, 'utf8');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);",
-  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, liveRevenueSnapshot, sourceConfirmsSupplierRow, decorateOfficialRevenueTruth, buildOfficialConfirmationAllocation, buildIntegrityReport, buildPlanningSnapshot, revenueLineMatchKey };',
+  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, liveRevenueSnapshot, sourceConfirmsSupplierRow, decorateOfficialRevenueTruth, buildOfficialConfirmationAllocation, buildIntegrityReport, buildPlanningSnapshot, buildMktgExportSnapshot, revenueLineMatchKey };',
 );
 
 const noop = () => {};
@@ -65,6 +65,27 @@ if (Math.abs(Number(multiLive.bySupplier.get('fornecedor teste')?.months?.[0] ||
 const noForecastRow = { id:'manual-sem-previsao', controle:'marketing', ano_referencia:2026, fornecedor:'Receita Sem Previsão', natureza:'receita', impacto_totais:true, status:'concluido', valor_acordado:25, pagamento_confirmado:true, data_inicio:'2026-01-01', origem_importacao:'cadastro-manual', tags:['fornecedores','manual'] };
 const integritySynthetic = sandbox.__PMG_TEST__.buildIntegrityReport([...multiDecorated,noForecastRow], [], [], 2026);
 if (integritySynthetic.noForecastCount < 1) throw new Error('Integridade não detectou receita confirmada sem previsão');
+
+
+// Regressão V2.5.1: a exportação precisa reproduzir Receita/Planejamento a partir da mesma fonte viva da Central.
+const exportSynthetic = sandbox.__PMG_TEST__.buildMktgExportSnapshot({
+  allRecords:[...multiDecorated,noForecastRow],
+  payments:[],
+  conferences:[],
+});
+const exportSupplier = exportSynthetic.revenue2026.find(row => row.name === 'Fornecedor Teste');
+if (!exportSupplier || Math.abs(Number(exportSupplier.months?.[0] || 0) - 100) > 0.01) {
+  throw new Error('Exportação MKTG não reproduziu a Receita conciliada por fornecedor');
+}
+if (!exportSynthetic.pendingRows.some(row => row.supplier === 'Receita Sem Previsão')) {
+  throw new Error('Exportação MKTG não incluiu lançamento a receber em PENDÊNCIAS');
+}
+const exportTemplatePath = path.join(projectRoot,'public','modelos','MKTG-2026-PMG-CONNECT.xlsx');
+if (!fs.existsSync(exportTemplatePath)) throw new Error('Modelo de exportação MKTG 2026 não foi incluído no projeto');
+const exportTemplate = XLSX.readFile(exportTemplatePath,{ cellStyles:true });
+for (const requiredSheet of ['RECEITA','Planejamento','PENDÊNCIAS']) {
+  if (!exportTemplate.Sheets[requiredSheet]) throw new Error(`Modelo de exportação sem a aba ${requiredSheet}`);
+}
 
 const snapshot = JSON.parse(fs.readFileSync(snapshotPath, 'utf8'));
 const fingerprints = new Set(snapshot.items.map(item => item.registro.fingerprint));

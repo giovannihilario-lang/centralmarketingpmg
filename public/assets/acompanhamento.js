@@ -1465,8 +1465,20 @@
 
   function Topbar({ view, search, setSearch, setMobileNav, me, context, openCommand }) {
     const meta = VIEWS[view]; const searchable = ['pagamentos','receita'].includes(view); const documentView = view === 'documentos';
-    useLucide([view,context.integrity?.status]);
-    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="search"/><span><b>Busca rápida</b><small>Fornecedor, NF, pendentes...</small></span><kbd>Ctrl K</kbd></button>${searchable && html`<label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder=${view === 'receita' ? 'Filtrar fornecedor...' : 'Filtrar pagamento...'}/></label>`}<button className=${`integrity-badge ${context.integrity?.status || 'ok'}`} onClick=${context.openIntegrity} title="Verificar conciliação entre Pagamentos, Receita e Planejamento"><${Icon} name=${context.integrity?.status === 'critical' ? 'shield-alert' : context.integrity?.status === 'warning' ? 'shield-check' : 'badge-check'}/><span>${context.integrity?.status === 'ok' ? 'Dados conciliados' : `${Number(context.integrity?.critical||0)+Number(context.integrity?.warning||0)} alerta(s)`}</span></button>${documentView && html`<button className="button primary topbar-create" onClick=${() => window.dispatchEvent(new CustomEvent('pmg:document-upload'))}><${Icon} name="file-up"/>Enviar PDF</button>`}<div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
+    const [exporting,setExporting] = useState(false);
+    const handleExport = async () => {
+      if (exporting) return;
+      setExporting(true);
+      try {
+        const result = await exportMktgWorkbook(context);
+        context.notify(`Planilha exportada: ${result.filename}`);
+      } catch (exportError) {
+        console.error('[PMG Exportação] Falha ao gerar MKTG 2026:',exportError);
+        context.notify(exportError.message || 'Não foi possível exportar a planilha.','error');
+      } finally { setExporting(false); }
+    };
+    useLucide([view,context.integrity?.status,exporting]);
+    return html`<header className="ac-topbar"><div className="topbar-title"><button className="icon-button mobile-only" onClick=${() => setMobileNav(true)}><${Icon} name="menu"/></button><span className="topbar-view-icon"><${Icon} name=${meta.icon}/></span><div><span>${meta.eyebrow}</span><h1>${meta.label}</h1></div></div><div className="topbar-actions"><button className="command-trigger" onClick=${openCommand}><${Icon} name="search"/><span><b>Busca rápida</b><small>Fornecedor, NF, pendentes...</small></span><kbd>Ctrl K</kbd></button>${searchable && html`<label className="global-search compact-search"><${Icon} name="search"/><input value=${search} onInput=${event => setSearch(event.target.value)} placeholder=${view === 'receita' ? 'Filtrar fornecedor...' : 'Filtrar pagamento...'}/></label>`}<button className=${`integrity-badge ${context.integrity?.status || 'ok'}`} onClick=${context.openIntegrity} title="Verificar conciliação entre Pagamentos, Receita e Planejamento"><${Icon} name=${context.integrity?.status === 'critical' ? 'shield-alert' : context.integrity?.status === 'warning' ? 'shield-check' : 'badge-check'}/><span>${context.integrity?.status === 'ok' ? 'Dados conciliados' : `${Number(context.integrity?.critical||0)+Number(context.integrity?.warning||0)} alerta(s)`}</span></button><button className="button secondary topbar-export" disabled=${exporting} onClick=${handleExport} title="Exportar Receita, Planejamento e Pendências no modelo MKTG 2026"><${Icon} name=${exporting ? 'loader-circle' : 'file-down'}/><span>${exporting ? 'Gerando...' : 'Exportar Excel'}</span></button>${documentView && html`<button className="button primary topbar-create" onClick=${() => window.dispatchEvent(new CustomEvent('pmg:document-upload'))}><${Icon} name="file-up"/>Enviar PDF</button>`}<div className="topbar-avatar" title=${me?.nome || ''}>${String(me?.nome || 'P').charAt(0)}</div></div></header>`;
   }
 
   function CommandPalette({ context, onClose }) {
@@ -1916,6 +1928,231 @@
     const paidTotal = sum(paidColumnTotals, value => value);
     const remainingTotal = Math.max(0, grandTotal - paidTotal);
     return { planning, paymentMap, planningCellValue, planningCellPaid, monthTotals, columnTotals, paidColumnTotals, grandTotal, paidTotal, remainingTotal, fallbackCount:fallbackRecords.size, fallbackRecords };
+  }
+
+
+  function buildMktgExportSnapshot(context) {
+    const records = context?.allRecords || [];
+    const payments = context?.payments || [];
+    const conferences = context?.conferences || [];
+
+    const closedMap = new Map();
+    records.filter(record => Number(record.ano_referencia) === 2025
+      && record.controle === 'marcos' && record.natureza === 'receita'
+      && record.status !== 'cancelado' && record.impacta_totais !== false).forEach(record => {
+      const fallbackName = hasTag(record,'podcast') ? 'Podcast' : String(record.fornecedor || '').trim();
+      const name = officialSupplierName(fallbackName) || fallbackName;
+      if (!name) return;
+      const key = supplierKey(name) || normalize(name);
+      const row = closedMap.get(key) || { name, total:0 };
+      row.total += Number(record.valor_acordado || 0);
+      closedMap.set(key,row);
+    });
+    const closed2025 = [...closedMap.values()].filter(row => row.total > 0).sort((a,b) => supplierCompare(a.name,b.name));
+
+    const forecastMap = new Map();
+    records.filter(record => Number(record.ano_referencia) === 2026
+      && record.controle === 'marcos' && record.natureza === 'receita'
+      && record.fornecedor && hasTag(record,'previsão') && hasTag(record,'fornecedor')
+      && record.status !== 'cancelado').forEach(record => {
+      const name = officialSupplierName(record.fornecedor);
+      const key = supplierKey(name);
+      const row = forecastMap.get(key) || { name, forecast:0 };
+      row.forecast += Number(record.valor_acordado || 0);
+      forecastMap.set(key,row);
+    });
+
+    const live = liveRevenueSnapshot(records,payments,conferences,2026);
+    const revenueKeys = new Set([...forecastMap.keys(), ...live.bySupplier.keys()]);
+    const revenue2026 = [...revenueKeys].map(key => {
+      const forecast = forecastMap.get(key);
+      const realized = live.bySupplier.get(key);
+      const months = Array.from({ length:12 }, (_, index) => Number(realized?.months?.[index] || 0));
+      return {
+        key,
+        name:officialSupplierName(forecast?.name || realized?.name || key),
+        forecast:Number(forecast?.forecast || 0),
+        months,
+        total:sum(months,value => value),
+      };
+    }).filter(row => row.name).sort((a,b) => supplierCompare(a.name,b.name));
+
+    const sourceAdjustments = Array.from({ length:12 }, (_, index) => Number(live.sourceAdjustments?.[index] || 0));
+    const sourceAdjustmentTotal = sum(sourceAdjustments,value => value);
+    const forecastRevenue = sum(revenue2026,row => row.forecast);
+    const planning = buildPlanningSnapshot(records,payments,2026);
+    const forecastInvestment = planning.grandTotal;
+    const realizedInvestment = planning.paidTotal;
+    const confirmedRevenue = Number(live.total || 0);
+
+    const pendingRows = [];
+    records.filter(record => Number(record.ano_referencia) === 2026 && record.status !== 'cancelado').forEach(record => {
+      const explicitPendency = record.categoria === 'pendencia' || hasTag(record,'pendência') || hasTag(record,'pendencia');
+      const supplierRow = isSupplierRevenueRecord(record);
+      if (!explicitPendency && !supplierRow) return;
+      if (explicitPendency && record.status === 'concluido') return;
+      const monthIndex = sourceMonthIndex(record);
+      const payment = supplierRowPayment(payments,record,2026,monthIndex);
+      const stage = supplierRow ? supplierRevenueStage(payment,record,conferences,2026,monthIndex) : 'a_receber';
+      if (!explicitPendency && stage === 'confirmado') return;
+      const value = Math.max(0,Number(payment?.valor_previsto ?? record.valor_acordado ?? 0));
+      pendingRows.push({
+        supplier:officialSupplierName(record.fornecedor || '') || String(record.fornecedor || record.titulo || 'Sem fornecedor'),
+        category:explicitPendency ? 'Pendência' : category(record.categoria).label,
+        competence:`${OFFICIAL_MONTHS[monthIndex]?.[1] || 'Janeiro'} 2026`,
+        document:String(payment?.numero_documento || record.numero_documento || '').trim(),
+        value,
+        status:explicitPendency ? 'Pendência' : 'A receber',
+        explicitPendency,
+        monthIndex,
+      });
+    });
+    pendingRows.sort((a,b) => supplierCompare(a.supplier,b.supplier) || a.monthIndex - b.monthIndex || a.category.localeCompare(b.category,'pt-BR'));
+
+    return {
+      closed2025,
+      closed2025Total:sum(closed2025,row => row.total),
+      revenue2026,
+      forecastRevenue,
+      live,
+      sourceAdjustments,
+      sourceAdjustmentTotal,
+      planning,
+      forecastInvestment,
+      realizedInvestment,
+      confirmedRevenue,
+      forecastBalance:forecastRevenue - forecastInvestment,
+      realizedBalance:confirmedRevenue - realizedInvestment,
+      legacyPendingValue:sum(pendingRows.filter(row => row.explicitPendency),row => row.value),
+      pendingRows,
+    };
+  }
+
+  function workbookSetCell(sheet,rowIndex,columnIndex,value,options = {}) {
+    if (!sheet || !window.XLSX) return;
+    const address = XLSX.utils.encode_cell({ r:rowIndex, c:columnIndex });
+    const current = sheet[address] || {};
+    const previousStyle = current.s;
+    delete current.f; delete current.F; delete current.w; delete current.h;
+    current.v = value == null ? '' : value;
+    current.t = typeof current.v === 'number' ? 'n' : typeof current.v === 'boolean' ? 'b' : 's';
+    if (options.numberFormat) current.z = options.numberFormat;
+    if (options.style !== undefined && options.style !== null) current.s = options.style;
+    else if (previousStyle !== undefined) current.s = previousStyle;
+    sheet[address] = current;
+
+    const range = XLSX.utils.decode_range(sheet['!ref'] || address);
+    range.s.r = Math.min(range.s.r,rowIndex); range.s.c = Math.min(range.s.c,columnIndex);
+    range.e.r = Math.max(range.e.r,rowIndex); range.e.c = Math.max(range.e.c,columnIndex);
+    sheet['!ref'] = XLSX.utils.encode_range(range);
+  }
+
+  function workbookClearRange(sheet,rangeAddress) {
+    if (!sheet || !window.XLSX) return;
+    const range = XLSX.utils.decode_range(rangeAddress);
+    for (let r = range.s.r; r <= range.e.r; r += 1) {
+      for (let c = range.s.c; c <= range.e.c; c += 1) workbookSetCell(sheet,r,c,'');
+    }
+  }
+
+  async function exportMktgWorkbook(context) {
+    await ensureXlsxAsset();
+    const response = await fetch('/modelos/MKTG-2026-PMG-CONNECT.xlsx', { cache:'no-store' });
+    if (!response.ok) throw new Error('O modelo MKTG 2026 de exportação não foi encontrado.');
+    const workbook = XLSX.read(await response.arrayBuffer(), { type:'array', cellStyles:true, cellDates:true, bookFiles:true });
+    const receitaSheet = workbook.Sheets.RECEITA;
+    const planningSheet = workbook.Sheets.Planejamento;
+    const pendingSheet = workbook.Sheets['PENDÊNCIAS'];
+    if (!receitaSheet || !planningSheet || !pendingSheet) throw new Error('O modelo de exportação está incompleto.');
+
+    const snapshot = buildMktgExportSnapshot(context);
+    const currency = 'R$ #,##0.00';
+    const metaSheet = workbook.Sheets.CONNECT_META;
+    const normalCurrencyStyle = metaSheet?.A5?.s;
+    const paidCurrencyStyle = metaSheet?.A6?.s;
+
+    workbookClearRange(receitaSheet,'A3:B51');
+    workbookClearRange(receitaSheet,'D3:R51');
+    workbookSetCell(receitaSheet,51,0,'SOMA 2025');
+    workbookSetCell(receitaSheet,51,1,snapshot.closed2025Total,{ numberFormat:currency, style:normalCurrencyStyle });
+    workbookSetCell(receitaSheet,51,3,'SOMA MENSAL');
+    workbookSetCell(receitaSheet,51,4,snapshot.forecastRevenue,{ numberFormat:currency, style:normalCurrencyStyle });
+    OFFICIAL_MONTHS.forEach((_,monthIndex) => workbookSetCell(receitaSheet,51,5 + monthIndex,Number(snapshot.live.monthlyTotals?.[monthIndex] || 0),{ numberFormat:currency, style:normalCurrencyStyle }));
+    workbookSetCell(receitaSheet,51,17,snapshot.confirmedRevenue,{ numberFormat:currency, style:normalCurrencyStyle });
+
+    snapshot.closed2025.slice(0,49).forEach((row,index) => {
+      workbookSetCell(receitaSheet,2 + index,0,row.name);
+      workbookSetCell(receitaSheet,2 + index,1,row.total,{ numberFormat:currency, style:normalCurrencyStyle });
+    });
+    snapshot.revenue2026.slice(0,49).forEach((row,index) => {
+      const excelRow = 2 + index;
+      workbookSetCell(receitaSheet,excelRow,3,row.name);
+      workbookSetCell(receitaSheet,excelRow,4,row.forecast,{ numberFormat:currency, style:normalCurrencyStyle });
+      row.months.forEach((value,monthIndex) => workbookSetCell(receitaSheet,excelRow,5 + monthIndex,value,{ numberFormat:currency, style:normalCurrencyStyle }));
+      workbookSetCell(receitaSheet,excelRow,17,row.total,{ numberFormat:currency, style:normalCurrencyStyle });
+    });
+    if (Math.abs(snapshot.sourceAdjustmentTotal) > .005 && snapshot.revenue2026.length < 49) {
+      const excelRow = 2 + snapshot.revenue2026.length;
+      workbookSetCell(receitaSheet,excelRow,3,'AJUSTES DA FONTE');
+      workbookSetCell(receitaSheet,excelRow,4,0,{ numberFormat:currency, style:normalCurrencyStyle });
+      snapshot.sourceAdjustments.forEach((value,monthIndex) => workbookSetCell(receitaSheet,excelRow,5 + monthIndex,value,{ numberFormat:currency, style:normalCurrencyStyle }));
+      workbookSetCell(receitaSheet,excelRow,17,snapshot.sourceAdjustmentTotal,{ numberFormat:currency, style:normalCurrencyStyle });
+    }
+
+    workbookSetCell(receitaSheet,55,4,snapshot.forecastInvestment,{ numberFormat:currency, style:normalCurrencyStyle }); // E56
+    workbookSetCell(receitaSheet,57,4,snapshot.forecastRevenue,{ numberFormat:currency, style:normalCurrencyStyle }); // E58
+    workbookSetCell(receitaSheet,59,4,snapshot.forecastBalance,{ numberFormat:currency, style:normalCurrencyStyle }); // E60
+    workbookSetCell(receitaSheet,61,4,snapshot.realizedInvestment,{ numberFormat:currency, style:normalCurrencyStyle }); // E62
+    workbookSetCell(receitaSheet,63,4,snapshot.confirmedRevenue,{ numberFormat:currency, style:normalCurrencyStyle }); // E64
+    workbookSetCell(receitaSheet,65,4,snapshot.realizedBalance,{ numberFormat:currency, style:normalCurrencyStyle }); // E66
+
+    workbookClearRange(planningSheet,'B3:P17');
+    snapshot.planning.planning.slice(0,15).forEach((record,columnIndex) => {
+      workbookSetCell(planningSheet,1,1 + columnIndex,planningName(record));
+      OFFICIAL_MONTHS.forEach((_,monthIndex) => {
+        const value = snapshot.planning.planningCellValue(record,monthIndex);
+        const paid = snapshot.planning.planningCellPaid(record,monthIndex);
+        workbookSetCell(planningSheet,2 + monthIndex,1 + columnIndex,value,{
+          numberFormat:currency,
+          style:paid && paidCurrencyStyle !== undefined ? paidCurrencyStyle : normalCurrencyStyle
+        });
+      });
+      const total = Number(snapshot.planning.columnTotals?.[columnIndex] || 0);
+      const paid = Number(snapshot.planning.paidColumnTotals?.[columnIndex] || 0);
+      workbookSetCell(planningSheet,14,1 + columnIndex,total,{ numberFormat:currency, style:normalCurrencyStyle });
+      workbookSetCell(planningSheet,15,1 + columnIndex,paid,{ numberFormat:currency, style:paidCurrencyStyle ?? normalCurrencyStyle });
+      workbookSetCell(planningSheet,16,1 + columnIndex,Math.max(0,total-paid),{ numberFormat:currency, style:normalCurrencyStyle });
+    });
+
+    workbookSetCell(pendingSheet,1,0,'EDILSON');
+    workbookSetCell(pendingSheet,1,1,'HAVER');
+    workbookSetCell(pendingSheet,1,2,snapshot.legacyPendingValue,{ numberFormat:currency, style:normalCurrencyStyle });
+    workbookClearRange(pendingSheet,'A6:F200');
+    snapshot.pendingRows.slice(0,195).forEach((row,index) => {
+      const excelRow = 5 + index;
+      [row.supplier,row.category,row.competence,row.document,row.value,row.status].forEach((value,columnIndex) => {
+        workbookSetCell(pendingSheet,excelRow,columnIndex,value,{
+          numberFormat:columnIndex === 4 ? currency : undefined,
+          style:columnIndex === 4 ? normalCurrencyStyle : undefined
+        });
+      });
+    });
+
+    workbook.Props = {
+      ...(workbook.Props || {}),
+      Title:'MKTG 2026 · PMG Connect',
+      Subject:'Exportação da Central de Acompanhamento',
+      Author:'PMG Connect',
+      Comments:'Gerado a partir dos dados atuais de Pagamentos, Planejamento e Receita.'
+    };
+    if (workbook.Sheets.CONNECT_META) {
+      delete workbook.Sheets.CONNECT_META;
+      workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'CONNECT_META');
+    }
+    const stamp = new Intl.DateTimeFormat('sv-SE',{ year:'numeric',month:'2-digit',day:'2-digit' }).format(new Date());
+    const filename = `MKTG 2026 - PMG Connect - ${stamp}.xlsx`;
+    XLSX.writeFile(workbook,filename,{ compression:true, cellStyles:true });
+    return { filename, snapshot };
   }
 
   function PlanningView({ context }) {
