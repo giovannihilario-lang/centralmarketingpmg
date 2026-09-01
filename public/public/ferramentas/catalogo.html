@@ -1723,6 +1723,39 @@ async function prepararImagemPDF(src) {
   return promessa;
 }
 
+async function prepararLogoPDF(src) {
+  if (!src) return null;
+  const cacheKey = `__logo__${src}`;
+  if (pdfImageCache.has(cacheKey)) return pdfImageCache.get(cacheKey);
+
+  const promessa = (async () => {
+    const img = await esperarImagem(src);
+    if (!img) return null;
+    try {
+      // O logo precisa de uma miniatura quadrada porque ele é inserido em um
+      // box quadrado no PDF. Usar a miniatura retangular dos produtos fazia o
+      // jsPDF esticar a imagem e achatar a marca.
+      const S = 240;
+      const canvas = document.createElement('canvas');
+      canvas.width = S; canvas.height = S;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, S, S);
+      const escala = Math.min(S / img.naturalWidth, S / img.naturalHeight);
+      const w = Math.max(1, img.naturalWidth * escala);
+      const h = Math.max(1, img.naturalHeight * escala);
+      ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+      return canvas.toDataURL('image/jpeg', 0.9);
+    } catch (err) {
+      console.warn('Logo ignorado no PDF:', err);
+      return null;
+    }
+  })();
+
+  pdfImageCache.set(cacheKey, promessa);
+  return promessa;
+}
+
 async function mapComConcorrencia(itens, limite, fn) {
   const saida = new Array(itens.length);
   let cursor = 0;
@@ -1918,7 +1951,7 @@ async function exportPDF() {
     });
 
     const imagensProdutos = new Map(carregadas.filter(x => x && x[1]));
-    const logo = logoDataUrl ? await prepararImagemPDF(logoDataUrl) : null;
+    const logo = logoDataUrl ? await prepararLogoPDF(logoDataUrl) : null;
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true, putOnlyUsedFonts: true });
 
