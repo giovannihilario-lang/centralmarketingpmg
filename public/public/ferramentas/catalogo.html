@@ -1003,8 +1003,29 @@ function criarPaginaDepoisDa(paginaBase, subtitulo = '') {
   return nova;
 }
 
-function normalizarPaginasParaLimite() {
+
+function limparReferenciasProdutosInvalidas() {
+  if (!TODOS_PRODUTOS.length) return false;
+  const idsValidos = new Set(TODOS_PRODUTOS.map(p => p.id));
   let alterou = false;
+  pages.forEach(pg => {
+    if (!Array.isArray(pg.produtos)) { pg.produtos = []; alterou = true; return; }
+    const antes = pg.produtos.length;
+    pg.produtos = [...new Set(pg.produtos)].filter(id => idsValidos.has(id));
+    if (pg.produtos.length !== antes) alterou = true;
+  });
+  return alterou;
+}
+
+function quantidadeProdutosValidosNaPagina(pg) {
+  if (!pg || !Array.isArray(pg.produtos)) return 0;
+  if (!TODOS_PRODUTOS.length) return pg.produtos.length;
+  const idsValidos = new Set(TODOS_PRODUTOS.map(p => p.id));
+  return new Set(pg.produtos.filter(id => idsValidos.has(id))).size;
+}
+
+function normalizarPaginasParaLimite() {
+  let alterou = limparReferenciasProdutosInvalidas();
   for (let i = 0; i < pages.length; i++) {
     const pg = pages[i];
     if (!Array.isArray(pg.produtos)) pg.produtos = [];
@@ -1031,6 +1052,8 @@ function moverProdutosParaPaginaComOverflow(pid, produtos) {
   const alvo = pages.find(p => p.id === pid);
   if (!alvo || !produtos.length) return { adicionados: 0, novasPaginas: 0 };
 
+  // Remove IDs órfãos/duplicados antes de calcular a capacidade real da página.
+  limparReferenciasProdutosInvalidas();
   const ids = [...new Set(produtos.map(p => typeof p === 'object' ? p.id : p).filter(id => id != null))];
   pages.forEach(pg => { pg.produtos = pg.produtos.filter(id => !ids.includes(id)); });
 
@@ -1351,7 +1374,8 @@ function onDropZone(e, pid) {
   if (from) from.produtos = from.produtos.filter(id => id !== dragProdId);
   const to = pages.find(p => p.id === pid);
   if (to && !to.produtos.includes(dragProdId)) {
-    if (to.produtos.length >= MAX_PRODUTOS_POR_PAGINA) {
+    limparReferenciasProdutosInvalidas();
+    if (quantidadeProdutosValidosNaPagina(to) >= MAX_PRODUTOS_POR_PAGINA) {
       const nova = criarPaginaDepoisDa(to, '');
       nova.produtos.push(dragProdId);
       showToast('Página cheia: o produto foi colocado na próxima página.');
@@ -1408,7 +1432,7 @@ function renderPanel() {
           <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
         </span>
         <span class="page-title-wrap"><span class="page-title">${pg.titulo}</span>${pg.subtitulo ? `<span class="page-subtitle">${pg.subtitulo}</span>` : ''}</span>
-        <span class="page-count">${prods.length}/${MAX_PRODUTOS_POR_PAGINA}</span>
+        <span class="page-count">${quantidadeProdutosValidosNaPagina(pg)}/${MAX_PRODUTOS_POR_PAGINA}</span>
         <div class="page-actions" onclick="event.stopPropagation()">
           ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
           <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
@@ -2119,7 +2143,7 @@ function carregarEstado() {
     colors_state = estado.colors_state || colors_state;
     logoDataUrl  = estado.logoDataUrl || null;
     applyColors();
-    if (paginasMigradas) salvarEstado();
+    if (paginasMigradas || referenciasLimpas) salvarEstado();
     return true;
   } catch (err) {
     console.error('Erro ao carregar estado:', err);
