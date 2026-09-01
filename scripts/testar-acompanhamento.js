@@ -10,6 +10,13 @@ const snapshotPath = path.join(projectRoot, 'data', 'acompanhamento-carga-inicia
 const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 
 const original = fs.readFileSync(appPath, 'utf8');
+const htmlSource = fs.readFileSync(path.join(projectRoot, 'public', 'acompanhamento.html'), 'utf8');
+
+if (!original.includes('Central de Acompanhamento UX V2.5.6')) throw new Error('Versão V2.5.6 ausente no JS.');
+if (original.includes('window.lucide?.createIcons')) throw new Error('createIcons não pode alterar nós controlados pelo React.');
+if (!original.includes("React.createElement('svg'")) throw new Error('Ícones não estão sendo renderizados pelo React.');
+if (!htmlSource.includes('acompanhamento.js?v=2.5.6')) throw new Error('Cache do JS V2.5.6 não foi invalidado.');
+if (!htmlSource.includes('translate="no"')) throw new Error('Proteção contra alteração externa da árvore React ausente.');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);",
   'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, liveRevenueSnapshot, sourceConfirmsSupplierRow, decorateOfficialRevenueTruth, buildOfficialConfirmationAllocation, buildIntegrityReport, buildPlanningSnapshot, buildMktgExportSnapshot, revenueLineMatchKey };',

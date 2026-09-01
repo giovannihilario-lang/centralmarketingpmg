@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.5.5 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.5.6 / React + HTM */
 (() => {
   'use strict';
 
@@ -322,19 +322,24 @@
     return `pmg-${(hash >>> 0).toString(16)}-${value.slice(0, 160)}`;
   }
 
-  function refreshIcons() {
-    requestAnimationFrame(() => {
-      try { window.lucide?.createIcons({ attrs: { 'stroke-width': 1.9 } }); } catch (_) {}
-    });
-  }
+  /* createIcons() substitui nós do DOM e conflita com o ciclo do React. */
+  const lucideIconKey = name => String(name || '').split('-').filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 
   function Icon({ name, size = 18 }) {
-    return html`<i data-lucide=${name} style=${{ width: size, height: size }}></i>`;
+    const iconNode = window.lucide?.icons?.[lucideIconKey(name)] || window.lucide?.icons?.[name];
+    if (!Array.isArray(iconNode)) {
+      return html`<span className="lucide-icon-fallback" aria-hidden="true" style=${{ width:size, height:size }}></span>`;
+    }
+    return React.createElement('svg', {
+      xmlns:'http://www.w3.org/2000/svg', width:size, height:size, viewBox:'0 0 24 24',
+      fill:'none', stroke:'currentColor', strokeWidth:1.9, strokeLinecap:'round', strokeLinejoin:'round',
+      className:`lucide lucide-${name}`, 'aria-hidden':'true'
+    }, iconNode.map(([tag, attrs], index) => React.createElement(tag, { ...attrs, key:attrs?.key || `${name}-${index}` })));
   }
 
-  function useLucide(deps) {
-    useEffect(refreshIcons, deps);
-  }
+  function refreshIcons() {}
+  function useLucide() {}
 
   function useAnimatedNumber(target, duration = 750) {
     const [value, setValue] = useState(0);
