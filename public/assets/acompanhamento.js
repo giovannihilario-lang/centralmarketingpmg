@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.5.6 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.5.7 / React + HTM */
 (() => {
   'use strict';
 
@@ -322,20 +322,29 @@
     return `pmg-${(hash >>> 0).toString(16)}-${value.slice(0, 160)}`;
   }
 
-  /* createIcons() substitui nós do DOM e conflita com o ciclo do React. */
+  /* O React possui apenas o contêiner; o SVG do Lucide fica isolado dentro dele. */
   const lucideIconKey = name => String(name || '').split('-').filter(Boolean)
     .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 
   function Icon({ name, size = 18 }) {
-    const iconNode = window.lucide?.icons?.[lucideIconKey(name)] || window.lucide?.icons?.[name];
-    if (!Array.isArray(iconNode)) {
-      return html`<span className="lucide-icon-fallback" aria-hidden="true" style=${{ width:size, height:size }}></span>`;
-    }
-    return React.createElement('svg', {
-      xmlns:'http://www.w3.org/2000/svg', width:size, height:size, viewBox:'0 0 24 24',
-      fill:'none', stroke:'currentColor', strokeWidth:1.9, strokeLinecap:'round', strokeLinejoin:'round',
-      className:`lucide lucide-${name}`, 'aria-hidden':'true'
-    }, iconNode.map(([tag, attrs], index) => React.createElement(tag, { ...attrs, key:attrs?.key || `${name}-${index}` })));
+    const hostRef = useRef(null);
+    useEffect(() => {
+      const host = hostRef.current;
+      if (!host) return;
+      host.replaceChildren();
+      try {
+        const icon = window.lucide?.icons?.[lucideIconKey(name)] || window.lucide?.icons?.[name];
+        if (!icon || typeof window.lucide?.createElement !== 'function') return;
+        const svg = window.lucide.createElement(icon);
+        svg.setAttribute('width', String(size)); svg.setAttribute('height', String(size));
+        svg.setAttribute('stroke-width', '1.9'); svg.setAttribute('aria-hidden', 'true');
+        host.replaceChildren(svg);
+      } catch (iconError) {
+        console.warn('[PMG Ícones] Ícone indisponível:', name, iconError);
+      }
+      return () => host.replaceChildren();
+    }, [name, size]);
+    return html`<span ref=${hostRef} className=${`lucide-icon-host lucide-${name}`} aria-hidden="true" style=${{ width:size, height:size, display:'inline-flex', flex:'0 0 auto' }}></span>`;
   }
 
   function refreshIcons() {}
