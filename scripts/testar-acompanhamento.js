@@ -41,6 +41,19 @@ for (const missingError of [
 }
 if (sandbox.__PMG_TEST__.isMissingSetupError({ code:'42501', message:'permission denied' })) throw new Error('Erro de permissão confundido com instalação ausente');
 
+
+// Regressão V2.5.4: a Central não pode ficar presa eternamente no boot e o importador oficial deve ser simples.
+for (const requiredUxContract of [
+  "withTimeout(fetchAll(client), 25000",
+  "A Central demorou demais para carregar",
+  "Escolha o Excel e confirme.",
+  "Importar planilha",
+  "Modelo não reconhecido. Use uma planilha Fornecedores 20XX ou MKTG 2026",
+]) {
+  if (!original.includes(requiredUxContract)) throw new Error(`Contrato V2.5.4 ausente: ${requiredUxContract}`);
+}
+if (original.includes('Confirme o que cada coluna significa')) throw new Error('Importador oficial ainda exibe mapeamento técnico na interface ativa');
+
 // A importação de Fornecedores precisa persistir a confirmação na própria linha,
 // porque desde a V1.9.5 essa é a fonte de verdade de Receita/Dashboard.
 for (const requiredImportContract of [

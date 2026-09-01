@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.5.2 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.5.4 / React + HTM */
 (() => {
   'use strict';
 
@@ -136,6 +136,14 @@
     return [supplierKey(record?.fornecedor || ''), sourceMonthKey(record), discriminator, cents(record?.valor_acordado || payment?.valor_previsto || payment?.valor_pago || 0)].join('|');
   };
 
+  function withTimeout(promise, timeoutMs = 15000, message = 'A operação demorou mais do que o esperado.') {
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+    return Promise.race([Promise.resolve(promise), timeout]).finally(() => { if (timer) clearTimeout(timer); });
+  }
+
   const loadedAssets = new Map();
   function loadAsset(url, type = 'script') {
     if (loadedAssets.has(url)) return loadedAssets.get(url);
@@ -178,7 +186,13 @@
   let xlsxAssetPromise = null;
   function ensureXlsxAsset() {
     if (window.XLSX) return Promise.resolve(true);
-    if (!xlsxAssetPromise) xlsxAssetPromise = loadAsset('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js').then(() => true);
+    if (!xlsxAssetPromise) {
+      xlsxAssetPromise = withTimeout(
+        loadAsset('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'),
+        12000,
+        'O leitor de Excel demorou para carregar. Verifique a conexão e tente novamente.'
+      ).then(() => true).catch(error => { xlsxAssetPromise = null; throw error; });
+    }
     return xlsxAssetPromise;
   }
 
@@ -342,8 +356,12 @@
 
   async function createDataClient() {
     if (window.PMGConnect?.ready) {
-      await window.PMGConnect.ready;
-      return { db: window.PMGConnect.client, me: window.PMGConnect.profile, session: window.PMGConnect.session };
+      try {
+        await withTimeout(window.PMGConnect.ready, 10000, 'A autenticação compartilhada demorou para responder.');
+        if (window.PMGConnect.client) return { db: window.PMGConnect.client, me: window.PMGConnect.profile, session: window.PMGConnect.session };
+      } catch (sharedAuthError) {
+        console.warn('[PMG Acompanhamento] Autenticação compartilhada indisponível; tentando sessão local.', sharedAuthError);
+      }
     }
 
     if (!window.supabase?.createClient) throw new Error('A conexão segura do PMG Connect não carregou.');
@@ -442,11 +460,16 @@
     const pageSize = 500;
     const rows = [];
     for (let offset = 0; ; offset += pageSize) {
-      const result = await makeQuery().range(offset, offset + pageSize - 1);
+      const result = await withTimeout(
+        makeQuery().range(offset, offset + pageSize - 1),
+        12000,
+        'O banco demorou para responder à Central.'
+      );
       if (result.error) return result;
       const page = result.data || [];
       rows.push(...page);
       if (page.length < pageSize) return { ...result, data:rows };
+      if (rows.length > 50000) throw new Error('A consulta retornou dados demais. A Central interrompeu a carga para evitar travamento.');
     }
   }
 
@@ -865,7 +888,7 @@
       const requestSeq = ++reloadSeqRef.current;
       if (!quiet) setLoading(true);
       try {
-        const nextData = await fetchAll(client);
+        const nextData = await withTimeout(fetchAll(client), 25000, 'A Central demorou para receber os dados do banco. Tente novamente.');
         if (requestSeq !== reloadSeqRef.current) return;
         setData(current => ({
           ...nextData,
@@ -933,6 +956,14 @@
     }, []);
 
     useEffect(() => { if (client) void reload(); }, [client, reload]);
+    useEffect(() => {
+      if (!loading) return undefined;
+      const watchdog = setTimeout(() => {
+        setLoading(false);
+        setError(current => current || new Error('A Central demorou demais para carregar. Nenhum dado foi alterado. Tente novamente.'));
+      }, 30000);
+      return () => clearTimeout(watchdog);
+    }, [loading]);
     useEffect(() => { setSearch(''); }, [view]);
 
     useEffect(() => {
@@ -1440,7 +1471,7 @@
 
   function BootScreen() {
     useLucide([]);
-    return html`<div className="boot-screen"><div className="boot-mark"><img src="/imagenssite/pmglogo.png" alt="PMG"/><span></span><span></span><span></span></div><strong>Abrindo as planilhas vivas...</strong><small>Pagamentos · Receita · Planejamento</small></div>`;
+    return html`<div className="boot-screen"><div className="boot-mark"><img src="/imagenssite/pmglogo.png" alt="PMG"/><span></span><span></span><span></span></div><strong>Carregando a Central...</strong><small>Isso deve levar apenas alguns segundos.</small></div>`;
   }
 
   function FatalState({ error }) {
@@ -3108,114 +3139,46 @@
     return { ...parsed, items:(parsed.items || []).map(normalizeImportItem), warnings:Array.isArray(parsed.warnings) ? parsed.warnings.map(value => String(value)) : [], totals:Array.isArray(parsed.totals) ? parsed.totals : [] };
   }
 
-  function ImportView({ context, defaultControl, defaultYear }) {
-    const inputRef = useRef(null); const workbookRef = useRef(null);
-    const [file, setFile] = useState(null); const [sheets, setSheets] = useState([]); const [sheet, setSheet] = useState('');
-    const [headers, setHeaders] = useState([]); const [rows, setRows] = useState([]); const [mapping, setMapping] = useState({});
+  function ImportView({ context }) {
+    const inputRef = useRef(null);
+    const [file, setFile] = useState(null);
     const [official, setOfficial] = useState(null);
-    const [control, setControl] = useState(defaultControl === 'marcos' ? 'marcos' : 'marketing');
-    const [year, setYear] = useState(defaultYear === 'todos' ? new Date().getFullYear() : Number(defaultYear));
-    const [importing, setImporting] = useState(false); const [result, setResult] = useState(null); const [dragging, setDragging] = useState(false);
-    const [xlsxState, setXlsxState] = useState(window.XLSX ? 'ready' : 'loading');
-    useLucide([file?.name, sheet, headers.length, rows.length, importing, result, official?.kind, xlsxState]);
+    const [reading, setReading] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [result, setResult] = useState(null);
+    const [localError, setLocalError] = useState('');
+    const [dragging, setDragging] = useState(false);
+    useLucide([file?.name, official?.kind, reading, importing, result, localError, dragging]);
 
-    useEffect(() => {
-      let alive = true;
-      void context.ensureAuxiliary?.();
-      if (window.XLSX) { setXlsxState('ready'); return () => { alive = false; }; }
-      ensureXlsxAsset().then(() => { if (alive) setXlsxState('ready'); }).catch(error => {
-        console.error('[PMG Importação] Falha ao carregar XLSX:', error);
-        if (alive) setXlsxState('error');
-      });
-      return () => { alive = false; };
-    }, []);
-
-    function scoreHeaderRow(grid) {
-      let best = { index:0, score:-1 };
-      grid.slice(0, 30).forEach((row, index) => {
-        const values = (row || []).map(normalize).filter(Boolean);
-        const hits = values.filter(value => Object.values(HEADER_SYNONYMS).flat().some(alias => value === normalize(alias) || value.includes(normalize(alias)))).length;
-        const score = values.length + hits * 5;
-        if (score > best.score) best = { index, score };
-      });
-      return best.index;
-    }
-
-    function suggestMapping(nextHeaders) {
-      const next = {};
-      IMPORT_FIELDS.forEach(([field]) => {
-        const aliases = (HEADER_SYNONYMS[field] || [field]).map(normalize).filter(Boolean);
-        const exact = nextHeaders.find(item => Boolean(normalize(item.label)) && aliases.includes(normalize(item.label)));
-        const partial = nextHeaders.find(item => { const label = normalize(item.label); return Boolean(label) && aliases.some(alias => alias && (label.includes(alias) || alias.includes(label))); });
-        const match = exact || partial; if (match) next[field] = String(match.index);
-      });
-      return next;
-    }
-
-    function readSheet(name, workbook = workbookRef.current) {
-      if (!workbook || !name) return;
-      const grid = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header:1, defval:'', raw:true, blankrows:false });
-      const headerIndex = scoreHeaderRow(grid);
-      const nextHeaders = (grid[headerIndex] || []).map((value, index) => ({ index, label:String(value || `Coluna ${XLSX.utils.encode_col(index)}`).trim() || `Coluna ${XLSX.utils.encode_col(index)}` }));
-      const nextRows = grid.slice(headerIndex + 1).filter(row => row.some(value => String(value ?? '').trim() !== ''));
-      setOfficial(null); setSheet(name); setHeaders(nextHeaders); setRows(nextRows); setMapping(suggestMapping(nextHeaders)); setResult(null);
-    }
+    const resetFile = () => {
+      setFile(null); setOfficial(null); setResult(null); setLocalError(''); setReading(false); setImporting(false);
+      if (inputRef.current) inputRef.current.value = '';
+    };
 
     async function loadFile(nextFile) {
       if (!nextFile) return;
-      if (!/\.(xlsx|xls|xlsm|csv)$/i.test(nextFile.name)) return context.notify('Envie um arquivo Excel ou CSV.', 'error');
+      if (!/\.(xlsx|xls|xlsm)$/i.test(nextFile.name)) {
+        setLocalError('Use uma planilha Excel no padrão Fornecedores ou MKTG.');
+        if (inputRef.current) inputRef.current.value = '';
+        return;
+      }
+      setReading(true); setResult(null); setLocalError(''); setFile(nextFile); setOfficial(null);
       try {
         await ensureXlsxAsset();
-        const buffer = await nextFile.arrayBuffer();
+        const buffer = await withTimeout(nextFile.arrayBuffer(), 10000, 'A leitura do arquivo demorou demais.');
         const workbook = XLSX.read(buffer, { type:'array', cellDates:true, cellStyles:true, bookFiles:true });
-        if (!Array.isArray(workbook?.SheetNames) || !workbook.SheetNames.length) throw new Error('O arquivo não possui abas legíveis.');
+        if (!Array.isArray(workbook?.SheetNames) || !workbook.SheetNames.length) throw new Error('A planilha não possui abas legíveis.');
         const detected = parseOfficialWorkbook(nextFile.name, workbook);
-        workbookRef.current = workbook;
-        setFile(nextFile); setSheets([...workbook.SheetNames]); setResult(null);
-        if (detected) {
-          setOfficial(detected); setRows(detected.items); setHeaders([]); setMapping({}); setSheet('Todas as abas');
-          setControl(detected.control); setYear(detected.year);
-          context.notify(detected.warnings.length
-            ? `${detected.label} reconhecido com ${detected.warnings.length} alerta(s). Revise antes de importar.`
-            : `${detected.label} reconhecido: ${detected.items.length} registros prontos para sincronização.`, detected.warnings.length ? 'error' : 'info');
-          return;
-        }
-        const sizes = workbook.SheetNames.map(name => ({ name, rows:XLSX.utils.sheet_to_json(workbook.Sheets[name], { header:1, blankrows:false }).length })).sort((a, b) => b.rows - a.rows);
-        readSheet(sizes[0]?.name || workbook.SheetNames[0], workbook);
+        if (!detected) throw new Error('Modelo não reconhecido. Use uma planilha Fornecedores 20XX ou MKTG 2026 no padrão da PMG.');
+        if (detected.warnings?.length) throw new Error(detected.warnings.join(' · '));
+        setOfficial(detected);
       } catch (error) {
         console.error('[PMG Importação] Falha ao analisar arquivo:', error);
-        workbookRef.current = null; setFile(null); setSheets([]); setSheet(''); setOfficial(null); setRows([]); setHeaders([]); setMapping({}); setResult(null);
-        if (inputRef.current) inputRef.current.value = '';
-        context.notify(error?.message || 'Não foi possível ler a planilha.', 'error');
+        setOfficial(null);
+        setLocalError(error?.message || 'Não foi possível ler a planilha.');
+      } finally {
+        setReading(false);
       }
-    }
-
-    function cell(row, field) { const index = mapping[field]; return index === undefined || index === '' ? '' : row[Number(index)]; }
-
-    function mappedPayload(sourceRows = rows) {
-      return sourceRows.map((row, index) => {
-        const supplier = String(cell(row, 'fornecedor') || '').trim(); const rawCategory = cell(row, 'categoria');
-        const title = String(cell(row, 'titulo') || '').trim() || String(cell(row, 'referencia') || '').trim() || `${rawCategory ? category(inferCategory(rawCategory)).label : 'Acompanhamento'}${supplier ? ` — ${supplier}` : ''}`;
-        const value = parseMoney(cell(row, 'valor_acordado')); const paidAt = normalizeDate(cell(row, 'pago_em')); const due = normalizeDate(cell(row, 'vencimento'));
-        const recordFingerprint = fingerprint([control, year, supplier, title, cell(row, 'referencia'), cell(row, 'numero_documento')]);
-        const registro = {
-          controle:control, ano_referencia:year, fornecedor:supplier, fornecedor_codigo:String(cell(row, 'fornecedor_codigo') || '').trim(),
-          natureza:normalize(cell(row, 'natureza')).includes('desp') ? 'despesa' : normalize(cell(row, 'natureza')).includes('rece') ? 'receita' : (control === 'marketing' ? 'receita' : 'neutro'), impacta_totais:true,
-          categoria:inferCategory(rawCategory), titulo, descricao:String(cell(row, 'descricao') || '').trim(), referencia:String(cell(row, 'referencia') || '').trim(),
-          status:inferRecordStatus(cell(row, 'status')), prioridade:'normal', data_inicio:normalizeDate(cell(row, 'data_inicio')), data_fim:normalizeDate(cell(row, 'data_fim')),
-          valor_acordado:value, centro_custo:String(cell(row, 'centro_custo') || '').trim(), numero_documento:String(cell(row, 'numero_documento') || '').trim(),
-          contato_nome:String(cell(row, 'contato_nome') || '').trim(), contato_email:String(cell(row, 'contato_email') || '').trim(), contato_telefone:String(cell(row, 'contato_telefone') || '').trim(),
-          observacoes:String(cell(row, 'observacoes') || '').trim(), tags:['importado', String(year)], fingerprint:recordFingerprint,
-          dados_originais:Object.fromEntries(headers.map(header => [header.label, row[header.index] ?? '']))
-        };
-        const hasPayment = value > 0 || due || paidAt || cell(row, 'forma_pagamento') || cell(row, 'status_pagamento');
-        const paymentStatus = inferPaymentStatus(cell(row, 'status_pagamento'), paidAt);
-        const pagamentos = hasPayment ? [{ parcela:1, descricao:'Pagamento importado', valor_previsto:value, valor_pago:paymentStatus === 'pago' ? value : 0,
-          vencimento:due, pago_em:paidAt, status:paymentStatus, forma_pagamento:String(cell(row, 'forma_pagamento') || '').trim(),
-          numero_documento:String(cell(row, 'numero_documento') || '').trim(), observacoes:String(cell(row, 'observacoes') || '').trim(),
-          fingerprint:fingerprint([recordFingerprint, 'pagamento-importado']) }] : [];
-        return { registro, pagamentos, _line:index + 2 };
-      }).filter(item => item.registro.titulo && normalize(item.registro.titulo) !== 'acompanhamento');
     }
 
     const supplierRevenueFingerprints = payload => (payload || [])
@@ -3224,14 +3187,15 @@
 
     async function preflightOfficialSupplierImport() {
       if (official?.kind !== 'fornecedores') return;
-      // A V2.5 usa a confirmação da própria linha como fonte de verdade. Testamos a RPC
-      // transacional antes de gravar qualquer coisa para nunca terminar com uma importação
-      // pela metade: entrou em Pagamentos, mas não entrou em Receita/Dashboard.
-      const { error } = await context.client.rpc('confirmar_pagamentos_lote_v1', { p_registro_ids:[], p_confirmado:true });
+      const { error } = await withTimeout(
+        context.client.rpc('confirmar_pagamentos_lote_v1', { p_registro_ids:[], p_confirmado:true }),
+        12000,
+        'O banco demorou para validar a importação.'
+      );
       if (!error) return;
       const details = [error.message, error.details, error.hint, error.code].filter(Boolean).join(' · ');
       const missing = /confirmar_pagamentos_lote_v1|PGRST202|schema cache|could not find the function/i.test(details);
-      if (missing) throw new Error('A confirmação em lote segura ainda não está instalada. Execute o SQL 19 da Central antes de importar Fornecedores; nenhum dado foi importado.');
+      if (missing) throw new Error('A confirmação segura em lote ainda não está instalada. Execute o SQL 19 da Central antes de importar.');
       throw error;
     }
 
@@ -3241,87 +3205,110 @@
       const ids = [];
       for (let index = 0; index < fingerprints.length; index += 200) {
         const chunk = fingerprints.slice(index, index + 200);
-        const { data:records, error } = await context.client.from('acompanhamento_registros')
-          .select('id,fingerprint').in('fingerprint', chunk).is('arquivado_em', null);
+        const { data:records, error } = await withTimeout(
+          context.client.from('acompanhamento_registros').select('id,fingerprint').in('fingerprint', chunk).is('arquivado_em', null),
+          12000,
+          'O banco demorou para conciliar os pagamentos importados.'
+        );
         if (error) throw error;
         ids.push(...(records || []).map(record => record.id).filter(Boolean));
       }
-      if (ids.length !== new Set(fingerprints).size) throw new Error(`A planilha foi lida, mas ${new Set(fingerprints).size - ids.length} linha(s) não puderam ser reconciliadas no banco. A confirmação automática foi interrompida.`);
+      if (ids.length !== new Set(fingerprints).size) throw new Error('Algumas linhas foram importadas, mas não puderam ser conciliadas com segurança. A confirmação foi interrompida.');
       let confirmed = 0;
       for (let index = 0; index < ids.length; index += 500) {
         const chunk = ids.slice(index, index + 500);
-        const { data, error } = await context.client.rpc('confirmar_pagamentos_lote_v1', { p_registro_ids:chunk, p_confirmado:true });
+        const { data, error } = await withTimeout(
+          context.client.rpc('confirmar_pagamentos_lote_v1', { p_registro_ids:chunk, p_confirmado:true }),
+          15000,
+          'O banco demorou para confirmar os pagamentos importados.'
+        );
         if (error) throw error;
         const count = Number(data?.total ?? chunk.length);
-        if (count !== chunk.length) throw new Error('O banco confirmou menos linhas do que a planilha importada.');
+        if (count !== chunk.length) throw new Error('O banco confirmou menos linhas do que o esperado.');
         confirmed += count;
       }
       return confirmed;
     }
 
     async function runImport() {
-      const payload = official?.items || mappedPayload(); if (!payload.length) return context.notify('Nenhuma linha válida para importar.', 'error');
-      if (!official && !mapping.fornecedor && !mapping.titulo && !mapping.referencia) return context.notify('Mapeie pelo menos fornecedor, título ou referência.', 'error');
-      if (DEMO_MODE) { setResult({ criadas:payload.length, atualizadas:0, ignoradas:0, arquivadas:0, confirmadas:official?.kind === 'fornecedores' ? supplierRevenueFingerprints(payload).length : 0, erros:[] }); return context.notify('Prévia de importação concluída.', 'info'); }
-      setImporting(true); setResult(null);
+      if (!official || !file) return;
+      const payload = official.items || [];
+      if (!payload.length) { setLocalError('Nenhum lançamento válido foi encontrado.'); return; }
+      if (DEMO_MODE) {
+        const demoResult = { criadas:payload.length, atualizadas:0, ignoradas:0, arquivadas:0, confirmadas:official.kind === 'fornecedores' ? supplierRevenueFingerprints(payload).length : 0, erros:[] };
+        setResult(demoResult); return;
+      }
+      setImporting(true); setLocalError(''); setResult(null);
       try {
         await preflightOfficialSupplierImport();
-        const chunks = []; for (let index = 0; index < payload.length; index += 300) chunks.push(payload.slice(index, index + 300));
         const total = { criadas:0, atualizadas:0, ignoradas:0, arquivadas:0, confirmadas:0, erros:[] };
-        for (let index = 0; index < chunks.length; index += 1) {
-          const { data, error } = await context.client.rpc('importar_acompanhamentos_v1', { p_controle:control, p_ano:Number(year), p_nome_arquivo:file.name, p_linhas:chunks[index] });
-          if (error) throw error; total.criadas += data.criadas || 0; total.atualizadas += data.atualizadas || 0; total.ignoradas += data.ignoradas || 0; total.erros.push(...(data.erros || []));
+        for (let index = 0; index < payload.length; index += 300) {
+          const chunk = payload.slice(index, index + 300);
+          const { data, error } = await withTimeout(
+            context.client.rpc('importar_acompanhamentos_v1', { p_controle:official.control, p_ano:Number(official.year), p_nome_arquivo:file.name, p_linhas:chunk }),
+            20000,
+            'A importação demorou para responder. Nenhuma nova tentativa automática foi feita.'
+          );
+          if (error) throw error;
+          total.criadas += Number(data?.criadas || 0); total.atualizadas += Number(data?.atualizadas || 0); total.ignoradas += Number(data?.ignoradas || 0); total.erros.push(...(data?.erros || []));
         }
-        if (official) {
-          const { data:archived, error:reconcileError } = await context.client.rpc('conciliar_origem_acompanhamentos_v1', {
-            p_controle:control, p_ano:Number(year), p_modelo:official.modelFile,
-            p_fingerprints:payload.map(item => item.registro.fingerprint).filter(Boolean),
-          });
-          if (reconcileError) throw reconcileError;
-          total.arquivadas = Number(archived) || 0;
-          if (official.kind === 'fornecedores') total.confirmadas = await confirmOfficialSupplierRows(payload);
-          if (official.kind === 'mktg') {
-            const { error:syncError } = await context.client.rpc('sincronizar_confirmacoes_mktg_2026_v1');
-            if (syncError) {
-              const details = [syncError.message, syncError.details, syncError.hint, syncError.code].filter(Boolean).join(' · ');
-              const missingSync = /sincronizar_confirmacoes_mktg_2026_v1|PGRST202|schema cache|could not find the function/i.test(details);
-              if (!missingSync) throw syncError;
-            }
+        const { data:archived, error:reconcileError } = await withTimeout(
+          context.client.rpc('conciliar_origem_acompanhamentos_v1', { p_controle:official.control, p_ano:Number(official.year), p_modelo:official.modelFile, p_fingerprints:payload.map(item => item.registro.fingerprint).filter(Boolean) }),
+          15000,
+          'A conciliação da planilha demorou para responder.'
+        );
+        if (reconcileError) throw reconcileError;
+        total.arquivadas = Number(archived) || 0;
+        if (official.kind === 'fornecedores') total.confirmadas = await confirmOfficialSupplierRows(payload);
+        if (official.kind === 'mktg') {
+          const { error:syncError } = await withTimeout(context.client.rpc('sincronizar_confirmacoes_mktg_2026_v1'), 15000, 'A sincronização da Receita demorou para responder.');
+          if (syncError) {
+            const details = [syncError.message, syncError.details, syncError.hint, syncError.code].filter(Boolean).join(' · ');
+            if (!/sincronizar_confirmacoes_mktg_2026_v1|PGRST202|schema cache|could not find the function/i.test(details)) throw syncError;
           }
         }
-        setResult(total); await context.reload(true); await context.ensureAuxiliary?.(true);
-        context.notify(official?.kind === 'fornecedores'
-          ? `${total.criadas + total.atualizadas} registros sincronizados e ${total.confirmadas} pagamento(s) confirmados na Central.`
-          : `${total.criadas + total.atualizadas} registros sincronizados com a Central.`);
+        setResult(total);
+        const refreshed = await context.reload(true);
+        if (refreshed === false) context.notify('A planilha foi importada, mas a atualização da tela demorou. Reabra a aba para atualizar os dados.', 'info');
+        else context.notify('Planilha importada com sucesso.');
       } catch (error) {
         const details = [error?.message,error?.details,error?.hint,error?.code].filter(Boolean).join(' · ');
         if (/importar_acompanhamentos_v1|conciliar_origem_acompanhamentos_v1|PGRST202|could not find the function|schema cache/i.test(details)) {
-          context.notify('O importador do banco ainda não está instalado nesta base. Execute a estrutura de importação já existente da Central e tente novamente.', 'error');
-        } else context.notify(error.message || 'Falha na importação.', 'error');
-      }
-      finally { setImporting(false); }
+          setLocalError('O importador do banco ainda não está instalado nesta base. Execute a estrutura de importação da Central e tente novamente.');
+        } else setLocalError(error?.message || 'Falha na importação.');
+      } finally { setImporting(false); }
     }
 
-    let preview = [];
-    try { preview = (official ? official.items.slice(0, 5) : mappedPayload(rows.slice(0, 5))).map(normalizeImportItem); }
-    catch (previewError) { console.error('[PMG Importação] Prévia ignorada por erro de normalização:', previewError); preview = []; }
-    const officialBlocked = Boolean(official?.warnings?.length);
-    const officialTargets = official?.kind === 'fornecedores'
-      ? ['Pagamentos', 'Receita anual', 'Dashboard']
-      : official?.kind === 'mktg' ? ['Planejamento PMG', 'Receita anual', 'Dashboard'] : [];
     const openImportedData = () => official?.kind === 'fornecedores'
-      ? context.navigatePayments({ year:Number(official.year || year), pending:false })
-      : official?.kind === 'mktg' ? context.setView('receita') : context.setView('dashboard');
-    if (xlsxState === 'loading') return html`<${MiniEmpty} icon="file-spreadsheet" title="Preparando o importador" text="O leitor de Excel é carregado somente quando você usa esta ferramenta."/>`;
-    if (xlsxState === 'error') return html`<${MiniEmpty} icon="triangle-alert" title="Não foi possível carregar o leitor de Excel" text="Recarregue a página e tente novamente."/>`;
-    return html`<section className="import-section"><div className="import-hero"><div><span className="eyebrow light">Importação integrada</span><h2>Envie o Excel.<br/>A Central organiza o resto.</h2><p>Arquivos Fornecedores e MKTG são reconhecidos automaticamente e atualizam as abas relacionadas sem cadastro linha por linha.</p></div><div className="import-features"><span><${Icon} name="wand-sparkles"/><b>Reconhecimento automático</b><small>Fornecedores e MKTG oficiais</small></span><span><${Icon} name="shield-check"/><b>Sincronização segura</b><small>Atualiza sem duplicar linhas</small></span><span><${Icon} name="history"/><b>Tudo interligado</b><small>Pagamentos, Receita e Dashboard</small></span></div></div>
-      ${!file ? html`<div className=${`import-drop ${dragging ? 'dragging' : ''}`} onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); loadFile(event.dataTransfer.files[0]); }} onClick=${() => inputRef.current?.click()}><input ref=${inputRef} hidden type="file" accept=".xlsx,.xls,.xlsm,.csv" onChange=${event => loadFile(event.target.files[0])}/><div className="import-drop-art"><span><${Icon} name="file-spreadsheet" size=${40}/></span><i></i><i></i><i></i></div><h3>Solte a planilha aqui</h3><p>Fornecedores 2024/2025/2026, MKTG 2026 ou outro Excel/CSV</p><button className="button primary"><${Icon} name="folder-open"/>Escolher arquivo</button></div>` : html`<div className="import-workspace"><div className="import-file-bar"><span className="file-badge"><${Icon} name="file-spreadsheet"/></span><div><strong>${file.name}</strong><small>${int(rows.length)} registros reconhecidos · ${sheets.length} aba(s)</small></div><label><span>Leitura</span>${official ? html`<select disabled><option>Todas as abas</option></select>` : html`<select value=${sheet} onChange=${event => readSheet(event.target.value)}>${sheets.map(name => html`<option value=${name}>${name}</option>`)}</select>`}</label><label><span>Destino</span><select value=${control} disabled=${Boolean(official)} onChange=${event => setControl(event.target.value)}><option value="marketing">Marketing / Fornecedores</option><option value="marcos">Marcos / Presidência</option></select></label><label><span>Ano</span><input type="number" value=${year} disabled=${Boolean(official)} min="2000" max="2200" onInput=${event => setYear(Number(event.target.value))}/></label><button className="icon-button" title="Trocar arquivo" onClick=${() => { setFile(null); setSheets([]); setSheet(''); setHeaders([]); setRows([]); setMapping({}); setOfficial(null); setResult(null); workbookRef.current = null; if (inputRef.current) inputRef.current.value = ''; }}><${Icon} name="x"/></button></div>
-        ${official ? html`<div className="mapping-panel official-detection"><div className="official-detection-icon"><${Icon} name="badge-check" size=${25}/></div><div><span className="eyebrow">Modelo oficial reconhecido</span><h3>${official.label}</h3><p>${official.kind === 'fornecedores' ? 'As competências mensais serão enviadas para Pagamentos. Receita e Dashboard se recalculam automaticamente a partir da mesma base.' : 'Planejamento, previsão de Receita e indicadores serão sincronizados com a Central.'}</p><div className="import-targets">${officialTargets.map(target => html`<span><${Icon} name="arrow-right"/>${target}</span>`)}</div><div className="official-stats"><span><b>${int(official.items.length)}</b> registros</span><span><b>${int(sum(official.items, item => Array.isArray(item?.pagamentos) ? item.pagamentos.length : 0))}</b> movimentos</span><span><b>${int(sheets.length)}</b> abas lidas</span></div>${official.warnings.length ? html`<div className="official-warning"><${Icon} name="triangle-alert"/>${official.warnings.join(' · ')}</div>` : html`<div className="official-ok"><${Icon} name="shield-check"/>Estrutura conferida. Pode sincronizar.</div>`}</div></div>` : html`<div className="mapping-panel"><div className="mapping-head"><div><span className="eyebrow">Correspondência das colunas</span><h3>Confirme o que cada coluna significa</h3><p>As sugestões já foram preenchidas. Ajuste somente o que precisar.</p></div><span className="mapping-score"><b>${Object.keys(mapping).length}</b> campos reconhecidos</span></div><div className="mapping-grid">${IMPORT_FIELDS.map(([field, label]) => html`<label><span>${label}</span><div><${Icon} name="arrow-left-right"/><select value=${mapping[field] ?? ''} onChange=${event => setMapping(current => ({ ...current, [field]:event.target.value }))}><option value="">Não importar</option>${headers.map(header => html`<option value=${header.index}>${header.label}</option>`)}</select></div></label>`)}</div></div>`}
-        <div className="import-preview"><div className="mapping-head"><div><span className="eyebrow">Prévia normalizada</span><h3>É assim que os primeiros registros entrarão</h3></div></div><div className="preview-table-wrap"><table><thead><tr><th>Fornecedor</th><th>Acompanhamento</th><th>Categoria</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody>${preview.map(item => html`<tr><td><strong>${item.registro.fornecedor || '—'}</strong></td><td>${String(item.registro.titulo || '—')}</td><td>${category(item.registro.categoria).label}</td><td>${money(item.registro.valor_acordado)}</td><td>${item.pagamentos?.[0]?.vencimento ? date(item.pagamentos[0].vencimento) : '—'}</td><td><span className=${`status-pill ${item.registro.status}`}><i></i>${RECORD_STATUS[item.registro.status]?.label || String(item.registro.status || '—')}</span></td></tr>`)}</tbody></table></div></div>
-        ${result && html`<div className="import-result"><span><${Icon} name="party-popper" size=${30}/></span><div><strong>Importação concluída</strong><p><b>${result.criadas}</b> novos, <b>${result.atualizadas}</b> atualizados, <b>${result.arquivadas || 0}</b> arquivados e <b>${result.ignoradas}</b> ignorados.${Number(result.confirmadas || 0) ? ` ${int(result.confirmadas)} pagamento(s) ficaram confirmados e já alimentam Receita/Dashboard.` : ''}</p>${result.erros?.length ? html`<small>${result.erros.length} linha(s) precisam de revisão.</small>` : html`<small>Todos os dados válidos foram processados.</small>`}</div><button className="button secondary" onClick=${openImportedData}>${official?.kind === 'fornecedores' ? 'Abrir Pagamentos' : official?.kind === 'mktg' ? 'Abrir Receita' : 'Abrir Dashboard'} <${Icon} name="arrow-right"/></button></div>`}
-        <div className="import-footer"><div><${Icon} name="info"/><p>Modelo oficial: novas linhas entram, alterações são atualizadas e linhas removidas da planilha são arquivadas sem apagar o histórico. Cadastros manuais continuam preservados.</p></div><button className="button primary large" onClick=${runImport} disabled=${importing || !rows.length || officialBlocked}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="database-zap"/>`}${importing ? 'Sincronizando planilha...' : officialBlocked ? 'Revise os alertas antes de importar' : official ? `Sincronizar ${int(rows.length)} registros` : `Importar ${int(rows.length)} linhas`}</button></div>
-        </div>`}
-      <div className="import-history"><div className="panel-heading compact"><div><span className="eyebrow">Rastreabilidade</span><h2>Importações recentes</h2></div></div>${context.imports.length ? context.imports.slice(0, 5).map(item => html`<div className="import-history-row"><span><${Icon} name="file-check-2"/></span><div><strong>${item.nome_arquivo}</strong><small>${item.controle === 'marcos' ? 'Marcos' : 'Marketing'} · ${item.ano_referencia || 'Vários anos'} · ${dateTime(item.criado_em)}</small></div><b>${int(item.linhas_criadas + item.linhas_atualizadas)} processados</b></div>`) : html`<${MiniEmpty} icon="history" title="Nenhuma importação registrada" text="O histórico dos arquivos enviados aparecerá aqui."/>`}</div></section>`;
+      ? context.navigatePayments({ year:Number(official.year || 2026), pending:false })
+      : context.setView('receita');
+    const movementCount = official ? sum(official.items || [], item => Array.isArray(item?.pagamentos) ? item.pagamentos.length : 0) : 0;
+    const destination = official?.kind === 'fornecedores' ? 'Pagamentos → Receita → Dashboard' : 'Planejamento → Receita → Dashboard';
+
+    return html`<section className="import-simple">
+      <div className="import-simple-head"><div><span className="eyebrow">Importar planilha</span><h2>Escolha o Excel e confirme.</h2><p>A Central identifica o modelo e envia os dados para as abas certas.</p></div></div>
+      ${!file ? html`<div className=${`import-simple-drop ${dragging ? 'dragging' : ''}`} onDragOver=${event => { event.preventDefault(); setDragging(true); }} onDragLeave=${() => setDragging(false)} onDrop=${event => { event.preventDefault(); setDragging(false); loadFile(event.dataTransfer.files[0]); }} onClick=${() => inputRef.current?.click()}>
+        <input ref=${inputRef} hidden type="file" accept=".xlsx,.xls,.xlsm" onChange=${event => loadFile(event.target.files[0])}/>
+        <span className="import-simple-icon"><${Icon} name="file-spreadsheet" size=${28}/></span>
+        <h3>Selecionar planilha</h3>
+        <p>Fornecedores 20XX ou MKTG 2026</p>
+        <button type="button" className="button primary"><${Icon} name="folder-open"/>Escolher arquivo</button>
+        ${localError && html`<div className="import-simple-error"><${Icon} name="triangle-alert"/>${localError}</div>`}
+      </div>` : html`<div className="import-simple-card">
+        <div className="import-simple-file"><span className="file-badge"><${Icon} name=${reading ? 'loader-circle' : official ? 'file-check-2' : 'file-spreadsheet'}/></span><div><strong>${file.name}</strong><small>${reading ? 'Lendo a planilha...' : official ? official.label : 'Arquivo selecionado'}</small></div><button type="button" className="button secondary small" disabled=${reading || importing} onClick=${resetFile}>Trocar arquivo</button></div>
+        ${reading ? html`<div className="import-simple-reading"><span className="spinner"></span><p>Reconhecendo o arquivo. Isso deve levar poucos segundos.</p></div>` : localError ? html`<div className="import-simple-error block"><${Icon} name="triangle-alert"/><div><strong>Não foi possível usar esta planilha</strong><p>${localError}</p></div></div>` : official ? html`
+          <div className="import-simple-summary">
+            <div><span>Modelo</span><strong>${official.label}</strong></div>
+            <div><span>Lançamentos</span><strong>${int(official.items.length)}</strong></div>
+            <div><span>Movimentos</span><strong>${int(movementCount)}</strong></div>
+            <div className="wide"><span>Vai atualizar</span><strong>${destination}</strong></div>
+          </div>
+          ${result ? html`<div className="import-simple-success"><${Icon} name="circle-check-big"/><div><strong>Importação concluída</strong><p>${int(result.criadas)} novos · ${int(result.atualizadas)} atualizados · ${int(result.arquivadas || 0)} arquivados${Number(result.confirmadas || 0) ? ` · ${int(result.confirmadas)} confirmados` : ''}</p></div></div>` : null}
+          <div className="import-simple-actions">${result ? html`<button type="button" className="button primary large" onClick=${openImportedData}>${official.kind === 'fornecedores' ? 'Abrir Pagamentos' : 'Abrir Receita'}<${Icon} name="arrow-right"/></button>` : html`<button type="button" className="button primary large" onClick=${runImport} disabled=${importing}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="upload"/>`}${importing ? 'Importando...' : 'Importar planilha'}</button>`}</div>
+        ` : null}
+      </div>`}
+      <p className="import-simple-note"><${Icon} name="shield-check"/>Selecionar o arquivo não altera nada. Os dados só são gravados depois de clicar em <b>Importar planilha</b>.</p>
+    </section>`;
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);
