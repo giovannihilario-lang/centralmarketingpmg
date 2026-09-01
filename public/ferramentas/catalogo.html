@@ -68,12 +68,12 @@
   .preview-wrap { flex: 1; overflow-y: auto; padding: 28px 32px; display: flex; flex-direction: column; align-items: center; gap: 28px; }
   .preview-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #9E9E9E; margin-bottom: -18px; align-self: flex-start; }
   .a4 { width: 595px; min-height: 842px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,.12); border-radius: 3px; position: relative; overflow: hidden; flex-shrink: 0; display: flex; flex-direction: column; }
-  .a4-header { background: var(--verde-escuro); height: 79px; display: flex; align-items: center; padding: 0 45px; gap: 16px; position: relative; flex-shrink: 0; }
+  .a4-header { background: var(--verde-escuro); height: 86px; display: flex; align-items: center; padding: 0 45px; gap: 16px; position: relative; flex-shrink: 0; }
   .a4-header::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 4px; background: var(--accent); }
   .a4-logo-box { width: 51px; height: 51px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--verde-escuro); flex-shrink: 0; overflow: hidden; }
   .a4-header-text { flex: 1; text-align: center; }
   .a4-title { font-size: 24px; font-weight: 700; color: white; line-height: 1; }
-  .a4-subs  { font-size: 9px; color: var(--accent); margin-top: 5px; letter-spacing: .4px; }
+  .a4-subs  { font-size: 8.4px; color: var(--accent); margin-top: 5px; letter-spacing: .3px; line-height: 1.25; }
   .a4-footer { background: var(--verde-escuro); height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 45px; position: relative; flex-shrink: 0; }
   .a4-footer::before { content: ''; position: absolute; top: -3px; left: 0; right: 0; height: 3px; background: var(--accent); }
   .a4-footer span { font-size: 9px; font-weight: 700; color: white; }
@@ -523,6 +523,77 @@ const MAPA_CATEGORIAS = {
   "39":"ORIENTAIS","40":"PANIFICAÇÃO"
 };
 
+// Ordem oficial usada nas listas preparadas para o catálogo. Quando uma lista
+// completa de uma categoria é colada, o gerador usa a posição de cada produto
+// para atribuir automaticamente sua subcategoria e montar o subtítulo das páginas.
+const SUBCATEGORIAS_CATALOGO = {
+  'Acessórios': [
+    ['Caixas e embalagens para pizza',6], ['Embalagens para esfiha e salgados',4],
+    ['Utensílios para forno e pizzaria',6], ['Aplicadores e suportes',3],
+    ['Comandas, lacres e identificação',2], ['Descartáveis e mesa',4],
+  ],
+  'Bebidas': [
+    ['Refrigerantes',37], ['Sucos e néctares',25], ['Águas e água de coco',15],
+    ['Refrescos em pó',18], ['Isotônicos e energéticos',15], ['Cervejas',27],
+    ['Vinhos e espumantes',13], ['Saquês',2], ['Destilados',33], ['Licores e aperitivos',15],
+  ],
+  'Conservas': [
+    ['Molhos',31], ['Extratos e concentrados de tomate',9], ['Tomates e passatas',5],
+    ['Milho, ervilha e legumes',5],
+  ],
+  'Derivados De Ave': [
+    ['Frango - peitos e filés',22], ['Frango - coxas, sobrecoxas e asas',8],
+    ['Frango inteiro e carcaça',4], ['Frango processado e empanados',1], ['Peru',4], ['Ovos',11],
+  ],
+  'Derivados De Bovino': [
+    ['Hambúrgueres bovinos',16], ['Cortes premium',15], ['Cortes bovinos',12],
+    ['Carne seca e curada',6], ['Bovinos processados',1],
+  ],
+  'Derivados De Leite': [
+    ['Muçarela',57], ['Requeijão',58], ['Cream cheese',16], ['Cheddar e molhos de queijo',3],
+    ['Queijo prato',16], ['Parmesão',31], ['Provolone',10], ['Gorgonzola e queijos azuis',8],
+    ['Queijo coalho',10], ['Queijos especiais',6], ['Manteiga',19],
+    ['Creme de leite, nata e bases culinárias',7], ['Leite e leite condensado',9],
+  ],
+  'Derivados De Suíno': [
+    ['Calabresa',27], ['Bacon',37], ['Presunto e apresuntado',13], ['Pepperoni',4],
+    ['Linguiças',4], ['Lombo canadense',4], ['Mortadela',5], ['Salsicha',3], ['Paio',2],
+    ['Cortes e defumados suínos',1],
+  ],
+  'Derivados De Vegetal': [
+    ['Molhos e condimentos',46], ['Azeites',8], ['Óleos e gorduras',2], ['Margarinas',8],
+    ['Arroz',16], ['Feijões, lentilhas e grãos',5], ['Batatas e purês',60],
+    ['Legumes e vegetais congelados',2], ['Azeitonas',1], ['Palmitos',1],
+    ['Tomates frescos e triturados',1],
+  ],
+  'Derivados Do Mar': [
+    ['Atum',26], ['Bacalhau',2], ['Camarão',4], ['Peixes',6], ['Sardinha e aliche',7],
+    ['Kani e algas',4], ['Temperos do mar',1],
+  ],
+  'Doces': [
+    ['Chocolates',71], ['Recheios, coberturas e cremes',16], ['Açúcares, adoçantes e glucose',20],
+    ['Gelatinas',8], ['Doces, goiabadas e bombons',1], ['Frutas em calda e conservadas',2],
+    ['Frutas secas e castanhas',1], ['Coco e derivados',2], ['Geléias',4],
+  ],
+  'Farináceos': [
+    ['Farinhas de trigo',48], ['Farinhas para empanamento',6], ['Massas e macarrões',46],
+    ['Amidos e féculas',4], ['Milho, fubá e canjica',9], ['Tapiocas, cuscuz e sagu',7],
+    ['Farinhas de mandioca e farofas',19], ['Trigo para kibe e cereais',5],
+    ['Pães e panificados',3], ['Fermentos',3],
+  ],
+  'Higiene': [
+    ['Detergentes e desengraxantes',5], ['Desinfecção e limpeza pesada',9], ['Esponjas e panos',4],
+    ['Papéis',3], ['Sacos para lixo',1], ['Proteção e higiene pessoal',3],
+  ],
+  'Panificação': [
+    ['Farinhas para panificação',15], ['Misturas para bolo',7], ['Melhoradores',1],
+    ['Margarinas para massas e folhados',1], ['Desmoldantes',1],
+  ],
+  'Salgados': [
+    ['Salgados prontos e congelados',10], ['Empanados e aperitivos',15],
+  ],
+};
+
 let TODOS_PRODUTOS = [];
 let nextProdId = 1;
 const MAX_PRODUTOS_POR_PAGINA = 25;
@@ -539,7 +610,7 @@ const COLOR_LABELS = {
 };
 
 function buildPagesFromCategorias() {
-  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', produtos: [], cor: null }));
+  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', subtituloAuto: false, produtos: [], cor: null }));
 }
 let pages      = buildPagesFromCategorias();
 let nextPageId = CATEGORIAS.length + 1;
@@ -562,7 +633,7 @@ function garantirCategoria(cat) {
     CATEGORIAS.push(cat);
     CATEGORIAS.sort();
 // dentro de garantirCategoria()
-pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', produtos: [], cor: null });  }
+pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', subtituloAuto: false, produtos: [], cor: null });  }
 }
 function extrairUnidade(nome) {
   const m = nome.match(/\(([^)]+)\)\s*$/);
@@ -766,7 +837,7 @@ function analisarListaProdutos() {
   });
 
   if (!termos.length) {
-    const resultado = { ativo: false, termos: [], ids: null, naoEncontrados: [], correspondenciasAjustadas: [] };
+    const resultado = { ativo: false, termos: [], ids: null, naoEncontrados: [], correspondenciasAjustadas: [], resolvidos: [], produtosOrdenados: [] };
     poolListaCache = { texto: textoLista, revisao: catalogoProdutosRevisao, resultado };
     return resultado;
   }
@@ -781,6 +852,8 @@ function analisarListaProdutos() {
   const ids = new Set();
   const naoEncontrados = [];
   const correspondenciasAjustadas = [];
+  const resolvidos = [];
+  const produtosOrdenados = [];
   termos.forEach(termo => {
     let candidatos = porNome.get(termo.normalizado) || [];
 
@@ -808,10 +881,16 @@ function analisarListaProdutos() {
     }
 
     if (!candidatos.length) naoEncontrados.push(termo.original);
-    candidatos.forEach(produto => ids.add(produto.id));
+    const produtosDoTermo = [];
+    candidatos.forEach(produto => {
+      ids.add(produto.id);
+      produtosDoTermo.push(produto);
+      if (!produtosOrdenados.some(item => item.id === produto.id)) produtosOrdenados.push(produto);
+    });
+    resolvidos.push({ ...termo, produtos: produtosDoTermo });
   });
 
-  const resultado = { ativo: true, termos, ids, naoEncontrados, correspondenciasAjustadas };
+  const resultado = { ativo: true, termos, ids, naoEncontrados, correspondenciasAjustadas, resolvidos, produtosOrdenados };
   poolListaCache = { texto: textoLista, revisao: catalogoProdutosRevisao, resultado };
   return resultado;
 }
@@ -851,11 +930,64 @@ async function copiarProdutosNaoEncontrados() {
   }
 }
 
+function aplicarSubcategoriasDaLista(analise) {
+  if (!analise?.ativo || !Array.isArray(analise.resolvidos) || !analise.resolvidos.length) return null;
+
+  const produtosEncontrados = analise.resolvidos.flatMap(item => item.produtos || []);
+  const categorias = [...new Set(produtosEncontrados.map(p => p.categoria).filter(Boolean))];
+  if (categorias.length !== 1) return null;
+
+  const categoria = categorias[0];
+  const plano = SUBCATEGORIAS_CATALOGO[categoria];
+  if (!plano?.length) return null;
+
+  const totalEsperado = plano.reduce((soma, item) => soma + Number(item[1] || 0), 0);
+  // A planilha de textos possui uma lista completa por categoria. Só usamos a
+  // divisão posicional quando a quantidade colada corresponde ao plano inteiro;
+  // assim uma lista parcial não ganha subcategoria errada por acidente.
+  if (analise.termos.length !== totalEsperado) return null;
+
+  let cursor = 0;
+  plano.forEach(([subcategoria, quantidade]) => {
+    const limite = cursor + quantidade;
+    analise.resolvidos.slice(cursor, limite).forEach(item => {
+      (item.produtos || []).forEach(produto => { produto.subcategoria = subcategoria; });
+    });
+    cursor = limite;
+  });
+  return categoria;
+}
+
+function subtituloAutomaticoDaPagina(pg) {
+  const subcategorias = [];
+  (pg.produtos || []).forEach(id => {
+    const produto = TODOS_PRODUTOS.find(p => p.id === id);
+    const sub = String(produto?.subcategoria || '').trim();
+    if (sub && !subcategorias.includes(sub)) subcategorias.push(sub);
+  });
+  return subcategorias.join(' • ');
+}
+
+function atualizarSubtitulosAutomaticos(categoria = null) {
+  pages.forEach(pg => {
+    if (categoria && pg.titulo !== categoria) return;
+    const auto = subtituloAutomaticoDaPagina(pg);
+    if (auto) {
+      pg.subtitulo = auto;
+      pg.subtituloAuto = true;
+    } else if (pg.subtituloAuto) {
+      pg.subtitulo = '';
+      pg.subtituloAuto = false;
+    }
+  });
+}
+
 function criarPaginaDepoisDa(paginaBase, subtitulo = '') {
   const nova = {
     id: nextPageId++,
     titulo: paginaBase.titulo,
     subtitulo,
+    subtituloAuto: false,
     produtos: [],
     cor: paginaBase.cor || null,
   };
@@ -878,6 +1010,7 @@ function normalizarPaginasParaLimite() {
         id: nextPageId++,
         titulo: pg.titulo,
         subtitulo: '',
+        subtituloAuto: false,
         produtos: excedentes.slice(j, j + MAX_PRODUTOS_POR_PAGINA),
         cor: pg.cor || null,
       });
@@ -1077,7 +1210,7 @@ function addPage() {
     const nova = criarPaginaDepoisDa(referencia, '');
     openPage = nova.id;
   } else {
-    const nova = { id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [], cor: null };
+    const nova = { id: nextPageId++, titulo: 'Nova Página', subtitulo: '', subtituloAuto: false, produtos: [], cor: null };
     pages.push(nova);
     openPage = nova.id;
   }
@@ -1090,7 +1223,7 @@ function updatePageTitulo(pid, val) {
 }
 function updatePageSubtitulo(pid, val) {
   const pg = pages.find(p => p.id === pid);
-  if (pg) { pg.subtitulo = val; renderPreview(); }
+  if (pg) { pg.subtitulo = val; pg.subtituloAuto = false; renderPreview(); }
   salvarDebounce()
 }
 function removePage(pid) {
@@ -1108,11 +1241,14 @@ function togglePage(pid) {
 function removeProductFromPage(pid, prodId) {
   const pg = pages.find(p => p.id === pid);
   if (pg) pg.produtos = pg.produtos.filter(id => id !== prodId);
+  atualizarSubtitulosAutomaticos(pg?.titulo || null);
   renderPanel(); renderPreview();
   salvarDebounce()
 }
 function addProductToPage(pid, prodId) {
   const resultado = moverProdutosParaPaginaComOverflow(pid, [prodId]);
+  const categoriaPagina = pages.find(p => p.id === pid)?.titulo || null;
+  atualizarSubtitulosAutomaticos(categoriaPagina);
   renderPanel(); renderPreview(); salvarDebounce();
   if (resultado.novasPaginas) showToast('Página cheia: criei a próxima página com o mesmo título.');
 }
@@ -1149,9 +1285,15 @@ function adicionarTodosFiltrados() {
   if (!pg) return;
   if (!filtered.length) { showToast('Nenhum produto encontrado para adicionar.'); return; }
 
-  const resultado = moverProdutosParaPaginaComOverflow(targetId, filtered);
+  const categoriaComSubcategorias = aplicarSubcategoriasDaLista(analise);
+  const produtosParaAdicionar = analise.ativo && analise.produtosOrdenados?.length
+    ? analise.produtosOrdenados.filter(p => filtered.some(f => f.id === p.id))
+    : filtered;
+
+  const resultado = moverProdutosParaPaginaComOverflow(targetId, produtosParaAdicionar);
+  atualizarSubtitulosAutomaticos(categoriaComSubcategorias || pg.titulo);
   renderPanel(); renderPreview(); salvarDebounce();
-  showToast(`${resultado.adicionados} produto${resultado.adicionados !== 1 ? 's' : ''} adicionado${resultado.adicionados !== 1 ? 's' : ''}${resultado.novasPaginas ? ` · ${resultado.novasPaginas} nova${resultado.novasPaginas !== 1 ? 's' : ''} página${resultado.novasPaginas !== 1 ? 's' : ''} criada${resultado.novasPaginas !== 1 ? 's' : ''}` : ''}!`);
+  showToast(`${resultado.adicionados} produto${resultado.adicionados !== 1 ? 's' : ''} adicionado${resultado.adicionados !== 1 ? 's' : ''}${categoriaComSubcategorias ? ' · subtítulos preenchidos automaticamente' : ''}${resultado.novasPaginas ? ` · ${resultado.novasPaginas} nova${resultado.novasPaginas !== 1 ? 's' : ''} página${resultado.novasPaginas !== 1 ? 's' : ''} criada${resultado.novasPaginas !== 1 ? 's' : ''}` : ''}!`);
 }
 function distribuirTodosPorCategoria() {
   let distribuidos = 0, semPagina = 0;
@@ -1186,6 +1328,7 @@ function distribuirTodosPorCategoria() {
     });
   });
 
+  atualizarSubtitulosAutomaticos();
   renderPanel(); renderPreview(); salvarDebounce();
   showToast(`${distribuidos} produto${distribuidos !== 1 ? 's' : ''} distribuído${distribuidos !== 1 ? 's' : ''} em páginas de até ${MAX_PRODUTOS_POR_PAGINA}` + (semPagina ? ` · ${semPagina} sem página correspondente` : ''));
   if (semPaginaCats.size) console.warn('Categorias sem página correspondente:', Array.from(semPaginaCats));
@@ -1210,6 +1353,7 @@ function onDropZone(e, pid) {
     }
   }
   dragProdId = null; dragFromPage = null;
+  atualizarSubtitulosAutomaticos();
   renderPanel(); renderPreview(); salvarDebounce();
 }
 
@@ -1317,7 +1461,6 @@ function renderPreview() {
   if (!wrap) return;
   wrap.innerHTML = '';
   const PROD_POR_PAGINA = MAX_PRODUTOS_POR_PAGINA;
-  let paginaGlobal = 0;
   let cardDragProdId = null, cardDragPageId = null;
 
   pages.forEach(pg => {
@@ -1326,10 +1469,9 @@ function renderPreview() {
     if (prods.length > 0) for (let i = 0; i < prods.length; i += PROD_POR_PAGINA) fatias.push(prods.slice(i, i+PROD_POR_PAGINA));
 
     fatias.forEach((fatia) => {
-      paginaGlobal++;
       const label = document.createElement('div');
       label.className = 'preview-label';
-      label.textContent = `Página ${paginaGlobal} — ${pg.titulo}${pg.subtitulo ? ` · ${pg.subtitulo}` : ''}`;
+      label.textContent = `${pg.titulo}${pg.subtitulo ? ` · ${pg.subtitulo}` : ''}`;
       wrap.appendChild(label);
 
       const a4 = document.createElement('div'); a4.className = 'a4';
@@ -1408,7 +1550,7 @@ a4.style.setProperty('--accent',       pal.accent);
 const footer = document.createElement('div');
 footer.className = 'a4-footer';
 footer.innerHTML = `<span>PMG.com.br</span>
-  <span class="pg">Atacadista de Alimentos e Bebidas — Pág. ${paginaGlobal}</span>`;
+  <span class="pg">Atacadista de Alimentos e Bebidas</span>`;
 a4.appendChild(footer);
 
 wrap.appendChild(a4);
@@ -1548,7 +1690,7 @@ const STORAGE_KEY = 'catalogoPMG_estado';
 function salvarEstado() {
   const estado = {
     pages: pages.map(pg => ({
-  id: pg.id, titulo: pg.titulo, subtitulo: pg.subtitulo,
+  id: pg.id, titulo: pg.titulo, subtitulo: pg.subtitulo, subtituloAuto: !!pg.subtituloAuto,
   produtos: pg.produtos, cor: pg.cor || null
 })),
     nextPageId,
@@ -1570,7 +1712,7 @@ function carregarEstado() {
     if (!raw) return false;
     const estado = JSON.parse(raw);
     if (!estado || !estado.pages || estado.pages.length === 0) return false;
-    pages        = estado.pages;
+    pages        = estado.pages.map(pg => ({ ...pg, subtituloAuto: !!pg.subtituloAuto }));
     const maiorIdPagina = pages.reduce((maior, pg) => Math.max(maior, Number(pg.id) || 0), 0);
     nextPageId   = Math.max(Number(estado.nextPageId) || 0, maiorIdPagina + 1, pages.length + 1);
     const paginasMigradas = normalizarPaginasParaLimite();
@@ -1637,7 +1779,7 @@ async function sincronizarAPI() {
     }
 
     garantirCategoria(categoria);
-    TODOS_PRODUTOS.push({ id, nome, unidade, categoria });
+    TODOS_PRODUTOS.push({ id, nome, unidade, categoria, idSubcategoria: item.id_subcategoria ?? null });
 
     if (imagemURL && !prodImages[id]) {
       prodImages[id] = `/img-proxy?url=${encodeURIComponent(imagemURL)}`;
