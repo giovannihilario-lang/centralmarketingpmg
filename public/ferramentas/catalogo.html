@@ -84,11 +84,12 @@
   .card-img { height: 64px; background: #F5F5F5; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; flex-shrink: 0; border-bottom: 1px solid #EBEBEB; overflow: hidden; }
   .card-img svg { opacity: .3; }
   .card-img span { font-size: 6px; color: #BDBDBD; text-align: center; }
-  .card-img img { width: 100%; height: 100%; object-fit: cover; }
-  .card-body { padding: 6px 7px; flex: 1; display: flex; align-items: center; }
-  .card-nome { font-size: 7px; font-weight: 700; color: #212121; line-height: 1.35; }
-  .card-badge { background: var(--verde-suave); border-top: 1px solid var(--verde-claro); padding: 4px 6px; text-align: center; font-size: 6.5px; font-weight: 700; color: var(--verde-escuro); flex-shrink: 0; border-radius: 0 0 7px 7px; overflow: hidden; line-height: 1.1; }
+  .card-img img { width: 100%; height: 100%; object-fit: contain; object-position: center; padding: 4px; }
+  .card-body { padding: 6px 8px 4px; flex: 1; display: flex; align-items: flex-start; justify-content: flex-start; overflow: hidden; }
+  .card-nome { width: 100%; font-size: 6.8px; font-weight: 700; color: #212121; line-height: 1.18; overflow: hidden; word-break: break-word; overflow-wrap: anywhere; hyphens: auto; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; text-wrap: pretty; }
+  .card-badge { background: var(--verde-suave); border-top: 1px solid var(--verde-claro); padding: 4px 6px; text-align: center; font-size: 6.5px; font-weight: 700; color: var(--verde-escuro); flex-shrink: 0; border-radius: 0 0 7px 7px; overflow: hidden; line-height: 1.1; min-height: 18px; display: flex; align-items: center; justify-content: center; }
   .card-empty { border: 1.5px dashed #E0E0E0; border-radius: 7px; height: 120px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #CCC; }
+  .card .card-nome[data-fit='tight'] { letter-spacing: -0.1px; }
   .card-check { position: absolute; top: 5px; right: 5px; width: 16px; height: 16px; background: white; border: 2px solid #DDD; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: transparent; pointer-events: none; transition: all .12s; }
   .card.selecionado { outline: 2.5px solid #E53935; outline-offset: -2px; background: #FFEBEE; }
   .card.selecionado .card-badge { background: #FFCDD2; border-color: #EF9A9A; color: #C62828; }
@@ -1490,6 +1491,30 @@ function _excluirSelecionados() {
 }
 
 // ── RENDER PREVIEW ──
+function ajustarTipografiaCards(contexto = document) {
+  contexto.querySelectorAll('.card .card-nome').forEach(el => {
+    const caixa = el.parentElement;
+    if (!caixa) return;
+    el.style.fontSize = '';
+    el.style.lineHeight = '';
+    el.dataset.fit = '';
+    let tamanho = 6.8;
+    const minimo = 5.6;
+    const aplicar = () => {
+      el.style.fontSize = `${tamanho.toFixed(1)}px`;
+      el.style.lineHeight = '1.18';
+    };
+    aplicar();
+    let guard = 0;
+    while ((el.scrollHeight > caixa.clientHeight + 0.5 || el.scrollWidth > caixa.clientWidth + 0.5) && tamanho > minimo && guard < 20) {
+      tamanho = Math.max(minimo, +(tamanho - 0.2).toFixed(1));
+      aplicar();
+      guard++;
+    }
+    if (tamanho <= 6.0) el.dataset.fit = 'tight';
+  });
+}
+
 function renderPreview() {
   const wrap = document.getElementById('previewWrap');
   if (!wrap) return;
@@ -1592,6 +1617,7 @@ a4.appendChild(footer);
 wrap.appendChild(a4);
     });
   });
+  ajustarTipografiaCards(wrap);
   if (typeof agendarPreRenderExportacao === 'function') agendarPreRenderExportacao();
 }
 
@@ -1692,7 +1718,7 @@ function buildPanel() {
 // Não existe mais screenshot de DOM no caminho principal. O navegador já
 // calculou o layout do preview; usamos essas coordenadas reais e desenhamos a
 // folha diretamente em canvas. Isso elimina o maior gargalo de catálogos longos.
-const CATALOGO_EXPORT_BUILD = '2026-09-01-layout-card-badge-v62';
+const CATALOGO_EXPORT_BUILD = '2026-09-01-layout-card-fit-v63';
 const PERFIL_PDF_HQ = { escala: 2.0, qualidade: 0.93 };
 const PERFIL_PDF_RAPIDO = { escala: 1.25, qualidade: 0.86 };
 const PERFIL_PNG_HQ = { escala: 2.0, qualidade: 1 };
@@ -1798,9 +1824,9 @@ function contornarArredondado(ctx, rect, raio, cor, largura = 1, dash = []) {
   ctx.stroke();
   ctx.restore();
 }
-function fonteCanvas(style) {
+function fonteCanvas(style, tamanhoOverride) {
   const peso = style.fontWeight || '400';
-  const tamanho = numeroCSS(style.fontSize, 10);
+  const tamanho = Number.isFinite(tamanhoOverride) ? tamanhoOverride : numeroCSS(style.fontSize, 10);
   const familia = style.fontFamily || 'Segoe UI, Arial, sans-serif';
   const italico = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
   return `${italico}${peso} ${tamanho}px ${familia}`;
@@ -1837,20 +1863,47 @@ function desenharTextoElemento(ctx, el, baseRect, opcoes = {}) {
   const rect = retanguloRelativo(el, baseRect);
   const style = getComputedStyle(el);
   ctx.save();
-  ctx.font = fonteCanvas(style);
   ctx.fillStyle = corCSS(style.color, '#212121');
-  const tamanho = numeroCSS(style.fontSize, 10);
-  let lineHeight = numeroCSS(style.lineHeight, tamanho * 1.2);
-  if (!Number.isFinite(lineHeight) || lineHeight <= 0) lineHeight = tamanho * 1.2;
+  const tamanhoBase = numeroCSS(style.fontSize, 10);
+  const lineHeightOrig = numeroCSS(style.lineHeight, tamanhoBase * 1.2);
+  const fatorLineHeight = Number.isFinite(lineHeightOrig) && lineHeightOrig > 0 && tamanhoBase > 0 ? (lineHeightOrig / tamanhoBase) : 1.2;
+  let tamanho = Number.isFinite(opcoes.fontSize) ? opcoes.fontSize : tamanhoBase;
+  const minFontSize = Number.isFinite(opcoes.minFontSize) ? opcoes.minFontSize : tamanho;
+  const maxW = Math.max(1, rect.w);
   const align = opcoes.align || style.textAlign || 'left';
+  const valign = opcoes.valign || 'middle';
+  const aplicarFonte = () => {
+    ctx.font = fonteCanvas(style, tamanho);
+    if ('letterSpacing' in ctx && style.letterSpacing && style.letterSpacing !== 'normal') ctx.letterSpacing = style.letterSpacing;
+  };
+  aplicarFonte();
+  let lineHeight = Math.max(1, tamanho * fatorLineHeight);
+  let linhas = opcoes.singleLine ? [texto] : quebrarTexto(ctx, texto, maxW);
+  if (opcoes.fitBox && !opcoes.singleLine) {
+    let maxLines = Math.max(1, Math.floor(rect.h / lineHeight));
+    while ((linhas.length > maxLines || (linhas.length * lineHeight) > rect.h + 0.5) && tamanho > minFontSize + 0.01) {
+      tamanho = Math.max(minFontSize, +(tamanho - 0.2).toFixed(2));
+      aplicarFonte();
+      lineHeight = Math.max(1, tamanho * fatorLineHeight);
+      maxLines = Math.max(1, Math.floor(rect.h / lineHeight));
+      linhas = quebrarTexto(ctx, texto, maxW);
+    }
+    maxLines = Math.max(1, Math.floor(rect.h / lineHeight));
+    if (linhas.length > maxLines) {
+      linhas = linhas.slice(0, maxLines);
+      if (opcoes.ellipsis !== false && linhas.length) {
+        let ultima = linhas[linhas.length - 1].replace(/[\s.]+$/,'');
+        while (ultima.length > 1 && ctx.measureText(`${ultima}…`).width > maxW) ultima = ultima.slice(0, -1).trimEnd();
+        linhas[linhas.length - 1] = `${ultima}…`;
+      }
+    }
+  }
+  const totalH = Math.max(lineHeight, linhas.length * lineHeight);
   ctx.textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
   ctx.textBaseline = 'middle';
-  if ('letterSpacing' in ctx && style.letterSpacing && style.letterSpacing !== 'normal') ctx.letterSpacing = style.letterSpacing;
-
-  const maxW = Math.max(1, rect.w);
-  const linhas = opcoes.singleLine ? [texto] : quebrarTexto(ctx, texto, maxW);
-  const totalH = Math.max(lineHeight, linhas.length * lineHeight);
   let y = rect.y + (rect.h - totalH) / 2 + lineHeight / 2;
+  if (valign === 'top') y = rect.y + lineHeight / 2;
+  else if (valign === 'bottom') y = rect.y + rect.h - totalH + lineHeight / 2;
   const x = ctx.textAlign === 'center' ? rect.x + rect.w / 2 : ctx.textAlign === 'right' ? rect.x + rect.w : rect.x;
   linhas.forEach(linha => { ctx.fillText(linha, x, y, maxW); y += lineHeight; });
   ctx.restore();
@@ -1968,12 +2021,13 @@ async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.8
         ctx.save(); caminhoArredondado(ctx, ir.x, ir.y, ir.w, ir.h, Math.max(0, radius - 1)); ctx.clip();
         ctx.fillStyle = corCSS(getComputedStyle(imgBox).backgroundColor, '#F5F5F5'); ctx.fillRect(ir.x, ir.y, ir.w, ir.h);
         const img = imgBox.querySelector('img');
-        if (!(img && desenharImagemFit(ctx, img, ir, 'cover'))) desenharPlaceholderImagem(ctx, ir);
+        const irPad = { x: ir.x + 4, y: ir.y + 4, w: Math.max(1, ir.w - 8), h: Math.max(1, ir.h - 8) };
+        if (!(img && desenharImagemFit(ctx, img, irPad, 'contain'))) desenharPlaceholderImagem(ctx, ir);
         ctx.restore();
         ctx.save(); ctx.strokeStyle='#EBEBEB'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(ir.x,ir.y+ir.h);ctx.lineTo(ir.x+ir.w,ir.y+ir.h);ctx.stroke();ctx.restore();
       }
 
-      desenharTextoElemento(ctx, item.querySelector('.card-nome'), baseRect);
+      desenharTextoElemento(ctx, item.querySelector('.card-nome'), baseRect, { fitBox: true, minFontSize: 5.6, valign: 'top' });
       const badge = item.querySelector('.card-badge');
       if (badge) {
         const br = retanguloRelativo(badge, baseRect);
