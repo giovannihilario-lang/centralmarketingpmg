@@ -12,11 +12,11 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 const original = fs.readFileSync(appPath, 'utf8');
 const htmlSource = fs.readFileSync(path.join(projectRoot, 'public', 'acompanhamento.html'), 'utf8');
 
-if (!original.includes('Central de Acompanhamento UX V2.5.7')) throw new Error('Versão V2.5.7 ausente no JS.');
+if (!original.includes('Central de Acompanhamento UX V2.5.8')) throw new Error('Versão V2.5.8 ausente no JS.');
 if (original.includes('window.lucide?.createIcons')) throw new Error('createIcons não pode alterar nós controlados pelo React.');
 if (!original.includes('lucide-icon-host')) throw new Error('Contêiner isolado dos ícones não foi criado.');
 if (!original.includes('window.lucide.createElement(icon)')) throw new Error('Lucide não está isolado dentro do contêiner estável.');
-if (!htmlSource.includes('acompanhamento.js?v=2.5.7')) throw new Error('Cache do JS V2.5.7 não foi invalidado.');
+if (!htmlSource.includes('acompanhamento.js?v=2.5.8')) throw new Error('Cache do JS V2.5.8 não foi invalidado.');
 if (!htmlSource.includes('translate="no"')) throw new Error('Proteção contra alteração externa da árvore React ausente.');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);",
@@ -61,6 +61,13 @@ for (const requiredUxContract of [
   if (!original.includes(requiredUxContract)) throw new Error(`Contrato V2.5.5 ausente: ${requiredUxContract}`);
 }
 if (original.includes('Confirme o que cada coluna significa')) throw new Error('Importador oficial ainda exibe mapeamento técnico na interface ativa');
+for (const monthlyImportContract of [
+  'conciliar_origem_competencia_acompanhamentos_v1',
+  'Os outros meses não serão alterados.',
+  'atualiza <b>somente a competência escolhida</b>',
+]) {
+  if (!original.includes(monthlyImportContract)) throw new Error(`Proteção mensal ausente: ${monthlyImportContract}`);
+}
 
 // A importação de Fornecedores precisa persistir a confirmação na própria linha,
 // porque desde a V1.9.5 essa é a fonte de verdade de Receita/Dashboard.
@@ -114,6 +121,16 @@ const closingAjinomoto = closingDetected.items.find(item => item.registro.fornec
 if (!closingAjinomoto || closingAjinomoto.pagamentos[0]?.status !== 'pago') throw new Error('Fechamento não alimentou Pagamentos como recebido');
 if (!closingAjinomoto.registro.fingerprint.includes('marketing|fornecedores|2026|agosto|ajinomoto|cota')) throw new Error(`Fingerprint de Fechamento incompatível com Fornecedores: ${closingAjinomoto?.registro?.fingerprint}`);
 
+const closingForcedMonth = sandbox.__PMG_TEST__.parseOfficialWorkbook('Teste fechamento.xlsx', (() => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['CAMPANHA','FORNECEDOR','VERBA','COMPETÊNCIA'],
+    ['COTA','AJINOMOTO',100,'Janeiro'],
+  ]), 'Planilha1');
+  return workbook;
+})(), { forcedMonthIndex:7 });
+if (!closingForcedMonth.items[0]?.registro?.fingerprint.includes('|agosto|')) throw new Error('A competência escolhida não prevaleceu sobre uma célula da planilha de Fechamento');
+
 // Regressão V2.5.0: duas linhas do mesmo fornecedor/mês não podem herdar a mesma baixa oficial.
 const multiLineSource = {
   id:'source-multiline', controle:'marcos', ano_referencia:2026, fornecedor:'Fornecedor Teste', natureza:'receita',
@@ -135,13 +152,14 @@ if (Math.abs(Number(multiLive.bySupplier.get('fornecedor teste')?.months?.[0] ||
   throw new Error('Conciliação por linha alterou indevidamente o total oficial do fornecedor');
 }
 const noForecastRow = { id:'manual-sem-previsao', controle:'marketing', ano_referencia:2026, fornecedor:'Receita Sem Previsão', natureza:'receita', impacto_totais:true, status:'concluido', valor_acordado:25, pagamento_confirmado:true, data_inicio:'2026-01-01', origem_importacao:'cadastro-manual', tags:['fornecedores','manual'] };
+const pendingExportRow = { ...noForecastRow, id:'manual-pendente-exportacao', fornecedor:'Receita Pendente', pagamento_confirmado:false };
 const integritySynthetic = sandbox.__PMG_TEST__.buildIntegrityReport([...multiDecorated,noForecastRow], [], [], 2026);
 if (integritySynthetic.noForecastCount < 1) throw new Error('Integridade não detectou receita confirmada sem previsão');
 
 
 // Regressão V2.5.1: a exportação precisa reproduzir Receita/Planejamento a partir da mesma fonte viva da Central.
 const exportSynthetic = sandbox.__PMG_TEST__.buildMktgExportSnapshot({
-  allRecords:[...multiDecorated,noForecastRow],
+  allRecords:[...multiDecorated,noForecastRow,pendingExportRow],
   payments:[],
   conferences:[],
 });
@@ -149,7 +167,7 @@ const exportSupplier = exportSynthetic.revenue2026.find(row => row.name === 'For
 if (!exportSupplier || Math.abs(Number(exportSupplier.months?.[0] || 0) - 100) > 0.01) {
   throw new Error('Exportação MKTG não reproduziu a Receita conciliada por fornecedor');
 }
-if (!exportSynthetic.pendingRows.some(row => row.supplier === 'Receita Sem Previsão')) {
+if (!exportSynthetic.pendingRows.some(row => row.supplier === 'Receita Pendente')) {
   throw new Error('Exportação MKTG não incluiu lançamento a receber em PENDÊNCIAS');
 }
 const exportTemplatePath = path.join(projectRoot,'public','modelos','MKTG-2026-PMG-CONNECT.xlsx');

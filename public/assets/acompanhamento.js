@@ -1,4 +1,4 @@
-/* PMG Connect — Central de Acompanhamento UX V2.5.7 / React + HTM */
+/* PMG Connect — Central de Acompanhamento UX V2.5.8 / React + HTM */
 (() => {
   'use strict';
 
@@ -3162,7 +3162,8 @@
     const dataRows = layout.rows.slice(layout.headerIndex + 1);
     const filenameMonth = monthIndexFromText(fileName);
     const sheetMonth = monthIndexFromText(layout.firstSheetName);
-    const defaultMonthIndex = Number.isInteger(forcedMonthIndex) && forcedMonthIndex >= 0 ? forcedMonthIndex : (filenameMonth >= 0 ? filenameMonth : sheetMonth);
+    const hasForcedMonth = Number.isInteger(forcedMonthIndex) && forcedMonthIndex >= 0;
+    const defaultMonthIndex = hasForcedMonth ? forcedMonthIndex : (filenameMonth >= 0 ? filenameMonth : sheetMonth);
     let needsCompetence = defaultMonthIndex < 0 && layout.competenceIndex < 0;
     let recognizedRows = 0;
 
@@ -3173,7 +3174,7 @@
       const value = officialMoney(row[layout.primaryValueIndex]);
       if (value <= 0) return;
       let monthIndex = defaultMonthIndex;
-      if (layout.competenceIndex >= 0) {
+      if (!hasForcedMonth && layout.competenceIndex >= 0) {
         const cellMonth = monthIndexFromText(String(row[layout.competenceIndex] ?? ''));
         if (cellMonth >= 0) monthIndex = cellMonth;
       }
@@ -3278,8 +3279,11 @@
         if (!Array.isArray(workbook?.SheetNames) || !workbook.SheetNames.length) throw new Error('A planilha não possui abas legíveis.');
         workbookRef.current = workbook;
         let detected = parseOfficialWorkbook(nextFile.name, workbook);
-        if (detected?.kind === 'fechamento' && detected.needsCompetence) detected = parseOfficialWorkbook(nextFile.name, workbook, { forcedMonthIndex:closingMonth });
-        if (detected?.kind === 'fechamento' && Number.isInteger(detected.competenceMonthIndex)) setClosingMonth(detected.competenceMonthIndex);
+        if (detected?.kind === 'fechamento') {
+          const selectedMonth = Number.isInteger(detected.competenceMonthIndex) ? detected.competenceMonthIndex : closingMonth;
+          detected = parseOfficialWorkbook(nextFile.name, workbook, { forcedMonthIndex:selectedMonth });
+          setClosingMonth(selectedMonth);
+        }
         if (!detected) throw new Error('Modelo não reconhecido. Use Fornecedores 20XX, MKTG 2026 ou o modelo de Fechamento da PMG.');
         if (detected.warnings?.length) throw new Error(detected.warnings.join(' · '));
         setOfficial(detected);
@@ -3297,7 +3301,7 @@
       .map(item => item.registro.fingerprint).filter(Boolean);
 
     async function preflightOfficialSupplierImport() {
-      if (official?.kind !== 'fornecedores') return;
+      if (!['fornecedores','fechamento'].includes(official?.kind)) return;
       const { error } = await withTimeout(
         context.client.rpc('confirmar_pagamentos_lote_v1', { p_registro_ids:[], p_confirmado:true }),
         12000,
@@ -3348,6 +3352,38 @@
       if (reparsed) setOfficial(reparsed);
     }
 
+    async function reconcileImportedOrigin(payload) {
+      const fingerprints = payload.map(item => item.registro.fingerprint).filter(Boolean);
+      if (official.kind !== 'fechamento') {
+        const { data, error } = await withTimeout(
+          context.client.rpc('conciliar_origem_acompanhamentos_v1', {
+            p_controle:official.control, p_ano:Number(official.year), p_modelo:official.modelFile, p_fingerprints:fingerprints
+          }),
+          15000,
+          'A conciliação da planilha demorou para responder.'
+        );
+        if (error) throw error;
+        return Number(data) || 0;
+      }
+
+      const competence = `${official.year}-${String(Number(official.competenceMonthIndex) + 1).padStart(2, '0')}-01`;
+      const { data, error } = await withTimeout(
+        context.client.rpc('conciliar_origem_competencia_acompanhamentos_v1', {
+          p_controle:official.control, p_ano:Number(official.year), p_modelo:official.modelFile,
+          p_competencia:competence, p_fingerprints:fingerprints
+        }),
+        15000,
+        'A conciliação desta competência demorou para responder.'
+      );
+      if (!error) return Number(data) || 0;
+      const details = [error.message,error.details,error.hint,error.code].filter(Boolean).join(' · ');
+      if (/conciliar_origem_competencia_acompanhamentos_v1|PGRST202|schema cache|could not find the function/i.test(details)) {
+        context.notify('O mês foi atualizado sem alterar os demais. Execute o SQL 25 para também remover linhas que saíram deste fechamento.', 'info');
+        return 0;
+      }
+      throw error;
+    }
+
     async function runImport() {
       if (!official || !file) return;
       const payload = official.items || [];
@@ -3370,13 +3406,7 @@
           if (error) throw error;
           total.criadas += Number(data?.criadas || 0); total.atualizadas += Number(data?.atualizadas || 0); total.ignoradas += Number(data?.ignoradas || 0); total.erros.push(...(data?.erros || []));
         }
-        const { data:archived, error:reconcileError } = await withTimeout(
-          context.client.rpc('conciliar_origem_acompanhamentos_v1', { p_controle:official.control, p_ano:Number(official.year), p_modelo:official.modelFile, p_fingerprints:payload.map(item => item.registro.fingerprint).filter(Boolean) }),
-          15000,
-          'A conciliação da planilha demorou para responder.'
-        );
-        if (reconcileError) throw reconcileError;
-        total.arquivadas = Number(archived) || 0;
+        total.arquivadas = await reconcileImportedOrigin(payload);
         if (['fornecedores','fechamento'].includes(official.kind)) total.confirmadas = await confirmOfficialSupplierRows(payload);
         if (official.kind === 'mktg') {
           const { error:syncError } = await withTimeout(context.client.rpc('sincronizar_confirmacoes_mktg_2026_v1'), 15000, 'A sincronização da Receita demorou para responder.');
@@ -3421,12 +3451,13 @@
             <div><span>Movimentos</span><strong>${int(movementCount)}</strong></div>
             <div className="wide"><span>Vai atualizar</span><strong>${destination}</strong></div>
             ${official.kind === 'fechamento' && html`<label className="import-competence"><span>Competência</span><select value=${closingMonth} disabled=${importing || Boolean(result)} onChange=${event => updateClosingMonth(event.target.value)}>${OFFICIAL_MONTHS.map(([, label], index) => html`<option value=${index}>${label} ${official.year}</option>`)}</select><small>Escolha o mês deste fechamento.</small></label>`}
+            ${official.kind === 'fechamento' && html`<div className="wide"><span>Escopo protegido</span><strong>Somente ${OFFICIAL_MONTHS[closingMonth][1]} ${official.year}</strong><small>Os outros meses não serão alterados.</small></div>`}
           </div>
           ${result ? html`<div className="import-simple-success"><${Icon} name="circle-check-big"/><div><strong>Importação concluída</strong><p>${int(result.criadas)} novos · ${int(result.atualizadas)} atualizados · ${int(result.arquivadas || 0)} arquivados${Number(result.confirmadas || 0) ? ` · ${int(result.confirmadas)} confirmados` : ''}</p></div></div>` : null}
-          <div className="import-simple-actions">${result ? html`<button type="button" className="button primary large" onClick=${openImportedData}>${['fornecedores','fechamento'].includes(official.kind) ? 'Abrir Pagamentos' : 'Abrir Receita'}<${Icon} name="arrow-right"/></button>` : html`<button type="button" className="button primary large" onClick=${runImport} disabled=${importing}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="upload"/>`}${importing ? 'Importando...' : 'Importar planilha'}</button>`}</div>
+          <div className="import-simple-actions">${result ? html`<button type="button" className="button primary large" onClick=${openImportedData}>${['fornecedores','fechamento'].includes(official.kind) ? 'Abrir Pagamentos' : 'Abrir Receita'}<${Icon} name="arrow-right"/></button>` : html`<button type="button" className="button primary large" onClick=${runImport} disabled=${importing}>${importing ? html`<span className="spinner"></span>` : html`<${Icon} name="upload"/>`}${importing ? 'Importando...' : official.kind === 'fechamento' ? `Atualizar somente ${OFFICIAL_MONTHS[closingMonth][1]}` : 'Importar planilha'}</button>`}</div>
         ` : null}
       </div>`}
-      <p className="import-simple-note"><${Icon} name="shield-check"/>Selecionar o arquivo não altera nada. Os dados só são gravados depois de clicar em <b>Importar planilha</b>.</p>
+      <p className="import-simple-note"><${Icon} name="shield-check"/>Selecionar o arquivo não altera nada.${official?.kind === 'fechamento' ? html` O Fechamento atualiza <b>somente a competência escolhida</b> e preserva todos os outros meses.` : html` Os dados só são gravados depois da confirmação.`}</p>
     </section>`;
   }
 
