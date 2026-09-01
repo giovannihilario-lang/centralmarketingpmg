@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<!-- PMG CATALOGO BUILD: 2026-09-01-export-fiel-v1 -->
+<!-- PMG CATALOGO BUILD: 2026-09-01-export-ultra-v4 -->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador de Catálogo — PMG</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1499,13 +1498,15 @@ function renderPreview() {
     const fatias = prods.length === 0 ? [[]] : [];
     if (prods.length > 0) for (let i = 0; i < prods.length; i += PROD_POR_PAGINA) fatias.push(prods.slice(i, i+PROD_POR_PAGINA));
 
-    fatias.forEach((fatia) => {
+    fatias.forEach((fatia, fatiaIndex) => {
       const label = document.createElement('div');
       label.className = 'preview-label';
       label.textContent = `${pg.titulo}${pg.subtitulo ? ` · ${pg.subtitulo}` : ''}`;
       wrap.appendChild(label);
 
       const a4 = document.createElement('div'); a4.className = 'a4';
+      a4.dataset.pageId = String(pg.id);
+      a4.dataset.sliceIndex = String(fatiaIndex);
       a4.innerHTML = `
         <div class="a4-header">
           <div class="a4-logo-box">${logoDataUrl?`<img src="${logoDataUrl}" style="width:100%;height:100%;object-fit:contain">`:'PMG'}</div>
@@ -1587,6 +1588,7 @@ a4.appendChild(footer);
 wrap.appendChild(a4);
     });
   });
+  if (typeof agendarPreRenderExportacao === 'function') agendarPreRenderExportacao();
 }
 
 // ── BUILD PANEL ──
@@ -1682,130 +1684,25 @@ function buildPanel() {
     </div>`;
 }
 
-// ── EXPORTAÇÃO FIEL AO PREVIEW ──
-// PDF e PNG usam a própria folha renderizada no navegador. Assim fonte,
-// espaçamento, alinhamento e proporções ficam idênticos ao preview.
-// Antes da captura, imagens remotas são convertidas em data URLs e reutilizadas
-// em cache para impedir que fotos desapareçam por timeout durante a exportação.
-const CATALOGO_EXPORT_BUILD = '2026-09-01-export-performance-v2';
-const exportImageCache = new Map();
+// ── EXPORTAÇÃO ULTRA V4 — CANVAS DIRETO ──
+// Não existe mais screenshot de DOM no caminho principal. O navegador já
+// calculou o layout do preview; usamos essas coordenadas reais e desenhamos a
+// folha diretamente em canvas. Isso elimina o maior gargalo de catálogos longos.
+const CATALOGO_EXPORT_BUILD = '2026-09-01-export-ultra-v4';
+const exportPageRasterCache = new Map();
+let exportPrewarmTimer = null;
+let exportPrewarmGeneration = 0;
+let exportacaoEmAndamento = false;
 
 function exportWait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
-async function fetchComTimeout(url, timeoutMs = 2800) {
-  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
-  try {
-    return await fetch(url, {
-      cache: 'force-cache',
-      credentials: 'same-origin',
-      signal: ctrl?.signal
-    });
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+function atualizarTextoExportacao(btn, texto) {
+  const span = btn?.querySelector('span');
+  if (span) span.textContent = texto;
 }
-
-function blobParaDataURL(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error || new Error('Falha ao ler imagem.'));
-    reader.readAsDataURL(blob);
-  });
+function concorrenciaExportacao() {
+  const cores = Math.max(2, Number(navigator.hardwareConcurrency) || 4);
+  return Math.max(2, Math.min(5, Math.floor(cores / 2)));
 }
-
-function carregarImagemElemento(src, timeoutMs = 900) {
-  return new Promise(resolve => {
-    const img = new Image();
-    let terminou = false;
-    const finalizar = valor => {
-      if (terminou) return;
-      terminou = true;
-      clearTimeout(timer);
-      resolve(valor);
-    };
-    const timer = setTimeout(() => finalizar(null), timeoutMs);
-    img.onload = () => finalizar(img);
-    img.onerror = () => finalizar(null);
-    img.decoding = 'async';
-    img.src = src;
-    if (img.complete && img.naturalWidth > 0) finalizar(img);
-  });
-}
-
-function imagemElementoParaDataURL(img, maxDim = 360, preservarPNG = false) {
-  try {
-    if (!img || !img.naturalWidth || !img.naturalHeight) return null;
-    const escala = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-    const w = Math.max(1, Math.round(img.naturalWidth * escala));
-    const h = Math.max(1, Math.round(img.naturalHeight * escala));
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d', { alpha: preservarPNG });
-    if (!preservarPNG) {
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, w, h);
-    }
-    ctx.drawImage(img, 0, 0, w, h);
-    return preservarPNG ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.84);
-  } catch (_) {
-    return null;
-  }
-}
-
-async function resolverImagemExportacao(src, elementoOrigem = null, preservarPNG = false) {
-  if (!src) return null;
-  if (/^data:/i.test(src)) return src;
-  if (exportImageCache.has(src)) return exportImageCache.get(src);
-
-  const promessa = (async () => {
-    // Caminho rápido: reaproveita a imagem que JÁ ESTÁ carregada no preview.
-    // Evita baixar novamente centenas de imagens antes de exportar.
-    if (elementoOrigem?.complete && elementoOrigem.naturalWidth > 0) {
-      const data = imagemElementoParaDataURL(elementoOrigem, preservarPNG ? 420 : 320, preservarPNG);
-      if (data) return data;
-    }
-
-    // Dá uma janela curta para imagens que ainda estão terminando de carregar.
-    if (elementoOrigem && !elementoOrigem.complete) {
-      await Promise.race([
-        elementoOrigem.decode?.().catch(() => {}) || Promise.resolve(),
-        exportWait(650)
-      ]);
-      if (elementoOrigem.complete && elementoOrigem.naturalWidth > 0) {
-        const data = imagemElementoParaDataURL(elementoOrigem, preservarPNG ? 420 : 320, preservarPNG);
-        if (data) return data;
-      }
-    }
-
-    // Só tenta a rede UMA vez e por pouco tempo. Imagem quebrada não pode segurar
-    // um catálogo de 50 páginas por dezenas de segundos.
-    try {
-      const resp = await fetchComTimeout(src, 2800);
-      if (resp.ok) {
-        const blob = await resp.blob();
-        if (blob.size > 0) {
-          const url = URL.createObjectURL(blob);
-          try {
-            const img = await carregarImagemElemento(url, 1200);
-            if (img) {
-              const data = imagemElementoParaDataURL(img, preservarPNG ? 420 : 320, preservarPNG);
-              if (data) return data;
-            }
-          } finally {
-            URL.revokeObjectURL(url);
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
-  })();
-
-  exportImageCache.set(src, promessa);
-  return promessa;
-}
-
 async function mapComConcorrencia(itens, limite, fn) {
   const saida = new Array(itens.length);
   let cursor = 0;
@@ -1813,256 +1710,388 @@ async function mapComConcorrencia(itens, limite, fn) {
     while (cursor < itens.length) {
       const i = cursor++;
       try { saida[i] = await fn(itens[i], i); }
-      catch (_) { saida[i] = null; }
+      catch (err) { console.warn('[Catálogo] Falha ao renderizar item', i, err); saida[i] = null; }
     }
   }
   if (!itens.length) return saida;
   await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
   return saida;
 }
-
 function folhasComProdutos() {
   return Array.from(document.querySelectorAll('.a4')).filter(a4 => a4.querySelector('.card'));
 }
-
-async function prepararImagensDasFolhas(folhas, btn) {
-  const itens = [];
-  const vistos = new Set();
-  folhas.forEach(folha => folha.querySelectorAll('img').forEach(img => {
-    const src = img.getAttribute('src') || img.src;
-    if (!src || vistos.has(src)) return;
-    vistos.add(src);
-    itens.push({
-      src,
-      img,
-      preservarPNG: !!img.closest('.a4-logo-box')
-    });
-  }));
-
-  let prontas = 0;
-  const resultados = await mapComConcorrencia(itens, 12, async item => {
-    const data = await resolverImagemExportacao(item.src, item.img, item.preservarPNG);
-    prontas++;
-    const span = btn?.querySelector('span');
-    if (span && (prontas === itens.length || prontas % 10 === 0)) {
-      span.textContent = `Imagens ${prontas}/${itens.length}`;
-    }
-    return [item.src, data];
-  });
-  return new Map(resultados.filter(item => item && item[1]));
-}
-
-function substituirImagemPorFallback(img) {
-  const box = img.closest('.card-img');
-  if (!box) { img.remove(); return; }
-  box.innerHTML = `<span style="font-size:6px;color:#BDBDBD;text-align:center;line-height:1.15">Imagem meramente<br>ilustrativa</span>`;
-}
-
-async function criarCloneExportacao(folha, imagensResolvidas) {
-  const clone = folha.cloneNode(true);
-  clone.classList.add('a4-export-clone');
-  clone.style.width = '595px';
-  clone.style.height = '842px';
-  clone.style.minHeight = '842px';
-  clone.style.maxHeight = '842px';
-  clone.style.boxShadow = 'none';
-  clone.style.borderRadius = '0';
-  clone.style.margin = '0';
-  clone.style.transform = 'none';
-  clone.style.position = 'fixed';
-  clone.style.left = '-10000px';
-  clone.style.top = '0';
-  clone.style.zIndex = '-1';
-  clone.style.pointerEvents = 'none';
-
-  // Elementos de edição nunca entram no material final.
-  clone.querySelectorAll('.card-check').forEach(el => el.remove());
-  clone.querySelectorAll('.card').forEach(el => {
-    el.classList.remove('selecionado', 'dragging', 'drag-card-over');
-    el.removeAttribute('draggable');
-  });
-
-  clone.querySelectorAll('img').forEach(img => {
-    const original = img.getAttribute('src') || img.src;
-    const resolvida = imagensResolvidas.get(original);
-    if (resolvida) {
-      img.src = resolvida;
-      img.removeAttribute('srcset');
-      img.loading = 'eager';
-      img.decoding = 'sync';
-    } else if (img.closest('.card-img')) {
-      substituirImagemPorFallback(img);
-    }
-  });
-
-  document.body.appendChild(clone);
-  await new Promise(resolve => requestAnimationFrame(resolve));
-
-  // As imagens já chegam como data URLs pequenas. Não faz sentido esperar
-  // segundos por decode a cada uma delas em cada página.
-  await Promise.all(Array.from(clone.querySelectorAll('img')).map(img => {
-    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-    if (typeof img.decode === 'function') {
-      return Promise.race([img.decode().catch(() => {}), exportWait(350)]);
-    }
-    return Promise.race([
-      new Promise(resolve => { img.onload = img.onerror = resolve; }),
-      exportWait(350)
-    ]);
-  }));
-  return clone;
-}
-
-async function capturarFolha(folha, imagensResolvidas, scale = 1.45) {
-  const clone = await criarCloneExportacao(folha, imagensResolvidas);
-  try {
-    return await html2canvas(clone, {
-      scale,
-      width: 595,
-      height: 842,
-      windowWidth: 595,
-      windowHeight: 842,
-      useCORS: false,
-      allowTaint: false,
-      backgroundColor: '#ffffff',
-      logging: false,
-      imageTimeout: 0,
-      removeContainer: true,
-      scrollX: 0,
-      scrollY: 0
-    });
-  } finally {
-    clone.remove();
+function hashRapido(texto) {
+  let h = 2166136261;
+  for (let i = 0; i < texto.length; i++) {
+    h ^= texto.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
+  return (h >>> 0).toString(36);
+}
+function fingerprintFolha(folha) {
+  const vars = ['--verde-escuro','--verde-med','--verde-claro','--verde-suave','--accent']
+    .map(v => folha.style.getPropertyValue(v)).join('|');
+  const titulo = folha.querySelector('.a4-title')?.textContent || '';
+  const sub = folha.querySelector('.a4-subs')?.textContent || '';
+  const cards = Array.from(folha.querySelectorAll('.card')).map(card => {
+    const nome = card.querySelector('.card-nome')?.textContent || '';
+    const badge = card.querySelector('.card-badge')?.textContent || '';
+    const img = card.querySelector('img');
+    const src = img?.getAttribute('src') || '';
+    const estado = img ? `${img.complete && img.naturalWidth > 0 ? 1 : 0}:${img.naturalWidth || 0}x${img.naturalHeight || 0}` : 'sem';
+    return `${nome}¦${badge}¦${src}¦${estado}`;
+  }).join('§');
+  const logoImg = folha.querySelector('.a4-logo-box img');
+  const logo = logoImg ? `${logoImg.getAttribute('src') || ''}:${logoImg.complete && logoImg.naturalWidth > 0 ? 1 : 0}` : '';
+  return hashRapido(`${folha.dataset.pageId || ''}|${folha.dataset.sliceIndex || ''}|${vars}|${titulo}|${sub}|${logo}|${cards}`);
+}
+function chaveRasterFolha(folha, formato, escala, qualidade) {
+  return `${CATALOGO_EXPORT_BUILD}|${formato}|${escala}|${qualidade}|${fingerprintFolha(folha)}`;
+}
+function podarCacheRaster() {
+  const MAX = 120;
+  while (exportPageRasterCache.size > MAX) exportPageRasterCache.delete(exportPageRasterCache.keys().next().value);
+}
+
+function retanguloRelativo(el, baseRect) {
+  const r = el.getBoundingClientRect();
+  return { x: r.left - baseRect.left, y: r.top - baseRect.top, w: r.width, h: r.height };
+}
+function numeroCSS(valor, fallback = 0) {
+  const n = parseFloat(valor);
+  return Number.isFinite(n) ? n : fallback;
+}
+function corCSS(valor, fallback = '#000') {
+  return valor && valor !== 'rgba(0, 0, 0, 0)' && valor !== 'transparent' ? valor : fallback;
+}
+function caminhoArredondado(ctx, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r || 0, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function preencherArredondado(ctx, rect, raio, cor) {
+  ctx.save();
+  caminhoArredondado(ctx, rect.x, rect.y, rect.w, rect.h, raio);
+  ctx.fillStyle = cor;
+  ctx.fill();
+  ctx.restore();
+}
+function contornarArredondado(ctx, rect, raio, cor, largura = 1, dash = []) {
+  ctx.save();
+  caminhoArredondado(ctx, rect.x, rect.y, rect.w, rect.h, raio);
+  ctx.strokeStyle = cor;
+  ctx.lineWidth = largura;
+  ctx.setLineDash(dash);
+  ctx.stroke();
+  ctx.restore();
+}
+function fonteCanvas(style) {
+  const peso = style.fontWeight || '400';
+  const tamanho = numeroCSS(style.fontSize, 10);
+  const familia = style.fontFamily || 'Segoe UI, Arial, sans-serif';
+  const italico = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
+  return `${italico}${peso} ${tamanho}px ${familia}`;
+}
+function quebrarTexto(ctx, texto, larguraMax) {
+  const palavras = String(texto || '').trim().split(/\s+/).filter(Boolean);
+  if (!palavras.length) return [];
+  const linhas = [];
+  let linha = palavras[0];
+  for (let i = 1; i < palavras.length; i++) {
+    const teste = `${linha} ${palavras[i]}`;
+    if (ctx.measureText(teste).width <= larguraMax) linha = teste;
+    else {
+      linhas.push(linha);
+      linha = palavras[i];
+      // palavra isolada maior que a caixa: quebra por caracteres.
+      if (ctx.measureText(linha).width > larguraMax) {
+        let pedaco = '';
+        for (const ch of linha) {
+          if (pedaco && ctx.measureText(pedaco + ch).width > larguraMax) { linhas.push(pedaco); pedaco = ch; }
+          else pedaco += ch;
+        }
+        linha = pedaco;
+      }
+    }
+  }
+  if (linha) linhas.push(linha);
+  return linhas;
+}
+function desenharTextoElemento(ctx, el, baseRect, opcoes = {}) {
+  if (!el) return;
+  const texto = (el.textContent || '').trim();
+  if (!texto) return;
+  const rect = retanguloRelativo(el, baseRect);
+  const style = getComputedStyle(el);
+  ctx.save();
+  ctx.font = fonteCanvas(style);
+  ctx.fillStyle = corCSS(style.color, '#212121');
+  const tamanho = numeroCSS(style.fontSize, 10);
+  let lineHeight = numeroCSS(style.lineHeight, tamanho * 1.2);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) lineHeight = tamanho * 1.2;
+  const align = opcoes.align || style.textAlign || 'left';
+  ctx.textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
+  ctx.textBaseline = 'middle';
+  if ('letterSpacing' in ctx && style.letterSpacing && style.letterSpacing !== 'normal') ctx.letterSpacing = style.letterSpacing;
+
+  const maxW = Math.max(1, rect.w);
+  const linhas = opcoes.singleLine ? [texto] : quebrarTexto(ctx, texto, maxW);
+  const totalH = Math.max(lineHeight, linhas.length * lineHeight);
+  let y = rect.y + (rect.h - totalH) / 2 + lineHeight / 2;
+  const x = ctx.textAlign === 'center' ? rect.x + rect.w / 2 : ctx.textAlign === 'right' ? rect.x + rect.w : rect.x;
+  linhas.forEach(linha => { ctx.fillText(linha, x, y, maxW); y += lineHeight; });
+  ctx.restore();
+}
+function desenharImagemFit(ctx, img, rect, modo = 'cover') {
+  if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight || rect.w <= 0 || rect.h <= 0) return false;
+  const sw = img.naturalWidth, sh = img.naturalHeight;
+  if (modo === 'contain') {
+    const escala = Math.min(rect.w / sw, rect.h / sh);
+    const dw = sw * escala, dh = sh * escala;
+    ctx.drawImage(img, rect.x + (rect.w - dw)/2, rect.y + (rect.h - dh)/2, dw, dh);
+    return true;
+  }
+  const escala = Math.max(rect.w / sw, rect.h / sh);
+  const srcW = rect.w / escala, srcH = rect.h / escala;
+  const sx = (sw - srcW) / 2, sy = (sh - srcH) / 2;
+  ctx.drawImage(img, sx, sy, srcW, srcH, rect.x, rect.y, rect.w, rect.h);
+  return true;
+}
+function desenharPlaceholderImagem(ctx, rect) {
+  ctx.save();
+  ctx.fillStyle = '#F5F5F5';
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  const cx = rect.x + rect.w/2, cy = rect.y + rect.h/2 - 7;
+  ctx.strokeStyle = '#BDBDBD'; ctx.globalAlpha = .45; ctx.lineWidth = 1;
+  ctx.strokeRect(cx - 9, cy - 5, 18, 12);
+  ctx.beginPath(); ctx.arc(cx, cy + 1, 3, 0, Math.PI*2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#BDBDBD'; ctx.font = '400 6px Segoe UI, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Imagem meramente', cx, cy + 14);
+  ctx.fillText('ilustrativa', cx, cy + 21);
+  ctx.restore();
+}
+
+async function aguardarImagensPreview(folhas, maxMs = 450) {
+  const pendentes = Array.from(new Set(folhas.flatMap(f => Array.from(f.querySelectorAll('img')))))
+    .filter(img => !img.complete && typeof img.decode === 'function');
+  if (!pendentes.length) return;
+  await Promise.race([
+    Promise.allSettled(pendentes.map(img => img.decode().catch(() => {}))),
+    exportWait(maxMs)
+  ]);
+}
+
+async function canvasParaBlobAsync(canvas, tipo = 'image/jpeg', qualidade = 0.82) {
+  if (canvas && typeof canvas.convertToBlob === 'function') return canvas.convertToBlob({ type: tipo, quality: qualidade });
+  return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao codificar página.')), tipo, qualidade));
+}
+
+async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1) {
+  const baseRect = folha.getBoundingClientRect();
+  const outW = Math.max(595, Math.round(595 * escala));
+  const outH = Math.max(842, Math.round(842 * escala));
+  const canvas = typeof OffscreenCanvas === 'function'
+    ? new OffscreenCanvas(outW, outH)
+    : Object.assign(document.createElement('canvas'), { width: outW, height: outH });
+  const ctx = canvas.getContext('2d', { alpha: tipo === 'image/png' });
+  ctx.save();
+  ctx.scale(escala, escala);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 595, 842);
+
+  const header = folha.querySelector('.a4-header');
+  const footer = folha.querySelector('.a4-footer');
+  const grid = folha.querySelector('.a4-grid');
+  const vars = getComputedStyle(folha);
+  const accent = vars.getPropertyValue('--accent').trim() || '#81C784';
+
+  if (header) {
+    const r = retanguloRelativo(header, baseRect);
+    ctx.fillStyle = corCSS(getComputedStyle(header).backgroundColor, '#1B5E20');
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = accent; ctx.fillRect(r.x, r.y + r.h, r.w, 4);
+  }
+  const logoBox = folha.querySelector('.a4-logo-box');
+  if (logoBox) {
+    const r = retanguloRelativo(logoBox, baseRect);
+    const st = getComputedStyle(logoBox);
+    preencherArredondado(ctx, r, numeroCSS(st.borderRadius, 5), corCSS(st.backgroundColor, '#fff'));
+    const logo = logoBox.querySelector('img');
+    if (logo && logo.complete && logo.naturalWidth > 0) {
+      ctx.save(); caminhoArredondado(ctx, r.x, r.y, r.w, r.h, numeroCSS(st.borderRadius, 5)); ctx.clip(); desenharImagemFit(ctx, logo, r, 'contain'); ctx.restore();
+    } else if (!logo) {
+      desenharTextoElemento(ctx, logoBox, baseRect, { align: 'center', singleLine: true });
+    }
+  }
+  desenharTextoElemento(ctx, folha.querySelector('.a4-title'), baseRect, { align: 'center', singleLine: true });
+  desenharTextoElemento(ctx, folha.querySelector('.a4-subs'), baseRect, { align: 'center' });
+
+  if (grid) {
+    Array.from(grid.children).forEach(item => {
+      const rect = retanguloRelativo(item, baseRect);
+      if (item.classList.contains('card-empty')) {
+        const st = getComputedStyle(item);
+        contornarArredondado(ctx, rect, numeroCSS(st.borderRadius, 7), '#E0E0E0', 1.5, [3, 2]);
+        ctx.save(); ctx.font='400 9px Segoe UI, Arial, sans-serif'; ctx.fillStyle='#CCC'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('—', rect.x+rect.w/2, rect.y+rect.h/2); ctx.restore();
+        return;
+      }
+      if (!item.classList.contains('card')) return;
+      const stCard = getComputedStyle(item);
+      const radius = numeroCSS(stCard.borderRadius, 7);
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.07)'; ctx.shadowBlur = 4; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+      preencherArredondado(ctx, rect, radius, '#fff');
+      ctx.restore();
+      contornarArredondado(ctx, rect, radius, '#E0E0E0', 1);
+
+      const imgBox = item.querySelector('.card-img');
+      if (imgBox) {
+        const ir = retanguloRelativo(imgBox, baseRect);
+        ctx.save(); caminhoArredondado(ctx, ir.x, ir.y, ir.w, ir.h, Math.max(0, radius - 1)); ctx.clip();
+        ctx.fillStyle = corCSS(getComputedStyle(imgBox).backgroundColor, '#F5F5F5'); ctx.fillRect(ir.x, ir.y, ir.w, ir.h);
+        const img = imgBox.querySelector('img');
+        if (!(img && desenharImagemFit(ctx, img, ir, 'cover'))) desenharPlaceholderImagem(ctx, ir);
+        ctx.restore();
+        ctx.save(); ctx.strokeStyle='#EBEBEB'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(ir.x,ir.y+ir.h);ctx.lineTo(ir.x+ir.w,ir.y+ir.h);ctx.stroke();ctx.restore();
+      }
+
+      desenharTextoElemento(ctx, item.querySelector('.card-nome'), baseRect);
+      const badge = item.querySelector('.card-badge');
+      if (badge) {
+        const br = retanguloRelativo(badge, baseRect);
+        const bst = getComputedStyle(badge);
+        ctx.fillStyle = corCSS(bst.backgroundColor, vars.getPropertyValue('--verde-suave').trim() || '#F1F8F1'); ctx.fillRect(br.x,br.y,br.w,br.h);
+        ctx.save();ctx.strokeStyle=vars.getPropertyValue('--verde-claro').trim() || '#C8E6C9';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(br.x,br.y);ctx.lineTo(br.x+br.w,br.y);ctx.stroke();ctx.restore();
+        desenharTextoElemento(ctx, badge, baseRect, { align:'center', singleLine:true });
+      }
+    });
+  }
+
+  if (footer) {
+    const r = retanguloRelativo(footer, baseRect);
+    ctx.fillStyle = accent; ctx.fillRect(r.x, r.y - 3, r.w, 3);
+    ctx.fillStyle = corCSS(getComputedStyle(footer).backgroundColor, '#1B5E20'); ctx.fillRect(r.x,r.y,r.w,r.h);
+    Array.from(footer.querySelectorAll('span')).forEach(span => {
+      const s = getComputedStyle(span);
+      const sr = retanguloRelativo(span, baseRect);
+      ctx.save();ctx.font=fonteCanvas(s);ctx.fillStyle=corCSS(s.color,'#fff');ctx.textBaseline='middle';
+      ctx.textAlign=span.classList.contains('pg') ? 'right' : 'left';
+      ctx.fillText((span.textContent||'').trim(), span.classList.contains('pg') ? sr.x+sr.w : sr.x, sr.y+sr.h/2, sr.w);
+      ctx.restore();
+    });
+  }
+
+  ctx.restore();
+  return await canvasParaBlobAsync(canvas, tipo, qualidade);
+}
+
+async function renderizarFolhaBlob(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1) {
+  const chave = chaveRasterFolha(folha, tipo, escala, qualidade);
+  if (exportPageRasterCache.has(chave)) return exportPageRasterCache.get(chave);
+  const promessa = renderizarFolhaDireta(folha, tipo, qualidade, escala);
+  exportPageRasterCache.set(chave, promessa);
+  podarCacheRaster();
+  try { return await promessa; }
+  catch (err) { exportPageRasterCache.delete(chave); throw err; }
+}
+
+function cancelarPreRenderExportacao() {
+  exportPrewarmGeneration++;
+  if (exportPrewarmTimer) { clearTimeout(exportPrewarmTimer); exportPrewarmTimer = null; }
+}
+function agendarPreRenderExportacao() {
+  cancelarPreRenderExportacao();
+  const geracao = exportPrewarmGeneration;
+  exportPrewarmTimer = setTimeout(() => {
+    exportPrewarmTimer = null;
+    const executar = async () => {
+      if (exportacaoEmAndamento || geracao !== exportPrewarmGeneration) return;
+      const folhas = folhasComProdutos();
+      const faltante = folhas.find(f => !exportPageRasterCache.has(chaveRasterFolha(f,'image/jpeg',1,0.82)));
+      if (!faltante) return;
+      try { await renderizarFolhaBlob(faltante,'image/jpeg',0.82,1); } catch (_) {}
+      if (geracao !== exportPrewarmGeneration || exportacaoEmAndamento) return;
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(executar,{timeout:800});
+      else setTimeout(executar,80);
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(executar,{timeout:800});
+    else setTimeout(executar,80);
+  }, 1200);
+}
+
+function baixarBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+function nomeArquivoSeguro(valor) {
+  return String(valor || 'catalogo').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,70)||'catalogo';
 }
 
 async function exportPDF() {
-  const btn = document.querySelector('.btn-export');
-  if (btn?.disabled) return;
-  const folhas = folhasComProdutos();
-  if (!folhas.length) { showToast('Adicione produtos antes de exportar.'); return; }
-
-  const original = btn?.innerHTML;
+  const btn=document.querySelector('.btn-export'); if(btn?.disabled)return;
+  const folhas=folhasComProdutos(); if(!folhas.length){showToast('Adicione produtos antes de exportar.');return;}
+  const original=btn?.innerHTML; exportacaoEmAndamento=true; cancelarPreRenderExportacao();
   try {
-    if (btn) { btn.disabled = true; btn.style.opacity = '.65'; }
-    if (document.fonts?.ready) await document.fonts.ready;
-
-    const imagens = await prepararImagensDasFolhas(folhas, btn);
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-
-    for (let i = 0; i < folhas.length; i++) {
-      const span = btn?.querySelector('span');
-      if (span) span.textContent = `Página ${i + 1}/${folhas.length}`;
-      const canvas = await capturarFolha(folhas[i], imagens, 1.05);
-      if (i > 0) doc.addPage('a4', 'portrait');
-      doc.addImage(canvas.toDataURL('image/jpeg', 0.84), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-      canvas.width = 1; canvas.height = 1;
-      if (i % 2 === 1) await new Promise(r => requestAnimationFrame(r));
+    if(btn){btn.disabled=true;btn.style.opacity='.65';}
+    if(document.fonts?.ready) await document.fonts.ready;
+    atualizarTextoExportacao(btn,'Carregando imagens...');
+    await aguardarImagensPreview(folhas,450);
+    let prontas=0;
+    const blobs=await mapComConcorrencia(folhas,concorrenciaExportacao(),async folha=>{
+      const blob=await renderizarFolhaBlob(folha,'image/jpeg',0.82,1);
+      prontas++; atualizarTextoExportacao(btn,`Páginas ${prontas}/${folhas.length}`); return blob;
+    });
+    atualizarTextoExportacao(btn,'Montando PDF...');
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:false,putOnlyUsedFonts:true});
+    let adicionadas=0;
+    for(let i=0;i<blobs.length;i++){
+      const blob=blobs[i]; if(!blob)continue;
+      if(adicionadas>0)doc.addPage('a4','portrait');
+      doc.addImage(new Uint8Array(await blob.arrayBuffer()),'JPEG',0,0,210,297,undefined,'NONE');
+      adicionadas++;
     }
-
-    const span = btn?.querySelector('span');
-    if (span) span.textContent = 'Finalizando...';
-    doc.save('catalogo-pmg.pdf');
-    showToast(`PDF gerado com ${folhas.length} página${folhas.length > 1 ? 's' : ''}.`);
-  } catch (err) {
-    console.error('Erro ao exportar PDF:', err);
-    showToast('Erro ao gerar PDF. Confira o console.');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.style.opacity = '';
-      if (original) btn.innerHTML = original;
-    }
-  }
+    atualizarTextoExportacao(btn,'Finalizando...');
+    baixarBlob(doc.output('blob'),'catalogo-pmg.pdf');
+    showToast(`PDF gerado com ${adicionadas} página${adicionadas!==1?'s':''}.`);
+  } catch(err){console.error('Erro ao exportar PDF:',err);showToast('Erro ao gerar PDF. Confira o console.');}
+  finally{exportacaoEmAndamento=false;if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}agendarPreRenderExportacao();}
 }
 
-function toggleExportMenu(event) {
-  event?.stopPropagation();
-  const menu = document.getElementById('exportMenu');
-  if (!menu) return;
-  menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-}
-function fecharExportMenu() {
-  const menu = document.getElementById('exportMenu');
-  if (menu) menu.style.display = 'none';
-}
-document.addEventListener('click', e => {
-  if (!e.target.closest('.export-menu-wrap')) fecharExportMenu();
-});
-
-function nomeArquivoSeguro(valor) {
-  return String(valor || 'catalogo')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '').slice(0, 70) || 'catalogo';
-}
-function baixarBlob(blob, nome) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = nome;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-function canvasParaBlob(canvas, tipo='image/png', qualidade=0.92) {
-  return new Promise((resolve, reject) => canvas.toBlob(
-    blob => blob ? resolve(blob) : reject(new Error('Falha ao gerar imagem.')),
-    tipo, qualidade
-  ));
-}
+function toggleExportMenu(event){event?.stopPropagation();const menu=document.getElementById('exportMenu');if(menu)menu.style.display=menu.style.display==='block'?'none':'block';}
+function fecharExportMenu(){const menu=document.getElementById('exportMenu');if(menu)menu.style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('.export-menu-wrap'))fecharExportMenu();});
 
 async function exportPNG() {
-  const btn = document.querySelector('.btn-export');
-  if (btn?.disabled) return;
-  const folhas = folhasComProdutos();
-  if (!folhas.length) { showToast('Adicione produtos antes de exportar.'); return; }
-
-  const original = btn?.innerHTML;
-  try {
-    if (btn) { btn.disabled = true; btn.style.opacity = '.65'; }
-    if (document.fonts?.ready) await document.fonts.ready;
-    const imagens = await prepararImagensDasFolhas(folhas, btn);
-    const arquivos = [];
-
-    for (let i = 0; i < folhas.length; i++) {
-      const span = btn?.querySelector('span');
-      if (span) span.textContent = `PNG ${i + 1}/${folhas.length}`;
-      const canvas = await capturarFolha(folhas[i], imagens, 1.2);
-      const blob = await canvasParaBlob(canvas, 'image/png');
-      const titulo = folhas[i].querySelector('.a4-title')?.textContent || 'catalogo';
-      arquivos.push({
-        nome: `catalogo-${nomeArquivoSeguro(titulo)}-${String(i + 1).padStart(2, '0')}.png`,
-        blob
-      });
-      canvas.width = 1; canvas.height = 1;
-      if (i % 2 === 1) await new Promise(r => requestAnimationFrame(r));
+  const btn=document.querySelector('.btn-export');if(btn?.disabled)return;
+  const folhas=folhasComProdutos();if(!folhas.length){showToast('Adicione produtos antes de exportar.');return;}
+  const original=btn?.innerHTML;exportacaoEmAndamento=true;cancelarPreRenderExportacao();
+  try{
+    if(btn){btn.disabled=true;btn.style.opacity='.65';}
+    if(document.fonts?.ready)await document.fonts.ready;
+    atualizarTextoExportacao(btn,'Carregando imagens...');await aguardarImagensPreview(folhas,450);
+    let prontas=0;
+    const blobs=await mapComConcorrencia(folhas,Math.min(3,concorrenciaExportacao()),async folha=>{
+      const blob=await renderizarFolhaBlob(folha,'image/png',1,1.15);prontas++;atualizarTextoExportacao(btn,`PNG ${prontas}/${folhas.length}`);return blob;
+    });
+    const arquivos=blobs.map((blob,i)=>({nome:`catalogo-${nomeArquivoSeguro(folhas[i].querySelector('.a4-title')?.textContent||'catalogo')}-${String(i+1).padStart(2,'0')}.png`,blob})).filter(x=>x.blob);
+    if(arquivos.length===1)baixarBlob(arquivos[0].blob,arquivos[0].nome);
+    else{
+      if(!window.JSZip)throw new Error('JSZip indisponível.');const zip=new JSZip();arquivos.forEach(a=>zip.file(a.nome,a.blob,{compression:'STORE'}));
+      atualizarTextoExportacao(btn,'Empacotando...');const z=await zip.generateAsync({type:'blob',compression:'STORE',streamFiles:true});baixarBlob(z,'catalogo-pmg-png.zip');
     }
-
-    if (arquivos.length === 1) {
-      baixarBlob(arquivos[0].blob, arquivos[0].nome);
-    } else {
-      if (!window.JSZip) throw new Error('JSZip indisponível.');
-      const zip = new JSZip();
-      arquivos.forEach(arq => zip.file(arq.nome, arq.blob));
-      const span = btn?.querySelector('span');
-      if (span) span.textContent = 'Compactando...';
-      const blobZip = await zip.generateAsync({
-        type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 3 }
-      });
-      baixarBlob(blobZip, 'catalogo-pmg-png.zip');
-    }
-    showToast(`${arquivos.length} PNG${arquivos.length > 1 ? 's' : ''} gerado${arquivos.length > 1 ? 's' : ''}.`);
-  } catch (err) {
-    console.error('Erro ao exportar PNG:', err);
-    showToast('Erro ao gerar PNG. Confira o console.');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.style.opacity = '';
-      if (original) btn.innerHTML = original;
-    }
-  }
+    showToast(`${arquivos.length} PNG${arquivos.length!==1?'s':''} gerado${arquivos.length!==1?'s':''}.`);
+  }catch(err){console.error('Erro ao exportar PNG:',err);showToast('Erro ao gerar PNG. Confira o console.');}
+  finally{exportacaoEmAndamento=false;if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}agendarPreRenderExportacao();}
 }
+
 
 // ── SALVAR/CARREGAR NO PRÓPRIO NAVEGADOR (localStorage) ──
 const STORAGE_KEY = 'catalogoPMG_estado';
