@@ -1897,3 +1897,45 @@ body{font-size:14px!important}
 
 /* V2.3.7 — reconciliação visual com a linha SOMA MENSAL do MKTG 2026 */
 .source-adjustment-row{background:#fbfcfb;color:#6d7e73}.source-adjustment-row th{font-weight:800}.source-adjustment-row th span{display:block;color:#385544}.source-adjustment-row th small{display:block;margin-top:2px;font-size:10px;font-weight:600;color:#8a978f}.source-adjustment-row td{font-size:11px;color:#6d7e73}.one-click-status.source-confirmed{box-shadow:inset 0 0 0 1px rgba(31,118,68,.06)!important}
+
+/* V2.4.0 — integração viva entre Pagamentos, Planejamento, Receita e Dashboard */
+.simple-payment-form{padding:0}
+.simple-form-intro{margin:0;padding:15px 18px 13px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f8fbf9 0%,#fff 100%)}
+.simple-form-intro strong{display:block;color:var(--ink);font:800 12px/1.3 Inter,sans-serif}
+.simple-form-intro p{margin:4px 0 0;color:var(--muted);font:600 10.5px/1.5 Inter,sans-serif;max-width:500px}
+.simple-payment-grid{padding:17px 18px 5px}
+.simple-payment-competence{grid-column:1/-1;display:flex;align-items:center;gap:8px;min-height:38px;padding:8px 10px;border:1px solid #dfe9e3;border-radius:9px;background:#f7faf8;color:#6c7e72;font:700 9px Inter,sans-serif}
+.simple-payment-competence svg{width:15px;height:15px;color:var(--forest-600)}
+.simple-payment-competence span{text-transform:uppercase;letter-spacing:.06em}
+.simple-payment-competence strong{margin-left:auto;color:#274833;font-size:10px}
+.simple-payment-form .modal-footer{margin-top:12px}
+
+.revenue-chart-shell{height:100%;display:flex;min-height:0;flex-direction:column}
+.revenue-chart-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 16px 9px}
+.chart-mode-toggle{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid #dce7e0;border-radius:10px;background:#f5f8f6}
+.chart-mode-toggle button{min-height:30px;padding:0 11px;border:0;border-radius:7px;background:transparent;color:#6b7f72;font:750 10px Inter,sans-serif;cursor:pointer;transition:.18s ease}
+.chart-mode-toggle button:hover{color:#274833;background:#edf4ef}
+.chart-mode-toggle button.active{background:#fff;color:#1f6540;box-shadow:0 1px 4px rgba(14,52,30,.10)}
+.chart-mode-toggle button:focus-visible{outline:3px solid rgba(42,126,78,.16);outline-offset:1px}
+.chart-ytd-summary{display:flex;align-items:center;gap:20px;min-width:0}
+.chart-ytd-summary span{display:flex;flex-direction:column;align-items:flex-end;min-width:0}
+.chart-ytd-summary small{color:#7b8b81;font:700 8.5px Inter,sans-serif;text-transform:uppercase;letter-spacing:.045em;white-space:nowrap}
+.chart-ytd-summary strong{margin-top:2px;color:#2b4434;font:800 11px Inter,sans-serif;white-space:nowrap}
+.chart-ytd-summary .positive strong{color:#247247}
+.chart-ytd-summary .negative strong{color:#b24b43}
+.overview-evolution .revenue-chart-shell .revenue-chart{flex:1;min-height:220px;height:auto!important;padding-top:0!important}
+
+.integrated-budget-strip .budget-cell>small{display:block;margin-top:3px;color:#718078;font:650 9.5px/1.35 Inter,sans-serif}
+.forecast-not-set{display:flex;align-items:center;justify-content:center;height:100%;min-height:34px;color:#9aa69e;font:700 10px Inter,sans-serif}
+
+@media(max-width:780px){
+  .simple-payment-grid{padding:15px 15px 4px}
+  .simple-form-intro{padding:14px 15px 12px}
+  .simple-payment-competence{grid-column:auto;flex-wrap:wrap}
+  .simple-payment-competence strong{width:100%;margin-left:23px}
+  .revenue-chart-toolbar{align-items:stretch;flex-direction:column;padding:0 12px 8px}
+  .chart-mode-toggle{align-self:flex-start}
+  .chart-ytd-summary{justify-content:space-between;width:100%;gap:10px}
+  .chart-ytd-summary span{align-items:flex-start}
+  .overview-evolution .revenue-chart-shell .revenue-chart{min-height:250px}
+}

@@ -12,7 +12,7 @@ const sourceDir = path.join(projectRoot, 'fontes', 'acompanhamento');
 const original = fs.readFileSync(appPath, 'utf8');
 const testable = original.replace(
   "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);",
-  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, decorateOfficialRevenueTruth };',
+  'globalThis.__PMG_TEST__ = { parseOfficialWorkbook, isMissingSetupError, officialRevenueSnapshot, liveRevenueSnapshot, sourceConfirmsSupplierRow, decorateOfficialRevenueTruth };',
 );
 
 const noop = () => {};
@@ -103,6 +103,34 @@ if (Math.abs(Number(officialSnapshot.total || 0) - 3970297.69) > 0.01) {
   throw new Error(`Dashboard/Receita não reproduzem o total oficial: ${officialSnapshot.total}`);
 }
 const decoratedRecords = sandbox.__PMG_TEST__.decorateOfficialRevenueTruth(snapshotRecords);
+
+// Regressão V2.4.0: um lançamento manual não pode herdar a confirmação da fonte oficial
+// e, depois de confirmado, precisa entrar imediatamente na Receita/Dashboard sem duplicar a base.
+const ajinomotoManualAugust = {
+  id:'manual-ajinomoto-august', controle:'marketing', ano_referencia:2026, fornecedor:'Ajinomoto', natureza:'receita', impacta_totais:true,
+  categoria:'cota_anual', referencia:'Cota anual', titulo:'Cota anual — Ajinomoto — Agosto 2026', status:'concluido',
+  data_inicio:'2026-08-01', data_fim:'2026-08-31', valor_acordado:51666.68, tags:['marketing','fornecedores','2026','agosto','manual'],
+  origem_importacao:'cadastro-manual', pagamento_confirmado:false,
+};
+if (sandbox.__PMG_TEST__.sourceConfirmsSupplierRow(ajinomotoManualAugust, officialSnapshot)) {
+  throw new Error('Linha manual herdou confirmação da fonte oficial indevidamente');
+}
+const beforeManualConfirmation = sandbox.__PMG_TEST__.liveRevenueSnapshot([...decoratedRecords, ajinomotoManualAugust], [], [], 2026);
+const ajinomotoBefore = beforeManualConfirmation.bySupplier.get('ajinomoto');
+if (Math.abs(Number(ajinomotoBefore?.months?.[7] || 0) - 1) > 0.01) {
+  throw new Error(`Ajinomoto/agosto pendente alterou a Receita: ${ajinomotoBefore?.months?.[7]}`);
+}
+const confirmedManual = { ...ajinomotoManualAugust, pagamento_confirmado:true };
+const afterManualConfirmation = sandbox.__PMG_TEST__.liveRevenueSnapshot([...decoratedRecords, confirmedManual], [], [], 2026);
+const ajinomotoAfter = afterManualConfirmation.bySupplier.get('ajinomoto');
+if (Math.abs(Number(ajinomotoAfter?.months?.[7] || 0) - 51666.68) > 0.01) {
+  throw new Error(`Ajinomoto/agosto não entrou na Receita após confirmação: ${ajinomotoAfter?.months?.[7]}`);
+}
+const expectedReconciledTotal = Number(officialSnapshot.total || 0) - 1 + 51666.68;
+if (Math.abs(Number(afterManualConfirmation.total || 0) - expectedReconciledTotal) > 0.01) {
+  throw new Error(`Receita reconciliada divergente: ${afterManualConfirmation.total}; esperado ${expectedReconciledTotal}`);
+}
+
 const julySupplierRows = decoratedRecords.filter(record => record.controle === 'marketing' && record.ano_referencia === 2026 && record.natureza === 'receita' && (record.tags || []).includes('fornecedores') && String(record.data_inicio || '').startsWith('2026-07'));
 if (julySupplierRows.length !== 34 || julySupplierRows.some(record => record._oficial_confirmado !== true)) {
   throw new Error(`Conciliação MKTG julho divergente: ${julySupplierRows.filter(record => record._oficial_confirmado).length}/${julySupplierRows.length} confirmadas pela fonte`);
