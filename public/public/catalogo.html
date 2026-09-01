@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- PMG CATALOGO BUILD: 2026-08-31-list-filter-v3 -->
+<!-- PMG CATALOGO BUILD: 2026-09-01-export-fiel-v1 -->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1682,20 +1682,39 @@ function buildPanel() {
     </div>`;
 }
 
-// ── EXPORT PDF RÁPIDO ──
-// A versão antiga transformava CADA página inteira em uma imagem de ~1600x2200px
-// com html2canvas. Além de consumir muita memória, ela também exportava páginas
-// vazias. O catálogo agora é desenhado diretamente no PDF e só inclui páginas
-// que realmente têm produtos.
-const pdfImageCache = new Map();
+// ── EXPORTAÇÃO FIEL AO PREVIEW ──
+// PDF e PNG usam a própria folha renderizada no navegador. Assim fonte,
+// espaçamento, alinhamento e proporções ficam idênticos ao preview.
+// Antes da captura, imagens remotas são convertidas em data URLs e reutilizadas
+// em cache para impedir que fotos desapareçam por timeout durante a exportação.
+const exportImageCache = new Map();
 
-function pdfSetHex(doc, tipo, hex) {
-  const { r, g, b } = hexToRgb(hex);
-  const fn = tipo === 'fill' ? 'setFillColor' : tipo === 'draw' ? 'setDrawColor' : 'setTextColor';
-  doc[fn](r, g, b);
+function exportWait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function fetchComTimeout(url, timeoutMs = 12000) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    return await fetch(url, {
+      cache: 'force-cache',
+      credentials: 'same-origin',
+      signal: ctrl?.signal
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
-function esperarImagem(src, timeoutMs = 3500) {
+function blobParaDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler imagem.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function carregarImagemElemento(src, timeoutMs = 12000) {
   return new Promise(resolve => {
     const img = new Image();
     let terminou = false;
@@ -1708,75 +1727,47 @@ function esperarImagem(src, timeoutMs = 3500) {
     const timer = setTimeout(() => finalizar(null), timeoutMs);
     img.onload = () => finalizar(img);
     img.onerror = () => finalizar(null);
-    // As imagens da API passam pelo /img-proxy e ficam same-origin.
-    // Data URLs também funcionam diretamente.
     img.decoding = 'async';
     img.src = src;
-    if (img.complete && img.naturalWidth) finalizar(img);
+    if (img.complete && img.naturalWidth > 0) finalizar(img);
   });
 }
 
-async function prepararImagemPDF(src) {
+async function resolverImagemExportacao(src) {
   if (!src) return null;
-  if (pdfImageCache.has(src)) return pdfImageCache.get(src);
+  if (/^data:/i.test(src)) return src;
+  if (exportImageCache.has(src)) return exportImageCache.get(src);
 
   const promessa = (async () => {
-    const img = await esperarImagem(src);
-    if (!img) return null;
+    // O proxy da PMG é same-origin. Fetch + blob é mais confiável que depender
+    // do html2canvas refazer requisições enquanto o PDF está sendo montado.
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      try {
+        const resp = await fetchComTimeout(src, 12000 + tentativa * 3000);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          if (blob.size > 0) return await blobParaDataURL(blob);
+        }
+      } catch (_) {}
+      if (tentativa < 2) await exportWait(350 * (tentativa + 1));
+    }
+
+    // Fallback para URLs/blob que já estejam carregáveis pelo navegador.
     try {
-      // Miniatura já no tamanho necessário ao card. Isso evita colocar fotos
-      // gigantes dentro do PDF e reduz brutalmente tempo e tamanho do arquivo.
-      const W = 260, H = 180;
+      const img = await carregarImagemElemento(src, 12000);
+      if (!img) return null;
       const canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d', { alpha: false });
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, W, H);
-      const escala = Math.min(W / img.naturalWidth, H / img.naturalHeight);
-      const w = Math.max(1, img.naturalWidth * escala);
-      const h = Math.max(1, img.naturalHeight * escala);
-      ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
-      return canvas.toDataURL('image/jpeg', 0.82);
-    } catch (err) {
-      console.warn('Imagem ignorada no PDF:', src, err);
+      canvas.width = Math.max(1, img.naturalWidth);
+      canvas.height = Math.max(1, img.naturalHeight);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      return canvas.toDataURL('image/png');
+    } catch (_) {
       return null;
     }
   })();
 
-  pdfImageCache.set(src, promessa);
-  return promessa;
-}
-
-async function prepararLogoPDF(src) {
-  if (!src) return null;
-  const cacheKey = `__logo__${src}`;
-  if (pdfImageCache.has(cacheKey)) return pdfImageCache.get(cacheKey);
-
-  const promessa = (async () => {
-    const img = await esperarImagem(src);
-    if (!img) return null;
-    try {
-      // O logo precisa de uma miniatura quadrada porque ele é inserido em um
-      // box quadrado no PDF. Usar a miniatura retangular dos produtos fazia o
-      // jsPDF esticar a imagem e achatar a marca.
-      const S = 240;
-      const canvas = document.createElement('canvas');
-      canvas.width = S; canvas.height = S;
-      const ctx = canvas.getContext('2d', { alpha: false });
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, S, S);
-      const escala = Math.min(S / img.naturalWidth, S / img.naturalHeight);
-      const w = Math.max(1, img.naturalWidth * escala);
-      const h = Math.max(1, img.naturalHeight * escala);
-      ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
-      return canvas.toDataURL('image/jpeg', 0.9);
-    } catch (err) {
-      console.warn('Logo ignorado no PDF:', err);
-      return null;
-    }
-  })();
-
-  pdfImageCache.set(cacheKey, promessa);
+  exportImageCache.set(src, promessa);
   return promessa;
 }
 
@@ -1790,216 +1781,149 @@ async function mapComConcorrencia(itens, limite, fn) {
       catch (_) { saida[i] = null; }
     }
   }
+  if (!itens.length) return saida;
   await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
   return saida;
 }
 
-function paginasFisicasParaPDF() {
-  const saida = [];
-  pages.forEach(pg => {
-    const prods = pg.produtos.map(id => TODOS_PRODUTOS.find(p => p.id === id)).filter(Boolean);
-    // Não exporta página vazia. Antes, as categorias sem produto também viravam
-    // folhas A4 e faziam o usuário envelhecer durante a exportação.
-    for (let i = 0; i < prods.length; i += MAX_PRODUTOS_POR_PAGINA) {
-      const produtos = prods.slice(i, i + MAX_PRODUTOS_POR_PAGINA);
-      if (produtos.length) saida.push({ pg, produtos });
+function folhasComProdutos() {
+  return Array.from(document.querySelectorAll('.a4')).filter(a4 => a4.querySelector('.card'));
+}
+
+async function prepararImagensDasFolhas(folhas, btn) {
+  const urls = [];
+  const vistos = new Set();
+  folhas.forEach(folha => folha.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src') || img.src;
+    if (src && !vistos.has(src)) { vistos.add(src); urls.push(src); }
+  }));
+
+  let prontas = 0;
+  const resultados = await mapComConcorrencia(urls, 6, async src => {
+    const data = await resolverImagemExportacao(src);
+    prontas++;
+    const span = btn?.querySelector('span');
+    if (span && (prontas === urls.length || prontas % 4 === 0)) {
+      span.textContent = `Imagens ${prontas}/${urls.length}`;
     }
+    return [src, data];
   });
-  return saida;
+  return new Map(resultados.filter(item => item && item[1]));
 }
 
-function truncarLinhasPDF(linhas, maxLinhas) {
-  if (linhas.length <= maxLinhas) return linhas;
-  const corte = linhas.slice(0, maxLinhas);
-  const ultima = String(corte[maxLinhas - 1] || '').replace(/[.…]*$/, '');
-  corte[maxLinhas - 1] = ultima.length > 3 ? ultima.slice(0, -2) + '…' : ultima + '…';
-  return corte;
+function substituirImagemPorFallback(img) {
+  const box = img.closest('.card-img');
+  if (!box) { img.remove(); return; }
+  box.innerHTML = `<span style="font-size:6px;color:#BDBDBD;text-align:center;line-height:1.15">Imagem meramente<br>ilustrativa</span>`;
 }
 
-function desenharPaginaPDF(doc, item, indice, total, imagens) {
-  const { pg, produtos } = item;
-  const pal = paletaDaPagina(pg);
-  const W = 210, H = 297;
-  const headerH = 30.35, footerH = 14.1;
-  const marginX = 15.9, gridTop = 5.65, gridBottom = 5.65;
-  const gapX = 3.53, gapY = 3.53;
-  const cols = 5, rows = 5;
-  const cardW = (W - marginX * 2 - gapX * (cols - 1)) / cols;
-  const cardH = (H - headerH - footerH - gridTop - gridBottom - gapY * (rows - 1)) / rows;
-  const imgH = 22.6, badgeH = 5.35;
+async function criarCloneExportacao(folha, imagensResolvidas) {
+  const clone = folha.cloneNode(true);
+  clone.classList.add('a4-export-clone');
+  clone.style.width = '595px';
+  clone.style.height = '842px';
+  clone.style.minHeight = '842px';
+  clone.style.maxHeight = '842px';
+  clone.style.boxShadow = 'none';
+  clone.style.borderRadius = '0';
+  clone.style.margin = '0';
+  clone.style.transform = 'none';
+  clone.style.position = 'fixed';
+  clone.style.left = '-10000px';
+  clone.style.top = '0';
+  clone.style.zIndex = '-1';
+  clone.style.pointerEvents = 'none';
 
-  if (indice > 0) doc.addPage('a4', 'portrait');
-  doc.setPage(indice + 1);
-
-  // Fundo
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, W, H, 'F');
-
-  // Cabeçalho
-  pdfSetHex(doc, 'fill', pal.verdeEscuro);
-  doc.rect(0, 0, W, headerH, 'F');
-  pdfSetHex(doc, 'fill', pal.accent);
-  doc.rect(0, headerH - 1.4, W, 1.4, 'F');
-
-  // Logo
-  const logoX = marginX, logoY = 6.1, logoS = 18;
-  doc.setFillColor(255,255,255);
-  doc.roundedRect(logoX, logoY, logoS, logoS, 1.7, 1.7, 'F');
-  const logoImg = imagens.logo;
-  if (logoImg) {
-    try { doc.addImage(logoImg, 'JPEG', logoX + 1, logoY + 1, logoS - 2, logoS - 2, undefined, 'FAST'); }
-    catch (_) {}
-  } else {
-    pdfSetHex(doc, 'text', pal.verdeEscuro);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    doc.text('PMG', logoX + logoS/2, logoY + logoS/2 + 1.2, { align: 'center' });
-  }
-
-  // Título / subtítulo
-  const textCenterX = 122;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
-  doc.setTextColor(255,255,255);
-  doc.text(String(pg.titulo || ''), textCenterX, 13.7, { align: 'center', baseline: 'middle' });
-  if (pg.subtitulo) {
-    pdfSetHex(doc, 'text', pal.accent);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.2);
-    const subs = truncarLinhasPDF(doc.splitTextToSize(String(pg.subtitulo), 118), 2);
-    doc.text(subs, textCenterX, 20.2, { align: 'center', lineHeightFactor: 1.15 });
-  }
-
-  // Cards
-  produtos.forEach((p, idx) => {
-    const col = idx % cols, row = Math.floor(idx / cols);
-    const x = marginX + col * (cardW + gapX);
-    const y = headerH + gridTop + row * (cardH + gapY);
-
-    // Card e área da imagem
-    doc.setFillColor(255,255,255);
-    doc.setDrawColor(224,224,224);
-    doc.setLineWidth(0.25);
-    doc.roundedRect(x, y, cardW, cardH, 1.8, 1.8, 'FD');
-    doc.setFillColor(247,247,247);
-    doc.rect(x + 0.25, y + 0.25, cardW - 0.5, imgH, 'F');
-
-    const imgData = imagens.produtos.get(p.id);
-    if (imgData) {
-      try {
-        const pad = 1.0;
-        doc.addImage(imgData, 'JPEG', x + pad, y + pad, cardW - pad*2, imgH - pad*2, undefined, 'FAST');
-      } catch (_) {}
-    } else {
-      doc.setTextColor(185,185,185);
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(4.3);
-      doc.text(['Imagem meramente', 'ilustrativa'], x + cardW/2, y + imgH/2, { align: 'center', lineHeightFactor: 1.15 });
-    }
-
-    // Nome
-    const bodyY = y + imgH + 1.8;
-    doc.setTextColor(33,33,33);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(5.2);
-    const linhasNome = truncarLinhasPDF(doc.splitTextToSize(nomeProdutoParaExibicao(p), cardW - 3.6), 6);
-    const alturaTexto = linhasNome.length * 2.05;
-    const bodyDisponivel = cardH - imgH - badgeH;
-    const nomeY = bodyY + Math.max(0, (bodyDisponivel - alturaTexto) / 2 - 0.5);
-    doc.text(linhasNome, x + 1.8, nomeY, { lineHeightFactor: 1.08 });
-
-    // Badge da embalagem
-    const badgeY = y + cardH - badgeH;
-    pdfSetHex(doc, 'fill', pal.verdeSuave);
-    doc.rect(x + 0.25, badgeY, cardW - 0.5, badgeH - 0.25, 'F');
-    pdfSetHex(doc, 'draw', pal.verdeClaro);
-    doc.setLineWidth(0.2); doc.line(x + 0.4, badgeY, x + cardW - 0.4, badgeY);
-    pdfSetHex(doc, 'text', pal.verdeEscuro);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(4.8);
-    doc.text(String(p.unidade || ''), x + cardW/2, badgeY + badgeH/2 + 0.8, { align: 'center' });
+  // Elementos de edição nunca entram no material final.
+  clone.querySelectorAll('.card-check').forEach(el => el.remove());
+  clone.querySelectorAll('.card').forEach(el => {
+    el.classList.remove('selecionado', 'dragging', 'drag-card-over');
+    el.removeAttribute('draggable');
   });
 
-  // Rodapé, sem número de página
-  const footerY = H - footerH;
-  pdfSetHex(doc, 'fill', pal.accent);
-  doc.rect(0, footerY - 1.1, W, 1.1, 'F');
-  pdfSetHex(doc, 'fill', pal.verdeEscuro);
-  doc.rect(0, footerY, W, footerH, 'F');
-  doc.setTextColor(255,255,255);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(5.5);
-  doc.text('PMG.com.br', marginX, footerY + 7.9);
-  pdfSetHex(doc, 'text', pal.accent);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(5.3);
-  doc.text('Atacadista de Alimentos e Bebidas', W - marginX, footerY + 7.9, { align: 'right' });
+  clone.querySelectorAll('img').forEach(img => {
+    const original = img.getAttribute('src') || img.src;
+    const resolvida = imagensResolvidas.get(original);
+    if (resolvida) {
+      img.src = resolvida;
+      img.removeAttribute('srcset');
+      img.loading = 'eager';
+      img.decoding = 'sync';
+    } else if (img.closest('.card-img')) {
+      substituirImagemPorFallback(img);
+    }
+  });
+
+  document.body.appendChild(clone);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  // Garante que data URLs já foram decodificadas antes do html2canvas.
+  await Promise.all(Array.from(clone.querySelectorAll('img')).map(img => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+    if (typeof img.decode === 'function') return img.decode().catch(() => {});
+    return new Promise(resolve => {
+      const t = setTimeout(resolve, 2500);
+      img.onload = img.onerror = () => { clearTimeout(t); resolve(); };
+    });
+  }));
+  return clone;
 }
 
-async function exportPDFLegado() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-  // Fallback mais leve: apenas páginas com produto e escala menor.
-  const a4s = Array.from(document.querySelectorAll('.a4')).filter(a4 => a4.querySelector('.card'));
-  for (let i = 0; i < a4s.length; i++) {
-    const canvas = await html2canvas(a4s[i], { scale: 1.35, useCORS: true, backgroundColor: '#fff', logging: false });
-    if (i > 0) doc.addPage();
-    doc.addImage(canvas.toDataURL('image/jpeg', 0.82), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+async function capturarFolha(folha, imagensResolvidas, scale = 1.45) {
+  const clone = await criarCloneExportacao(folha, imagensResolvidas);
+  try {
+    return await html2canvas(clone, {
+      scale,
+      width: 595,
+      height: 842,
+      windowWidth: 595,
+      windowHeight: 842,
+      useCORS: false,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+      imageTimeout: 0,
+      removeContainer: true,
+      scrollX: 0,
+      scrollY: 0
+    });
+  } finally {
+    clone.remove();
   }
-  doc.save('catalogo-pmg.pdf');
 }
 
 async function exportPDF() {
   const btn = document.querySelector('.btn-export');
   if (btn?.disabled) return;
+  const folhas = folhasComProdutos();
+  if (!folhas.length) { showToast('Adicione produtos antes de exportar.'); return; }
+
   const original = btn?.innerHTML;
-  const paginasPDF = paginasFisicasParaPDF();
-
-  if (!paginasPDF.length) {
-    showToast('Adicione produtos antes de exportar.');
-    return;
-  }
-
   try {
     if (btn) { btn.disabled = true; btn.style.opacity = '.65'; }
-    showToast(`Preparando ${paginasPDF.length} página${paginasPDF.length > 1 ? 's' : ''}...`);
+    if (document.fonts?.ready) await document.fonts.ready;
 
-    // Carrega apenas as imagens realmente usadas no PDF e reaproveita o cache
-    // do navegador. Concorrência limitada evita travar a aba com 100+ requisições.
-    const produtosUsados = [];
-    const vistos = new Set();
-    paginasPDF.forEach(({ produtos }) => produtos.forEach(p => {
-      if (!vistos.has(p.id) && prodImages[p.id]) { vistos.add(p.id); produtosUsados.push(p); }
-    }));
-
-    if (btn) btn.querySelector('span') && (btn.querySelector('span').textContent = `Imagens 0/${produtosUsados.length}`);
-    let prontas = 0;
-    const carregadas = await mapComConcorrencia(produtosUsados, 8, async p => {
-      const data = await prepararImagemPDF(prodImages[p.id]);
-      prontas++;
-      const span = btn?.querySelector('span');
-      if (span && (prontas === produtosUsados.length || prontas % 8 === 0)) span.textContent = `Imagens ${prontas}/${produtosUsados.length}`;
-      return [p.id, data];
-    });
-
-    const imagensProdutos = new Map(carregadas.filter(x => x && x[1]));
-    const logo = logoDataUrl ? await prepararLogoPDF(logoDataUrl) : null;
+    const imagens = await prepararImagensDasFolhas(folhas, btn);
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true, putOnlyUsedFonts: true });
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
 
-    for (let i = 0; i < paginasPDF.length; i++) {
+    for (let i = 0; i < folhas.length; i++) {
       const span = btn?.querySelector('span');
-      if (span) span.textContent = `Página ${i + 1}/${paginasPDF.length}`;
-      desenharPaginaPDF(doc, paginasPDF[i], i, paginasPDF.length, { logo, produtos: imagensProdutos });
-      // Libera a interface de tempos em tempos em catálogos grandes.
-      if (i % 4 === 3) await new Promise(r => requestAnimationFrame(() => r()));
+      if (span) span.textContent = `Página ${i + 1}/${folhas.length}`;
+      const canvas = await capturarFolha(folhas[i], imagens, 1.45);
+      if (i > 0) doc.addPage('a4', 'portrait');
+      doc.addImage(canvas.toDataURL('image/jpeg', 0.90), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+      canvas.width = 1; canvas.height = 1;
+      if (i % 2 === 1) await new Promise(r => requestAnimationFrame(r));
     }
 
-    if (btn) btn.querySelector('span') && (btn.querySelector('span').textContent = 'Finalizando...');
+    const span = btn?.querySelector('span');
+    if (span) span.textContent = 'Finalizando...';
     doc.save('catalogo-pmg.pdf');
-    showToast(`PDF gerado: ${paginasPDF.length} página${paginasPDF.length > 1 ? 's' : ''}.`);
+    showToast(`PDF gerado com ${folhas.length} página${folhas.length > 1 ? 's' : ''}.`);
   } catch (err) {
-    console.error('Exportação rápida falhou; usando fallback:', err);
-    showToast('Tentando modo de compatibilidade...');
-    try {
-      await exportPDFLegado();
-      showToast('PDF baixado!');
-    } catch (fallbackErr) {
-      console.error(fallbackErr);
-      showToast('Erro ao gerar PDF.');
-    }
+    console.error('Erro ao exportar PDF:', err);
+    showToast('Erro ao gerar PDF. Confira o console.');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -2008,7 +1932,6 @@ async function exportPDF() {
     }
   }
 }
-
 
 function toggleExportMenu(event) {
   event?.stopPropagation();
@@ -2043,40 +1966,32 @@ function canvasParaBlob(canvas, tipo='image/png', qualidade=0.92) {
     tipo, qualidade
   ));
 }
+
 async function exportPNG() {
   const btn = document.querySelector('.btn-export');
   if (btn?.disabled) return;
-
-  const folhas = Array.from(document.querySelectorAll('.a4')).filter(a4 => a4.querySelector('.card'));
-  if (!folhas.length) {
-    showToast('Adicione produtos antes de exportar.');
-    return;
-  }
+  const folhas = folhasComProdutos();
+  if (!folhas.length) { showToast('Adicione produtos antes de exportar.'); return; }
 
   const original = btn?.innerHTML;
   try {
     if (btn) { btn.disabled = true; btn.style.opacity = '.65'; }
+    if (document.fonts?.ready) await document.fonts.ready;
+    const imagens = await prepararImagensDasFolhas(folhas, btn);
     const arquivos = [];
 
     for (let i = 0; i < folhas.length; i++) {
       const span = btn?.querySelector('span');
       if (span) span.textContent = `PNG ${i + 1}/${folhas.length}`;
-
-      // 1.5x mantém texto/imagens nítidos sem produzir PNGs absurdamente pesados.
-      const canvas = await html2canvas(folhas[i], {
-        scale: 1.5,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#ffffff',
-        logging: false,
-        imageTimeout: 7000
-      });
-      const blob = await canvasParaBlob(canvas);
+      const canvas = await capturarFolha(folhas[i], imagens, 1.6);
+      const blob = await canvasParaBlob(canvas, 'image/png');
       const titulo = folhas[i].querySelector('.a4-title')?.textContent || 'catalogo';
-      const nome = `catalogo-${nomeArquivoSeguro(titulo)}-${String(i + 1).padStart(2, '0')}.png`;
-      arquivos.push({ nome, blob });
-
-      if (i % 2 === 1) await new Promise(r => requestAnimationFrame(() => r()));
+      arquivos.push({
+        nome: `catalogo-${nomeArquivoSeguro(titulo)}-${String(i + 1).padStart(2, '0')}.png`,
+        blob
+      });
+      canvas.width = 1; canvas.height = 1;
+      if (i % 2 === 1) await new Promise(r => requestAnimationFrame(r));
     }
 
     if (arquivos.length === 1) {
@@ -2088,16 +2003,14 @@ async function exportPNG() {
       const span = btn?.querySelector('span');
       if (span) span.textContent = 'Compactando...';
       const blobZip = await zip.generateAsync({
-        type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 4 }
+        type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 3 }
       });
       baixarBlob(blobZip, 'catalogo-pmg-png.zip');
     }
     showToast(`${arquivos.length} PNG${arquivos.length > 1 ? 's' : ''} gerado${arquivos.length > 1 ? 's' : ''}.`);
   } catch (err) {
     console.error('Erro ao exportar PNG:', err);
-    showToast('Erro ao gerar PNG.');
+    showToast('Erro ao gerar PNG. Confira o console.');
   } finally {
     if (btn) {
       btn.disabled = false;
