@@ -1401,7 +1401,10 @@ function fillReminderForm(reminder) {
 function closeModal(id) { $(id).classList.add('hidden'); if (id === 'quickAddModal') state.editingReminderId = null; if (id === 'assigneePickerModal') state.assigneePicker = { selectId: null, previewId: null, taskId: null, search: '' }; }
 
 async function saveQuickItem(event) {
-  event.preventDefault(); setLoading(true);
+  event.preventDefault();
+  if (saveQuickItem.inFlight) return;
+  saveQuickItem.inFlight = true;
+  setLoading(true);
   const wasEditing = Boolean(state.editingReminderId);
   try {
     if (state.quickType === 'demanda') await createTaskV2();
@@ -1410,7 +1413,10 @@ async function saveQuickItem(event) {
     closeModal('quickAddModal'); await Promise.all([loadTasks(), loadReminders(), loadNotifications(), loadActivities()]); renderAll();
     await dispatchPendingPush(); toast(wasEditing ? 'Item atualizado.' : 'Item criado com sucesso.');
   } catch (error) { console.error(error); toast(errorMessage(error), 'error'); }
-  finally { setLoading(false); }
+  finally {
+    saveQuickItem.inFlight = false;
+    setLoading(false);
+  }
 }
 async function createTaskV2() {
   const dueDate = $('itemDueDate').value; const dueTime = $('itemDueTime').value || '17:00';
@@ -5882,6 +5888,20 @@ loadAll = async function loadAllUxV381() {
   await loadAllBeforeUxV381();
   await loadRecurrenceGroupsV381();
 };
+async function closeRecurringSeriesSafelyV381(ids, context = 'rollback') {
+  const failures = [];
+  for (const id of [...new Set((ids || []).filter(Boolean))].reverse()) {
+    try {
+      const { error } = await db.rpc('encerrar_demanda_recorrente', { p_id:id });
+      if (error) throw error;
+    } catch (error) {
+      console.error(`[recorrência multi-horário] ${context}: não foi possível encerrar ${id}`, error);
+      failures.push(id);
+    }
+  }
+  return failures;
+}
+
 async function createRecurringSeriesFromFormV381(time) {
   const frequency = $('itemRecurrenceFrequency').value;
   const weekdays = selectedWeekdays('itemRecurrenceWeekdays');
@@ -5891,22 +5911,35 @@ async function createRecurringSeriesFromFormV381(time) {
   const alertAll = priority === 'imediata' && $('itemAlertAll')?.value === 'true';
   const assigneeIds = selectedFormAssigneeIdsV37('item');
   const responsibilityMode = $('itemResponsibilityMode')?.value || 'compartilhada';
-  const { data: recurringId, error } = await db.rpc('criar_demanda_recorrente_v1', {
-    p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
-    p_prioridade: priority, p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
-    p_tags: $('itemTags').value.split(',').map(tag=>tag.trim()).filter(Boolean), p_tamanho:$('itemSize').value,
-    p_estimativa_horas:$('itemEstimate').value?Number($('itemEstimate').value):null, p_alerta_para_todos:alertAll,
-    p_projeto:$('itemProject')?.value.trim()||null, p_checklist:checklistFromText($('itemChecklist')?.value||''),
-    p_dependencias:selectedValues($('itemDependencies')), p_frequencia:frequency, p_dias_semana:weekdays,
-    p_data_inicio:start, p_data_fim:end, p_horario_prazo:time,
-    p_horario_alerta: time, p_alerta_diario:Boolean($('itemRecurrenceDailyAlert').checked)
-  });
-  if (error) throw error;
-  if (recurringId && state.multiAssigneeReady) {
-    const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', { p_recorrencia_id:recurringId, p_responsaveis:assigneeIds, p_modo:responsibilityMode, p_aplicar_ocorrencias:true });
-    if (assigneeError) throw assigneeError;
+  let recurringId = null;
+  try {
+    const { data, error } = await db.rpc('criar_demanda_recorrente_v1', {
+      p_titulo: $('itemTitle').value.trim(), p_descricao: $('itemDescription').value.trim() || null,
+      p_prioridade: priority, p_responsavel_id: responsibilityMode === 'primeiro_cumprir' ? null : (assigneeIds[0] || null),
+      p_tags: $('itemTags').value.split(',').map(tag=>tag.trim()).filter(Boolean), p_tamanho:$('itemSize').value,
+      p_estimativa_horas:$('itemEstimate').value?Number($('itemEstimate').value):null, p_alerta_para_todos:alertAll,
+      p_projeto:$('itemProject')?.value.trim()||null, p_checklist:checklistFromText($('itemChecklist')?.value||''),
+      p_dependencias:selectedValues($('itemDependencies')), p_frequencia:frequency, p_dias_semana:weekdays,
+      p_data_inicio:start, p_data_fim:end, p_horario_prazo:time,
+      p_horario_alerta: time, p_alerta_diario:Boolean($('itemRecurrenceDailyAlert').checked)
+    });
+    if (error) throw error;
+    recurringId = data;
+    if (recurringId && state.multiAssigneeReady) {
+      const { error: assigneeError } = await db.rpc('definir_responsaveis_recorrencia_modo_v1', { p_recorrencia_id:recurringId, p_responsaveis:assigneeIds, p_modo:responsibilityMode, p_aplicar_ocorrencias:true });
+      if (assigneeError) throw assigneeError;
+    }
+    return recurringId;
+  } catch (error) {
+    if (recurringId) {
+      const rollbackFailures = await closeRecurringSeriesSafelyV381([recurringId], 'falha ao configurar responsáveis');
+      if (rollbackFailures.length) {
+        error.pmgRollbackFailed = true;
+        error.message = `${error.message || 'Falha ao criar recorrência.'} A série criada não pôde ser encerrada automaticamente.`;
+      }
+    }
+    throw error;
   }
-  return recurringId;
 }
 const createTaskV2BeforeUxV381 = createTaskV2;
 createTaskV2 = async function createTaskV2UxV381() {
@@ -5922,10 +5955,24 @@ createTaskV2 = async function createTaskV2UxV381() {
   const assigneeIds=selectedFormAssigneeIdsV37('item'), mode=$('itemResponsibilityMode')?.value||'compartilhada';
   if (mode==='primeiro_cumprir' && assigneeIds.length<2) throw new Error('No modo Primeiro a cumprir, selecione pelo menos duas pessoas candidatas.');
   const ids=[];
-  for (const time of times) ids.push(await createRecurringSeriesFromFormV381(time));
-  const { error: groupError } = await db.rpc('agrupar_recorrencias_v381',{p_recorrencias:ids,p_horarios:times});
-  if (groupError) throw groupError;
-  await loadRecurringV36(); await loadRecurrenceGroupsV381();
+  let grouped = false;
+  try {
+    for (const time of times) ids.push(await createRecurringSeriesFromFormV381(time));
+    const { error: groupError } = await db.rpc('agrupar_recorrencias_v381',{p_recorrencias:ids,p_horarios:times});
+    if (groupError) throw groupError;
+    grouped = true;
+  } catch (error) {
+    const rollbackFailures = await closeRecurringSeriesSafelyV381(ids, 'rollback da criação em múltiplos horários');
+    if (rollbackFailures.length) {
+      error.pmgRollbackFailed = true;
+      error.message = `${error.message || 'Falha ao criar a rotina.'} ${rollbackFailures.length} série(s) não puderam ser encerradas automaticamente.`;
+    }
+    throw error;
+  }
+  if (grouped) {
+    await loadRecurringV36();
+    await loadRecurrenceGroupsV381();
+  }
 };
 const fillRecurrenceEditorBeforeUxV381 = fillRecurrenceEditor;
 fillRecurrenceEditor = function fillRecurrenceEditorUxV381(series, options={}) {

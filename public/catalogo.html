@@ -443,6 +443,7 @@ body:not(.catalog-dark) .theme-btn .sun-icon{display:none}
   .topbar h1{font-size:14px!important}
   .btn-connect span,.btn-export span{display:none}
   .btn-connect,.btn-export,.theme-btn{width:40px!important;padding:0!important}
+  .btn-export:disabled{opacity:.55!important;cursor:wait!important}
   .catalog-page-actions{grid-template-columns:1fr}
   .preview-wrap{zoom:.72}
 }
@@ -960,15 +961,116 @@ function renderLogoPreview() {
 }
 
 // ── IMAGENS PRODUTO ──
-function onProdImageUpload(input, prodId) {
-  if (!input.files || !input.files[0]) return;
-  const reader = new FileReader();
-  reader.onload = e => { prodImages[prodId] = e.target.result; renderProdImgList(); renderPreview(); };
-  reader.readAsDataURL(input.files[0]);
+const PRODUCT_IMAGE_DB = 'pmg-catalogo-imagens-v1';
+const PRODUCT_IMAGE_STORE = 'imagens';
+let productImageDbPromise = null;
+
+function openProductImageDb() {
+  if (!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB indisponível neste navegador.'));
+  if (productImageDbPromise) return productImageDbPromise;
+  productImageDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(PRODUCT_IMAGE_DB, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(PRODUCT_IMAGE_STORE)) database.createObjectStore(PRODUCT_IMAGE_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Não foi possível abrir o armazenamento das imagens.'));
+  });
+  return productImageDbPromise;
 }
-function clearProdImage(prodId) {
+
+async function persistProductImage(prodId, value) {
+  const database = await openProductImageDb();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(PRODUCT_IMAGE_STORE, 'readwrite').objectStore(PRODUCT_IMAGE_STORE).put(value, String(prodId));
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error('Não foi possível salvar a imagem do produto.'));
+  });
+}
+
+async function removePersistedProductImage(prodId) {
+  const database = await openProductImageDb();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(PRODUCT_IMAGE_STORE, 'readwrite').objectStore(PRODUCT_IMAGE_STORE).delete(String(prodId));
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error('Não foi possível remover a imagem salva.'));
+  });
+}
+
+async function loadPersistedProductImages() {
+  if (!('indexedDB' in window)) return 0;
+  try {
+    const database = await openProductImageDb();
+    const entries = await new Promise((resolve, reject) => {
+      const store = database.transaction(PRODUCT_IMAGE_STORE).objectStore(PRODUCT_IMAGE_STORE);
+      const keysRequest = store.getAllKeys();
+      const valuesRequest = store.getAll();
+      let keys = null, values = null;
+      const done = () => {
+        if (keys && values) resolve(keys.map((key, index) => [key, values[index]]));
+      };
+      keysRequest.onsuccess = () => { keys = keysRequest.result || []; done(); };
+      valuesRequest.onsuccess = () => { values = valuesRequest.result || []; done(); };
+      keysRequest.onerror = () => reject(keysRequest.error);
+      valuesRequest.onerror = () => reject(valuesRequest.error);
+    });
+    entries.forEach(([prodId, value]) => { if (value) prodImages[prodId] = value; });
+    return entries.length;
+  } catch (error) {
+    console.warn('[catálogo] imagens locais não puderam ser restauradas', error);
+    return 0;
+  }
+}
+
+function onProdImageUpload(input, prodId) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!/^image\//i.test(file.type || '')) {
+    input.value = '';
+    showToast('Selecione um arquivo de imagem válido.');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    input.value = '';
+    showToast('A imagem deve ter no máximo 10 MB.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const previous = prodImages[prodId];
+    prodImages[prodId] = e.target.result;
+    renderProdImgList();
+    renderPreview();
+    try {
+      await persistProductImage(prodId, e.target.result);
+      showToast('Imagem do produto salva.');
+    } catch (error) {
+      console.error('[catálogo] falha ao persistir imagem do produto', error);
+      if (previous) prodImages[prodId] = previous; else delete prodImages[prodId];
+      renderProdImgList();
+      renderPreview();
+      showToast('Não foi possível salvar a imagem. A alteração foi desfeita.');
+    }
+  };
+  reader.onerror = () => {
+    input.value = '';
+    showToast('Não foi possível ler a imagem selecionada.');
+  };
+  reader.readAsDataURL(file);
+}
+async function clearProdImage(prodId) {
+  const previous = prodImages[prodId];
   delete prodImages[prodId];
   renderProdImgList(); renderPreview();
+  try {
+    await removePersistedProductImage(prodId);
+  } catch (error) {
+    console.error('[catálogo] falha ao remover imagem persistida', error);
+    if (previous) prodImages[prodId] = previous;
+    renderProdImgList(); renderPreview();
+    showToast('Não foi possível remover a imagem salva.');
+  }
 }
 function renderProdImgList() {
   const list = document.getElementById('prodImgList');
@@ -1510,36 +1612,57 @@ function buildPanel() {
 }
 
 // ── EXPORT PDF ──
-function exportPDF() {
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+let catalogExportInProgress = false;
 
-  const a4s = document.querySelectorAll('.a4');
-  let promessas = [];
+async function exportPDF() {
+  if (catalogExportInProgress) {
+    showToast('O PDF já está sendo gerado.');
+    return;
+  }
+  const a4s = [...document.querySelectorAll('.a4')];
+  if (!a4s.length) {
+    showToast('Não há páginas para exportar.');
+    return;
+  }
 
-  a4s.forEach((a4, i) => {
-    promessas.push(
-      html2canvas(a4, { scale: 2, useCORS: true, backgroundColor: '#fff' }).then(canvas => {
-        return { i, canvas };
-      })
-    );
-  });
+  const button = document.querySelector('.btn-export');
+  catalogExportInProgress = true;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+  }
+  showToast(`Gerando PDF · 0/${a4s.length} páginas`);
 
-  showToast('Gerando PDF, aguarde...');
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-  Promise.all(promessas).then(resultados => {
-    resultados.sort((a, b) => a.i - b.i);
-    resultados.forEach(({ canvas }, idx) => {
-      if (idx > 0) doc.addPage();
+    // Renderiza uma página por vez. O fluxo anterior disparava todos os canvases
+    // simultaneamente e multiplicava o pico de memória em catálogos grandes.
+    for (let index = 0; index < a4s.length; index += 1) {
+      const canvas = await html2canvas(a4s[index], { scale: 2, useCORS: true, backgroundColor: '#fff' });
+      if (index > 0) doc.addPage();
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
       doc.addImage(imgData, 'JPEG', 0, 0, 210, 297);
-    });
+      canvas.width = 1;
+      canvas.height = 1;
+      if ((index + 1) % 5 === 0 || index === a4s.length - 1) {
+        showToast(`Gerando PDF · ${index + 1}/${a4s.length} páginas`);
+      }
+    }
+
     doc.save('catalogo-pmg.pdf');
     showToast('PDF baixado!');
-  }).catch(err => {
-    console.error(err);
-    showToast('Erro ao gerar PDF.');
-  });
+  } catch (err) {
+    console.error('[catálogo] erro ao gerar PDF', err);
+    showToast('Erro ao gerar PDF. O catálogo continua disponível para tentar novamente.');
+  } finally {
+    catalogExportInProgress = false;
+    if (button) {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+    }
+  }
 }
 
 // ── SALVAR/CARREGAR NO PRÓPRIO NAVEGADOR (localStorage) ──
@@ -1666,6 +1789,7 @@ renderPreview();
 
 window.addEventListener('load', async () => {
   await sincronizarAPI();
+  await loadPersistedProductImages();
   const tinha = carregarEstado();   // sem await
   if (tinha) {
     renderLogoPreview();

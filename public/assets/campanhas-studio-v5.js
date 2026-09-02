@@ -148,6 +148,7 @@
     view:'dashboard', campaigns:[], context:{ suppliers:[], products:[], representatives:[] }, contextReady:false, contextCached:false,
     contextStatus:null, contextPromise:null, useCachedAllowed:false, campaignSearch:'', productSearch:'', representativeSearch:'',
     wizard:null, performance:null, sellerAudit:null, benefitReport:null, imageCache:new Map(), imageAttempted:new Set(), imageInFlight:new Map(), apiInFlight:new Map(), apiCache:new Map(),
+    savingCampaign:false, performanceInFlight:new Set(),
   };
 
   function icons(root = document) {
@@ -1585,18 +1586,37 @@
   }
 
   async function saveCampaign() {
+    if (app.savingCampaign) return;
     for (let step = 0; step < STEPS.length; step += 1) {
       const error = validateStep(step);
       if (error) { app.wizard.step = step; renderWizard(); return toast(error, 'error'); }
     }
-    syncCurrentStep();
-    const campaign = app.wizard.campaign;
-    campaign.updatedAt = new Date().toISOString();
-    await DB.put('campanhas', campaign);
-    await loadCampaigns();
-    closeWizard();
-    renderView();
-    toast('Campanha salva com sucesso.');
+
+    const saveButton = $('[data-action="save-campaign"]');
+    app.savingCampaign = true;
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.setAttribute('aria-busy', 'true');
+    }
+    try {
+      syncCurrentStep();
+      const campaign = app.wizard.campaign;
+      campaign.updatedAt = new Date().toISOString();
+      await DB.put('campanhas', campaign);
+      await loadCampaigns();
+      closeWizard();
+      renderView();
+      toast('Campanha salva com sucesso.');
+    } catch (error) {
+      console.error('[campanhas] falha ao salvar campanha', error);
+      toast(`Não foi possível salvar a campanha: ${error.message || 'erro inesperado'}`, 'error');
+    } finally {
+      app.savingCampaign = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.removeAttribute('aria-busy');
+      }
+    }
   }
 
   function compareOp(value, operator, target) {
@@ -2359,10 +2379,17 @@
   }
 
   async function openPerformance(id, { force = false } = {}) {
-    const campaign = normalizeCampaign(await DB.get('campanhas', id));
-    if (!campaign?.id) return;
+    const inFlightKey = String(id || '');
+    if (app.performanceInFlight.has(inFlightKey)) {
+      toast('A apuração desta campanha já está em andamento.');
+      return;
+    }
+    app.performanceInFlight.add(inFlightKey);
+    try {
+      const campaign = normalizeCampaign(await DB.get('campanhas', id));
+      if (!campaign?.id) return;
 
-    $('#drawerBackdrop').hidden = false;
+      $('#drawerBackdrop').hidden = false;
     document.body.style.overflow = 'hidden';
     $('#performanceTitle').textContent = campaign.name;
     requestAnimationFrame(() => $('#performanceDrawer')?.focus?.());
@@ -2506,6 +2533,9 @@
         </button>
       </div>`;
       icons($('#performanceBody'));
+    }
+    } finally {
+      app.performanceInFlight.delete(inFlightKey);
     }
   }
 
