@@ -9,6 +9,62 @@ let dependenciesPromise = null;
 const PUBLIC_SUPABASE_URL = 'https://scokolfzvtzohrzdgisz.supabase.co';
 const PUBLIC_SUPABASE_KEY = 'sb_publishable_inJrO1hMCTys3g7FAyjV3w_4TVfLOok';
 
+function cleanEnvValue(value, expectedName = '') {
+  let text = String(value ?? '').trim();
+  if (!text) return '';
+
+  // A Vercel espera apenas o valor. Se alguém colar por engano
+  // SUPABASE_URL=https://..., removemos o nome da variável aqui.
+  const assignment = text.match(/^(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.+)$/is);
+  if (assignment && (!expectedName || assignment[1].toUpperCase() === expectedName.toUpperCase())) {
+    text = assignment[2].trim();
+  }
+
+  // Também tolera valores colados entre aspas no painel.
+  if (
+    text.length >= 2 &&
+    ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'")))
+  ) {
+    text = text.slice(1, -1).trim();
+  }
+
+  return text;
+}
+
+function normalizeSupabaseUrl(value) {
+  let text = cleanEnvValue(value, 'SUPABASE_URL');
+  if (!text) return '';
+
+  // Corrige o caso comum de o domínio ter sido colado sem https://.
+  if (!/^https?:\/\//i.test(text) && /^[a-z0-9.-]+(?::\d+)?(?:\/.*)?$/i.test(text)) {
+    text = `https://${text}`;
+  }
+
+  try {
+    const parsed = new URL(text);
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) return '';
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+function resolveSupabaseUrl() {
+  return normalizeSupabaseUrl(process.env.SUPABASE_URL)
+    || normalizeSupabaseUrl(PUBLIC_SUPABASE_URL);
+}
+
+function resolvePublicSupabaseKey() {
+  return cleanEnvValue(process.env.SUPABASE_ANON_KEY, 'SUPABASE_ANON_KEY')
+    || cleanEnvValue(process.env.SUPABASE_PUBLISHABLE_KEY, 'SUPABASE_PUBLISHABLE_KEY')
+    || PUBLIC_SUPABASE_KEY;
+}
+
+function resolveServiceSupabaseKey() {
+  return cleanEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY, 'SUPABASE_SERVICE_ROLE_KEY')
+    || cleanEnvValue(process.env.SUPABASE_ROLE_KEY, 'SUPABASE_ROLE_KEY');
+}
+
 async function loadDependencies() {
   if (webpush && createClient) return;
   if (!dependenciesPromise) {
@@ -38,8 +94,8 @@ const NOTIFICATION_TEXT = {
 };
 
 function makeSupabase() {
-  const url = process.env.SUPABASE_URL || PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ROLE_KEY;
+  const url = resolveSupabaseUrl();
+  const serviceKey = resolveServiceSupabaseKey();
   if (!url || !serviceKey) {
     throw new Error('SUPABASE_SERVICE_ROLE_KEY (ou SUPABASE_ROLE_KEY legado) não configurada');
   }
@@ -327,8 +383,8 @@ export default async function handler(req, res) {
   // Configuração pública usada pelo navegador. A chave anon/publishable do
   // Supabase é própria para uso no frontend; a service_role nunca é enviada.
   if (req.method === 'GET' && String(req.query?.config || '') === '1') {
-    const supabaseUrl = process.env.SUPABASE_URL || PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || PUBLIC_SUPABASE_KEY;
+    const supabaseUrl = resolveSupabaseUrl();
+    const supabaseAnonKey = resolvePublicSupabaseKey();
     if (!supabaseUrl || !supabaseAnonKey) {
       return res.status(500).json({
         erro: 'A configuração pública do Supabase não pôde ser carregada.'
