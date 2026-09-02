@@ -22,7 +22,7 @@ Gerado em 19/08/2026 para a Central de Acompanhamento do PMG Connect.
 | Marketing | 2025 | despesa | 100 | R$ 62.756,30 |
 | Marketing | 2025 | receita | 424 | R$ 6.562.385,94 |
 | Marketing | 2026 | despesa | 24 | R$ 89.162,70 |
-| Marketing | 2026 | receita | 247 | R$ 3.975.734,02 |
+| Marketing | 2026 | receita | 248 | R$ 3.975.734,02 |
 
 Os registros marcados como detalhamento preservam linhas de eventos, cartões e patrocínios, mas não duplicam os totais do planejamento.
 

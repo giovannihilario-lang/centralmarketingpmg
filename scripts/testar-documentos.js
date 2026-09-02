@@ -62,11 +62,12 @@ const genericDescription = parsePage(`CADASTRO DE PAGAMENTO\nFORNECEDOR: TESTE A
 assert.equal(genericDescription.valor_marketing, null, 'A palavra descrição não pode ser confundida com DESC/MKT.');
 
 const html = fs.readFileSync(new URL('../public/acompanhamento.html', import.meta.url), 'utf8');
-assert.match(html, /pdfjs-dist@3\.11\.174/);
-assert.match(html, /tesseract\.js@5\.1\.1/);
-assert.match(html, /acompanhamento-ocr\.js\?v=1\.2\.6/);
-assert.match(html, /acompanhamento-documentos\.css\?v=1\.2\.9/);
-assert.match(html, /acompanhamento-documentos\.js\?v=1\.2\.10/);
+const acompanhamentoModule = fs.readFileSync(new URL('../public/assets/acompanhamento.js', import.meta.url), 'utf8');
+assert.match(acompanhamentoModule, /pdfjs-dist@3\.11\.174/);
+assert.match(acompanhamentoModule, /tesseract\.js@5\.1\.1/);
+assert.match(acompanhamentoModule, /acompanhamento-ocr\.js\?v=1\.2\.6/);
+assert.match(acompanhamentoModule, /acompanhamento-documentos\.css\?v=1\.2\.9/);
+assert.match(acompanhamentoModule, /acompanhamento-documentos\.js\?v=1\.2\.10/);
 assert.match(html, /connect-auth\.js\?v=1\.2\.2/);
 
 const documentModule = fs.readFileSync(new URL('../public/assets/acompanhamento-documentos.js', import.meta.url), 'utf8');

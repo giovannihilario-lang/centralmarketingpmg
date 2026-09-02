@@ -233,7 +233,7 @@ function parseSupplierWorkbook(fileName, year) {
         const document = String(row[3] ?? '').trim();
         const specific = specificCostValue(row);
         const highlightedValue = specific.value;
-        const recordFingerprint = fingerprint('marketing', 'fornecedores', year, sheetName, line, supplier, rawCategory);
+        const recordFingerprint = fingerprint('marketing', 'fornecedores', year, label, supplier, rawCategory);
         const extraDescription = highlightedValue > 0
           ? ` A fonte destaca ${formatBRL(highlightedValue)} para a ação específica indicada na coluna VALOR.` : '';
         knownSuppliers.add(supplier);
@@ -268,7 +268,7 @@ function parseSupplierWorkbook(fileName, year) {
           const center = costCenterFromCampaign(rawCategory);
           const outsideVerba = /MTRIX|EMITRIX/.test(normalized(rawCategory));
           const legacyOutsideColumn = specific.legacy;
-          const detailFingerprint = fingerprint('marketing', 'centro-custo', year, sheetName, line, supplier, rawCategory, center, specific.columnIndex);
+          const detailFingerprint = fingerprint('marketing', 'centro-custo', year, label, supplier, rawCategory, center);
           addItem({
             controle: 'marketing', ano_referencia: year, fornecedor: supplier, natureza: 'despesa',
             impacta_totais: outsideVerba && !legacyOutsideColumn, categoria: inferCategory(rawCategory),
@@ -300,8 +300,9 @@ function parseSupplierWorkbook(fileName, year) {
     monthTotals.push({ monthIndex, sheet: sheetName, sourceTotal: roundMoney(sourceTotal), calculated });
 
     rows.slice(2).forEach((row, offset) => {
-      const note = String(row[0] ?? '').trim();
-      if (!note || !/PENDENT|FALTA|AINDA NAO|FALTOU/i.test(normalized(note))) return;
+      const noteCell = (row || []).find(value => /PENDENT|FALTA|AINDA NAO|FALTOU/i.test(normalized(value)));
+      const note = String(noteCell ?? '').trim();
+      if (!note) return;
       const line = offset + 3;
       const noteValue = parseMoney(note.match(/R\$\s*[\d.,]+/i)?.[0]);
       const supplier = extractNoteSupplier(note, [...knownSuppliers]);

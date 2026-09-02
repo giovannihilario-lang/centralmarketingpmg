@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const appPath = new URL('../public/assets/acompanhamento.js', import.meta.url);
 const original = fs.readFileSync(appPath, 'utf8');
 const boot = "ReactDOM.createRoot(document.getElementById('root')).render(html`<${AppErrorBoundary}><${App}/></${AppErrorBoundary}>`);";
-const contextMarker = '    useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, toast, filteredRecords.length]);';
+const contextMarker = '    useLucide([view, mobileNav, commandOpen, loading, error, setupMissing, selectedId, recordModal, paymentModal, filteredRecords.length]);';
 assert.ok(original.includes(boot) && original.includes(contextMarker), 'Pontos de teste da Central não encontrados.');
 const code = original.replace(boot, 'globalThis.__TEST__ = { sum, buildPlanningSnapshot, fetchAll, App };')
   .replace(contextMarker, 'globalThis.__ACTIONS__ = { ...context, setData, setClient }; return null;');
@@ -172,12 +172,12 @@ assert.equal(await editMonth(0, 9999, false), false);
 assert.equal(currentSnapshot().planningCellValue(fair, 0), 1250);
 server.failRpc = null;
 
-// Se a gravação funciona e a recarga falha, o valor confirmado permanece visível.
+// A gravação rápida é otimista: o valor confirmado permanece visível sem depender de uma segunda leitura.
 server.failTable = 'acompanhamento_pagamentos';
 assert.equal(await editMonth(0, 1500, false), true);
 assert.equal(currentSnapshot().planningCellValue(fair, 0), 1500);
-const toast = hooks.find(value => value && typeof value === 'object' && typeof value.message === 'string' && value.tone === 'info');
-assert.match(toast?.message || '', /Alteração salva/);
+const toast = hooks.find(value => value && typeof value === 'object' && typeof value.message === 'string' && value.tone === 'success');
+assert.match(toast?.message || '', /Valor atualizado/);
 notices.push(toast.message);
 server.failTable = null;
 
