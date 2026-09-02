@@ -2,6 +2,13 @@ let webpush = null;
 let createClient = null;
 let dependenciesPromise = null;
 
+// Configuração pública do Supabase. URL e publishable key são próprias para o
+// navegador e já fazem parte do frontend do PMG Connect. Mantemos estes valores
+// como fallback para o login não depender de uma variável de ambiente pública
+// que pode faltar em um deployment da Vercel.
+const PUBLIC_SUPABASE_URL = 'https://scokolfzvtzohrzdgisz.supabase.co';
+const PUBLIC_SUPABASE_KEY = 'sb_publishable_inJrO1hMCTys3g7FAyjV3w_4TVfLOok';
+
 async function loadDependencies() {
   if (webpush && createClient) return;
   if (!dependenciesPromise) {
@@ -31,10 +38,10 @@ const NOTIFICATION_TEXT = {
 };
 
 function makeSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.SUPABASE_URL || PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ROLE_KEY;
   if (!url || !serviceKey) {
-    throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY não configuradas');
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY (ou SUPABASE_ROLE_KEY legado) não configurada');
   }
   return createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
@@ -320,11 +327,11 @@ export default async function handler(req, res) {
   // Configuração pública usada pelo navegador. A chave anon/publishable do
   // Supabase é própria para uso no frontend; a service_role nunca é enviada.
   if (req.method === 'GET' && String(req.query?.config || '') === '1') {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL || PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || PUBLIC_SUPABASE_KEY;
     if (!supabaseUrl || !supabaseAnonKey) {
       return res.status(500).json({
-        erro: 'Configure SUPABASE_URL e SUPABASE_ANON_KEY nas variáveis de ambiente.'
+        erro: 'A configuração pública do Supabase não pôde ser carregada.'
       });
     }
     res.setHeader('Cache-Control', 'no-store, max-age=0');
