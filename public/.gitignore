@@ -1,6 +1,0 @@
-.vercel
-.env
-node_modules
-data/pmg-comercial-diario-v1.json.gz
-data/campanhas-contexto-v5.json
-data/campanhas-sql-cache.json

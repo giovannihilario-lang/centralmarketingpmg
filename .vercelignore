@@ -1,0 +1,23 @@
+# Dependências e metadados locais
+node_modules
+/.git
+/.git-corrompido
+/.vercel
+/.env
+/.env.*
+!.env.example
+
+# O Express é usado somente no desenvolvimento local. Na Vercel, as rotas
+# oficiais ficam em /api e cada arquivo corresponde a uma Serverless Function.
+/server.js
+/local-api
+
+# Fontes, ferramentas e arquivos de manutenção não participam do runtime.
+/api-backup
+/api-legacy
+/fontes
+/sql
+/scripts
+/data
+*.md
+*.txt

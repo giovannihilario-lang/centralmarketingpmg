@@ -7,8 +7,8 @@
  * - O catálogo de produtos (preço, imagem, descrição, destaque) NÃO tem
  *   fonte nesse banco — dbo.Produtos existe, mas só com dados logísticos
  *   do ERP (palete, comissão, NCM...). Por decisão do time, o catálogo
- *   continua vindo direto da API externa da PMG (api/produtos-supabase.js
- *   e api/produtos.js), sem depender de tabela nenhuma aqui.
+ *   continua vindo direto da API externa da PMG
+ *   (api/produtos-supabase.js), sem depender de tabela nenhuma aqui.
  *
  * - Fornecedores (com % de sell-in) e Notas Fiscais também não têm tabela
  *   equivalente nesse banco. Por decisão do time, essa parte (débitos de
