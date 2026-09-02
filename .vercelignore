@@ -7,9 +7,8 @@ node_modules
 /.env.*
 !.env.example
 
-# O Express é usado somente no desenvolvimento local. Na Vercel, as rotas
-# oficiais ficam em /api e cada arquivo corresponde a uma Serverless Function.
-/server.js
+# A API SQL continua sendo apenas local. O server.js permanece no deploy como
+# entrypoint Express reconhecido automaticamente pela Vercel.
 /local-api
 
 # Fontes, ferramentas e arquivos de manutenção não participam do runtime.
