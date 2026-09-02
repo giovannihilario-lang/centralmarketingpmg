@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<!-- PMG CATALOGO BUILD: 2026-09-01-export-hq-v5 -->
+<!-- PMG CATALOGO BUILD: 2026-08-31-list-filter-v3 -->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gerador de Catálogo — PMG</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -68,28 +68,27 @@
   .preview-wrap { flex: 1; overflow-y: auto; padding: 28px 32px; display: flex; flex-direction: column; align-items: center; gap: 28px; }
   .preview-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #9E9E9E; margin-bottom: -18px; align-self: flex-start; }
   .a4 { width: 595px; min-height: 842px; background: white; box-shadow: 0 4px 20px rgba(0,0,0,.12); border-radius: 3px; position: relative; overflow: hidden; flex-shrink: 0; display: flex; flex-direction: column; }
-  .a4-header { background: var(--verde-escuro); height: 86px; display: flex; align-items: center; justify-content: center; padding: 0 45px; gap: 16px; position: relative; flex-shrink: 0; }
+  .a4-header { background: var(--verde-escuro); height: 79px; display: flex; align-items: center; padding: 0 45px; gap: 16px; position: relative; flex-shrink: 0; }
   .a4-header::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 4px; background: var(--accent); }
-  .a4-logo-box { width: 51px; height: 51px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--verde-escuro); flex-shrink: 0; overflow: hidden; position: absolute; left: 45px; top: 50%; transform: translateY(-50%); z-index: 1; }
-  .a4-header-text { width: 100%; flex: none; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 88px; }
+  .a4-logo-box { width: 51px; height: 51px; background: white; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--verde-escuro); flex-shrink: 0; overflow: hidden; }
+  .a4-header-text { flex: 1; text-align: center; }
   .a4-title { font-size: 24px; font-weight: 700; color: white; line-height: 1; }
-  .a4-subs  { font-size: 8.4px; color: var(--accent); margin-top: 5px; letter-spacing: .3px; line-height: 1.25; }
+  .a4-subs  { font-size: 9px; color: var(--accent); margin-top: 5px; letter-spacing: .4px; }
   .a4-footer { background: var(--verde-escuro); height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 45px; position: relative; flex-shrink: 0; }
   .a4-footer::before { content: ''; position: absolute; top: -3px; left: 0; right: 0; height: 3px; background: var(--accent); }
   .a4-footer span { font-size: 9px; font-weight: 700; color: white; }
   .a4-footer .pg { color: var(--accent); font-weight: 400; }
-  .a4-grid { padding: 16px 45px; display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: 120px; gap: 10px; flex: 1; align-content: start; overflow: hidden; }
-  .card { border-radius: 7px; border: 1px solid #E0E0E0; overflow: hidden; box-shadow: 1px 1px 4px rgba(0,0,0,.07); display: flex; flex-direction: column; background: white; transition: box-shadow .15s; cursor: pointer; position: relative; height: 120px; min-height: 120px; max-height: 120px; }
+  .a4-grid { padding: 16px 45px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; flex: 1; align-content: start; }
+  .card { border-radius: 7px; border: 1px solid #E0E0E0; overflow: hidden; box-shadow: 1px 1px 4px rgba(0,0,0,.07); display: flex; flex-direction: column; background: white; transition: box-shadow .15s; cursor: pointer; position: relative; }
   .card:hover { box-shadow: 2px 3px 10px rgba(0,0,0,.12); }
-  .card-img { height: 64px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; flex-shrink: 0; border-bottom: 1px solid #EBEBEB; overflow: hidden; }
+  .card-img { height: 64px; background: #F5F5F5; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; flex-shrink: 0; border-bottom: 1px solid #EBEBEB; overflow: hidden; }
   .card-img svg { opacity: .3; }
   .card-img span { font-size: 6px; color: #BDBDBD; text-align: center; }
-  .card-img img { width: 100%; height: 100%; object-fit: contain; object-position: center; padding: 4px; }
-  .card-body { padding: 6px 8px 4px; flex: 1 1 auto; display: flex; align-items: flex-start; justify-content: flex-start; overflow: hidden; min-height: 36px; max-height: 36px; }
-  .card-nome { width: 100%; font-size: 6.8px; font-weight: 700; color: #212121; line-height: 1.18; overflow: hidden; word-break: break-word; overflow-wrap: anywhere; hyphens: auto; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; text-wrap: pretty; }
-  .card-badge { background: var(--verde-suave); border-top: 1px solid var(--verde-claro); padding: 4px 6px; text-align: center; font-size: 6.5px; font-weight: 700; color: var(--verde-escuro); flex-shrink: 0; border-radius: 0 0 7px 7px; overflow: hidden; line-height: 1.1; min-height: 18px; display: flex; align-items: center; justify-content: center; }
-  .card-empty { border: 1.5px dashed #E0E0E0; border-radius: 7px; height: 120px; min-height: 120px; max-height: 120px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #CCC; overflow: hidden; }
-  .card .card-nome[data-fit='tight'] { letter-spacing: -0.1px; }
+  .card-img img { width: 100%; height: 100%; object-fit: cover; }
+  .card-body { padding: 6px 7px; flex: 1; display: flex; align-items: center; }
+  .card-nome { font-size: 7px; font-weight: 700; color: #212121; line-height: 1.35; }
+  .card-badge { background: var(--verde-suave); border-top: 1px solid var(--verde-claro); padding: 4px 6px; text-align: center; font-size: 6.5px; font-weight: 700; color: var(--verde-escuro); flex-shrink: 0; }
+  .card-empty { border: 1.5px dashed #E0E0E0; border-radius: 7px; height: 120px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #CCC; }
   .card-check { position: absolute; top: 5px; right: 5px; width: 16px; height: 16px; background: white; border: 2px solid #DDD; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: transparent; pointer-events: none; transition: all .12s; }
   .card.selecionado { outline: 2.5px solid #E53935; outline-offset: -2px; background: #FFEBEE; }
   .card.selecionado .card-badge { background: #FFCDD2; border-color: #EF9A9A; color: #C62828; }
@@ -107,7 +106,7 @@
   .btn-remove-img:hover { background: #FFEBEE; border-color: #EF9A9A; color: #C62828; }
   .prod-img-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
   .prod-img-row { display: flex; align-items: center; gap: 8px; background: #FAFAFA; border: 1px solid #EBEBEB; border-radius: 6px; padding: 5px 8px; }
-  .prod-img-thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #EEE; flex-shrink: 0; background: #FFFFFF; }
+  .prod-img-thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #EEE; flex-shrink: 0; background: #F5F5F5; }
   .prod-img-thumb-placeholder { width: 32px; height: 32px; border-radius: 4px; border: 1.5px dashed #DDD; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: white; cursor: pointer; position: relative; }
   .prod-img-thumb-placeholder input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
   .prod-img-thumb-placeholder svg { opacity: .3; }
@@ -458,7 +457,7 @@ body:not(.catalog-dark) .theme-btn .sun-icon{display:none}
     <div>
       <span class="tool-eyebrow">Ferramentas · PMG Connect</span>
       <h1>Gerador de Catálogo</h1>
-      <p>Organize produtos, ajuste a identidade visual e exporte o catálogo em PDF ou PNG.</p>
+      <p>Organize produtos, ajuste a identidade visual e exporte o catálogo em PDF.</p>
     </div>
   </div>
   <div class="topbar-actions">
@@ -470,20 +469,10 @@ body:not(.catalog-dark) .theme-btn .sun-icon{display:none}
       <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
-    <div class="export-menu-wrap" style="position:relative">
-      <button class="btn-export" onclick="toggleExportMenu(event)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/></svg>
-        <span>Exportar</span>
-      </button>
-      <div id="exportMenu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:1000;background:#fff;border:1px solid #dfe8e1;border-radius:12px;padding:6px;min-width:190px;box-shadow:0 12px 32px rgba(0,0,0,.16)">
-        <button type="button" onclick="exportPDF('indesign');fecharExportMenu()" style="width:100%;border:0;background:#f3faf5;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:800;color:#173d29">PDF A4 300 DPI · InDesign</button>
-        <button type="button" onclick="exportPNG('indesign');fecharExportMenu()" style="width:100%;border:0;background:#f3faf5;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:800;color:#173d29">PNG A4 300 DPI</button>
-        <div style="height:1px;background:#e7eee9;margin:5px 3px"></div>
-        <button type="button" onclick="exportPDF('hq');fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">PDF alta qualidade</button>
-        <button type="button" onclick="exportPDF('rapido');fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">PDF rápido</button>
-        <button type="button" onclick="exportPNG('hq');fecharExportMenu()" style="width:100%;border:0;background:transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-weight:700;color:#173d29">PNG alta qualidade</button>
-      </div>
-    </div>
+    <button class="btn-export" onclick="exportPDF()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17v2a2 2 0 002 2h16a2 2 0 002-2v-2"/></svg>
+      <span>Exportar PDF</span>
+    </button>
   </div>
 </div>
 
@@ -534,77 +523,6 @@ const MAPA_CATEGORIAS = {
   "39":"ORIENTAIS","40":"PANIFICAÇÃO"
 };
 
-// Ordem oficial usada nas listas preparadas para o catálogo. Quando uma lista
-// completa de uma categoria é colada, o gerador usa a posição de cada produto
-// para atribuir automaticamente sua subcategoria e montar o subtítulo das páginas.
-const SUBCATEGORIAS_CATALOGO = {
-  'Acessórios': [
-    ['Caixas e embalagens para pizza',6], ['Embalagens para esfiha e salgados',4],
-    ['Utensílios para forno e pizzaria',6], ['Aplicadores e suportes',3],
-    ['Comandas, lacres e identificação',2], ['Descartáveis e mesa',4],
-  ],
-  'Bebidas': [
-    ['Refrigerantes',37], ['Sucos e néctares',25], ['Águas e água de coco',15],
-    ['Refrescos em pó',18], ['Isotônicos e energéticos',15], ['Cervejas',27],
-    ['Vinhos e espumantes',13], ['Saquês',2], ['Destilados',33], ['Licores e aperitivos',15],
-  ],
-  'Conservas': [
-    ['Molhos',31], ['Extratos e concentrados de tomate',9], ['Tomates e passatas',5],
-    ['Milho, ervilha e legumes',5],
-  ],
-  'Derivados De Ave': [
-    ['Frango - peitos e filés',22], ['Frango - coxas, sobrecoxas e asas',8],
-    ['Frango inteiro e carcaça',4], ['Frango processado e empanados',1], ['Peru',4], ['Ovos',11],
-  ],
-  'Derivados De Bovino': [
-    ['Hambúrgueres bovinos',16], ['Cortes premium',15], ['Cortes bovinos',12],
-    ['Carne seca e curada',6], ['Bovinos processados',1],
-  ],
-  'Derivados De Leite': [
-    ['Muçarela',57], ['Requeijão',58], ['Cream cheese',16], ['Cheddar e molhos de queijo',3],
-    ['Queijo prato',16], ['Parmesão',31], ['Provolone',10], ['Gorgonzola e queijos azuis',8],
-    ['Queijo coalho',10], ['Queijos especiais',6], ['Manteiga',19],
-    ['Creme de leite, nata e bases culinárias',7], ['Leite e leite condensado',9],
-  ],
-  'Derivados De Suíno': [
-    ['Calabresa',27], ['Bacon',37], ['Presunto e apresuntado',13], ['Pepperoni',4],
-    ['Linguiças',4], ['Lombo canadense',4], ['Mortadela',5], ['Salsicha',3], ['Paio',2],
-    ['Cortes e defumados suínos',1],
-  ],
-  'Derivados De Vegetal': [
-    ['Molhos e condimentos',46], ['Azeites',8], ['Óleos e gorduras',2], ['Margarinas',8],
-    ['Arroz',16], ['Feijões, lentilhas e grãos',5], ['Batatas e purês',60],
-    ['Legumes e vegetais congelados',2], ['Azeitonas',1], ['Palmitos',1],
-    ['Tomates frescos e triturados',1],
-  ],
-  'Derivados Do Mar': [
-    ['Atum',26], ['Bacalhau',2], ['Camarão',4], ['Peixes',6], ['Sardinha e aliche',7],
-    ['Kani e algas',4], ['Temperos do mar',1],
-  ],
-  'Doces': [
-    ['Chocolates',71], ['Recheios, coberturas e cremes',16], ['Açúcares, adoçantes e glucose',20],
-    ['Gelatinas',8], ['Doces, goiabadas e bombons',1], ['Frutas em calda e conservadas',2],
-    ['Frutas secas e castanhas',1], ['Coco e derivados',2], ['Geléias',4],
-  ],
-  'Farináceos': [
-    ['Farinhas de trigo',48], ['Farinhas para empanamento',6], ['Massas e macarrões',46],
-    ['Amidos e féculas',4], ['Milho, fubá e canjica',9], ['Tapiocas, cuscuz e sagu',7],
-    ['Farinhas de mandioca e farofas',19], ['Trigo para kibe e cereais',5],
-    ['Pães e panificados',3], ['Fermentos',3],
-  ],
-  'Higiene': [
-    ['Detergentes e desengraxantes',5], ['Desinfecção e limpeza pesada',9], ['Esponjas e panos',4],
-    ['Papéis',3], ['Sacos para lixo',1], ['Proteção e higiene pessoal',3],
-  ],
-  'Panificação': [
-    ['Farinhas para panificação',15], ['Misturas para bolo',7], ['Melhoradores',1],
-    ['Margarinas para massas e folhados',1], ['Desmoldantes',1],
-  ],
-  'Salgados': [
-    ['Salgados prontos e congelados',10], ['Empanados e aperitivos',15],
-  ],
-};
-
 let TODOS_PRODUTOS = [];
 let nextProdId = 1;
 const MAX_PRODUTOS_POR_PAGINA = 25;
@@ -621,7 +539,7 @@ const COLOR_LABELS = {
 };
 
 function buildPagesFromCategorias() {
-  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', subtituloAuto: false, produtos: [], cor: null }));
+  return CATEGORIAS.map((cat, i) => ({ id: i+1, titulo: cat, subtitulo: '', produtos: [], cor: null }));
 }
 let pages      = buildPagesFromCategorias();
 let nextPageId = CATEGORIAS.length + 1;
@@ -644,7 +562,7 @@ function garantirCategoria(cat) {
     CATEGORIAS.push(cat);
     CATEGORIAS.sort();
 // dentro de garantirCategoria()
-pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', subtituloAuto: false, produtos: [], cor: null });  }
+pages.push({ id: nextPageId++, titulo: cat, subtitulo: '', produtos: [], cor: null });  }
 }
 function extrairUnidade(nome) {
   const m = nome.match(/\(([^)]+)\)\s*$/);
@@ -848,7 +766,7 @@ function analisarListaProdutos() {
   });
 
   if (!termos.length) {
-    const resultado = { ativo: false, termos: [], ids: null, naoEncontrados: [], correspondenciasAjustadas: [], resolvidos: [], produtosOrdenados: [] };
+    const resultado = { ativo: false, termos: [], ids: null, naoEncontrados: [], correspondenciasAjustadas: [] };
     poolListaCache = { texto: textoLista, revisao: catalogoProdutosRevisao, resultado };
     return resultado;
   }
@@ -863,8 +781,6 @@ function analisarListaProdutos() {
   const ids = new Set();
   const naoEncontrados = [];
   const correspondenciasAjustadas = [];
-  const resolvidos = [];
-  const produtosOrdenados = [];
   termos.forEach(termo => {
     let candidatos = porNome.get(termo.normalizado) || [];
 
@@ -892,16 +808,10 @@ function analisarListaProdutos() {
     }
 
     if (!candidatos.length) naoEncontrados.push(termo.original);
-    const produtosDoTermo = [];
-    candidatos.forEach(produto => {
-      ids.add(produto.id);
-      produtosDoTermo.push(produto);
-      if (!produtosOrdenados.some(item => item.id === produto.id)) produtosOrdenados.push(produto);
-    });
-    resolvidos.push({ ...termo, produtos: produtosDoTermo });
+    candidatos.forEach(produto => ids.add(produto.id));
   });
 
-  const resultado = { ativo: true, termos, ids, naoEncontrados, correspondenciasAjustadas, resolvidos, produtosOrdenados };
+  const resultado = { ativo: true, termos, ids, naoEncontrados, correspondenciasAjustadas };
   poolListaCache = { texto: textoLista, revisao: catalogoProdutosRevisao, resultado };
   return resultado;
 }
@@ -941,64 +851,11 @@ async function copiarProdutosNaoEncontrados() {
   }
 }
 
-function aplicarSubcategoriasDaLista(analise) {
-  if (!analise?.ativo || !Array.isArray(analise.resolvidos) || !analise.resolvidos.length) return null;
-
-  const produtosEncontrados = analise.resolvidos.flatMap(item => item.produtos || []);
-  const categorias = [...new Set(produtosEncontrados.map(p => p.categoria).filter(Boolean))];
-  if (categorias.length !== 1) return null;
-
-  const categoria = categorias[0];
-  const plano = SUBCATEGORIAS_CATALOGO[categoria];
-  if (!plano?.length) return null;
-
-  const totalEsperado = plano.reduce((soma, item) => soma + Number(item[1] || 0), 0);
-  // A planilha de textos possui uma lista completa por categoria. Só usamos a
-  // divisão posicional quando a quantidade colada corresponde ao plano inteiro;
-  // assim uma lista parcial não ganha subcategoria errada por acidente.
-  if (analise.termos.length !== totalEsperado) return null;
-
-  let cursor = 0;
-  plano.forEach(([subcategoria, quantidade]) => {
-    const limite = cursor + quantidade;
-    analise.resolvidos.slice(cursor, limite).forEach(item => {
-      (item.produtos || []).forEach(produto => { produto.subcategoria = subcategoria; });
-    });
-    cursor = limite;
-  });
-  return categoria;
-}
-
-function subtituloAutomaticoDaPagina(pg) {
-  const subcategorias = [];
-  (pg.produtos || []).forEach(id => {
-    const produto = TODOS_PRODUTOS.find(p => p.id === id);
-    const sub = String(produto?.subcategoria || '').trim();
-    if (sub && !subcategorias.includes(sub)) subcategorias.push(sub);
-  });
-  return subcategorias.join(' • ');
-}
-
-function atualizarSubtitulosAutomaticos(categoria = null) {
-  pages.forEach(pg => {
-    if (categoria && pg.titulo !== categoria) return;
-    const auto = subtituloAutomaticoDaPagina(pg);
-    if (auto) {
-      pg.subtitulo = auto;
-      pg.subtituloAuto = true;
-    } else if (pg.subtituloAuto) {
-      pg.subtitulo = '';
-      pg.subtituloAuto = false;
-    }
-  });
-}
-
 function criarPaginaDepoisDa(paginaBase, subtitulo = '') {
   const nova = {
     id: nextPageId++,
     titulo: paginaBase.titulo,
     subtitulo,
-    subtituloAuto: false,
     produtos: [],
     cor: paginaBase.cor || null,
   };
@@ -1007,29 +864,8 @@ function criarPaginaDepoisDa(paginaBase, subtitulo = '') {
   return nova;
 }
 
-
-function limparReferenciasProdutosInvalidas() {
-  if (!TODOS_PRODUTOS.length) return false;
-  const idsValidos = new Set(TODOS_PRODUTOS.map(p => p.id));
-  let alterou = false;
-  pages.forEach(pg => {
-    if (!Array.isArray(pg.produtos)) { pg.produtos = []; alterou = true; return; }
-    const antes = pg.produtos.length;
-    pg.produtos = [...new Set(pg.produtos)].filter(id => idsValidos.has(id));
-    if (pg.produtos.length !== antes) alterou = true;
-  });
-  return alterou;
-}
-
-function quantidadeProdutosValidosNaPagina(pg) {
-  if (!pg || !Array.isArray(pg.produtos)) return 0;
-  if (!TODOS_PRODUTOS.length) return pg.produtos.length;
-  const idsValidos = new Set(TODOS_PRODUTOS.map(p => p.id));
-  return new Set(pg.produtos.filter(id => idsValidos.has(id))).size;
-}
-
 function normalizarPaginasParaLimite() {
-  let alterou = limparReferenciasProdutosInvalidas();
+  let alterou = false;
   for (let i = 0; i < pages.length; i++) {
     const pg = pages[i];
     if (!Array.isArray(pg.produtos)) pg.produtos = [];
@@ -1042,7 +878,6 @@ function normalizarPaginasParaLimite() {
         id: nextPageId++,
         titulo: pg.titulo,
         subtitulo: '',
-        subtituloAuto: false,
         produtos: excedentes.slice(j, j + MAX_PRODUTOS_POR_PAGINA),
         cor: pg.cor || null,
       });
@@ -1056,8 +891,6 @@ function moverProdutosParaPaginaComOverflow(pid, produtos) {
   const alvo = pages.find(p => p.id === pid);
   if (!alvo || !produtos.length) return { adicionados: 0, novasPaginas: 0 };
 
-  // Remove IDs órfãos/duplicados antes de calcular a capacidade real da página.
-  limparReferenciasProdutosInvalidas();
   const ids = [...new Set(produtos.map(p => typeof p === 'object' ? p.id : p).filter(id => id != null))];
   pages.forEach(pg => { pg.produtos = pg.produtos.filter(id => !ids.includes(id)); });
 
@@ -1244,7 +1077,7 @@ function addPage() {
     const nova = criarPaginaDepoisDa(referencia, '');
     openPage = nova.id;
   } else {
-    const nova = { id: nextPageId++, titulo: 'Nova Página', subtitulo: '', subtituloAuto: false, produtos: [], cor: null };
+    const nova = { id: nextPageId++, titulo: 'Nova Página', subtitulo: '', produtos: [], cor: null };
     pages.push(nova);
     openPage = nova.id;
   }
@@ -1257,7 +1090,7 @@ function updatePageTitulo(pid, val) {
 }
 function updatePageSubtitulo(pid, val) {
   const pg = pages.find(p => p.id === pid);
-  if (pg) { pg.subtitulo = val; pg.subtituloAuto = false; renderPreview(); }
+  if (pg) { pg.subtitulo = val; renderPreview(); }
   salvarDebounce()
 }
 function removePage(pid) {
@@ -1275,14 +1108,11 @@ function togglePage(pid) {
 function removeProductFromPage(pid, prodId) {
   const pg = pages.find(p => p.id === pid);
   if (pg) pg.produtos = pg.produtos.filter(id => id !== prodId);
-  atualizarSubtitulosAutomaticos(pg?.titulo || null);
   renderPanel(); renderPreview();
   salvarDebounce()
 }
 function addProductToPage(pid, prodId) {
   const resultado = moverProdutosParaPaginaComOverflow(pid, [prodId]);
-  const categoriaPagina = pages.find(p => p.id === pid)?.titulo || null;
-  atualizarSubtitulosAutomaticos(categoriaPagina);
   renderPanel(); renderPreview(); salvarDebounce();
   if (resultado.novasPaginas) showToast('Página cheia: criei a próxima página com o mesmo título.');
 }
@@ -1319,15 +1149,9 @@ function adicionarTodosFiltrados() {
   if (!pg) return;
   if (!filtered.length) { showToast('Nenhum produto encontrado para adicionar.'); return; }
 
-  const categoriaComSubcategorias = aplicarSubcategoriasDaLista(analise);
-  const produtosParaAdicionar = analise.ativo && analise.produtosOrdenados?.length
-    ? analise.produtosOrdenados.filter(p => filtered.some(f => f.id === p.id))
-    : filtered;
-
-  const resultado = moverProdutosParaPaginaComOverflow(targetId, produtosParaAdicionar);
-  atualizarSubtitulosAutomaticos(categoriaComSubcategorias || pg.titulo);
+  const resultado = moverProdutosParaPaginaComOverflow(targetId, filtered);
   renderPanel(); renderPreview(); salvarDebounce();
-  showToast(`${resultado.adicionados} produto${resultado.adicionados !== 1 ? 's' : ''} adicionado${resultado.adicionados !== 1 ? 's' : ''}${categoriaComSubcategorias ? ' · subtítulos preenchidos automaticamente' : ''}${resultado.novasPaginas ? ` · ${resultado.novasPaginas} nova${resultado.novasPaginas !== 1 ? 's' : ''} página${resultado.novasPaginas !== 1 ? 's' : ''} criada${resultado.novasPaginas !== 1 ? 's' : ''}` : ''}!`);
+  showToast(`${resultado.adicionados} produto${resultado.adicionados !== 1 ? 's' : ''} adicionado${resultado.adicionados !== 1 ? 's' : ''}${resultado.novasPaginas ? ` · ${resultado.novasPaginas} nova${resultado.novasPaginas !== 1 ? 's' : ''} página${resultado.novasPaginas !== 1 ? 's' : ''} criada${resultado.novasPaginas !== 1 ? 's' : ''}` : ''}!`);
 }
 function distribuirTodosPorCategoria() {
   let distribuidos = 0, semPagina = 0;
@@ -1362,7 +1186,6 @@ function distribuirTodosPorCategoria() {
     });
   });
 
-  atualizarSubtitulosAutomaticos();
   renderPanel(); renderPreview(); salvarDebounce();
   showToast(`${distribuidos} produto${distribuidos !== 1 ? 's' : ''} distribuído${distribuidos !== 1 ? 's' : ''} em páginas de até ${MAX_PRODUTOS_POR_PAGINA}` + (semPagina ? ` · ${semPagina} sem página correspondente` : ''));
   if (semPaginaCats.size) console.warn('Categorias sem página correspondente:', Array.from(semPaginaCats));
@@ -1378,8 +1201,7 @@ function onDropZone(e, pid) {
   if (from) from.produtos = from.produtos.filter(id => id !== dragProdId);
   const to = pages.find(p => p.id === pid);
   if (to && !to.produtos.includes(dragProdId)) {
-    limparReferenciasProdutosInvalidas();
-    if (quantidadeProdutosValidosNaPagina(to) >= MAX_PRODUTOS_POR_PAGINA) {
+    if (to.produtos.length >= MAX_PRODUTOS_POR_PAGINA) {
       const nova = criarPaginaDepoisDa(to, '');
       nova.produtos.push(dragProdId);
       showToast('Página cheia: o produto foi colocado na próxima página.');
@@ -1388,7 +1210,6 @@ function onDropZone(e, pid) {
     }
   }
   dragProdId = null; dragFromPage = null;
-  atualizarSubtitulosAutomaticos();
   renderPanel(); renderPreview(); salvarDebounce();
 }
 
@@ -1436,7 +1257,7 @@ function renderPanel() {
           <input type="color" value="${pg.cor || colors_state.verdeEscuro}" oninput="updatePageCor(${pg.id}, this.value)">
         </span>
         <span class="page-title-wrap"><span class="page-title">${pg.titulo}</span>${pg.subtitulo ? `<span class="page-subtitle">${pg.subtitulo}</span>` : ''}</span>
-        <span class="page-count">${quantidadeProdutosValidosNaPagina(pg)}/${MAX_PRODUTOS_POR_PAGINA}</span>
+        <span class="page-count">${prods.length}/${MAX_PRODUTOS_POR_PAGINA}</span>
         <div class="page-actions" onclick="event.stopPropagation()">
           ${pg.cor ? `<button class="page-color-reset" onclick="resetPageCor(${pg.id})" title="Usar cor padrão">↺</button>` : ''}
           <button class="btn-sm danger" onclick="removePage(${pg.id})">✕</button>
@@ -1491,49 +1312,12 @@ function _excluirSelecionados() {
 }
 
 // ── RENDER PREVIEW ──
-
-function normalizarAlturaCards(contexto = document) {
-  contexto.querySelectorAll('.card').forEach(card => {
-    card.style.height = '120px';
-    card.style.minHeight = '120px';
-    card.style.maxHeight = '120px';
-  });
-  contexto.querySelectorAll('.card-empty').forEach(card => {
-    card.style.height = '120px';
-    card.style.minHeight = '120px';
-    card.style.maxHeight = '120px';
-  });
-}
-
-function ajustarTipografiaCards(contexto = document) {
-  contexto.querySelectorAll('.card .card-nome').forEach(el => {
-    const caixa = el.parentElement;
-    if (!caixa) return;
-    el.style.fontSize = '';
-    el.style.lineHeight = '';
-    el.dataset.fit = '';
-    let tamanho = 6.8;
-    const minimo = 5.6;
-    const aplicar = () => {
-      el.style.fontSize = `${tamanho.toFixed(1)}px`;
-      el.style.lineHeight = '1.18';
-    };
-    aplicar();
-    let guard = 0;
-    while ((el.scrollHeight > caixa.clientHeight + 0.5 || el.scrollWidth > caixa.clientWidth + 0.5) && tamanho > minimo && guard < 20) {
-      tamanho = Math.max(minimo, +(tamanho - 0.2).toFixed(1));
-      aplicar();
-      guard++;
-    }
-    if (tamanho <= 6.0) el.dataset.fit = 'tight';
-  });
-}
-
 function renderPreview() {
   const wrap = document.getElementById('previewWrap');
   if (!wrap) return;
   wrap.innerHTML = '';
   const PROD_POR_PAGINA = MAX_PRODUTOS_POR_PAGINA;
+  let paginaGlobal = 0;
   let cardDragProdId = null, cardDragPageId = null;
 
   pages.forEach(pg => {
@@ -1541,15 +1325,14 @@ function renderPreview() {
     const fatias = prods.length === 0 ? [[]] : [];
     if (prods.length > 0) for (let i = 0; i < prods.length; i += PROD_POR_PAGINA) fatias.push(prods.slice(i, i+PROD_POR_PAGINA));
 
-    fatias.forEach((fatia, fatiaIndex) => {
+    fatias.forEach((fatia) => {
+      paginaGlobal++;
       const label = document.createElement('div');
       label.className = 'preview-label';
-      label.textContent = `${pg.titulo}${pg.subtitulo ? ` · ${pg.subtitulo}` : ''}`;
+      label.textContent = `Página ${paginaGlobal} — ${pg.titulo}${pg.subtitulo ? ` · ${pg.subtitulo}` : ''}`;
       wrap.appendChild(label);
 
       const a4 = document.createElement('div'); a4.className = 'a4';
-      a4.dataset.pageId = String(pg.id);
-      a4.dataset.sliceIndex = String(fatiaIndex);
       a4.innerHTML = `
         <div class="a4-header">
           <div class="a4-logo-box">${logoDataUrl?`<img src="${logoDataUrl}" style="width:100%;height:100%;object-fit:contain">`:'PMG'}</div>
@@ -1625,15 +1408,12 @@ a4.style.setProperty('--accent',       pal.accent);
 const footer = document.createElement('div');
 footer.className = 'a4-footer';
 footer.innerHTML = `<span>PMG.com.br</span>
-  <span class="pg">Atacadista de Alimentos e Bebidas</span>`;
+  <span class="pg">Atacadista de Alimentos e Bebidas — Pág. ${paginaGlobal}</span>`;
 a4.appendChild(footer);
 
 wrap.appendChild(a4);
     });
   });
-  ajustarTipografiaCards(wrap);
-  normalizarAlturaCards(wrap);
-  if (typeof agendarPreRenderExportacao === 'function') agendarPreRenderExportacao();
 }
 
 // ── BUILD PANEL ──
@@ -1729,502 +1509,38 @@ function buildPanel() {
     </div>`;
 }
 
-// ── EXPORTAÇÃO ULTRA V4 — CANVAS DIRETO ──
-// Não existe mais screenshot de DOM no caminho principal. O navegador já
-// calculou o layout do preview; usamos essas coordenadas reais e desenhamos a
-// folha diretamente em canvas. Isso elimina o maior gargalo de catálogos longos.
-const CATALOGO_EXPORT_BUILD = '2026-09-01-page-fit-overflow-v65';
-const PERFIL_PDF_HQ = { escala: 2.0, qualidade: 0.93 };
-const PERFIL_PDF_RAPIDO = { escala: 1.25, qualidade: 0.86 };
-const PERFIL_PNG_HQ = { escala: 2.0, qualidade: 1 };
-const PERFIL_A4_IND = { larguraPx: 2480, alturaPx: 3508, qualidade: 0.96 }; // A4 a 300 DPI
-const exportPageRasterCache = new Map();
-let exportPrewarmTimer = null;
-let exportPrewarmGeneration = 0;
-let exportacaoEmAndamento = false;
+// ── EXPORT PDF ──
+function exportPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-function exportWait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-function atualizarTextoExportacao(btn, texto) {
-  const span = btn?.querySelector('span');
-  if (span) span.textContent = texto;
-}
-function concorrenciaExportacao() {
-  const cores = Math.max(2, Number(navigator.hardwareConcurrency) || 4);
-  return Math.max(2, Math.min(5, Math.floor(cores / 2)));
-}
-async function mapComConcorrencia(itens, limite, fn) {
-  const saida = new Array(itens.length);
-  let cursor = 0;
-  async function worker() {
-    while (cursor < itens.length) {
-      const i = cursor++;
-      try { saida[i] = await fn(itens[i], i); }
-      catch (err) { console.warn('[Catálogo] Falha ao renderizar item', i, err); saida[i] = null; }
-    }
-  }
-  if (!itens.length) return saida;
-  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
-  return saida;
-}
-function folhasComProdutos() {
-  return Array.from(document.querySelectorAll('.a4')).filter(a4 => a4.querySelector('.card'));
-}
-function hashRapido(texto) {
-  let h = 2166136261;
-  for (let i = 0; i < texto.length; i++) {
-    h ^= texto.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(36);
-}
-function fingerprintFolha(folha) {
-  const vars = ['--verde-escuro','--verde-med','--verde-claro','--verde-suave','--accent']
-    .map(v => folha.style.getPropertyValue(v)).join('|');
-  const titulo = folha.querySelector('.a4-title')?.textContent || '';
-  const sub = folha.querySelector('.a4-subs')?.textContent || '';
-  const cards = Array.from(folha.querySelectorAll('.card')).map(card => {
-    const nome = card.querySelector('.card-nome')?.textContent || '';
-    const badge = card.querySelector('.card-badge')?.textContent || '';
-    const img = card.querySelector('img');
-    const src = img?.getAttribute('src') || '';
-    const estado = img ? `${img.complete && img.naturalWidth > 0 ? 1 : 0}:${img.naturalWidth || 0}x${img.naturalHeight || 0}` : 'sem';
-    return `${nome}¦${badge}¦${src}¦${estado}`;
-  }).join('§');
-  const logoImg = folha.querySelector('.a4-logo-box img');
-  const logo = logoImg ? `${logoImg.getAttribute('src') || ''}:${logoImg.complete && logoImg.naturalWidth > 0 ? 1 : 0}` : '';
-  return hashRapido(`${folha.dataset.pageId || ''}|${folha.dataset.sliceIndex || ''}|${vars}|${titulo}|${sub}|${logo}|${cards}`);
-}
-function chaveRasterFolha(folha, formato, escala, qualidade) {
-  return `${CATALOGO_EXPORT_BUILD}|${formato}|${escala}|${qualidade}|${fingerprintFolha(folha)}`;
-}
-function podarCacheRaster() {
-  const MAX = 120;
-  while (exportPageRasterCache.size > MAX) exportPageRasterCache.delete(exportPageRasterCache.keys().next().value);
-}
+  const a4s = document.querySelectorAll('.a4');
+  let promessas = [];
 
-function retanguloRelativo(el, baseRect) {
-  const r = el.getBoundingClientRect();
-  return { x: r.left - baseRect.left, y: r.top - baseRect.top, w: r.width, h: r.height };
-}
-function numeroCSS(valor, fallback = 0) {
-  const n = parseFloat(valor);
-  return Number.isFinite(n) ? n : fallback;
-}
-function corCSS(valor, fallback = '#000') {
-  return valor && valor !== 'rgba(0, 0, 0, 0)' && valor !== 'transparent' ? valor : fallback;
-}
-function caminhoArredondado(ctx, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r || 0, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-function preencherArredondado(ctx, rect, raio, cor) {
-  ctx.save();
-  caminhoArredondado(ctx, rect.x, rect.y, rect.w, rect.h, raio);
-  ctx.fillStyle = cor;
-  ctx.fill();
-  ctx.restore();
-}
-function contornarArredondado(ctx, rect, raio, cor, largura = 1, dash = []) {
-  ctx.save();
-  caminhoArredondado(ctx, rect.x, rect.y, rect.w, rect.h, raio);
-  ctx.strokeStyle = cor;
-  ctx.lineWidth = largura;
-  ctx.setLineDash(dash);
-  ctx.stroke();
-  ctx.restore();
-}
-function fonteCanvas(style, tamanhoOverride) {
-  const peso = style.fontWeight || '400';
-  const tamanho = Number.isFinite(tamanhoOverride) ? tamanhoOverride : numeroCSS(style.fontSize, 10);
-  const familia = style.fontFamily || 'Segoe UI, Arial, sans-serif';
-  const italico = style.fontStyle && style.fontStyle !== 'normal' ? `${style.fontStyle} ` : '';
-  return `${italico}${peso} ${tamanho}px ${familia}`;
-}
-function quebrarTexto(ctx, texto, larguraMax) {
-  const palavras = String(texto || '').trim().split(/\s+/).filter(Boolean);
-  if (!palavras.length) return [];
-  const linhas = [];
-  let linha = palavras[0];
-  for (let i = 1; i < palavras.length; i++) {
-    const teste = `${linha} ${palavras[i]}`;
-    if (ctx.measureText(teste).width <= larguraMax) linha = teste;
-    else {
-      linhas.push(linha);
-      linha = palavras[i];
-      // palavra isolada maior que a caixa: quebra por caracteres.
-      if (ctx.measureText(linha).width > larguraMax) {
-        let pedaco = '';
-        for (const ch of linha) {
-          if (pedaco && ctx.measureText(pedaco + ch).width > larguraMax) { linhas.push(pedaco); pedaco = ch; }
-          else pedaco += ch;
-        }
-        linha = pedaco;
-      }
-    }
-  }
-  if (linha) linhas.push(linha);
-  return linhas;
-}
-function desenharTextoElemento(ctx, el, baseRect, opcoes = {}) {
-  if (!el) return;
-  const texto = (el.textContent || '').trim();
-  if (!texto) return;
-  const rect = retanguloRelativo(el, baseRect);
-  const style = getComputedStyle(el);
-  ctx.save();
-  ctx.fillStyle = corCSS(style.color, '#212121');
-  const tamanhoBase = numeroCSS(style.fontSize, 10);
-  const lineHeightOrig = numeroCSS(style.lineHeight, tamanhoBase * 1.2);
-  const fatorLineHeight = Number.isFinite(lineHeightOrig) && lineHeightOrig > 0 && tamanhoBase > 0 ? (lineHeightOrig / tamanhoBase) : 1.2;
-  let tamanho = Number.isFinite(opcoes.fontSize) ? opcoes.fontSize : tamanhoBase;
-  const minFontSize = Number.isFinite(opcoes.minFontSize) ? opcoes.minFontSize : tamanho;
-  const maxW = Math.max(1, rect.w);
-  const align = opcoes.align || style.textAlign || 'left';
-  const valign = opcoes.valign || 'middle';
-  const aplicarFonte = () => {
-    ctx.font = fonteCanvas(style, tamanho);
-    if ('letterSpacing' in ctx && style.letterSpacing && style.letterSpacing !== 'normal') ctx.letterSpacing = style.letterSpacing;
-  };
-  aplicarFonte();
-  let lineHeight = Math.max(1, tamanho * fatorLineHeight);
-  let linhas = opcoes.singleLine ? [texto] : quebrarTexto(ctx, texto, maxW);
-  if (opcoes.fitBox && !opcoes.singleLine) {
-    let maxLines = Math.max(1, Math.floor(rect.h / lineHeight));
-    while ((linhas.length > maxLines || (linhas.length * lineHeight) > rect.h + 0.5) && tamanho > minFontSize + 0.01) {
-      tamanho = Math.max(minFontSize, +(tamanho - 0.2).toFixed(2));
-      aplicarFonte();
-      lineHeight = Math.max(1, tamanho * fatorLineHeight);
-      maxLines = Math.max(1, Math.floor(rect.h / lineHeight));
-      linhas = quebrarTexto(ctx, texto, maxW);
-    }
-    maxLines = Math.max(1, Math.floor(rect.h / lineHeight));
-    if (linhas.length > maxLines) {
-      linhas = linhas.slice(0, maxLines);
-      if (opcoes.ellipsis !== false && linhas.length) {
-        let ultima = linhas[linhas.length - 1].replace(/[\s.]+$/,'');
-        while (ultima.length > 1 && ctx.measureText(`${ultima}…`).width > maxW) ultima = ultima.slice(0, -1).trimEnd();
-        linhas[linhas.length - 1] = `${ultima}…`;
-      }
-    }
-  }
-  const totalH = Math.max(lineHeight, linhas.length * lineHeight);
-  ctx.textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
-  ctx.textBaseline = 'middle';
-  let y = rect.y + (rect.h - totalH) / 2 + lineHeight / 2;
-  if (valign === 'top') y = rect.y + lineHeight / 2;
-  else if (valign === 'bottom') y = rect.y + rect.h - totalH + lineHeight / 2;
-  const x = ctx.textAlign === 'center' ? rect.x + rect.w / 2 : ctx.textAlign === 'right' ? rect.x + rect.w : rect.x;
-  linhas.forEach(linha => { ctx.fillText(linha, x, y, maxW); y += lineHeight; });
-  ctx.restore();
-}
-function desenharImagemFit(ctx, img, rect, modo = 'cover') {
-  if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight || rect.w <= 0 || rect.h <= 0) return false;
-  const sw = img.naturalWidth, sh = img.naturalHeight;
-  if (modo === 'contain') {
-    const escala = Math.min(rect.w / sw, rect.h / sh);
-    const dw = sw * escala, dh = sh * escala;
-    ctx.drawImage(img, rect.x + (rect.w - dw)/2, rect.y + (rect.h - dh)/2, dw, dh);
-    return true;
-  }
-  const escala = Math.max(rect.w / sw, rect.h / sh);
-  const srcW = rect.w / escala, srcH = rect.h / escala;
-  const sx = (sw - srcW) / 2, sy = (sh - srcH) / 2;
-  ctx.drawImage(img, sx, sy, srcW, srcH, rect.x, rect.y, rect.w, rect.h);
-  return true;
-}
-function desenharPlaceholderImagem(ctx, rect) {
-  ctx.save();
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-  const cx = rect.x + rect.w/2, cy = rect.y + rect.h/2 - 7;
-  ctx.strokeStyle = '#BDBDBD'; ctx.globalAlpha = .45; ctx.lineWidth = 1;
-  ctx.strokeRect(cx - 9, cy - 5, 18, 12);
-  ctx.beginPath(); ctx.arc(cx, cy + 1, 3, 0, Math.PI*2); ctx.stroke();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = '#BDBDBD'; ctx.font = '400 6px Segoe UI, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Imagem meramente', cx, cy + 14);
-  ctx.fillText('ilustrativa', cx, cy + 21);
-  ctx.restore();
-}
-
-async function aguardarImagensPreview(folhas, maxMs = 450) {
-  const pendentes = Array.from(new Set(folhas.flatMap(f => Array.from(f.querySelectorAll('img')))))
-    .filter(img => !img.complete && typeof img.decode === 'function');
-  if (!pendentes.length) return;
-  await Promise.race([
-    Promise.allSettled(pendentes.map(img => img.decode().catch(() => {}))),
-    exportWait(maxMs)
-  ]);
-}
-
-async function canvasParaBlobAsync(canvas, tipo = 'image/jpeg', qualidade = 0.82) {
-  if (canvas && typeof canvas.convertToBlob === 'function') return canvas.convertToBlob({ type: tipo, quality: qualidade });
-  return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao codificar página.')), tipo, qualidade));
-}
-
-async function renderizarFolhaDireta(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1, dimensoes = null) {
-  const baseRect = folha.getBoundingClientRect();
-  const outW = dimensoes?.larguraPx || Math.max(595, Math.round(595 * escala));
-  const outH = dimensoes?.alturaPx || Math.max(842, Math.round(842 * escala));
-  const canvas = typeof OffscreenCanvas === 'function'
-    ? new OffscreenCanvas(outW, outH)
-    : Object.assign(document.createElement('canvas'), { width: outW, height: outH });
-  const ctx = canvas.getContext('2d', { alpha: tipo === 'image/png' });
-  ctx.imageSmoothingEnabled = true;
-  try { ctx.imageSmoothingQuality = 'high'; } catch (_) {}
-  ctx.save();
-  const escalaX = outW / 595;
-  const escalaY = outH / 842;
-  ctx.scale(escalaX, escalaY);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, 595, 842);
-
-  const header = folha.querySelector('.a4-header');
-  const footer = folha.querySelector('.a4-footer');
-  const grid = folha.querySelector('.a4-grid');
-  const vars = getComputedStyle(folha);
-  const accent = vars.getPropertyValue('--accent').trim() || '#81C784';
-
-  if (header) {
-    const r = retanguloRelativo(header, baseRect);
-    ctx.fillStyle = corCSS(getComputedStyle(header).backgroundColor, '#1B5E20');
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = accent; ctx.fillRect(r.x, r.y + r.h, r.w, 4);
-  }
-  const logoBox = folha.querySelector('.a4-logo-box');
-  if (logoBox) {
-    const r = retanguloRelativo(logoBox, baseRect);
-    const st = getComputedStyle(logoBox);
-    preencherArredondado(ctx, r, numeroCSS(st.borderRadius, 5), corCSS(st.backgroundColor, '#fff'));
-    const logo = logoBox.querySelector('img');
-    if (logo && logo.complete && logo.naturalWidth > 0) {
-      ctx.save(); caminhoArredondado(ctx, r.x, r.y, r.w, r.h, numeroCSS(st.borderRadius, 5)); ctx.clip(); desenharImagemFit(ctx, logo, r, 'contain'); ctx.restore();
-    } else if (!logo) {
-      desenharTextoElemento(ctx, logoBox, baseRect, { align: 'center', singleLine: true });
-    }
-  }
-  desenharTextoElemento(ctx, folha.querySelector('.a4-title'), baseRect, { align: 'center', singleLine: true });
-  desenharTextoElemento(ctx, folha.querySelector('.a4-subs'), baseRect, { align: 'center' });
-
-  if (grid) {
-    Array.from(grid.children).forEach(item => {
-      const rect = retanguloRelativo(item, baseRect);
-      if (item.classList.contains('card-empty')) {
-        const st = getComputedStyle(item);
-        contornarArredondado(ctx, rect, numeroCSS(st.borderRadius, 7), '#E0E0E0', 1.5, [3, 2]);
-        ctx.save(); ctx.font='400 9px Segoe UI, Arial, sans-serif'; ctx.fillStyle='#CCC'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('—', rect.x+rect.w/2, rect.y+rect.h/2); ctx.restore();
-        return;
-      }
-      if (!item.classList.contains('card')) return;
-      const stCard = getComputedStyle(item);
-      const radius = numeroCSS(stCard.borderRadius, 7);
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,.07)'; ctx.shadowBlur = 4; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-      preencherArredondado(ctx, rect, radius, '#fff');
-      ctx.restore();
-      contornarArredondado(ctx, rect, radius, '#E0E0E0', 1);
-
-      const imgBox = item.querySelector('.card-img');
-      if (imgBox) {
-        const ir = retanguloRelativo(imgBox, baseRect);
-        ctx.save(); caminhoArredondado(ctx, ir.x, ir.y, ir.w, ir.h, Math.max(0, radius - 1)); ctx.clip();
-        ctx.fillStyle = corCSS(getComputedStyle(imgBox).backgroundColor, '#FFFFFF'); ctx.fillRect(ir.x, ir.y, ir.w, ir.h);
-        const img = imgBox.querySelector('img');
-        const irPad = { x: ir.x + 4, y: ir.y + 4, w: Math.max(1, ir.w - 8), h: Math.max(1, ir.h - 8) };
-        if (!(img && desenharImagemFit(ctx, img, irPad, 'contain'))) desenharPlaceholderImagem(ctx, ir);
-        ctx.restore();
-        ctx.save(); ctx.strokeStyle='#EBEBEB'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(ir.x,ir.y+ir.h);ctx.lineTo(ir.x+ir.w,ir.y+ir.h);ctx.stroke();ctx.restore();
-      }
-
-      desenharTextoElemento(ctx, item.querySelector('.card-nome'), baseRect, { fitBox: true, minFontSize: 5.6, valign: 'top' });
-      const badge = item.querySelector('.card-badge');
-      if (badge) {
-        const br = retanguloRelativo(badge, baseRect);
-        const bst = getComputedStyle(badge);
-        ctx.save();
-        caminhoArredondado(ctx, rect.x, rect.y, rect.w, rect.h, radius);
-        ctx.clip();
-        ctx.fillStyle = corCSS(bst.backgroundColor, vars.getPropertyValue('--verde-suave').trim() || '#F1F8F1');
-        ctx.fillRect(br.x, br.y, br.w, br.h);
-        ctx.restore();
-        ctx.save();ctx.strokeStyle=vars.getPropertyValue('--verde-claro').trim() || '#C8E6C9';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(br.x,br.y);ctx.lineTo(br.x+br.w,br.y);ctx.stroke();ctx.restore();
-        desenharTextoElemento(ctx, badge, baseRect, { align:'center', singleLine:true });
-      }
-    });
-  }
-
-  if (footer) {
-    const r = retanguloRelativo(footer, baseRect);
-    ctx.fillStyle = accent; ctx.fillRect(r.x, r.y - 3, r.w, 3);
-    ctx.fillStyle = corCSS(getComputedStyle(footer).backgroundColor, '#1B5E20'); ctx.fillRect(r.x,r.y,r.w,r.h);
-    Array.from(footer.querySelectorAll('span')).forEach(span => {
-      const s = getComputedStyle(span);
-      const sr = retanguloRelativo(span, baseRect);
-      ctx.save();ctx.font=fonteCanvas(s);ctx.fillStyle=corCSS(s.color,'#fff');ctx.textBaseline='middle';
-      ctx.textAlign=span.classList.contains('pg') ? 'right' : 'left';
-      ctx.fillText((span.textContent||'').trim(), span.classList.contains('pg') ? sr.x+sr.w : sr.x, sr.y+sr.h/2, sr.w);
-      ctx.restore();
-    });
-  }
-
-  ctx.restore();
-  return await canvasParaBlobAsync(canvas, tipo, qualidade);
-}
-
-async function renderizarFolhaBlob(folha, tipo = 'image/jpeg', qualidade = 0.82, escala = 1, dimensoes = null) {
-  const chaveEscala = dimensoes ? `${dimensoes.larguraPx}x${dimensoes.alturaPx}` : escala;
-  const chave = chaveRasterFolha(folha, tipo, chaveEscala, qualidade);
-  if (exportPageRasterCache.has(chave)) return exportPageRasterCache.get(chave);
-  const promessa = renderizarFolhaDireta(folha, tipo, qualidade, escala, dimensoes);
-  exportPageRasterCache.set(chave, promessa);
-  podarCacheRaster();
-  try { return await promessa; }
-  catch (err) { exportPageRasterCache.delete(chave); throw err; }
-}
-
-function cancelarPreRenderExportacao() {
-  exportPrewarmGeneration++;
-  if (exportPrewarmTimer) { clearTimeout(exportPrewarmTimer); exportPrewarmTimer = null; }
-}
-function agendarPreRenderExportacao() {
-  cancelarPreRenderExportacao();
-  const geracao = exportPrewarmGeneration;
-  exportPrewarmTimer = setTimeout(() => {
-    exportPrewarmTimer = null;
-    const executar = async () => {
-      if (exportacaoEmAndamento || geracao !== exportPrewarmGeneration) return;
-      const folhas = folhasComProdutos();
-      const faltante = folhas.find(f => !exportPageRasterCache.has(chaveRasterFolha(f,'image/jpeg',PERFIL_PDF_HQ.escala,PERFIL_PDF_HQ.qualidade)));
-      if (!faltante) return;
-      try { await renderizarFolhaBlob(faltante,'image/jpeg',PERFIL_PDF_HQ.qualidade,PERFIL_PDF_HQ.escala); } catch (_) {}
-      if (geracao !== exportPrewarmGeneration || exportacaoEmAndamento) return;
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(executar,{timeout:800});
-      else setTimeout(executar,80);
-    };
-    if (typeof requestIdleCallback === 'function') requestIdleCallback(executar,{timeout:800});
-    else setTimeout(executar,80);
-  }, 700);
-}
-
-function baixarBlob(blob, nome) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
-}
-function nomeArquivoSeguro(valor) {
-  return String(valor || 'catalogo').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,70)||'catalogo';
-}
-
-async function exportPDF(modo = 'hq') {
-  const btn=document.querySelector('.btn-export'); if(btn?.disabled)return;
-  const folhas=folhasComProdutos(); if(!folhas.length){showToast('Adicione produtos antes de exportar.');return;}
-  const perfil = modo === 'rapido' ? PERFIL_PDF_RAPIDO : PERFIL_PDF_HQ;
-  const perfilIndesign = modo === 'indesign' ? PERFIL_A4_IND : null;
-  const original=btn?.innerHTML; exportacaoEmAndamento=true; cancelarPreRenderExportacao();
-
-  try {
-    if(btn){btn.disabled=true;btn.style.opacity='.65';}
-    if(document.fonts?.ready) await document.fonts.ready;
-
-    atualizarTextoExportacao(btn,'Preparando imagens...');
-    await aguardarImagensPreview(folhas, modo === 'rapido' ? 300 : modo === 'indesign' ? 900 : 700);
-
-    const {jsPDF}=window.jspdf;
-    const doc=new jsPDF({
-      orientation:'portrait',
-      unit:'mm',
-      format:'a4',
-      compress:false,
-      putOnlyUsedFonts:true
-    });
-
-    const cores = Math.max(2, Number(navigator.hardwareConcurrency) || 4);
-    const loteTam = modo === 'rapido'
-      ? Math.max(2, Math.min(5, Math.floor(cores / 2)))
-      : modo === 'indesign'
-        ? Math.max(1, Math.min(2, Math.floor(cores / 4) || 1))
-        : Math.max(1, Math.min(3, Math.floor(cores / 3) || 2));
-
-    let adicionadas=0;
-    for(let inicio=0; inicio<folhas.length; inicio+=loteTam){
-      const lote=folhas.slice(inicio,inicio+loteTam);
-      const blobs=await Promise.all(lote.map(folha =>
-        renderizarFolhaBlob(
-          folha,
-          'image/jpeg',
-          perfilIndesign ? perfilIndesign.qualidade : perfil.qualidade,
-          perfilIndesign ? 1 : perfil.escala,
-          perfilIndesign ? { larguraPx: perfilIndesign.larguraPx, alturaPx: perfilIndesign.alturaPx } : null
-        )
-      ));
-
-      for(let j=0;j<blobs.length;j++){
-        const blob=blobs[j]; if(!blob) continue;
-        if(adicionadas>0) doc.addPage('a4','portrait');
-        doc.addImage(
-          new Uint8Array(await blob.arrayBuffer()),
-          'JPEG',0,0,210,297,undefined,'NONE'
-        );
-        adicionadas++;
-        atualizarTextoExportacao(btn,`Páginas ${adicionadas}/${folhas.length}`);
-      }
-
-      // Libera a thread entre lotes e evita picos de memória/GC em catálogos longos.
-      await new Promise(resolve => requestAnimationFrame(() => resolve()));
-    }
-
-    atualizarTextoExportacao(btn,'Finalizando...');
-    baixarBlob(
-      doc.output('blob'),
-      modo === 'rapido' ? 'catalogo-pmg-rapido.pdf' : modo === 'indesign' ? 'catalogo-pmg-a4-300dpi-indesign.pdf' : 'catalogo-pmg.pdf'
+  a4s.forEach((a4, i) => {
+    promessas.push(
+      html2canvas(a4, { scale: 2, useCORS: true, backgroundColor: '#fff' }).then(canvas => {
+        return { i, canvas };
+      })
     );
-    showToast(`${modo === 'rapido' ? 'PDF rápido' : modo === 'indesign' ? 'PDF A4 300 DPI' : 'PDF em alta qualidade'} gerado com ${adicionadas} página${adicionadas!==1?'s':''}.`);
-  } catch(err){
-    console.error('Erro ao exportar PDF:',err);
-    showToast('Erro ao gerar PDF. Confira o console.');
-  } finally {
-    exportacaoEmAndamento=false;
-    if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}
-    agendarPreRenderExportacao();
-  }
-}
+  });
 
-function toggleExportMenu(event){event?.stopPropagation();const menu=document.getElementById('exportMenu');if(menu)menu.style.display=menu.style.display==='block'?'none':'block';}
-function fecharExportMenu(){const menu=document.getElementById('exportMenu');if(menu)menu.style.display='none';}
-document.addEventListener('click',e=>{if(!e.target.closest('.export-menu-wrap'))fecharExportMenu();});
+  showToast('Gerando PDF, aguarde...');
 
-async function exportPNG(modo = 'hq') {
-  const btn=document.querySelector('.btn-export');if(btn?.disabled)return;
-  const folhas=folhasComProdutos();if(!folhas.length){showToast('Adicione produtos antes de exportar.');return;}
-  const original=btn?.innerHTML;exportacaoEmAndamento=true;cancelarPreRenderExportacao();
-  try{
-    if(btn){btn.disabled=true;btn.style.opacity='.65';}
-    if(document.fonts?.ready)await document.fonts.ready;
-    atualizarTextoExportacao(btn,'Carregando imagens...');await aguardarImagensPreview(folhas,modo === 'indesign' ? 900 : 450);
-    let prontas=0;
-    const blobs=await mapComConcorrencia(folhas,Math.min(2,concorrenciaExportacao()),async folha=>{
-      const blob = modo === 'indesign'
-        ? await renderizarFolhaBlob(folha,'image/png',1,1,{larguraPx:PERFIL_A4_IND.larguraPx,alturaPx:PERFIL_A4_IND.alturaPx})
-        : await renderizarFolhaBlob(folha,'image/png',PERFIL_PNG_HQ.qualidade,PERFIL_PNG_HQ.escala);
-      prontas++;atualizarTextoExportacao(btn,`PNG ${prontas}/${folhas.length}`);return blob;
+  Promise.all(promessas).then(resultados => {
+    resultados.sort((a, b) => a.i - b.i);
+    resultados.forEach(({ canvas }, idx) => {
+      if (idx > 0) doc.addPage();
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      doc.addImage(imgData, 'JPEG', 0, 0, 210, 297);
     });
-    const arquivos=blobs.map((blob,i)=>({nome:`catalogo-${nomeArquivoSeguro(folhas[i].querySelector('.a4-title')?.textContent||'catalogo')}-${String(i+1).padStart(2,'0')}${modo==='indesign'?'-a4-300dpi':''}.png`,blob})).filter(x=>x.blob);
-    if(arquivos.length===1)baixarBlob(arquivos[0].blob,arquivos[0].nome);
-    else{
-      if(!window.JSZip)throw new Error('JSZip indisponível.');const zip=new JSZip();arquivos.forEach(a=>zip.file(a.nome,a.blob,{compression:'STORE'}));
-      atualizarTextoExportacao(btn,'Empacotando...');const z=await zip.generateAsync({type:'blob',compression:'STORE',streamFiles:true});baixarBlob(z,modo==='indesign'?'catalogo-pmg-png-a4-300dpi.zip':'catalogo-pmg-png.zip');
-    }
-    showToast(`${arquivos.length} PNG${arquivos.length!==1?'s':''} ${modo==='indesign'?'A4 300 DPI ':''}gerado${arquivos.length!==1?'s':''}.`);
-  }catch(err){console.error('Erro ao exportar PNG:',err);showToast('Erro ao gerar PNG. Confira o console.');}
-  finally{exportacaoEmAndamento=false;if(btn){btn.disabled=false;btn.style.opacity='';if(original)btn.innerHTML=original;}agendarPreRenderExportacao();}
+    doc.save('catalogo-pmg.pdf');
+    showToast('PDF baixado!');
+  }).catch(err => {
+    console.error(err);
+    showToast('Erro ao gerar PDF.');
+  });
 }
-
 
 // ── SALVAR/CARREGAR NO PRÓPRIO NAVEGADOR (localStorage) ──
 const STORAGE_KEY = 'catalogoPMG_estado';
@@ -2232,7 +1548,7 @@ const STORAGE_KEY = 'catalogoPMG_estado';
 function salvarEstado() {
   const estado = {
     pages: pages.map(pg => ({
-  id: pg.id, titulo: pg.titulo, subtitulo: pg.subtitulo, subtituloAuto: !!pg.subtituloAuto,
+  id: pg.id, titulo: pg.titulo, subtitulo: pg.subtitulo,
   produtos: pg.produtos, cor: pg.cor || null
 })),
     nextPageId,
@@ -2254,7 +1570,7 @@ function carregarEstado() {
     if (!raw) return false;
     const estado = JSON.parse(raw);
     if (!estado || !estado.pages || estado.pages.length === 0) return false;
-    pages        = estado.pages.map(pg => ({ ...pg, subtituloAuto: !!pg.subtituloAuto }));
+    pages        = estado.pages;
     const maiorIdPagina = pages.reduce((maior, pg) => Math.max(maior, Number(pg.id) || 0), 0);
     nextPageId   = Math.max(Number(estado.nextPageId) || 0, maiorIdPagina + 1, pages.length + 1);
     const paginasMigradas = normalizarPaginasParaLimite();
@@ -2262,7 +1578,7 @@ function carregarEstado() {
     colors_state = estado.colors_state || colors_state;
     logoDataUrl  = estado.logoDataUrl || null;
     applyColors();
-    if (paginasMigradas || referenciasLimpas) salvarEstado();
+    if (paginasMigradas) salvarEstado();
     return true;
   } catch (err) {
     console.error('Erro ao carregar estado:', err);
@@ -2321,7 +1637,7 @@ async function sincronizarAPI() {
     }
 
     garantirCategoria(categoria);
-    TODOS_PRODUTOS.push({ id, nome, unidade, categoria, idSubcategoria: item.id_subcategoria ?? null });
+    TODOS_PRODUTOS.push({ id, nome, unidade, categoria });
 
     if (imagemURL && !prodImages[id]) {
       prodImages[id] = `/img-proxy?url=${encodeURIComponent(imagemURL)}`;
