@@ -28,7 +28,7 @@
       --nav-w: 240px; --nav-w-col: 64px; --hdr-h: 60px;
     }
 
-    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; height: 100dvh; display: flex; overflow: hidden; }
 
     /* ── NAV ── */
     .nav { width: var(--nav-w); min-width: var(--nav-w); background: var(--g800); display: flex; flex-direction: column; height: 100vh; position: relative; z-index: 50; transition: width .25s cubic-bezier(.4,0,.2,1), min-width .25s; overflow: hidden; }
@@ -52,7 +52,7 @@
     .nav.col .nav-footer { opacity: 0; }
 
     /* ── MAIN ── */
-    .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
 
     /* ── HEADER ── */
     .hdr { background: var(--g900); height: var(--hdr-h); padding: 0 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,.05); }
@@ -82,6 +82,7 @@
     .btn-primary { padding: 8px 16px; background: var(--g800); color: white; border: none; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all .15s; font-family: inherit; }
     .btn-primary:hover { background: var(--g700); transform: translateY(-1px); box-shadow: var(--shadow); }
     .btn-primary svg { width: 13px; height: 13px; }
+    .btn-primary:disabled, .btn-ghost:disabled, .act-btn:disabled { opacity: .55; cursor: not-allowed; transform: none; box-shadow: none; }
     .btn-ghost { padding: 8px 14px; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all .13s; font-family: inherit; }
     .btn-ghost:hover { border-color: var(--g400); color: var(--text); }
     .btn-ghost svg { width: 13px; height: 13px; }
@@ -138,6 +139,7 @@
     .modal-sub { font-size: 11px; color: var(--ghost); margin-top: 2px; }
     .modal-close { width: 28px; height: 28px; border: none; background: var(--g50); border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--muted); transition: all .13s; }
     .modal-close:hover { background: var(--g100); color: var(--ink); }
+    .modal-close:focus-visible, .btn-primary:focus-visible, .btn-ghost:focus-visible, .act-btn:focus-visible, .bell-btn:focus-visible, .upload-zone:focus-visible, thead th[role="button"]:focus-visible { outline: 2px solid var(--g400); outline-offset: 2px; }
     .modal-close svg { width: 14px; height: 14px; }
     .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
     .modal-foot { padding: 16px 24px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
@@ -174,6 +176,7 @@
     .progress-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
     .progress-bar-bg { height: 6px; background: var(--g100); border-radius: 3px; overflow: hidden; }
     .progress-bar-fill { height: 100%; background: var(--g500); border-radius: 3px; transition: width .3s ease; width: 0%; }
+    .import-warning { margin-top: 12px; padding: 10px 12px; border: 1px solid #fde68a; background: #fffbeb; color: #92400e; border-radius: var(--radius-sm); font-size: 10.5px; line-height: 1.45; }
 
     /* ── PREVIEW DASH ── */
     .kpi-mini { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 16px; }
@@ -212,8 +215,45 @@
       .dash-charts { grid-template-columns: 1fr; }
     }
     @media (max-width: 600px) {
-      .stats-bar { flex-wrap: wrap; }
-      .stat-cell { min-width: 50%; }
+      .main-col { min-width: 0; }
+      .hdr { height: auto; min-height: var(--hdr-h); padding: 8px 12px; gap: 10px; }
+      .hdr-title { font-size: 14px; line-height: 1.2; min-width: 0; }
+      .hdr-right { margin-left: auto; gap: 6px; flex-shrink: 0; }
+      .hdr-right .pill { display: none; }
+      .bell-btn { width: 40px; height: 40px; flex-shrink: 0; }
+      .mobile-alert-btn { width: 40px; min-width: 40px; height: 40px; padding: 0; justify-content: center; font-size: 16px; }
+      .mobile-alert-btn span { display: none; }
+      .stats-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; flex-shrink: 0; }
+      .stat-cell { min-width: 0; padding: 10px 12px; }
+      .stat-value { font-size: 18px; }
+      .stat-cell:last-child { grid-column: 1 / -1; }
+      .toolbar { padding: 10px 12px; gap: 8px; }
+      .search-wrap { flex: 1 1 100%; max-width: none; min-width: 0; }
+      .search-input, .filter-select { min-height: 42px; font-size: 13px; }
+      .filter-select { flex: 1 1 150px; min-width: 0; }
+      .toolbar .spacer { display: none; }
+      .toolbar .btn-primary, .toolbar .btn-ghost { min-height: 42px; flex: 1 1 auto; justify-content: center; }
+      .table-wrap { overscroll-behavior: contain; }
+      thead th { padding: 12px; }
+      tbody td { padding: 11px 12px; }
+      .empty-row td { position: sticky; left: 0; text-align: left; padding: 28px 16px; background: var(--bg); }
+      .empty-row .empty-icon { display: inline-block; margin: 0 8px 0 0; font-size: 20px; vertical-align: middle; }
+      .act-btn { min-height: 38px; padding: 7px 10px; }
+      .modal-backdrop { padding: 8px; }
+      .modal { max-width: 100%; max-height: calc(100dvh - 16px); border-radius: 12px; }
+      .modal-hdr { padding: 14px 14px 12px; gap: 10px; }
+      .modal-body { padding: 16px 14px; }
+      .modal-foot { padding: 12px 14px; flex-wrap: wrap; }
+      .modal-foot .btn-primary, .modal-foot .btn-ghost { min-height: 42px; }
+      .modal-close { width: 40px; height: 40px; flex-shrink: 0; }
+      .form-grid { grid-template-columns: 1fr; gap: 12px; }
+      .form-group.full { grid-column: auto; }
+      .form-input { min-height: 42px; font-size: 14px; }
+      .upload-zone { padding: 24px 16px; min-height: 132px; display: flex; flex-direction: column; justify-content: center; }
+      .upload-preview-remove { width: 40px; height: 40px; }
+      .link-info { grid-template-columns: 1fr; }
+      .kpi-mini { grid-template-columns: 1fr 1fr; }
+      .toast { left: 12px; right: 12px; bottom: 12px; text-align: center; }
     }
   </style>
 </head>
@@ -262,11 +302,11 @@
   <header class="hdr">
     <h1 class="hdr-title">Gestão de Fornecedores</h1>
     <div class="hdr-right">
-      <button class="bell-btn" id="bellDebitos" onclick="abrirModalDebitos()" title="Central de Débitos">
+      <button class="bell-btn" id="bellDebitos" onclick="abrirModalDebitos()" title="Central de Débitos" aria-label="Abrir Central de Débitos">
   🔔
   <span class="bell-badge" id="bellBadge" style="display:none">0</span>
 </button>
-<button class="btn-ghost" onclick="ativarNotificacoes()" style="color:white;border-color:rgba(255,255,255,.2)">🔔 Ativar Alertas</button>
+<button class="btn-ghost mobile-alert-btn" onclick="ativarNotificacoes()" style="color:white;border-color:rgba(255,255,255,.2)" aria-label="Ativar alertas">🔔 <span>Ativar Alertas</span></button>
       <span class="pill pill-default" id="pillTotal">— fornecedores</span>
       <span class="pill pill-green"><span class="pill-dot"></span><span id="pillAtivos">—</span> ativos</span>
     </div>
@@ -285,9 +325,9 @@
   <div class="toolbar">
     <div class="search-wrap">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" class="search-input" id="searchInput" placeholder="Buscar fornecedor…" oninput="renderTabela()">
+      <input type="search" class="search-input" id="searchInput" placeholder="Buscar fornecedor…" oninput="renderTabela()" aria-label="Buscar fornecedor ou CNPJ">
     </div>
-    <select class="filter-select" id="filterStatus" onchange="renderTabela()">
+    <select class="filter-select" id="filterStatus" onchange="renderTabela()" aria-label="Filtrar fornecedores por status">
       <option value="">Todos os status</option>
       <option value="ativo">Ativo</option>
       <option value="sem_dados">Sem dados</option>
@@ -309,13 +349,13 @@
     <table>
       <thead>
         <tr>
-          <th onclick="sortBy('nome')">Fornecedor <span class="sort-icon">↕</span></th>
-          <th onclick="sortBy('cnpj')">CNPJ <span class="sort-icon">↕</span></th>
-          <th onclick="sortBy('categoria')">Categoria <span class="sort-icon">↕</span></th>
-          <th onclick="sortBy('status')">Status <span class="sort-icon">↕</span></th>
-          <th onclick="sortBy('ultimo_upload')">Último upload <span class="sort-icon">↕</span></th>
-          <th onclick="sortBy('total_pedidos')">Pedidos <span class="sort-icon">↕</span></th>
-          <th onclick="sortByDebito()">Débito Sell-in <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('nome')" data-sort="nome" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por fornecedor">Fornecedor <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('cnpj')" data-sort="cnpj" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por CNPJ">CNPJ <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('categoria')" data-sort="categoria" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por categoria">Categoria <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('status')" data-sort="status" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por status">Status <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('ultimo_upload')" data-sort="ultimo_upload" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por último upload">Último upload <span class="sort-icon">↕</span></th>
+          <th onclick="sortBy('total_pedidos')" data-sort="total_pedidos" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por quantidade de pedidos">Pedidos <span class="sort-icon">↕</span></th>
+          <th onclick="sortByDebito()" data-sort="__debito" tabindex="0" role="button" aria-sort="none" aria-label="Ordenar por débito Sell-in">Débito Sell-in <span class="sort-icon">↕</span></th>
           <th>Ações</th>
         </tr>
       </thead>
@@ -334,22 +374,22 @@
         <div class="modal-title" id="modalFormTitle">Novo fornecedor</div>
         <div class="modal-sub">Preencha os dados para criar o cadastro e gerar o link público.</div>
       </div>
-      <button class="modal-close" onclick="fecharModal('modalForm')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('modalForm')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
       <div class="form-grid">
         <div class="form-group full">
-          <label class="form-label">Razão social / Nome</label>
+          <label class="form-label" for="fNome">Razão social / Nome</label>
           <input type="text" class="form-input" id="fNome" placeholder="Alfameat Alimentos Ltda">
         </div>
         <div class="form-group">
-          <label class="form-label">CNPJ</label>
+          <label class="form-label" for="fCnpj">CNPJ</label>
           <input type="text" class="form-input" id="fCnpj" placeholder="00.000.000/0001-00" maxlength="18" oninput="mascaraCNPJ(this)">
         </div>
         <div class="form-group">
-          <label class="form-label">Categoria</label>
+          <label class="form-label" for="fCategoria">Categoria</label>
           <select class="form-input" id="fCategoria">
             <option value="">Selecionar…</option>
             <option>Carnes Bovinas</option>
@@ -362,26 +402,26 @@
           </select>
         </div>
         <div class="form-group full">
-          <label class="form-label">Slug (URL pública)</label>
+          <label class="form-label" for="fSlug">Slug (URL pública)</label>
           <input type="text" class="form-input" id="fSlug" placeholder="alfameat" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
           <span class="form-hint" id="slugPreview">URL: /fornecedor/<strong>slug</strong></span>
         </div>
         <div class="form-group">
-          <label class="form-label">Contato (nome)</label>
+          <label class="form-label" for="fContato">Contato (nome)</label>
           <input type="text" class="form-input" id="fContato" placeholder="João Silva">
         </div>
         <div class="form-group">
-          <label class="form-label">E-mail</label>
+          <label class="form-label" for="fEmail">E-mail</label>
           <input type="email" class="form-input" id="fEmail" placeholder="contato@fornecedor.com">
         </div>
         <!-- CORRIGIDO: form-group limpo, sem texto solto nem duplicatas -->
         <div class="form-group full">
-          <label class="form-label">% Sell-In (débito sobre faturamento NFe)</label>
+          <label class="form-label" for="fPctSellin">% Sell-In (débito sobre faturamento NFe)</label>
           <input type="number" class="form-input" id="fPctSellin" placeholder="Ex: 3.5" min="0" max="100" step="0.1">
           <span class="form-hint">Percentual cobrado pelo fornecedor sobre as notas autorizadas de venda.</span>
         </div>
         <div class="form-group full">
-          <label class="form-label">Status</label>
+          <label class="form-label" for="fStatus">Status</label>
           <select class="form-input" id="fStatus">
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
@@ -391,7 +431,7 @@
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" onclick="fecharModal('modalForm')">Cancelar</button>
-      <button class="btn-primary" onclick="salvarFornecedor()">
+      <button class="btn-primary" id="btnSalvarFornecedor" onclick="salvarFornecedor()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
         Salvar fornecedor
       </button>
@@ -407,17 +447,18 @@
         <div class="modal-title">Upload de dados</div>
         <div class="modal-sub" id="uploadModalSub">Fornecedor</div>
       </div>
-      <button class="modal-close" onclick="fecharModal('modalUpload')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('modalUpload')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
-      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()" ondragover="ev(event,'drag')" ondragleave="ev(event,'leave')" ondrop="ev(event,'drop')">
+      <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Selecionar planilha de pedidos" onclick="document.getElementById('fileInput').click()" ondragover="ev(event,'drag')" ondragleave="ev(event,'leave')" ondrop="ev(event,'drop')">
         <span class="upload-zone-icon">📊</span>
         <div class="upload-zone-title">Arraste o arquivo XLSX aqui</div>
         <div class="upload-zone-sub">ou clique para selecionar · .xlsx até 20 MB</div>
       </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="onFileSelect(this.files[0])">
+      <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="onFileSelect(this.files[0])" aria-label="Arquivo de pedidos do fornecedor">
+      <div class="import-warning">A importação substitui a base anterior deste fornecedor. O sistema cria um ponto de restauração antes da troca e valida a nova base antes de concluir.</div>
 
       <div class="upload-preview" id="uploadPreview">
         <div class="upload-preview-icon">
@@ -427,7 +468,7 @@
           <div class="upload-preview-name" id="previewName">arquivo.xlsx</div>
           <div class="upload-preview-meta" id="previewMeta">—</div>
         </div>
-        <button class="upload-preview-remove" onclick="removerArquivo()">
+        <button class="upload-preview-remove" onclick="removerArquivo()" aria-label="Remover arquivo selecionado">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -463,7 +504,7 @@
         <div class="modal-title">Link do dashboard</div>
         <div class="modal-sub" id="linkModalSub">Compartilhe com o fornecedor</div>
       </div>
-      <button class="modal-close" onclick="fecharModal('modalLink')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('modalLink')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -495,7 +536,7 @@
   <div class="modal modal-lg">
     <div class="modal-hdr">
       <div><div class="modal-title">Central de Débitos — Sell-In</div><div class="modal-sub">Fornecedores com débito acumulado, do maior para o menor</div></div>
-      <button class="modal-close" onclick="fecharModal('modalDebitos')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('modalDebitos')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -520,7 +561,7 @@
         <div class="modal-title" id="dashModalTitle">Preview — Dados do fornecedor</div>
         <div class="modal-sub" id="dashModalSub">—</div>
       </div>
-      <button class="modal-close" onclick="fecharModal('modalDash')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('modalDash')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -546,17 +587,18 @@
         <div class="modal-title">Upload Sell-In (NFe)</div>
         <div class="modal-sub" id="nfeModalSub">Fornecedor</div>
       </div>
-      <button class="modal-close" onclick="fecharModal('modalNFe')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('modalNFe')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
-      <div class="upload-zone" id="nfeUploadZone" onclick="document.getElementById('nfeFileInput').click()" ondragover="nfeEv(event,'drag')" ondragleave="nfeEv(event,'leave')" ondrop="nfeEv(event,'drop')">
+      <div class="upload-zone" id="nfeUploadZone" role="button" tabindex="0" aria-label="Selecionar planilha de notas fiscais" onclick="document.getElementById('nfeFileInput').click()" ondragover="nfeEv(event,'drag')" ondragleave="nfeEv(event,'leave')" ondrop="nfeEv(event,'drop')">
         <span class="upload-zone-icon">🧾</span>
         <div class="upload-zone-title">Arraste o XLSX da Consulta NFe Destinada</div>
         <div class="upload-zone-sub">ou clique para selecionar · .xlsx até 20 MB</div>
       </div>
-      <input type="file" id="nfeFileInput" accept=".xlsx,.xls" style="display:none" onchange="onNFeSelect(this.files[0])">
+      <input type="file" id="nfeFileInput" accept=".xlsx,.xls" style="display:none" onchange="onNFeSelect(this.files[0])" aria-label="Arquivo de notas fiscais do fornecedor">
+      <div class="import-warning">A importação substitui as NFe anteriores deste fornecedor. Em caso de falha durante a troca, o sistema tenta restaurar automaticamente as notas anteriores.</div>
 
       <div class="upload-preview" id="nfePreview">
         <div class="upload-preview-icon">
@@ -566,7 +608,7 @@
           <div class="upload-preview-name" id="nfePreviewName">arquivo.xlsx</div>
           <div class="upload-preview-meta" id="nfePreviewMeta">—</div>
         </div>
-        <button class="upload-preview-remove" onclick="removerNFe()">
+        <button class="upload-preview-remove" onclick="removerNFe()" aria-label="Remover arquivo selecionado">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -591,7 +633,7 @@
   <div class="modal modal-lg">
     <div class="modal-hdr">
       <div><div class="modal-title">SQL — Criação das tabelas</div><div class="modal-sub">Execute no editor SQL do Supabase</div></div>
-      <button class="modal-close" onclick="document.getElementById('sqlModal').classList.remove('open')">
+      <button class="modal-close" aria-label="Fechar janela" onclick="fecharModal('sqlModal')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -701,7 +743,7 @@ CREATE POLICY "delete_autenticado_nfe" ON notas_fiscais FOR DELETE TO authentica
     </div>
     <div class="modal-foot">
       <button class="btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('sqlPre').textContent).then(()=>toast('✅ SQL copiado!'))">Copiar SQL</button>
-      <button class="btn-primary" onclick="document.getElementById('sqlModal').classList.remove('open');carregarFornecedores()">Já executei — recarregar</button>
+      <button class="btn-primary" onclick="fecharModal('sqlModal');carregarFornecedores()">Já executei — recarregar</button>
     </div>
   </div>
 </div>
@@ -795,13 +837,37 @@ document.getElementById('fSlug').addEventListener('keydown', function() { this.d
 /* ══════════════════════════════════════════════
    MODAIS
 ══════════════════════════════════════════════ */
-function abrirModal(id) { document.getElementById(id).classList.add('open'); }
-function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+const modalPreviousFocus = new Map();
+function abrirModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modalPreviousFocus.set(id, document.activeElement);
+  modal.classList.add('open');
+  requestAnimationFrame(() => {
+    const alvo = modal.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])')
+      || modal.querySelector('button:not([disabled]), [tabindex="0"]');
+    alvo?.focus();
+  });
+}
+function fecharModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.classList.remove('open');
+  const anterior = modalPreviousFocus.get(id);
+  modalPreviousFocus.delete(id);
+  if (anterior?.isConnected) requestAnimationFrame(() => anterior.focus());
+}
 
 document.querySelectorAll('.modal-backdrop').forEach(m => {
-  m.addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
+  m.addEventListener('click', function(e) { if (e.target === this) fecharModal(this.id); });
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open')); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-backdrop.open').forEach(m => fecharModal(m.id));
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.upload-zone, thead th[role="button"]')) {
+    e.preventDefault();
+    e.target.click();
+  }
+});
 
 /* ══════════════════════════════════════════════
    MODAL NOVO FORNECEDOR
@@ -835,6 +901,8 @@ function abrirModalEditar(f) {
 }
 
 async function salvarFornecedor() {
+  const btnSalvar = document.getElementById('btnSalvarFornecedor');
+  if (btnSalvar?.disabled) return;
   const nome       = document.getElementById('fNome').value.trim();
   const cnpj       = document.getElementById('fCnpj').value.trim();
   const categoria  = document.getElementById('fCategoria').value;
@@ -848,6 +916,7 @@ async function salvarFornecedor() {
 
   const payload = { nome, cnpj, categoria, slug, contato, email, status, pct_sellin, atualizado_em: new Date().toISOString() };
 
+  if (btnSalvar) btnSalvar.disabled = true;
   try {
     if (editingId) {
       const { error } = await db.from('fornecedores').update(payload).eq('id', editingId);
@@ -863,6 +932,45 @@ async function salvarFornecedor() {
     await carregarFornecedores();
   } catch(e) {
     toast('❌ Erro: ' + (e.message || JSON.stringify(e)));
+  } finally {
+    if (btnSalvar) btnSalvar.disabled = false;
+  }
+}
+
+function parseNumeroFlex(valor) {
+  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : 0;
+  let s = String(valor ?? '').trim().replace(/\s/g, '').replace(/^R\$/i, '');
+  if (!s) return 0;
+  if (s.includes(',') && s.includes('.')) {
+    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  } else if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  }
+  const n = Number.parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function carregarBackupFornecedor(tabela, fornecedorId) {
+  const backup = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await db.from(tabela).select('*').eq('fornecedor_id', fornecedorId).range(from, from + 999);
+    if (error) throw new Error(`Não foi possível criar o ponto de restauração de ${tabela}: ${error.message || error}`);
+    if (!data?.length) break;
+    backup.push(...data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return backup;
+}
+
+async function restaurarBackupFornecedor(tabela, fornecedorId, backup) {
+  const { error: clearError } = await db.from(tabela).delete().eq('fornecedor_id', fornecedorId);
+  if (clearError) throw clearError;
+  const BATCH = 500;
+  for (let i = 0; i < backup.length; i += BATCH) {
+    const { error } = await db.from(tabela).insert(backup.slice(i, i + BATCH));
+    if (error) throw error;
   }
 }
 
@@ -951,40 +1059,66 @@ function detectarHeaderRow(matriz, colMap) {
   return headerRow;
 }
 
+function validarArquivoPlanilha(file) {
+  if (!file) return { ok: false, erro: 'Nenhum arquivo selecionado.' };
+  const nome = String(file.name || '');
+  if (!/\.(xlsx|xls)$/i.test(nome)) return { ok: false, erro: 'Selecione uma planilha .xlsx ou .xls.' };
+  const MAX_BYTES = 20 * 1024 * 1024;
+  if (file.size > MAX_BYTES) return { ok: false, erro: 'O arquivo ultrapassa o limite de 20 MB.' };
+  if (file.size <= 0) return { ok: false, erro: 'O arquivo está vazio.' };
+  return { ok: true };
+}
+
 function onFileSelect(file) {
-  if (!file) return;
+  const validacao = validarArquivoPlanilha(file);
+  if (!validacao.ok) {
+    removerArquivo();
+    toast(`⚠️ ${validacao.erro}`);
+    return;
+  }
+
   selectedFile = file;
+  parsedRows = [];
   document.getElementById('uploadPreview').classList.add('show');
   document.getElementById('previewName').textContent = file.name;
-  document.getElementById('previewMeta').textContent = (file.size / 1024).toFixed(1) + ' KB · ' + new Date().toLocaleDateString('pt-BR');
-  document.getElementById('btnEnviar').disabled = false;
+  document.getElementById('previewMeta').textContent = (file.size / 1024).toFixed(1) + ' KB · validando…';
+  document.getElementById('btnEnviar').disabled = true;
+  document.getElementById('colMappingWrap').style.display = 'none';
+
   const reader = new FileReader();
+  reader.onerror = () => {
+    parsedRows = [];
+    document.getElementById('btnEnviar').disabled = true;
+    document.getElementById('previewMeta').textContent = 'Não foi possível ler o arquivo.';
+    toast('❌ Não foi possível ler a planilha. Selecione outro arquivo.');
+  };
   reader.onload = (e) => {
-    const wb = XLSX.read(e.target.result, { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      if (!wb.SheetNames?.length) throw new Error('A planilha não possui abas legíveis.');
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      if (!ws) throw new Error('A primeira aba da planilha não pôde ser lida.');
 
-    // Lê todas as linhas para localizar o cabeçalho real
-    const matriz = XLSX.utils.sheet_to_json(ws, {
-        header: 1,
-        defval: ""
-    });
+      const matriz = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const headerRow = detectarHeaderRow(matriz, COL_MAP);
+      const raw = XLSX.utils.sheet_to_json(ws, { range: headerRow, defval: '' });
+      if (!raw.length) throw new Error('Nenhuma linha de dados foi encontrada.');
 
-    // Detecta a linha de cabeçalho real, ignorando linhas de filtro/título
-    const headerRow = detectarHeaderRow(matriz, COL_MAP);
-
-    // Usa essa linha como cabeçalho para os dados que serão importados
-    const raw = XLSX.utils.sheet_to_json(ws, {
-        range: headerRow,
-        defval: ''
-    });
-    parsedRows = raw;
-    if (raw.length > 0) {
-      const cols = Object.keys(raw[0]);
+      parsedRows = raw;
+      const cols = Object.keys(raw[0] || {});
       document.getElementById('colMappingList').innerHTML = cols.map(c =>
         `<span style="padding:3px 9px;background:var(--g100);border-radius:12px;font-size:10px;font-weight:600;color:var(--g700)">${c}</span>`
       ).join('');
       document.getElementById('colMappingWrap').style.display = 'block';
       document.getElementById('previewMeta').textContent = (file.size/1024).toFixed(1) + ' KB · ' + raw.length.toLocaleString('pt-BR') + ' linhas detectadas';
+      document.getElementById('btnEnviar').disabled = false;
+    } catch (err) {
+      parsedRows = [];
+      document.getElementById('btnEnviar').disabled = true;
+      document.getElementById('colMappingWrap').style.display = 'none';
+      document.getElementById('previewMeta').textContent = 'Planilha inválida ou incompatível.';
+      console.error('[Fornecedores] Falha ao interpretar planilha de pedidos', err);
+      toast(`❌ Não foi possível interpretar a planilha: ${err.message || 'arquivo inválido'}`);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -1100,63 +1234,96 @@ function setProgress(pct, label) {
 async function enviarDados() {
   if (!parsedRows.length) { toast('⚠️ Nenhum dado para importar.'); return; }
 
-  document.getElementById('btnEnviar').disabled = true;
+  const btnEnviar = document.getElementById('btnEnviar');
+  if (btnEnviar.disabled) return;
+  btnEnviar.disabled = true;
   document.getElementById('progressWrap').classList.add('show');
 
+  let backupRows = null;
+  let baseAlterada = false;
   try {
-    setProgress(20, 'Mapeando colunas…');
+    setProgress(5, 'Validando dados e criando ponto de restauração…');
     const rows = parsedRows.map(r => {
       const m = mapearColunas(r);
       m.fornecedor_id = uploadFornecedorId;
-      m.qtde_kg  = parseFloat(String(m.qtde_kg  || '0').replace(',','.')) || 0;
-      m.qtde_pc  = parseFloat(String(m.qtde_pc  || '0').replace(',','.')) || 0;
-      m.valor    = parseFloat(String(m.valor    || '0').replace(',','.')) || 0;
-      m.margem   = parseFloat(String(m.margem   || '0').replace(',','.')) || 0;
-      m.margem_grupo = parseFloat(String(m.margem_grupo || '0').replace(',','.')) || 0;
+      m.qtde_kg      = parseNumeroFlex(m.qtde_kg);
+      m.qtde_pc      = parseNumeroFlex(m.qtde_pc);
+      m.valor        = parseNumeroFlex(m.valor);
+      m.margem       = parseNumeroFlex(m.margem);
+      m.margem_grupo = parseNumeroFlex(m.margem_grupo);
       return m;
     });
+    if (!rows.length) throw new Error('A planilha não contém linhas válidas para importação.');
 
-    setProgress(15, 'Limpando pedidos anteriores…');
-    await db.from('pedidos_fornecedor').delete().eq('fornecedor_id', uploadFornecedorId);
+    backupRows = await carregarBackupFornecedor('pedidos_fornecedor', uploadFornecedorId);
+
+    setProgress(15, 'Substituindo pedidos anteriores com segurança…');
+    const { error: deleteError } = await db.from('pedidos_fornecedor').delete().eq('fornecedor_id', uploadFornecedorId);
+    if (deleteError) throw deleteError;
+    baseAlterada = true;
 
     const BATCH = 500;
-let inserted = 0;
-for (let i = 0; i < rows.length; i += BATCH) {
-  const batch = rows.slice(i, i + BATCH);
-  const { error: insErr } = await db.from('pedidos_fornecedor').insert(batch);
-  if (insErr) throw insErr;
-  inserted += batch.length;
-  const pct = Math.round(20 + (inserted / rows.length) * 70);
-  setProgress(pct, `Importando… ${inserted.toLocaleString('pt-BR')} de ${rows.length.toLocaleString('pt-BR')} linhas`);
-}
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const { error: insErr } = await db.from('pedidos_fornecedor').insert(batch);
+      if (insErr) throw insErr;
+      inserted += batch.length;
+      const pct = Math.round(20 + (inserted / rows.length) * 68);
+      setProgress(pct, `Importando… ${inserted.toLocaleString('pt-BR')} de ${rows.length.toLocaleString('pt-BR')} linhas`);
+    }
 
-   setProgress(95, 'Atualizando metadados…');
-let allRows = [], from = 0;
-while (true) {
-  const { data, error } = await db.from('pedidos_fornecedor').select('id_pedido_venda, valor, qtde_kg').eq('fornecedor_id', uploadFornecedorId).range(from, from + 999);
-  if (error) throw error;
-  if (!data?.length) break;
-  allRows = allRows.concat(data);
-  if (data.length < 1000) break;
-  from += 1000;
-}
-await db.from('fornecedores').update({
-  ultimo_upload:  new Date().toISOString(),
-  total_pedidos:  new Set(allRows.map(r => r.id_pedido_venda)).size,
-  total_linhas:   allRows.length,
-  total_valor:    allRows.reduce((a,r) => a + (r.valor||0), 0),
-  total_kg:       allRows.reduce((a,r) => a + (r.qtde_kg||0), 0),
-  status:         'ativo',
-}).eq('id', uploadFornecedorId);
+    setProgress(92, 'Validando a nova base…');
+    let allRows = [], from = 0;
+    while (true) {
+      const { data, error } = await db.from('pedidos_fornecedor').select('id_pedido_venda, valor, qtde_kg').eq('fornecedor_id', uploadFornecedorId).range(from, from + 999);
+      if (error) throw error;
+      if (!data?.length) break;
+      allRows = allRows.concat(data);
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    if (allRows.length !== rows.length) {
+      throw new Error(`Validação pós-importação divergente: esperado ${rows.length}, encontrado ${allRows.length}.`);
+    }
 
+    const { error: updateError } = await db.from('fornecedores').update({
+      ultimo_upload: new Date().toISOString(),
+      total_pedidos: new Set(allRows.map(r => r.id_pedido_venda)).size,
+      total_linhas:  allRows.length,
+      total_valor:   allRows.reduce((a,r) => a + parseNumeroFlex(r.valor), 0),
+      total_kg:      allRows.reduce((a,r) => a + parseNumeroFlex(r.qtde_kg), 0),
+      status:        'ativo',
+    }).eq('id', uploadFornecedorId);
+    if (updateError) throw updateError;
+
+    baseAlterada = false;
     setProgress(100, '✅ Importação concluída!');
     toast(`✅ ${rows.length.toLocaleString('pt-BR')} linhas importadas com sucesso!`);
     setTimeout(() => { fecharModal('modalUpload'); carregarFornecedores(); }, 1200);
 
   } catch(e) {
-    setProgress(0, '❌ Erro na importação');
-    toast('❌ Erro: ' + (e.message || JSON.stringify(e)));
-    document.getElementById('btnEnviar').disabled = false;
+    let restaurado = false;
+    if (baseAlterada && Array.isArray(backupRows)) {
+      try {
+        setProgress(5, 'Falha detectada. Restaurando a base anterior…');
+        await restaurarBackupFornecedor('pedidos_fornecedor', uploadFornecedorId, backupRows);
+        restaurado = true;
+      } catch (rollbackError) {
+        console.error('[Fornecedores] Falha ao restaurar pedidos após erro de importação', rollbackError);
+      }
+    }
+    const dadosPossivelmenteParciais = baseAlterada && !restaurado;
+    setProgress(0, restaurado
+      ? '❌ Importação cancelada — base anterior restaurada'
+      : dadosPossivelmenteParciais ? '⚠️ Falha crítica — restauração automática incompleta' : '❌ Importação cancelada sem alterar a base');
+    toast(restaurado
+      ? '❌ A importação falhou, mas os dados anteriores foram restaurados com segurança.'
+      : dadosPossivelmenteParciais
+        ? '⚠️ A importação falhou e a restauração automática não foi concluída. Não repita o upload; verifique a base antes de continuar.'
+        : '❌ A importação falhou antes de alterar a base. Os dados anteriores permanecem preservados.');
+    console.error('[Fornecedores] Falha no upload de pedidos', e);
+    btnEnviar.disabled = false;
   }
 }
 
@@ -1341,7 +1508,11 @@ function renderTabela() {
     return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
   });
 
-  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+  document.querySelectorAll('thead th[data-sort]').forEach(th => {
+    const ativo = th.dataset.sort === sortField;
+    th.classList.toggle('sorted', ativo);
+    th.setAttribute('aria-sort', ativo ? (sortAsc ? 'ascending' : 'descending') : 'none');
+  });
 
   const tbody = document.getElementById('tabelaBody');
   if (!list.length) {
@@ -1482,7 +1653,11 @@ function abrirModalDebitos() {
   abrirModal('modalDebitos');
 }
 
-function sortByDebito() { sortField = '__debito'; sortAsc = !sortAsc; renderTabela(); }
+function sortByDebito() {
+  if (sortField === '__debito') sortAsc = !sortAsc;
+  else { sortField = '__debito'; sortAsc = false; }
+  renderTabela();
+}
 
 /* ══════════════════════════════════════════════
    CSV EXPORT
@@ -1517,7 +1692,7 @@ async function carregarFornecedores() {
         <small style="display:block;margin-top:8px;color:var(--ghost)">
           Crie a tabela no Supabase com o SQL abaixo para começar.
         </small>
-        <button class="btn-primary" style="margin-top:12px" onclick="document.getElementById('sqlModal').classList.add('open')">
+        <button class="btn-primary" style="margin-top:12px" onclick="abrirModal('sqlModal')">
           Ver SQL de criação
         </button>
       </td></tr>`;
@@ -1549,19 +1724,46 @@ function nfeEv(e, tipo) {
 }
 
 function onNFeSelect(file) {
-  if (!file) return;
+  const validacao = validarArquivoPlanilha(file);
+  if (!validacao.ok) {
+    removerNFe();
+    toast(`⚠️ ${validacao.erro}`);
+    return;
+  }
+
   nfeFile = file;
+  nfeParsedRows = [];
   document.getElementById('nfePreview').classList.add('show');
   document.getElementById('nfePreviewName').textContent = file.name;
+  document.getElementById('nfePreviewMeta').textContent = (file.size / 1024).toFixed(1) + ' KB · validando…';
+  document.getElementById('btnEnviarNFe').disabled = true;
 
   const reader = new FileReader();
+  reader.onerror = () => {
+    nfeParsedRows = [];
+    document.getElementById('btnEnviarNFe').disabled = true;
+    document.getElementById('nfePreviewMeta').textContent = 'Não foi possível ler o arquivo.';
+    toast('❌ Não foi possível ler a planilha de NFe. Selecione outro arquivo.');
+  };
   reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: 'array' });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    nfeParsedRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-    document.getElementById('nfePreviewMeta').textContent =
-      (file.size / 1024).toFixed(1) + ' KB · ' + nfeParsedRows.length.toLocaleString('pt-BR') + ' linhas';
-    document.getElementById('btnEnviarNFe').disabled = false;
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      if (!wb.SheetNames?.length) throw new Error('A planilha não possui abas legíveis.');
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      if (!ws) throw new Error('A primeira aba da planilha não pôde ser lida.');
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) throw new Error('Nenhuma nota fiscal foi encontrada.');
+      nfeParsedRows = rows;
+      document.getElementById('nfePreviewMeta').textContent =
+        (file.size / 1024).toFixed(1) + ' KB · ' + rows.length.toLocaleString('pt-BR') + ' linhas';
+      document.getElementById('btnEnviarNFe').disabled = false;
+    } catch (err) {
+      nfeParsedRows = [];
+      document.getElementById('btnEnviarNFe').disabled = true;
+      document.getElementById('nfePreviewMeta').textContent = 'Planilha inválida ou incompatível.';
+      console.error('[Fornecedores] Falha ao interpretar planilha de NFe', err);
+      toast(`❌ Não foi possível interpretar a planilha de NFe: ${err.message || 'arquivo inválido'}`);
+    }
   };
   reader.readAsArrayBuffer(file);
 }
@@ -1597,18 +1799,7 @@ function mapearNFe(row) {
       if (row[alias] !== undefined) {
         let v = row[alias];
         if (campo === 'emissao' && v) v = normalizarData(String(v));
-        if (campo === 'valor') {
-          if (typeof v === 'number') {
-            v = v; // já é número correto, não mexe
-          } else {
-            let s = String(v).trim();
-            // só remove ponto de milhar se houver vírgula decimal (formato BR em texto)
-            if (s.includes(',')) {
-              s = s.replace(/\./g, '').replace(',', '.');
-            }
-            v = parseFloat(s) || 0;
-          }
-        }
+        if (campo === 'valor') v = parseNumeroFlex(v);
         mapped[campo] = v;
         break;
       }
@@ -1619,44 +1810,79 @@ function mapearNFe(row) {
 
 async function enviarNFe() {
   if (!nfeParsedRows.length) { toast('⚠️ Nenhum dado para importar.'); return; }
-  document.getElementById('btnEnviarNFe').disabled = true;
+  const btnEnviarNFe = document.getElementById('btnEnviarNFe');
+  if (btnEnviarNFe.disabled) return;
+  btnEnviarNFe.disabled = true;
   document.getElementById('nfeProgressWrap').classList.add('show');
 
+  let backupRows = null;
+  let baseAlterada = false;
   try {
-    setNFeProgress(10, 'Limpando notas anteriores…');
-    await db.from('notas_fiscais').delete().eq('fornecedor_id', nfeFornecedorId);
-
-    setNFeProgress(30, 'Mapeando colunas…');
+    setNFeProgress(5, 'Validando arquivo e criando ponto de restauração…');
     const rows = nfeParsedRows.map(r => {
       const m = mapearNFe(r);
       m.fornecedor_id = nfeFornecedorId;
       return m;
     }).filter(r => r.emissao || r.numero);
+    if (!rows.length) throw new Error('A planilha não contém notas fiscais válidas.');
+
+    backupRows = await carregarBackupFornecedor('notas_fiscais', nfeFornecedorId);
+
+    setNFeProgress(15, 'Substituindo notas anteriores com segurança…');
+    const { error: deleteError } = await db.from('notas_fiscais').delete().eq('fornecedor_id', nfeFornecedorId);
+    if (deleteError) throw deleteError;
+    baseAlterada = true;
 
     const BATCH = 500;
     let inserted = 0;
     for (let i = 0; i < rows.length; i += BATCH) {
-      const { error } = await db.from('notas_fiscais').insert(rows.slice(i, i + BATCH));
+      const batch = rows.slice(i, i + BATCH);
+      const { error } = await db.from('notas_fiscais').insert(batch);
       if (error) throw error;
-      inserted += Math.min(BATCH, rows.length - i);
-      setNFeProgress(Math.round(30 + inserted / rows.length * 65), `Importando… ${inserted} de ${rows.length}`);
+      inserted += batch.length;
+      setNFeProgress(Math.round(20 + inserted / rows.length * 75), `Importando… ${inserted} de ${rows.length}`);
     }
 
+    const { count, error: confirmError } = await db.from('notas_fiscais').select('id', { count: 'exact', head: true }).eq('fornecedor_id', nfeFornecedorId);
+    if (confirmError) throw confirmError;
+    if (Number(count) !== rows.length) {
+      throw new Error(`Validação pós-importação divergente: esperado ${rows.length}, encontrado ${Number(count) || 0}.`);
+    }
+
+    baseAlterada = false;
     setNFeProgress(100, '✅ Concluído!');
     toast(`✅ ${rows.length} notas importadas!`);
     setTimeout(() => fecharModal('modalNFe'), 1200);
 
   } catch (err) {
-    setNFeProgress(0, '❌ Erro');
-    toast('❌ ' + err.message);
-    document.getElementById('btnEnviarNFe').disabled = false;
+    let restaurado = false;
+    if (baseAlterada && Array.isArray(backupRows)) {
+      try {
+        setNFeProgress(5, 'Falha detectada. Restaurando notas anteriores…');
+        await restaurarBackupFornecedor('notas_fiscais', nfeFornecedorId, backupRows);
+        restaurado = true;
+      } catch (rollbackError) {
+        console.error('[Fornecedores] Falha ao restaurar NFe após erro de importação', rollbackError);
+      }
+    }
+    const dadosPossivelmenteParciais = baseAlterada && !restaurado;
+    setNFeProgress(0, restaurado
+      ? '❌ Importação cancelada — notas anteriores restauradas'
+      : dadosPossivelmenteParciais ? '⚠️ Falha crítica — restauração automática incompleta' : '❌ Importação cancelada sem alterar as notas');
+    toast(restaurado
+      ? '❌ A importação falhou, mas as notas anteriores foram restauradas.'
+      : dadosPossivelmenteParciais
+        ? '⚠️ A importação de NFe falhou e a restauração automática não foi concluída. Verifique as notas antes de tentar novamente.'
+        : '❌ A importação de NFe falhou antes de alterar a base. As notas anteriores permanecem preservadas.');
+    console.error('[Fornecedores] Falha no upload de NFe', err);
+    btnEnviarNFe.disabled = false;
   }
 }
 
 /* ══════════════════════════════════════════════
    INIT — chamado por último, todas as funções já definidas
 ══════════════════════════════════════════════ */
-document.getElementById('sqlModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('open'); });
+document.getElementById('sqlModal').addEventListener('click', function(e) { if (e.target === this) fecharModal('sqlModal'); });
 (async function initPage() {
   await window.PMGConnect.ready;
   db = window.PMGConnect.client;
