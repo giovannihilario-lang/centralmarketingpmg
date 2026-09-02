@@ -4,7 +4,8 @@
 
   const { useCallback, useEffect, useMemo, useRef, useState } = React;
   const html = htm.bind(React.createElement);
-  const DEMO_MODE = new URLSearchParams(location.search).get('demo') === '1';
+  const INITIAL_PARAMS = new URLSearchParams(location.search);
+  const DEMO_MODE = INITIAL_PARAMS.get('demo') === '1';
 
   const VIEWS = {
     dashboard: { label: 'Dashboard', eyebrow: 'Visão geral · 2026', icon: 'layout-dashboard' },
@@ -15,6 +16,9 @@
     documentos: { label: 'Documentos', eyebrow: 'Leitura e conferência', icon: 'scan-line' },
   };
   const NAV_VIEW_KEYS = ['dashboard', 'pagamentos', 'planejamento', 'receita', 'importar', 'documentos'];
+  const INITIAL_VIEW = NAV_VIEW_KEYS.includes(INITIAL_PARAMS.get('view')) ? INITIAL_PARAMS.get('view') : (INITIAL_PARAMS.get('documento') ? 'documentos' : 'dashboard');
+  const INITIAL_RECORD_ID = INITIAL_PARAMS.get('registro') || null;
+  const INITIAL_DOCUMENT_ID = INITIAL_PARAMS.get('documento') || null;
 
   const CATEGORIES = {
     cota_anual: { label: 'Cota anual', icon: 'badge-dollar-sign', tone: 'emerald' },
@@ -864,7 +868,7 @@
   }
 
   function App() {
-    const [view, setView] = useState('dashboard');
+    const [view, setView] = useState(INITIAL_VIEW);
     const [mobileNav, setMobileNav] = useState(false);
     const [commandOpen, setCommandOpen] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -880,7 +884,7 @@
     const [paymentModal, setPaymentModal] = useState(null);
     const [supplierRowModal, setSupplierRowModal] = useState(null);
     const [forecastGroup, setForecastGroup] = useState(null);
-    const [selectedId, setSelectedId] = useState(null);
+    const [selectedId, setSelectedId] = useState(INITIAL_RECORD_ID);
     const [supplierSelected, setSupplierSelected] = useState(null);
     const [paymentJump, setPaymentJump] = useState(null);
     const [revenueJump, setRevenueJump] = useState(null);
@@ -1043,6 +1047,7 @@
     const integrity = useMemo(() => buildIntegrityReport(data.records,data.payments,data.conferences,2026), [data.records,data.payments,data.conferences]);
     const openSupplier = useCallback(name => { if (name) { void ensureAuxiliary(); setSelectedId(null); setSupplierSelected(name); } }, [ensureAuxiliary]);
     const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, reload, notify, saving, setSaving, paymentJump, revenueJump, navigatePayments, navigateRevenue, openSupplier, integrity, openIntegrity:() => setIntegrityOpen(true), openForecastGroup:group => setForecastGroup(group), ensureAuxiliary,
+      initialDocumentId:INITIAL_DOCUMENT_ID,
       openRecord:record => { void ensureAuxiliary(); setSelectedId(record.id); }, editRecord:record => setRecordModal(record), newRecord:(defaults = {}) => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year, ...defaults }),
       newSupplierRow:(defaults = {}) => setSupplierRowModal(defaults),
       newPayment:record => setPaymentModal({ registro_id:record?.id || selectedId }), editPayment:payment => setPaymentModal(payment), saveConference, setView,

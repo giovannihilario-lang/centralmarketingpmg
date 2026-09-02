@@ -316,7 +316,7 @@
   function DocumentInbox({ context }) {
     const fileInput = useRef(null);
     const processingRef = useRef(false);
-    const [selectedEntryId, setSelectedEntryId] = useState(null);
+    const [selectedEntryId, setSelectedEntryId] = useState(() => context.initialDocumentId || null);
     const [activeItemId, setActiveItemId] = useState(null);
     const [queueFilter, setQueueFilter] = useState('pendentes');
     const [dragging, setDragging] = useState(false);

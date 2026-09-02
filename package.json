@@ -8,7 +8,8 @@
     "vercel:check": "node scripts/verificar-vercel-functions.js",
     "acompanhamento:gerar-carga": "node scripts/gerar-carga-acompanhamento.js",
     "acompanhamento:testar": "node scripts/testar-acompanhamento.js",
-    "documentos:testar": "node scripts/testar-documentos.js"
+    "documentos:testar": "node scripts/testar-documentos.js",
+    "central-hoje:testar": "node scripts/testar-central-hoje.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

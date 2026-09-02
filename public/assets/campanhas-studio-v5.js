@@ -4135,13 +4135,30 @@
 
   async function init() {
     document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) || 'light';
+    const params = new URLSearchParams(location.search);
+    const requestedView = params.get('view');
+    const requestedSearch = String(params.get('busca') || '').trim();
+    const requestedCampaign = params.get('campanha');
+
+    if (['dashboard','campaigns','products','representatives'].includes(requestedView)) app.view = requestedView;
+    if (requestedSearch) {
+      if (app.view === 'products') app.productSearch = requestedSearch;
+      else if (app.view === 'representatives') app.representativeSearch = requestedSearch;
+      else { app.view = 'campaigns'; app.campaignSearch = requestedSearch; }
+    }
+    if (requestedCampaign) app.view = 'campaigns';
+
     await DB.init();
     await loadCampaigns();
     renderView();
     icons();
     $('#contextOverlay').hidden = false;
     document.body.style.overflow = 'hidden';
-    void initializeContext();
+    const contextPromise = initializeContext();
+    if (requestedCampaign) {
+      await contextPromise.catch(() => null);
+      if (app.campaigns.some(item => String(item.id) === String(requestedCampaign))) await openWizard(requestedCampaign);
+    }
   }
 
   window.addEventListener('pmg-lucide-ready', () => icons());
