@@ -97,6 +97,10 @@ const state = {
 
 state.authorshipBackendVersionV385 = '';
 state.authorshipLastErrorV385 = null;
+state.suppliersV1B = [];
+state.supplierLinksReadyV1B = false;
+state.supplierFilterV1B = '';
+state.supplierLinkWarningV1B = '';
 
 const $ = id => document.getElementById(id);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -719,7 +723,10 @@ async function initializeUser() {
   state.me = profile;
   $('authScreen').classList.add('hidden'); $('app').classList.remove('hidden');
   await loadAll();
-  renderAll(); setupRealtime(); await updatePushStatus();
+  renderAll();
+  window.PMGDemandasWave2 = { client:db, profile:state.me, session:state.session, toast:(message,type)=>toast(message,type) };
+  window.dispatchEvent(new CustomEvent('pmg-demandas-ready'));
+  setupRealtime(); await updatePushStatus();
   const needsProfile = !state.me.perfil_configurado;
   if (needsProfile) openProfile(true);
   await handleUrlActions();
@@ -1404,6 +1411,7 @@ async function saveQuickItem(event) {
   event.preventDefault();
   if (saveQuickItem.inFlight) return;
   saveQuickItem.inFlight = true;
+  state.supplierLinkWarningV1B = '';
   setLoading(true);
   const wasEditing = Boolean(state.editingReminderId);
   try {
@@ -1411,7 +1419,9 @@ async function saveQuickItem(event) {
     else if (state.editingReminderId) await updateReminderV2();
     else await createReminderV2();
     closeModal('quickAddModal'); await Promise.all([loadTasks(), loadReminders(), loadNotifications(), loadActivities()]); renderAll();
-    await dispatchPendingPush(); toast(wasEditing ? 'Item atualizado.' : 'Item criado com sucesso.');
+    await dispatchPendingPush();
+    if (state.supplierLinkWarningV1B) toast(state.supplierLinkWarningV1B, 'error');
+    else toast(wasEditing ? 'Item atualizado.' : 'Item criado com sucesso.');
   } catch (error) { console.error(error); toast(errorMessage(error), 'error'); }
   finally {
     saveQuickItem.inFlight = false;
@@ -1449,6 +1459,7 @@ async function createTaskV2() {
     });
     if (assigneeError) throw assigneeError;
   }
+  return taskId;
 }
 async function createReminderV2() {
   const start = localDateTime($('reminderDate').value || todayKey(), $('reminderTime').value || '09:00');
@@ -1949,7 +1960,9 @@ async function saveEditedTask(event) {
       const { error: transferError } = await db.rpc('transferir_tarefa', { p_tarefa_id: taskId, p_novo_responsavel_id: desiredAssignee, p_observacao: 'Responsável principal alterado durante a edição da demanda.' });
       if (transferError) throw transferError;
     }
-    closeModal('editTaskModal'); await refreshData(); await openTask(taskId); await dispatchPendingPush(); toast('Demanda atualizada.');
+    const supplierLinked = await linkSupplierToTaskV1B(taskId, $('editTaskSupplier')?.value || null);
+    closeModal('editTaskModal'); await refreshData(); await openTask(taskId); await dispatchPendingPush();
+    toast(supplierLinked ? 'Demanda atualizada.' : 'Demanda atualizada, mas o vínculo com fornecedor não pôde ser salvo.', supplierLinked ? undefined : 'error');
   } catch (error) { toast(errorMessage(error), 'error'); } finally { setLoading(false); }
 }
 async function updateTaskStatus(taskId, status) {
@@ -5166,6 +5179,12 @@ function fillRecurrenceEditor(series, { convertTask = null } = {}) {
   $('recurrenceEditDueTime').value = String(series?.horario_prazo || due || '17:00').slice(0,5);
   $('recurrenceEditAlertTime').value = String(series?.horario_alerta || '09:00').slice(0,5);
   $('recurrenceEditDailyAlert').checked = series ? Boolean(series.alerta_diario) : true;
+  if ($('recurrenceEditSupplier')) {
+    const supplierValue = series?.fornecedor_id || convertTask?.fornecedor_id || '';
+    $('recurrenceEditSupplier').innerHTML = supplierOptionsV1B(supplierValue);
+    $('recurrenceEditSupplier').value = supplierValue ? String(supplierValue) : '';
+  }
+  $('recurrenceEditSupplierField')?.classList.toggle('hidden', !state.supplierLinksReadyV1B);
   $('recurrenceSeriesStatus').textContent = converting ? 'Nova série' : `Série ${recurrenceStatusLabel(series).toLowerCase()}`;
   $('recurrencePauseBtn').classList.toggle('hidden', converting || recurrenceSeriesStatus(series) === 'ended');
   $('recurrenceEndBtn').classList.toggle('hidden', converting || recurrenceSeriesStatus(series) === 'ended');
@@ -5242,6 +5261,10 @@ async function saveRecurrenceSeriesV36(event) {
         p_aplicar_ocorrencias: true
       });
       if (assigneeError) throw assigneeError;
+    }
+    if (seriesId && state.supplierLinksReadyV1B) {
+      const supplierId = $('recurrenceEditSupplier')?.value || null;
+      if (!await linkRecurringSupplierV2(seriesId, supplierId)) throw new Error('A recorrência foi atualizada, mas o fornecedor não pôde ser vinculado.');
     }
     closeModal('recurrenceModal');
     await refreshData();
@@ -6154,6 +6177,12 @@ async function saveRecurrenceGroupV381(event) {
       const { error } = await db.rpc('encerrar_demanda_recorrente', { p_id: obsoleteId });
       if (error) throw error;
     }
+    if (state.supplierLinksReadyV1B) {
+      const supplierId = $('recurrenceEditSupplier')?.value || null;
+      for (const seriesId of finalIds) {
+        if (!await linkRecurringSupplierV2(seriesId, supplierId)) throw new Error('A rotina foi atualizada, mas o fornecedor não pôde ser aplicado a todos os horários.');
+      }
+    }
     const { error: groupError } = await db.rpc('agrupar_recorrencias_v381', { p_recorrencias: finalIds, p_horarios: times });
     if (groupError) throw groupError;
     closeModal('recurrenceModal');
@@ -6332,3 +6361,260 @@ function bindUxV381Events(){
   document.addEventListener('click',event=>{const remove=event.target.closest('[data-remove-recurrence-time]');if(remove){state.recurrenceExtraTimesV381.splice(Number(remove.dataset.removeRecurrenceTime),1);renderCreateRecurrenceTimesV381();return;}const removeEdit=event.target.closest('[data-remove-recurrence-edit-time]');if(removeEdit){state.recurrenceEditExtraTimesV381.splice(Number(removeEdit.dataset.removeRecurrenceEditTime),1);renderEditRecurrenceTimesV381();}});
 }
 bindUxV381Events();
+
+
+/* =========================================================
+   WAVE 1B — FORNECEDOR CANÔNICO ↔ DEMANDAS
+   ========================================================= */
+function supplierByIdV1B(id) {
+  return (state.suppliersV1B || []).find(item => String(item.id) === String(id)) || null;
+}
+function supplierNameV1B(id) { return supplierByIdV1B(id)?.nome || ''; }
+function supplierOptionsV1B(selected = '') {
+  return `<option value="">Sem fornecedor vinculado</option>${(state.suppliersV1B || []).map(item => `<option value="${item.id}" ${String(item.id)===String(selected)?'selected':''}>${escapeHtml(item.nome)}${item.cnpj ? ` · ${escapeHtml(item.cnpj)}` : ''}</option>`).join('')}`;
+}
+async function loadSupplierLinksV1B() {
+  try {
+    const suppliersResult = await db.from('fornecedores').select('id,nome,cnpj,status').order('nome').limit(1000);
+    if (suppliersResult.error) throw suppliersResult.error;
+    state.suppliersV1B = suppliersResult.data || [];
+  } catch (error) {
+    state.suppliersV1B = [];
+    state.supplierLinksReadyV1B = false;
+    console.warn('[Demandas Wave 1B] cadastro de fornecedores indisponível:', error?.message || error);
+    return;
+  }
+  const probe = await db.from('tarefas').select('id,fornecedor_id').limit(1);
+  if (probe.error) {
+    state.supplierLinksReadyV1B = false;
+    if (!/fornecedor_id|schema cache|does not exist|column/i.test(String(probe.error?.message || probe.error))) console.warn('[Demandas Wave 1B] vínculo indisponível:', probe.error);
+  } else state.supplierLinksReadyV1B = true;
+}
+function populateSupplierControlsV1B() {
+  const ready = state.supplierLinksReadyV1B;
+  const item = $('itemSupplier'), edit = $('editTaskSupplier'), recurrence = $('recurrenceEditSupplier'), filter = $('taskSupplierFilter');
+  if (item) { const current=item.value; item.innerHTML=supplierOptionsV1B(current); if (current) item.value=current; }
+  if (edit) { const current=edit.value; edit.innerHTML=supplierOptionsV1B(current); if (current) edit.value=current; }
+  if (recurrence) { const current=recurrence.value; recurrence.innerHTML=supplierOptionsV1B(current); if (current) recurrence.value=current; }
+  if (filter) {
+    const current=state.supplierFilterV1B || filter.value;
+    filter.innerHTML=`<option value="">Todos os fornecedores</option>${(state.suppliersV1B||[]).map(row=>`<option value="${row.id}">${escapeHtml(row.nome)}</option>`).join('')}`;
+    filter.value=(state.suppliersV1B||[]).some(row=>String(row.id)===String(current))?String(current):'';
+    filter.classList.toggle('hidden', !ready);
+  }
+  syncSupplierFieldsV1B();
+}
+function syncSupplierFieldsV1B() {
+  const recurring=Boolean($('itemRecurringEnabled')?.checked);
+  $('itemSupplierField')?.classList.toggle('hidden', !state.supplierLinksReadyV1B);
+  $('editTaskSupplierField')?.classList.toggle('hidden', !state.supplierLinksReadyV1B);
+}
+async function linkSupplierToTaskV1B(taskId, supplierId) {
+  if (!state.supplierLinksReadyV1B || !taskId) return !supplierId;
+  try {
+    const { error } = await db.rpc('vincular_tarefa_fornecedor_v1', { p_tarefa_id:taskId, p_fornecedor_id:supplierId ? Number(supplierId) : null });
+    if (error) throw error;
+    const task=state.tasks.find(item=>item.id===taskId); if(task) task.fornecedor_id=supplierId ? Number(supplierId) : null;
+    return true;
+  } catch (error) {
+    console.warn('[Demandas Wave 1B] demanda salva, vínculo com fornecedor falhou:', error?.message || error);
+    return false;
+  }
+}
+const loadAllBeforeSupplierV1B = loadAll;
+loadAll = async function loadAllSupplierV1B() {
+  await loadAllBeforeSupplierV1B();
+  await loadSupplierLinksV1B();
+  populateSupplierControlsV1B();
+};
+const createTaskBeforeSupplierV1B = createTaskV2;
+createTaskV2 = async function createTaskSupplierV1B() {
+  const recurring=Boolean($('itemRecurringEnabled')?.checked);
+  const taskId=await createTaskBeforeSupplierV1B();
+  if (recurring || !taskId) return taskId;
+  const supplierId=$('itemSupplier')?.value || '';
+  if (supplierId && !(await linkSupplierToTaskV1B(taskId,supplierId))) state.supplierLinkWarningV1B='A demanda foi criada, mas o vínculo com fornecedor não pôde ser salvo. Abra a demanda e tente vincular novamente.';
+  return taskId;
+};
+const openQuickAddBeforeSupplierV1B = openQuickAdd;
+openQuickAdd = function openQuickAddSupplierV1B(type='demanda', preset={}) {
+  openQuickAddBeforeSupplierV1B(type,preset);
+  if(type!=='demanda') return;
+  populateSupplierControlsV1B();
+  const selected=preset.supplierId || state.supplierFilterV1B || '';
+  if($('itemSupplier')) $('itemSupplier').value=(state.suppliersV1B||[]).some(row=>String(row.id)===String(selected))?String(selected):'';
+  syncSupplierFieldsV1B();
+};
+const openEditTaskBeforeSupplierV1B = openEditTask;
+openEditTask = function openEditTaskSupplierV1B() {
+  openEditTaskBeforeSupplierV1B();
+  populateSupplierControlsV1B();
+  if($('editTaskSupplier')) $('editTaskSupplier').value=state.selectedTask?.fornecedor_id ? String(state.selectedTask.fornecedor_id) : '';
+};
+const filteredTasksBeforeSupplierV1B = filteredTasks;
+filteredTasks = function filteredTasksSupplierV1B() {
+  const supplierId=$('taskSupplierFilter')?.value || state.supplierFilterV1B || '';
+  return filteredTasksBeforeSupplierV1B().filter(task=>!supplierId || String(task.fornecedor_id||'')===String(supplierId));
+};
+const renderDemandasBeforeSupplierV1B = renderDemandas;
+renderDemandas = function renderDemandasSupplierV1B() {
+  populateSupplierControlsV1B();
+  renderDemandasBeforeSupplierV1B();
+};
+const taskCardHTMLBeforeSupplierV1B = taskCardHTML;
+taskCardHTML = function taskCardHTMLSupplierV1B(task) {
+  let html=taskCardHTMLBeforeSupplierV1B(task); const supplier=supplierByIdV1B(task.fornecedor_id);
+  if(!supplier) return html;
+  return html.replace('<span class="task-card-id">', `<a class="project-pill" href="/fornecedores.html?fornecedor=${encodeURIComponent(supplier.id)}" onclick="event.stopPropagation()"><i data-lucide="building-2"></i>${escapeHtml(supplier.nome)}</a><span class="task-card-id">`);
+};
+const renderTaskListBeforeSupplierV1B = renderTaskList;
+renderTaskList = function renderTaskListSupplierV1B() {
+  renderTaskListBeforeSupplierV1B();
+  document.querySelectorAll('#taskRows .task-row[data-open-task]').forEach(row=>{
+    const task=state.tasks.find(item=>item.id===row.dataset.openTask), supplier=supplierByIdV1B(task?.fornecedor_id); if(!supplier) return;
+    const small=row.querySelector('.task-row-title small'); if(small && !small.dataset.supplierV1b){ small.dataset.supplierV1b='1'; small.textContent=`Fornecedor: ${supplier.nome} · ${small.textContent}`; }
+  });
+};
+const renderTaskDrawerBeforeSupplierV1B = renderTaskDrawer;
+renderTaskDrawer = function renderTaskDrawerSupplierV1B() {
+  renderTaskDrawerBeforeSupplierV1B(); const task=state.selectedTask, supplier=supplierByIdV1B(task?.fornecedor_id), root=$('taskDrawerContent'); if(!task||!root) return;
+  const summary=root.querySelector('.task-detail-summary');
+  if(summary && !summary.querySelector('[data-task-supplier-v1b]')) summary.insertAdjacentHTML('beforeend', `<div data-task-supplier-v1b><span><i data-lucide="building-2"></i>Fornecedor</span><strong>${supplier ? `<a href="/fornecedores.html?fornecedor=${encodeURIComponent(supplier.id)}">${escapeHtml(supplier.nome)}</a>` : 'Sem fornecedor'}</strong></div>`);
+  refreshIcons();
+};
+const handleUrlActionsBeforeSupplierV1B = handleUrlActions;
+handleUrlActions = async function handleUrlActionsSupplierV1B() {
+  const params=new URLSearchParams(location.search), supplierId=params.get('fornecedor');
+  if(supplierId && state.supplierLinksReadyV1B && supplierByIdV1B(supplierId)) {
+    state.supplierFilterV1B=String(supplierId); state.view='demandas';
+    if($('taskSupplierFilter')) $('taskSupplierFilter').value=String(supplierId);
+    renderAll();
+    if(params.get('nova')==='1') setTimeout(()=>openQuickAdd('demanda',{supplierId}),120);
+  }
+  await handleUrlActionsBeforeSupplierV1B();
+};
+$('taskSupplierFilter')?.addEventListener('change',event=>{state.supplierFilterV1B=event.target.value||'';renderDemandas();refreshIcons();});
+$('itemRecurringEnabled')?.addEventListener('change',syncSupplierFieldsV1B);
+
+
+/* =========================================================
+   WAVE 2 — RELACIONAMENTOS OPERACIONAIS + FORNECEDOR EM RECORRÊNCIAS
+   ========================================================= */
+function entityLabelV2(row, kind) {
+  if (!row) return '';
+  if (kind === 'document') return `${row.nome_arquivo || 'Documento'}${row.status ? ` · ${row.status}` : ''}`;
+  if (kind === 'obligation') return `${row.titulo || 'Obrigação'}${row.status ? ` · ${row.status.replaceAll('_',' ')}` : ''}`;
+  if (kind === 'training') return `${row.titulo || row.descricao || 'Treinamento'}${row.inicio_em ? ` · ${formatDate(row.inicio_em, {year:true})}` : ''}`;
+  return row.titulo || row.nome || row.id || '';
+}
+function relationOptionsV2(rows, kind, selected='') {
+  return `<option value="">Sem ${kind === 'document' ? 'documento' : kind === 'obligation' ? 'obrigação' : 'treinamento'} vinculado</option>${(rows||[]).map(row=>`<option value="${escapeHtml(row.id)}" ${String(row.id)===String(selected)?'selected':''}>${escapeHtml(entityLabelV2(row,kind))}</option>`).join('')}`;
+}
+async function loadEntityRelationshipsV2() {
+  try {
+    const probe=await db.from('tarefas').select('id,campanha_ref,documento_id,obrigacao_id,treinamento_id,catalogo_contexto').limit(1);
+    if (probe.error) throw probe.error;
+    state.entityRelationshipsReadyV2=true;
+    const [docs, obligations, trainings] = await Promise.all([
+      db.from('acompanhamento_documentos_entrada').select('id,nome_arquivo,status,criado_em').order('criado_em',{ascending:false}).limit(250),
+      db.from('fornecedor_obrigacoes').select('id,fornecedor_id,titulo,status,prazo').order('atualizado_em',{ascending:false}).limit(500),
+      db.from('academia_reservas').select('id,titulo,descricao,inicio_em,status').eq('tipo_registro','treinamento').order('inicio_em',{ascending:false}).limit(300)
+    ]);
+    state.relationshipDocumentsV2=docs.error?[]:(docs.data||[]);
+    state.relationshipObligationsV2=obligations.error?[]:(obligations.data||[]);
+    state.relationshipTrainingsV2=trainings.error?[]:(trainings.data||[]);
+    [docs,obligations,trainings].filter(result=>result.error).forEach(result=>console.warn('[Demandas Wave 2] fonte de relacionamento indisponível:', result.error?.message||result.error));
+  } catch (error) {
+    state.entityRelationshipsReadyV2=false;
+    state.relationshipDocumentsV2=[]; state.relationshipObligationsV2=[]; state.relationshipTrainingsV2=[];
+    if (!/campanha_ref|documento_id|obrigacao_id|treinamento_id|catalogo_contexto|fornecedor_obrigacoes|schema cache|does not exist|column/i.test(String(error?.message||error))) console.warn('[Demandas Wave 2] relacionamentos indisponíveis:',error);
+  }
+}
+function relationshipSnapshotV2(prefix='item') {
+  const isEdit=prefix==='editTask';
+  const supplier=$(isEdit?'editTaskSupplier':'itemSupplier')?.value||'';
+  return {
+    supplierId:supplier?Number(supplier):null,
+    campaignRef:$(isEdit?'editTaskCampaignRef':'itemCampaignRef')?.value?.trim()||null,
+    documentId:$(isEdit?'editTaskDocument':'itemDocument')?.value||null,
+    obligationId:$(isEdit?'editTaskObligation':'itemObligation')?.value||null,
+    trainingId:$(isEdit?'editTaskTraining':'itemTraining')?.value||null,
+    catalogContext:$(isEdit?'editTaskCatalogContext':'itemCatalogContext')?.value?.trim()||null
+  };
+}
+function populateRelationshipControlsV2(prefix='item', task=null) {
+  const isEdit=prefix==='editTask';
+  const documentSelect=$(isEdit?'editTaskDocument':'itemDocument');
+  const obligationSelect=$(isEdit?'editTaskObligation':'itemObligation');
+  const trainingSelect=$(isEdit?'editTaskTraining':'itemTraining');
+  const supplierId=Number($(isEdit?'editTaskSupplier':'itemSupplier')?.value||task?.fornecedor_id||0)||null;
+  if(documentSelect){const current=task?.documento_id||documentSelect.value;documentSelect.innerHTML=relationOptionsV2(state.relationshipDocumentsV2,'document',current);documentSelect.value=current||'';}
+  if(obligationSelect){const current=task?.obrigacao_id||obligationSelect.value;const rows=(state.relationshipObligationsV2||[]).filter(row=>!supplierId||Number(row.fornecedor_id)===supplierId);obligationSelect.innerHTML=relationOptionsV2(rows,'obligation',current);obligationSelect.value=rows.some(row=>String(row.id)===String(current))?String(current):'';}
+  if(trainingSelect){const current=task?.treinamento_id||trainingSelect.value;trainingSelect.innerHTML=relationOptionsV2(state.relationshipTrainingsV2,'training',current);trainingSelect.value=current||'';}
+  const campaign=$(isEdit?'editTaskCampaignRef':'itemCampaignRef'); if(campaign&&task)campaign.value=task.campanha_ref||'';
+  const catalog=$(isEdit?'editTaskCatalogContext':'itemCatalogContext'); if(catalog&&task)catalog.value=task.catalogo_contexto||'';
+  const details=$(isEdit?'editTaskEntityRelations':'itemEntityRelations');
+  if(details){details.classList.toggle('hidden',!state.entityRelationshipsReadyV2); if(task&&(task.campanha_ref||task.documento_id||task.obrigacao_id||task.treinamento_id||task.catalogo_contexto)) details.open=true;}
+}
+async function linkTaskEntitiesV2(taskId, values) {
+  if(!state.entityRelationshipsReadyV2||!taskId) return {ok:!Object.values(values||{}).some(Boolean), error:null};
+  const {error}=await db.rpc('vincular_tarefa_entidades_v2',{
+    p_tarefa_id:taskId,
+    p_fornecedor_id:values.supplierId,
+    p_campanha_ref:values.campaignRef,
+    p_documento_id:values.documentId,
+    p_obrigacao_id:values.obligationId,
+    p_treinamento_id:values.trainingId,
+    p_catalogo_contexto:values.catalogContext
+  });
+  if(error){console.warn('[Demandas Wave 2] demanda salva, relacionamento complementar falhou:',error?.message||error);return {ok:false,error};}
+  const task=state.tasks.find(item=>String(item.id)===String(taskId)); if(task)Object.assign(task,{fornecedor_id:values.supplierId,campanha_ref:values.campaignRef,documento_id:values.documentId,obrigacao_id:values.obligationId,treinamento_id:values.trainingId,catalogo_contexto:values.catalogContext});
+  return {ok:true,error:null};
+}
+async function linkRecurringSupplierV2(recurringId,supplierId) {
+  if(!recurringId||!supplierId||!state.entityRelationshipsReadyV2) return true;
+  const {error}=await db.rpc('vincular_recorrencia_fornecedor_v2',{p_recorrencia_id:recurringId,p_fornecedor_id:Number(supplierId)});
+  if(error){console.warn('[Demandas Wave 2] recorrência criada, vínculo com fornecedor falhou:',error?.message||error);return false;} return true;
+}
+const loadAllBeforeRelationshipsV2=loadAll;
+loadAll=async function loadAllRelationshipsV2(){await loadAllBeforeRelationshipsV2();await loadEntityRelationshipsV2();populateRelationshipControlsV2('item');};
+const openQuickAddBeforeRelationshipsV2=openQuickAdd;
+openQuickAdd=function openQuickAddRelationshipsV2(type='demanda',preset={}){openQuickAddBeforeRelationshipsV2(type,preset);if(type!=='demanda')return;populateRelationshipControlsV2('item');if($('itemCampaignRef'))$('itemCampaignRef').value=preset.campaignRef||'';if($('itemCatalogContext'))$('itemCatalogContext').value=preset.catalogContext||'';};
+const openEditTaskBeforeRelationshipsV2=openEditTask;
+openEditTask=function openEditTaskRelationshipsV2(){openEditTaskBeforeRelationshipsV2();populateRelationshipControlsV2('editTask',state.selectedTask);};
+const createTaskBeforeRelationshipsV2=createTaskV2;
+createTaskV2=async function createTaskRelationshipsV2(){
+  const values=relationshipSnapshotV2('item');
+  const recurring=Boolean($('itemRecurringEnabled')?.checked);
+  const result=await createTaskBeforeRelationshipsV2();
+  if(recurring){
+    if(result&&values.supplierId&&!await linkRecurringSupplierV2(result,values.supplierId)) state.supplierLinkWarningV1B='A rotina foi criada, mas o fornecedor não pôde ser vinculado.';
+    return result;
+  }
+  if(result){const linked=await linkTaskEntitiesV2(result,values);if(!linked.ok)state.supplierLinkWarningV1B='A demanda foi criada, mas um dos relacionamentos não pôde ser salvo. A demanda continua preservada.';}
+  return result;
+};
+const createRecurringSeriesFromFormBeforeRelationshipsV2=createRecurringSeriesFromFormV381;
+createRecurringSeriesFromFormV381=async function createRecurringSeriesFromFormRelationshipsV2(time){const id=await createRecurringSeriesFromFormBeforeRelationshipsV2(time);const supplierId=$('itemSupplier')?.value||'';if(id&&supplierId&&!await linkRecurringSupplierV2(id,supplierId)){const error=new Error('A série foi criada, mas o fornecedor não pôde ser vinculado.');error.pmgRelationshipFailed=true;throw error;}return id;};
+const saveEditedTaskBeforeRelationshipsV2=saveEditedTask;
+saveEditedTask=async function saveEditedTaskRelationshipsV2(event){
+  // O fluxo legado salva os campos da demanda; o relacionamento complementar é salvo em seguida no mesmo gesto.
+  const taskId=$('editTaskId')?.value; const values=relationshipSnapshotV2('editTask');
+  await saveEditedTaskBeforeRelationshipsV2(event);
+  if(!$('editTaskModal')?.classList.contains('hidden')) return;
+  if(!taskId||!state.tasks.some(item=>String(item.id)===String(taskId)))return;
+  const linked=await linkTaskEntitiesV2(taskId,values);
+  if(!linked.ok)toast('A demanda foi salva, mas um dos vínculos operacionais não pôde ser atualizado.','error');
+  else {await loadTasks(); state.selectedTask=state.tasks.find(item=>String(item.id)===String(taskId))||state.selectedTask; if(!$('taskDrawer')?.classList.contains('hidden')) renderTaskDrawer();}
+};
+$('itemSupplier')?.addEventListener('change',()=>populateRelationshipControlsV2('item'));
+$('editTaskSupplier')?.addEventListener('change',()=>populateRelationshipControlsV2('editTask',state.selectedTask));
+const renderTaskDrawerBeforeRelationshipsV2=renderTaskDrawer;
+renderTaskDrawer=function renderTaskDrawerRelationshipsV2(){renderTaskDrawerBeforeRelationshipsV2();const task=state.selectedTask,root=$('taskDrawerContent');if(!task||!root)return;const links=[];
+  if(task.campanha_ref)links.push(`<a href="/campanhas.html?view=campaigns&busca=${encodeURIComponent(task.campanha_ref)}"><i data-lucide="trophy"></i><span>Campanha</span><strong>${escapeHtml(task.campanha_ref)}</strong></a>`);
+  if(task.documento_id)links.push(`<a href="/acompanhamento.html?view=documentos&documento=${encodeURIComponent(task.documento_id)}"><i data-lucide="file-text"></i><span>Documento</span><strong>Abrir documento</strong></a>`);
+  if(task.obrigacao_id)links.push(`<a href="/operacoes.html?view=obrigacoes&obrigacao=${encodeURIComponent(task.obrigacao_id)}"><i data-lucide="clipboard-list"></i><span>Obrigação</span><strong>Abrir pendência</strong></a>`);
+  if(task.treinamento_id)links.push(`<a href="/demandas.html?view=academia&treinamento=${encodeURIComponent(task.treinamento_id)}"><i data-lucide="graduation-cap"></i><span>Treinamento</span><strong>Abrir Academia</strong></a>`);
+  if(task.catalogo_contexto)links.push(`<a href="/catalogo.html?contexto=${encodeURIComponent(task.catalogo_contexto)}"><i data-lucide="book-open"></i><span>Catálogo</span><strong>${escapeHtml(task.catalogo_contexto)}</strong></a>`);
+  if(!links.length)return; const summary=root.querySelector('.task-detail-summary'); if(summary&&!summary.querySelector('[data-task-relations-v2]'))summary.insertAdjacentHTML('afterend',`<section class="task-entity-links-v2" data-task-relations-v2><span class="eyebrow">Relacionado a</span><div>${links.join('')}</div></section>`);refreshIcons();
+};

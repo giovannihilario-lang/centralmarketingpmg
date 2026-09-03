@@ -111,7 +111,7 @@ assert(centralHtml.includes('.header-button{min-width:44px;min-height:44px') && 
 assert(centralUi.includes("http://localhost:3001/api/dados-diarios?acao=status"), 'Central deve consultar saúde/frescor do PMG Bridge');
 assert(acompanhamentoJs.includes("INITIAL_PARAMS.get('registro')") && acompanhamentoJs.includes("INITIAL_PARAMS.get('documento')"), 'Acompanhamento deve aceitar deep links');
 assert(documentosJs.includes('context.initialDocumentId'), 'Documentos deve respeitar o deep link recebido');
-assert(fornecedoresHtml.includes("params.get('fornecedor')") && fornecedoresHtml.includes("params.get('status')"), 'Fornecedores deve aceitar deep links e filtros');
+assert(fornecedoresHtml.includes('fornecedor-360.js') && fornecedoresHtml.includes("params.get('status')"), 'Fornecedores deve aceitar deep link do Fornecedor 360 e filtros');
 assert(campanhasJs.includes("params.get('campanha')") && campanhasJs.includes("params.get('busca')"), 'Campanhas deve aceitar deep links da busca global');
 assert(catalogAlias.includes("/catalogo.html${location.search || ''}${location.hash || ''}"), 'Rota histórica do catálogo deve apontar para a implementação atual');
 

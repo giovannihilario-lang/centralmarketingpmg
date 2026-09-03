@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { automationMatches, automationIdempotencyKey } from '../public/assets/wave2-core.js';
+const today='2026-09-03';
+assert.equal(automationMatches({ativo:true,gatilho:'obrigacao_prazo',antecedencia:3},{prazo:'2026-09-06',status:'pendente',direcao_responsabilidade:'fornecedor'},{today}),true);
+assert.equal(automationMatches({ativo:false,gatilho:'obrigacao_prazo',antecedencia:3},{prazo:'2026-09-06',status:'pendente'},{today}),false);
+assert.equal(automationMatches({ativo:true,gatilho:'pagamento_atrasado'},{vencimento:'2026-09-01',status:'pendente'},{today}),true);
+assert.equal(automationMatches({ativo:true,gatilho:'campanha_fim',antecedencia:2},{endDate:'2026-09-05'},{today}),true);
+assert.equal(automationMatches({ativo:true,gatilho:'documento_revisao'},{status:'aguardando_conferencia'},{today}),true);
+assert.equal(automationMatches({ativo:true,gatilho:'snapshot_desatualizado'},{stale:true},{today}),true);
+assert.equal(automationMatches({ativo:true,gatilho:'bridge_indisponivel'},{ok:false},{today}),true);
+assert.equal(automationMatches({ativo:true,gatilho:'academia_nao_inscrito'},{nao_inscritos:4},{today}),true);
+assert.equal(automationIdempotencyKey('r','obrigacao','o1','obrigacao_prazo','2026-09-03'),automationIdempotencyKey('r','obrigacao','o1','obrigacao_prazo','2026-09-03'));
+const sql=fs.readFileSync(new URL('../sql/27-WAVE2-OPERACOES.sql',import.meta.url),'utf8');
+assert.match(sql,/idempotency_key text not null unique/);
+assert.match(sql,/executar_automacao_evento_wave2/);
+assert.match(sql,/processar_automacoes_operacionais_wave2/);
+const ui=fs.readFileSync(new URL('../public/assets/wave2-operacoes.js',import.meta.url),'utf8');
+assert.match(ui,/Prévia não destrutiva/);
+assert.match(ui,/ativo:true/,'preview precisa avaliar regra como ativa sem persistir');
+const cron=fs.readFileSync(new URL('../api/notificar-demandas.js',import.meta.url),'utf8');
+assert.match(cron,/processar_automacoes_operacionais_wave2/,'cron existente deve processar Wave 2');
+
+assert.match(sql,/coalesce\(public\.meu_colaborador_id\(\),v_resp\)/,'Cron deve usar responsável como criador fallback da Demanda.');
+assert.match(sql,/documento_concluido/,'Deve suportar documento concluído.');
+assert.match(sql,/importacao_falhou/,'Deve processar falha de importação.');
+console.log('AUTOMACOES_WAVE2: PASS');

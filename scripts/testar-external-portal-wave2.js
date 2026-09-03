@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../sql/27-WAVE2-OPERACOES.sql',import.meta.url),'utf8');
+assert.match(sql,/gen_random_bytes\(32\)/,'token externo deve ter entropia criptográfica');
+assert.match(sql,/digest\(v_raw,'sha256'\)/,'token bruto não deve ser persistido');
+assert.match(sql,/revogado_em is null/);assert.match(sql,/expira_em is null or t\.expira_em>now\(\)/);
+assert.match(sql,/t\.fornecedor_id=p_fornecedor_id and t\.obrigacao_id=p_obrigacao_id/,'finalização deve validar escopo do token');
+assert.match(sql,/idx_fornecedor_submissoes_token_hash/,'retry do mesmo arquivo deve ser idempotente');
+const server=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
+for(const route of ['/api/wave2/portal/context','/api/wave2/portal/signed-upload','/api/wave2/portal/complete'])assert.ok(server.includes(route),`rota externa ausente ${route}`);
+for(const marker of ['WAVE2_TOKEN_INVALID','WAVE2_PATH_SCOPE','WAVE2_MIME_SPOOF','WAVE2_FILE_TOO_LARGE'])assert.ok(server.includes(marker),`proteção ausente ${marker}`);
+assert.match(server,/supplier\/\$\{Number\(ctx\.fornecedor_id\)\}\/obligation\/\$\{String\(ctx\.obrigacao_id\)\}/);
+const portal=fs.readFileSync(new URL('../public/assets/fornecedor-envio.js',import.meta.url),'utf8');
+assert.match(portal,/inspectFileSignature/);assert.match(portal,/received|recebido/i);
+const html=fs.readFileSync(new URL('../public/fornecedor-envio.html',import.meta.url),'utf8');
+assert.doesNotMatch(html,/central\.html|acompanhamento\.html|demandas\.html/,'portal não deve expor navegação interna');
+console.log('EXTERNAL_PORTAL_WAVE2: PASS');

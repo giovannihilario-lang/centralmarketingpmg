@@ -285,6 +285,11 @@ async function processPending(supabase) {
     console.warn('[Demandas automacoes]', automationError.message);
   }
 
+  const { error: wave2AutomationError } = await supabase.rpc('processar_automacoes_operacionais_wave2');
+  if (wave2AutomationError && !/function .* does not exist/i.test(wave2AutomationError.message || '')) {
+    console.warn('[Wave2 automacoes]', wave2AutomationError.message);
+  }
+
   const { error: summaryError } = await supabase.rpc('gerar_resumo_diario_demandas');
   if (summaryError && !/function .* does not exist/i.test(summaryError.message || '')) {
     console.warn('[Demandas resumo diario]', summaryError.message);

@@ -9,7 +9,19 @@
     "acompanhamento:gerar-carga": "node scripts/gerar-carga-acompanhamento.js",
     "acompanhamento:testar": "node scripts/testar-acompanhamento.js",
     "documentos:testar": "node scripts/testar-documentos.js",
-    "central-hoje:testar": "node scripts/testar-central-hoje.js"
+    "central-hoje:testar": "node scripts/testar-central-hoje.js",
+    "fornecedores:identidade:testar": "node scripts/testar-fornecedor-identidade.js",
+    "wave1b:testar": "node scripts/testar-wave1b.js",
+    "calendario:testar": "node scripts/testar-calendario-wave2.js",
+    "fornecedores:obrigacoes:testar": "node scripts/testar-fornecedores-obrigacoes.js",
+    "fornecedores:assets:testar": "node scripts/testar-fornecedores-assets.js",
+    "external-portal:testar": "node scripts/testar-external-portal-wave2.js",
+    "automacoes:testar": "node scripts/testar-automacoes-wave2.js",
+    "academia:testar": "node scripts/testar-academia-wave2.js",
+    "relacionamentos:testar": "node scripts/testar-relacionamentos-wave2.js",
+    "wave2:security": "node scripts/testar-wave2-security.js",
+    "wave2:testar": "node scripts/testar-wave2.js",
+    "test": "npm run wave2:testar && npm run wave1b:testar && npm run central-hoje:testar && npm run acompanhamento:testar && npm run documentos:testar && node scripts/testar-planejamento.js && node scripts/testar-reescaneamento.js && npm run vercel:check"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

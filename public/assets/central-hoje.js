@@ -24,9 +24,15 @@ const state = {
   payments:[],
   documents:[],
   suppliers:[],
+  supplierIdentities:[],
   campaigns:[],
   representatives:[],
   products:[],
+  obligations:[],
+  materials:[],
+  automationExecutions:[],
+  trainings:[],
+  registrations:[],
   recent:[],
   snapshot:null,
   sourceHealth:new Map(),
@@ -195,11 +201,22 @@ async function loadPaymentWindow(db) {
   return [...overdue, ...upcoming].filter((payment, index, all) => all.findIndex(item => item.id === payment.id) === index);
 }
 
+async function loadSupplierIdentities() {
+  try {
+    const result=await state.client.from('fornecedor_identidades').select('fornecedor_id,tipo,origem,valor_original,valor_normalizado,estado').eq('estado','confirmado').limit(3000);
+    if(result.error) throw result.error;
+    return result.data || [];
+  } catch (error) {
+    if (!/fornecedor_identidades|schema cache|does not exist|relation/i.test(String(error?.message || error))) console.warn('[Central de Hoje] aliases de fornecedores:', error?.message || error);
+    return [];
+  }
+}
+
 async function loadPrimaryData() {
   const db = state.client;
   const profileId = state.me?.id;
 
-  const [tasks, executors, payments, documents, suppliers, taskActivities, financeActivities] = await Promise.all([
+  const [tasks, executors, payments, documents, suppliers, supplierIdentities, taskActivities, financeActivities, obligations, materials, automationExecutions, trainings, registrations, operationalAudit] = await Promise.all([
     safeQuery('Demandas', () => db.from('tarefas').select('*').is('arquivada_em', null).order('atualizado_em', { ascending:false }).limit(800)),
     safeQuery('Responsáveis', () => db.from('tarefa_executores').select('tarefa_id,colaborador_id').limit(2500)),
     loadPaymentWindow(db),
@@ -212,6 +229,7 @@ async function loadPrimaryData() {
       .select('id,nome,cnpj,categoria,contato,email,status,ultimo_upload,atualizado_em')
       .order('nome', { ascending:true })
       .limit(700)),
+    loadSupplierIdentities(),
     safeQuery('Histórico de demandas', () => db.from('atividades_tarefa')
       .select('id,tarefa_id,ator_id,tipo,detalhes,criado_em')
       .order('criado_em', { ascending:false })
@@ -220,6 +238,12 @@ async function loadPrimaryData() {
       .select('id,registro_id,tipo,resumo,criado_em,registro:acompanhamento_registros(id,codigo,fornecedor,titulo)')
       .order('criado_em', { ascending:false })
       .limit(18)),
+    safeQuery('Obrigações Wave 2', () => db.from('fornecedor_obrigacoes').select('id,fornecedor_id,tipo,titulo,prazo,status,direcao_responsabilidade,responsavel_id,atualizado_em').not('status','in','(aprovado,dispensado)').order('prazo',{ascending:true,nullsFirst:false}).limit(500)),
+    safeQuery('Materiais Wave 2', () => db.from('fornecedor_assets').select('id,fornecedor_id,obrigacao_id,nome_original,tipo,status_revisao,criado_em').eq('status_revisao','aguardando').order('criado_em',{ascending:true}).limit(300)),
+    safeQuery('Automações Wave 2', () => db.from('automacao_execucoes').select('id,automacao_id,gatilho,entidade_tipo,entidade_id,status,error_category,error_message,criado_em').eq('status','erro').order('criado_em',{ascending:false}).limit(80)),
+    safeQuery('Academia treinamentos', () => db.from('academia_reservas').select('id,titulo,inicio_em,inscricao_limite,fornecedor_id,status,ativo').eq('tipo_registro','treinamento').order('inicio_em',{ascending:true}).limit(200)),
+    safeQuery('Academia inscrições', () => db.from('academia_inscricoes').select('id,treinamento_id,representante_codigo,match_status').limit(5000)),
+    safeQuery('Auditoria operacional', () => db.from('operational_audit_events').select('id,modulo,acao,entidade_tipo,entidade_id,fornecedor_id,criado_em').order('criado_em',{ascending:false}).limit(24)),
   ]);
 
   state.tasks = tasks;
@@ -227,6 +251,12 @@ async function loadPrimaryData() {
   state.payments = payments;
   state.documents = documents;
   state.suppliers = suppliers;
+  state.supplierIdentities = supplierIdentities;
+  state.obligations = obligations;
+  state.materials = materials;
+  state.automationExecutions = automationExecutions;
+  state.trainings = trainings;
+  state.registrations = registrations;
 
   const taskById = new Map(tasks.map(task => [task.id, task]));
   const recentTasks = taskActivities.map(activity => {
@@ -248,10 +278,11 @@ async function loadPrimaryData() {
     timestamp:activity.criado_em,
     href:`/acompanhamento.html?registro=${encodeURIComponent(activity.registro_id || '')}`,
   }));
-  state.recent = [...recentTasks, ...recentFinance]
+  const recentOperational=(operationalAudit||[]).map(activity=>({id:`op:${activity.id}`,module:'Operações',title:String(activity.acao||'Atualização').replaceAll('_',' '),detail:activity.entidade_tipo||activity.modulo||'Evento operacional',timestamp:activity.criado_em,href:activity.fornecedor_id?`/fornecedores.html?fornecedor=${encodeURIComponent(activity.fornecedor_id)}`:'/operacoes.html'}));
+  state.recent = [...recentTasks, ...recentFinance, ...recentOperational]
     .filter(item => item.timestamp)
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, 14);
+    .slice(0, 16);
 
   if (profileId) {
     // Consulta propositalmente separada: uma tabela de notificações antiga não
@@ -279,6 +310,21 @@ function rebuildDerivedState() {
   };
   state.alerts = buildOperationalAlerts(input);
   state.metrics = buildHomeMetrics(input);
+  const today=dateKey(), week=futureDate(7), supplierById=new Map(state.suppliers.map(row=>[String(row.id),row]));
+  const openObligations=(state.obligations||[]).filter(o=>!['aprovado','dispensado'].includes(o.status));
+  const overdueObligations=openObligations.filter(o=>o.prazo&&String(o.prazo).slice(0,10)<today);
+  const dueObligations=openObligations.filter(o=>o.prazo&&String(o.prazo).slice(0,10)>=today&&String(o.prazo).slice(0,10)<=week);
+  state.metrics.wave2Obligations=openObligations.length;state.metrics.wave2Materials=(state.materials||[]).length;state.metrics.wave2AutomationErrors=(state.automationExecutions||[]).length;
+  if(overdueObligations.length)state.alerts.push({id:'wave2-obligations-overdue',category:'Fornecedores',severity:'critical',title:`${overdueObligations.length} obrigação(ões) de fornecedor atrasada(s)`,description:'Há materiais ou informações com prazo vencido. Abra a matriz para separar o que depende da PMG e do fornecedor.',href:'/operacoes.html?view=obrigacoes&status=atrasado',action:'Resolver'});
+  if(dueObligations.length)state.alerts.push({id:'wave2-obligations-due',category:'Fornecedores',severity:'important',title:`${dueObligations.length} obrigação(ões) vencem nesta semana`,description:'Pendências próximas do prazo precisam de acompanhamento antes de virarem urgência.',href:'/operacoes.html?view=obrigacoes&status=semana',action:'Ver pendências'});
+  if(state.materials.length)state.alerts.push({id:'wave2-assets-review',category:'Materiais',severity:'important',title:`${state.materials.length} material(is) aguardando revisão`,description:'Materiais recebidos pelo time ou portal externo ainda não foram aprovados.',href:'/operacoes.html?view=materiais&status=aguardando',action:'Revisar'});
+  if(state.automationExecutions.length)state.alerts.push({id:'wave2-automation-errors',category:'Automações',severity:'critical',title:`${state.automationExecutions.length} falha(s) recente(s) de automação`,description:'A execução ficou registrada com erro e pode ser analisada sem repetir ações já concluídas.',href:'/operacoes.html?view=automacoes&status=erro',action:'Diagnosticar'});
+  const repCodes=new Set((state.representatives||[]).map(r=>String(r.code||r.codigo||r.id||'').replace(/^snapshot:/,'')).filter(Boolean));
+  const upcoming=(state.trainings||[]).filter(t=>t.ativo!==false&&t.inicio_em&&dateKey(t.inicio_em)>=today&&dateKey(t.inicio_em)<=week);
+  let academyMissing=0, academyTraining=null;
+  for(const t of upcoming){const registered=new Set((state.registrations||[]).filter(r=>String(r.treinamento_id)===String(t.id)&&r.match_status==='resolvido'&&r.representante_codigo).map(r=>String(r.representante_codigo)));const missing=[...repCodes].filter(code=>!registered.has(code)).length;if(missing>academyMissing){academyMissing=missing;academyTraining=t;}}
+  state.metrics.academyNotRegistered=academyMissing;
+  if(academyMissing&&academyTraining)state.alerts.push({id:`wave2-academy-${academyTraining.id}`,category:'Academia',severity:'important',title:`${academyMissing} representante(s) ainda não inscrito(s)`,description:`Treinamento ${academyTraining.titulo||''} está próximo. A lista é composta pela base ativa menos inscrições resolvidas.`,href:`/demandas.html?view=academia&treinamento=${encodeURIComponent(academyTraining.id)}`,action:'Ver lista'});
 }
 
 function severityLabel(level) {
@@ -293,6 +339,9 @@ function renderMetrics() {
     ['Documentos para revisar', metrics.pendingDocuments || 0, '/acompanhamento.html?view=documentos', 'info'],
     ['Fornecedores pendentes', metrics.suppliersPending || 0, '/fornecedores.html?status=sem_dados', 'neutral'],
     ['Campanhas terminando', metrics.campaignsEnding || 0, '/campanhas.html', 'neutral'],
+    ['Pendências de fornecedores', metrics.wave2Obligations || 0, '/operacoes.html?view=obrigacoes', 'important'],
+    ['Materiais para revisar', metrics.wave2Materials || 0, '/operacoes.html?view=materiais', 'info'],
+    ['Academia · não inscritos', metrics.academyNotRegistered || 0, '/demandas.html?view=academia', 'neutral'],
   ];
   $('#todayMetrics').innerHTML = cards.map(([label, value, href, tone]) => `
     <a class="metric-card ${tone}" href="${href}">
@@ -459,6 +508,10 @@ async function searchRemote(query, seq) {
       .select('id,nome_arquivo,status,criado_em')
       .ilike('nome_arquivo', pattern)
       .limit(SEARCH_LIMIT)),
+    safeQuery('Busca obrigações', () => db.from('fornecedor_obrigacoes').select('id,fornecedor_id,titulo,status,prazo').ilike('titulo',pattern).limit(SEARCH_LIMIT)),
+    safeQuery('Busca contatos', () => db.from('fornecedor_contatos').select('id,fornecedor_id,nome,departamento,email').ilike('nome',pattern).limit(SEARCH_LIMIT)),
+    safeQuery('Busca treinamentos', () => db.from('academia_reservas').select('id,titulo,inicio_em').eq('tipo_registro','treinamento').ilike('titulo',pattern).limit(SEARCH_LIMIT)),
+    safeQuery('Busca materiais', () => db.from('fornecedor_assets').select('id,fornecedor_id,nome_original,tipo,status_revisao').ilike('nome_original',pattern).limit(SEARCH_LIMIT)),
     fetch(`/api/produtos-supabase?busca=${encodeURIComponent(q)}&limite=${SEARCH_LIMIT}`, { cache:'no-store' })
       .then(async response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -470,7 +523,7 @@ async function searchRemote(query, seq) {
         return [];
       }),
   ];
-  const [recordsBySupplier, recordsByTitle, documents, products] = await Promise.all(tasks);
+  const [recordsBySupplier, recordsByTitle, documents, obligations, contacts, trainings, materials, products] = await Promise.all(tasks);
   if (seq !== state.searchSeq) return [];
   const records = [...recordsBySupplier, ...recordsByTitle].filter((record, index, all) => all.findIndex(item => item.id === record.id) === index);
   return [
@@ -483,6 +536,10 @@ async function searchRemote(query, seq) {
       type:'Documento', icon:'D', title:document.nome_arquivo || 'Documento', detail:document.status || 'Documento financeiro',
       href:`/acompanhamento.html?view=documentos&documento=${encodeURIComponent(document.id)}`,
     })),
+    ...obligations.map(item=>({type:'Obrigação',icon:'O',title:item.titulo,detail:[state.suppliers.find(s=>String(s.id)===String(item.fornecedor_id))?.nome,item.status,item.prazo].filter(Boolean).join(' · '),href:`/operacoes.html?view=obrigacoes&obrigacao=${encodeURIComponent(item.id)}`})),
+    ...contacts.map(item=>({type:'Contato',icon:'C',title:item.nome,detail:[item.departamento,item.email,state.suppliers.find(s=>String(s.id)===String(item.fornecedor_id))?.nome].filter(Boolean).join(' · '),href:`/fornecedores.html?fornecedor=${encodeURIComponent(item.fornecedor_id)}`})),
+    ...trainings.map(item=>({type:'Treinamento',icon:'A',title:item.titulo,detail:item.inicio_em?new Date(item.inicio_em).toLocaleDateString('pt-BR'):'Academia PMG',href:`/demandas.html?view=academia&treinamento=${encodeURIComponent(item.id)}`})),
+    ...materials.map(item=>({type:'Material',icon:'M',title:item.nome_original,detail:[item.tipo,item.status_revisao].filter(Boolean).join(' · '),href:`/operacoes.html?view=materiais&fornecedor=${encodeURIComponent(item.fornecedor_id)}`})),
     ...products.map(product => ({
       type:'Produto', icon:'P', title:product.nome || product.name || product.descricao || `Produto ${product.codigo || product.id || ''}`,
       detail:[product.codigo || product.id, product.categoria || product.category].filter(Boolean).join(' · '),

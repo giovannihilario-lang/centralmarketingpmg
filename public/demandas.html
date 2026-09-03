@@ -393,6 +393,7 @@
             <div class="search-input"><i data-lucide="search"></i><input id="taskSearch" placeholder="Buscar por título, descrição ou tag"></div>
             <select id="taskAssigneeFilter"><option value="">Todos os responsáveis</option></select>
             <select id="taskProjectFilter"><option value="">Todos os projetos</option></select>
+            <select id="taskSupplierFilter" class="hidden" aria-label="Filtrar por fornecedor"><option value="">Todos os fornecedores</option></select>
             <select id="taskPriorityFilter"><option value="">Todas as prioridades</option><option value="imediata">Imediata</option><option value="urgente">Urgente</option><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select>
             <select id="taskArchiveFilter"><option value="ativas">Ativas</option><option value="arquivadas">Arquivadas</option><option value="todas">Todas</option></select>
             <select id="taskRecurrenceFilter" aria-label="Filtrar recorrência"><option value="">Todas</option><option value="recorrentes">Recorrentes</option><option value="nao_recorrentes">Não recorrentes</option></select>
@@ -636,8 +637,19 @@
               <div class="task-config-heading"><div><span class="eyebrow">Contexto opcional</span><h3>Detalhes para demandas mais complexas</h3></div></div>
               <div class="form-grid two">
                 <label class="field"><span>Projeto <em>opcional</em></span><input id="itemProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
+                <label class="field hidden" id="itemSupplierField"><span>Fornecedor <em>opcional</em></span><select id="itemSupplier"><option value="">Sem fornecedor vinculado</option></select><small>Vínculo canônico. Não salva nome livre.</small></label>
                 <label class="field"><span>Estimativa</span><div class="suffix-input"><input id="itemEstimate" type="number" min="0" step="0.5" placeholder="2"><span>horas</span></div></label>
               </div>
+              <details id="itemEntityRelations" class="entity-relations-v2">
+                <summary><span><i data-lucide="link-2"></i><strong>Relacionar a...</strong><small>Campanha, documento, obrigação, treinamento ou contexto de catálogo</small></span><i data-lucide="chevron-down"></i></summary>
+                <div class="form-grid two">
+                  <label class="field"><span>Campanha <em>opcional</em></span><input id="itemCampaignRef" maxlength="160" placeholder="Nome ou referência da campanha"></label>
+                  <label class="field"><span>Documento <em>opcional</em></span><select id="itemDocument"><option value="">Sem documento vinculado</option></select></label>
+                  <label class="field"><span>Obrigação <em>opcional</em></span><select id="itemObligation"><option value="">Sem obrigação vinculada</option></select></label>
+                  <label class="field"><span>Treinamento <em>opcional</em></span><select id="itemTraining"><option value="">Sem treinamento vinculado</option></select></label>
+                  <label class="field"><span>Contexto de catálogo <em>opcional</em></span><input id="itemCatalogContext" maxlength="160" placeholder="Ex.: Catálogo Setembro 2026"></label>
+                </div>
+              </details>
               <div class="form-grid two">
                 <label class="field"><span>Lembrar</span><select id="itemReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
                 <label class="field"><span>Tags</span><input id="itemTags" placeholder="social, campanha, urgente"></label>
@@ -714,6 +726,7 @@
             <label class="field"><span>Prioridade / urgência</span><select id="recurrenceEditPriority"><option value="baixa">Baixa</option><option value="media">Média</option><option value="alta">Alta</option><option value="urgente">Urgente</option><option value="imediata">Imediata</option></select></label>
             <label class="field"><span>Tamanho</span><select id="recurrenceEditSize"><option value="rapida">Rápida</option><option value="media">Média</option><option value="grande">Grande</option></select></label>
           </div>
+          <label class="field hidden" id="recurrenceEditSupplierField"><span>Fornecedor <em>opcional</em></span><select id="recurrenceEditSupplier"><option value="">Sem fornecedor vinculado</option></select><small>O vínculo é aplicado às próximas ocorrências e aos horários agrupados desta rotina.</small></label>
           <div class="recurrence-responsibility-mode">
             <span class="visual-field-label">Modo de responsabilidade das ocorrências</span>
             <select id="recurrenceEditResponsibilityMode" class="native-choice-hidden" tabindex="-1" aria-hidden="true">
@@ -966,9 +979,20 @@
           </div>
           <div class="form-grid three">
             <label class="field"><span>Projeto <em>opcional</em></span><input id="editTaskProject" list="projectSuggestions" maxlength="100" placeholder="Ex.: Black Friday, Catálogo, Endomarketing"></label>
+            <label class="field hidden" id="editTaskSupplierField"><span>Fornecedor <em>opcional</em></span><select id="editTaskSupplier"><option value="">Sem fornecedor vinculado</option></select><small>Vínculo canônico com Fornecedor 360.</small></label>
             <label class="field"><span>Lembrar</span><select id="editTaskReminderOffset"><option value="">Sem lembrete</option><option value="0">No horário</option><option value="10">10 min antes</option><option value="30">30 min antes</option><option value="60">1 hora antes</option><option value="1440">1 dia antes</option></select></label>
             <label class="field"><span>Tags</span><input id="editTaskTags"></label>
           </div>
+          <details id="editTaskEntityRelations" class="entity-relations-v2">
+            <summary><span><i data-lucide="link-2"></i><strong>Relacionar a...</strong><small>Contexto operacional da demanda</small></span><i data-lucide="chevron-down"></i></summary>
+            <div class="form-grid two">
+              <label class="field"><span>Campanha <em>opcional</em></span><input id="editTaskCampaignRef" maxlength="160" placeholder="Nome ou referência da campanha"></label>
+              <label class="field"><span>Documento <em>opcional</em></span><select id="editTaskDocument"><option value="">Sem documento vinculado</option></select></label>
+              <label class="field"><span>Obrigação <em>opcional</em></span><select id="editTaskObligation"><option value="">Sem obrigação vinculada</option></select></label>
+              <label class="field"><span>Treinamento <em>opcional</em></span><select id="editTaskTraining"><option value="">Sem treinamento vinculado</option></select></label>
+              <label class="field"><span>Contexto de catálogo <em>opcional</em></span><input id="editTaskCatalogContext" maxlength="160" placeholder="Ex.: Catálogo Setembro 2026"></label>
+            </div>
+          </details>
           <div class="task-execution-grid edit-execution-grid">
             <label class="field task-checklist-field"><span>Checklist <em>um item por linha</em></span><textarea id="editTaskChecklist" rows="5" placeholder="Itens de execução"></textarea></label>
             <label class="field task-dependencies-field"><span>Dependências <em>opcional</em></span><select id="editTaskDependencies" multiple size="5" aria-label="Demandas que precisam ser concluídas antes"></select><small class="field-help">Uma demanda bloqueada não pode começar até todas as dependências serem concluídas.</small></label>
@@ -1371,5 +1395,6 @@
   <div id="toastStack" class="toast-stack"></div>
 
   <script src="/assets/demandas-v2.js?v=3.8.9"></script>
+  <script type="module" src="/assets/academia-wave2.js?v=2.0.0"></script>
 </body>
 </html>

@@ -1,3 +1,5 @@
+import { normalizeSupplierText } from './supplier-identity-core.js';
+
 const TIMEZONE = 'America/Sao_Paulo';
 const DAY_MS = 86400000;
 
@@ -262,9 +264,19 @@ export function searchLocalEntities(query, input = {}) {
       add({ type:'Demanda', icon:'D', title:task.titulo || 'Demanda', detail:task.projeto || task.status || '', href:`/demandas.html?tarefa=${encodeURIComponent(task.id)}` });
     }
   }
+  const supplierIdentities = (input.supplierIdentities || []).filter(item => item?.estado === 'confirmado');
+  const identityBySupplier = new Map();
+  supplierIdentities.forEach(identity => {
+    const key=String(identity.fornecedor_id); if(!identityBySupplier.has(key)) identityBySupplier.set(key,[]);
+    identityBySupplier.get(key).push(identity.valor_original);
+  });
+  const supplierNeedle = normalizeSupplierText(query);
   for (const supplier of input.suppliers || []) {
-    if (normalizeText([supplier.nome, supplier.cnpj, supplier.categoria, supplier.contato, supplier.email].join(' ')).includes(needle)) {
-      add({ type:'Fornecedor', icon:'F', title:supplier.nome || 'Fornecedor', detail:[supplier.categoria, supplier.cnpj].filter(Boolean).join(' · '), href:`/fornecedores.html?fornecedor=${encodeURIComponent(supplier.id)}` });
+    const aliases=identityBySupplier.get(String(supplier.id)) || [];
+    const searchable=[supplier.nome, supplier.cnpj, supplier.categoria, supplier.contato, supplier.email, ...aliases].filter(Boolean).join(' ');
+    if (normalizeSupplierText(searchable).includes(supplierNeedle)) {
+      const aliasMatch=aliases.some(value=>normalizeSupplierText(value).includes(supplierNeedle));
+      add({ type:'Fornecedor', icon:'F', title:supplier.nome || 'Fornecedor', detail:[aliasMatch ? 'Alias reconhecido' : null, supplier.categoria, supplier.cnpj].filter(Boolean).join(' · '), href:`/fornecedores.html?fornecedor=${encodeURIComponent(supplier.id)}` });
     }
   }
   for (const campaign of input.campaigns || []) {

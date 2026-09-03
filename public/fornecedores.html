@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fornecedores – PMG Atacadista</title>
   <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
+  <link rel="stylesheet" href="/assets/fornecedor-360.css?v=1.0.0">
   <link rel="icon" type="image/png" href="/favicon.png">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.0"></script>
@@ -1545,6 +1546,7 @@ function renderTabela() {
       </td>
       <td>
         <div class="td-actions">
+          <button class="act-btn s360-trigger" onclick="window.PMGFornecedor360?.open(${f.id},this)" title="Abrir Fornecedor 360">360°</button>
           <button class="act-btn act-nfe" onclick='abrirUploadNFe(${f.id},"${f.nome.replace(/"/g,"&quot;")}")' title="Upload NFe Sell-In">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -1897,12 +1899,10 @@ document.getElementById('sqlModal').addEventListener('click', function(e) { if (
   }
   renderTabela();
 
-  const requestedSupplier = params.get('fornecedor');
-  if (requestedSupplier) {
-    const found = fornecedores.find(item => String(item.id) === String(requestedSupplier));
-    if (found) abrirModalEditar(found);
-  }
+  // O deep link ?fornecedor=<id> é aberto pelo módulo Fornecedor 360.
+  // O formulário de edição continua disponível somente pelo botão Editar.
 })();
 </script>
+<script type="module" src="/assets/fornecedor-360.js?v=1.0.0"></script>
 </body>
 </html>

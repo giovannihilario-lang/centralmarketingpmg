@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const html=fs.readFileSync(new URL('../public/demandas.html',import.meta.url),'utf8');
+for(const id of ['itemSupplier','itemCampaignRef','itemDocument','itemObligation','itemTraining','itemCatalogContext','editTaskCampaignRef','editTaskDocument','editTaskObligation','editTaskTraining','editTaskCatalogContext','recurrenceEditSupplier'])assert.ok(html.includes(`id="${id}"`),`controle ausente ${id}`);
+const js=fs.readFileSync(new URL('../public/assets/demandas-v2.js',import.meta.url),'utf8');
+assert.match(js,/vincular_tarefa_entidades_v2/);
+assert.match(js,/vincular_recorrencia_fornecedor_v2/);
+assert.match(js,/recurrenceEditSupplier/);
+assert.match(js,/A demanda foi salva, mas um dos vínculos operacionais não pôde ser atualizado|vínculo/i);
+const sql=fs.readFileSync(new URL('../sql/27-WAVE2-OPERACOES.sql',import.meta.url),'utf8');
+for(const col of ['campanha_ref','documento_id','obrigacao_id','treinamento_id','catalogo_contexto'])assert.match(sql,new RegExp(`tarefas add column if not exists ${col}`));
+assert.match(sql,/demandas_recorrentes add column if not exists fornecedor_id/);
+assert.match(sql,/trg_wave2_propagar_fornecedor_ocorrencia/);
+assert.match(sql,/update public\.tarefas set fornecedor_id=v_fornecedor/,'trigger deve propagar fornecedor para ocorrência gerada');
+console.log('RELACIONAMENTOS_WAVE2: PASS');
