@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR" data-pmg-auth>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b3b24">
+  <title>Primeiro acesso · PMG Connect</title>
+  <link rel="icon" href="/favicon.png?v=7">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/connect-auth.js" defer></script>
+  <style>
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;font-family:Inter,system-ui,sans-serif;background:#eef3ef;color:#122019}.card{width:min(440px,100%);background:#fff;border:1px solid #d7e2da;border-radius:18px;padding:30px;box-shadow:0 20px 55px rgba(18,49,31,.12)}img{width:48px;height:48px;object-fit:contain;margin-bottom:20px}.eyebrow{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#28744a}h1{font-size:24px;margin:8px 0 8px}p{font-size:13px;line-height:1.55;color:#66776c;margin:0 0 22px}label{display:block;margin:14px 0 6px;font-size:11px;font-weight:800}input{width:100%;height:46px;border:1px solid #d7e2da;border-radius:9px;padding:0 12px;font:inherit;outline:none}input:focus{border-color:#39845a;box-shadow:0 0 0 3px rgba(57,132,90,.1)}button{width:100%;height:46px;border:0;border-radius:9px;margin-top:18px;background:#165b36;color:#fff;font-weight:800;cursor:pointer}.error{display:none;margin-top:14px;padding:10px;border-radius:8px;background:#fff1f2;color:#b4232c;font-size:11px}.error.show{display:block}.hint{margin-top:12px;font-size:10px;color:#829187}.pmg-auth-pending body{visibility:hidden}
+  </style>
+</head>
+<body>
+  <form class="card" id="passwordForm">
+    <img src="/imagenssite/pmglogo.png" alt="PMG">
+    <div class="eyebrow">Primeiro acesso</div>
+    <h1>Crie sua nova senha</h1>
+    <p>Por segurança, antes de acessar o acompanhamento você precisa definir uma senha pessoal.</p>
+    <label for="password">Nova senha</label>
+    <input id="password" type="password" autocomplete="new-password" minlength="8" required>
+    <label for="confirmPassword">Confirmar nova senha</label>
+    <input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" required>
+    <div id="error" class="error" role="alert"></div>
+    <button id="save" type="submit">Salvar senha e continuar</button>
+    <div class="hint">Use pelo menos 8 caracteres. Depois desta etapa, sua conta abrirá somente a página de Acompanhamento.</div>
+  </form>
+  <script>
+    document.getElementById('passwordForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const errorBox = document.getElementById('error');
+      const button = document.getElementById('save');
+      const password = document.getElementById('password').value;
+      const confirmation = document.getElementById('confirmPassword').value;
+      const fail = (message) => { errorBox.textContent = message; errorBox.classList.add('show'); };
+      errorBox.classList.remove('show');
+      if (password.length < 8) return fail('A senha precisa ter pelo menos 8 caracteres.');
+      if (password !== confirmation) return fail('As senhas não coincidem.');
+      button.disabled = true; button.textContent = 'Salvando...';
+      try {
+        await window.PMGConnect.ready;
+        const client = window.PMGConnect.client;
+        const profile = window.PMGConnect.profile;
+        if (!client || !profile) throw new Error('Sessão não disponível.');
+        if (profile.trocar_senha_primeiro_acesso !== true) {
+          location.replace('/acompanhamento.html'); return;
+        }
+        const { error: passwordError } = await client.auth.updateUser({ password });
+        if (passwordError) throw passwordError;
+        const { error: finishError } = await client.rpc('concluir_primeiro_acesso_restrito');
+        if (finishError) throw finishError;
+        await client.auth.refreshSession();
+        location.replace('/acompanhamento.html');
+      } catch (error) {
+        fail(error?.message || 'Não foi possível alterar a senha.');
+        button.disabled = false; button.textContent = 'Salvar senha e continuar';
+      }
+    });
+  </script>
+</body>
+</html>

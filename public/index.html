@@ -275,6 +275,15 @@
         return '/central.html';
       }
 
+      async function routeAfterLogin(client) {
+        try {
+          const { data: profile } = await client.rpc('garantir_meu_perfil');
+          if (profile?.trocar_senha_primeiro_acesso === true) return '/primeiro-acesso.html';
+          if (profile?.acesso_restrito === 'acompanhamento') return '/acompanhamento.html';
+        } catch {}
+        return destination();
+      }
+
       async function restoreExistingSession() {
         try {
           const client = await getDb();
@@ -282,7 +291,7 @@
 
           if (error) throw error;
           if (data?.session) {
-            location.replace(destination());
+            location.replace(await routeAfterLogin(client));
           }
         } catch (error) {
           // Não bloqueia a tela de login se só a restauração falhar.
@@ -317,7 +326,7 @@
           if (error) throw error;
           if (!data?.session) throw new Error('O Supabase não devolveu uma sessão válida.');
 
-          location.replace(destination());
+          location.replace(await routeAfterLogin(client));
         } catch (error) {
           console.error('[PMG Connect login]', error);
           showError(friendlyError(error));

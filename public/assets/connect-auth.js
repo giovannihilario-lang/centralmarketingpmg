@@ -476,6 +476,23 @@
           hostState.session = null;
           throw new Error('Esta conta está desativada no PMG Connect.');
         }
+
+        // Acesso restrito: Marcos troca a senha no primeiro acesso e, depois,
+        // permanece exclusivamente na Central de Acompanhamento.
+        const currentPath = location.pathname.replace(/\/+$/, '') || '/';
+        const firstAccessPath = '/primeiro-acesso.html';
+        const acompanhamentoPath = '/acompanhamento.html';
+        if (hostState.profile?.trocar_senha_primeiro_acesso === true && currentPath !== firstAccessPath) {
+          location.replace(firstAccessPath);
+          return hostState;
+        }
+        if (hostState.profile?.acesso_restrito === 'acompanhamento'
+          && hostState.profile?.trocar_senha_primeiro_acesso !== true
+          && currentPath !== acompanhamentoPath
+          && currentPath !== firstAccessPath) {
+          location.replace(acompanhamentoPath);
+          return hostState;
+        }
       }
 
       if (isLoginPage && hostState.session) {
