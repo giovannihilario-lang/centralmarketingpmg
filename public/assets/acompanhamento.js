@@ -1047,8 +1047,11 @@
     }, []);
     const integrity = useMemo(() => buildIntegrityReport(data.records,data.payments,data.conferences,2026), [data.records,data.payments,data.conferences]);
     const openSupplier = useCallback(name => { if (name) { void ensureAuxiliary(); setSelectedId(null); setSupplierSelected(name); } }, [ensureAuxiliary]);
-    const canEditPlanning = String(me?.email || '').trim().toLowerCase() === 'marcos@pmg.com.br';
-    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, canEditPlanning, reload, notify, saving, setSaving, paymentJump, revenueJump, navigatePayments, navigateRevenue, openSupplier, integrity, openIntegrity:() => setIntegrityOpen(true), openForecastGroup:group => setForecastGroup(group), ensureAuxiliary,
+    const actorEmail = String(me?.email || '').trim().toLowerCase();
+    const canEditPlanning = actorEmail === 'marcos@pmg.com.br';
+    const canEditPayments = actorEmail === 'marcos@pmg.com.br' || actorEmail === 'marketing@pmg.com.br';
+    const canConfirmPayments = actorEmail === 'marcos@pmg.com.br';
+    const context = { ...data, records:filteredRecords, allRecords:data.records, activeControl:control, activeYear:year, setControl, setYear, search, setSearch, client, me, canEditPlanning, canEditPayments, canConfirmPayments, reload, notify, saving, setSaving, paymentJump, revenueJump, navigatePayments, navigateRevenue, openSupplier, integrity, openIntegrity:() => setIntegrityOpen(true), openForecastGroup:group => setForecastGroup(group), ensureAuxiliary,
       initialDocumentId:INITIAL_DOCUMENT_ID,
       openRecord:record => { void ensureAuxiliary(); setSelectedId(record.id); }, editRecord:record => setRecordModal(record), newRecord:(defaults = {}) => setRecordModal({ controle:control === 'todos' ? 'marketing' : control, ano_referencia:year === 'todos' ? new Date().getFullYear() : year, ...defaults }),
       newSupplierRow:(defaults = {}) => setSupplierRowModal(defaults),
@@ -1070,6 +1073,7 @@
     }
 
     async function saveSupplierRow(payload) {
+      if (!canEditPayments) { notify('Somente Marcos e Edilson podem alterar a Planilha de Acompanhamentos.', 'error'); return; }
       const supplier = officialSupplierName(payload.fornecedor || '');
       const amount = Math.max(0, Number(payload.valor_acordado || 0));
       const yearValue = Number(payload.ano_referencia || 2026);
@@ -1222,12 +1226,16 @@
 
     async function quickTogglePaid(payment, record) {
       if (!record || saving) return false;
-      if (record._oficial_confirmado === true) {
-        notify('Este pagamento já consta no MKTG 2026 e permanece confirmado pela fonte oficial.', 'info');
+      if (!canConfirmPayments) {
+        notify('Somente marcos@pmg.com.br pode confirmar pagamentos.', 'error');
+        return false;
+      }
+      if (supplierRowConfirmed(record, payment) || record._oficial_confirmado === true) {
+        notify('Este pagamento já está confirmado e bloqueado. A confirmação não pode ser desfeita.', 'info');
         return true;
       }
-      const willPay = !supplierRowConfirmed(record, payment);
-      const expectedStatus = willPay ? 'pago' : 'previsto';
+      const willPay = true;
+      const expectedStatus = 'pago';
       const monthIndex = sourceMonthIndex(record);
       const temporaryId = payment?.id || `optimistic-payment-${record.id}`;
       const optimisticPayment = {
@@ -1304,7 +1312,9 @@
     }
 
     async function quickBulkConfirm(rows, confirmed = true) {
-      const valid = (rows || []).filter(row => row?.record?.id);
+      if (!canConfirmPayments) { notify('Somente marcos@pmg.com.br pode confirmar pagamentos.', 'error'); return false; }
+      if (confirmed !== true) { notify('Pagamentos confirmados não podem ser reabertos.', 'error'); return false; }
+      const valid = (rows || []).filter(row => row?.record?.id && !supplierRowConfirmed(row.record,row.payment));
       if (!valid.length || saving) return false;
       const previous = data;
       const recordIds = valid.map(row => row.record.id);
@@ -1339,8 +1349,9 @@
     }
 
     async function quickBulkNF(rows, documentNumber) {
+      if (!canEditPayments) { notify('Somente Marcos e Edilson podem alterar a Planilha de Acompanhamentos.', 'error'); return false; }
       const doc = String(documentNumber || '').trim();
-      const valid = (rows || []).filter(row => row?.record?.id);
+      const valid = (rows || []).filter(row => row?.record?.id && !supplierRowConfirmed(row.record,row.payment));
       if (!valid.length || !doc || saving) return false;
       setSaving(true);
       try {
@@ -1357,7 +1368,8 @@
     }
 
     async function quickBulkArchive(records) {
-      const valid = (records || []).filter(record => record?.id);
+      if (!canEditPayments) { notify('Somente Marcos e Edilson podem alterar a Planilha de Acompanhamentos.', 'error'); return false; }
+      const valid = (records || []).filter(record => record?.id && !supplierRowConfirmed(record, supplierRowPayment(data.payments,record,Number(record.ano_referencia),sourceMonthIndex(record))));
       if (!valid.length || saving) return false;
       setSaving(true);
       try {
@@ -1371,6 +1383,8 @@
     }
 
     async function quickUpdateSupplierRow(record, payment, field, rawValue) {
+      if (!canEditPayments) { notify('Somente Marcos e Edilson podem alterar a Planilha de Acompanhamentos.', 'error'); return false; }
+      if (supplierRowConfirmed(record, payment)) { notify('Esta linha já foi confirmada por Marcos e está bloqueada.', 'info'); return false; }
       const monthIndex = sourceMonthIndex(record);
       if (field === 'campanha') {
         const reference = String(rawValue || '').trim() || 'COTA';
@@ -1821,6 +1835,8 @@
   }
 
   function PaymentsView({ context }) {
+    const canEditPayments = context.canEditPayments === true;
+    const canConfirmPayments = context.canConfirmPayments === true;
     const supplierRecords=useMemo(()=>context.allRecords.filter(record=>record.controle==='marketing'&&record.natureza==='receita'&&record.status!=='cancelado'&&record.categoria!=='pendencia'&&hasTag(record,'fornecedores')),[context.allRecords]);
     const yearOptions=useMemo(()=>uniq(supplierRecords.map(record=>Number(record.ano_referencia))).filter(Boolean).sort((a,b)=>b-a),[supplierRecords]);
     const defaultYear=yearOptions.includes(savedNumber('pmg_payment_year',2026))?savedNumber('pmg_payment_year',2026):(yearOptions.includes(2026)?2026:(yearOptions[0]||2026));
@@ -1854,7 +1870,7 @@
     const visibleTotal=sum(rows,row=>row.record.valor_acordado); const visibleConfirmedRows=rows.filter(row=>supplierRowConfirmed(row.record,row.payment)); const visibleConfirmedAmount=sum(visibleConfirmedRows,row=>supplierConfirmedValue(row.record,row.payment)); const filteredView=Boolean(needle||supplierDrill||onlyPending);
     const pendingRecords=context.allRecords.filter(record=>Number(record.ano_referencia)===Number(sheetYear)&&record.categoria==='pendencia'&&record.status!=='cancelado'&&(!record.data_inicio||String(record.data_inicio).startsWith(currentKey)));
     const monthLabelLong=OFFICIAL_MONTHS[sheetMonth]?.[1]||'';
-    const addRow=()=>context.newSupplierRow({ ano_referencia:sheetYear, monthIndex:sheetMonth, categoria:'cota_anual' });
+    const addRow=()=>{ if(!canEditPayments){context.notify('Somente Marcos e Edilson podem alterar a Planilha de Acompanhamentos.','error');return;} context.newSupplierRow({ ano_referencia:sheetYear, monthIndex:sheetMonth, categoria:'cota_anual' }); };
     const chosenRows=rows.filter(row=>selectedRows.has(row.record.id));
     const pendingVisibleRows=rows.filter(row=>!supplierRowConfirmed(row.record,row.payment));
     const pendingVisibleAmount=sum(pendingVisibleRows,row=>Number(row.record.valor_acordado||0));
@@ -1869,19 +1885,19 @@
     useLucide([sheetYear,sheetMonth,rows.length,onlyPending,context.saving,selectedRows.size,supplierDrill]);
 
     return html`<section className=${`spreadsheet-view payment-sheet-view ux-sheet-v2 ${compactMode?'density-compact':'density-comfortable'}`}>
-      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle="Edite na célula, confirme com um clique e use seleção em lote quando o mês apertar." actions=${html`<label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e=>setSheetYear(Number(e.target.value))}>${yearOptions.map(value=>html`<option value=${value}>${value}</option>`)}</select></label><button className=${`sheet-filter-button ${onlyPending?'active':''}`} onClick=${()=>setOnlyPending(value=>!value)}><${Icon} name="filter"/>${onlyPending?'Só pendentes':'Pendentes'}</button>${pendingVisibleRows.length>0&&html`<button className="confirm-pending-fast" disabled=${context.saving} onClick=${confirmVisiblePending} title=${`Confirmar ${pendingVisibleRows.length} pendente(s) visível(is)`}><${Icon} name="badge-check"/><span>Confirmar pendentes</span><b>${pendingVisibleRows.length}</b></button>`}<button className="sheet-density-toggle" onClick=${toggleDensity}><${Icon} name=${compactMode?'maximize-2':'minimize-2'}/>${compactMode?'Confortável':'Compacta'}</button><button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}/>
+      <${SpreadsheetTitle} kicker="Fonte oficial · Fornecedores" title=${`PLANILHA DE PAGAMENTO ${sheetYear}`} subtitle=${canConfirmPayments ? "Edite os pendentes e confirme. Após a confirmação, a linha fica bloqueada." : canEditPayments ? "Você pode editar lançamentos pendentes. A confirmação final é exclusiva do Marcos." : "Modo somente leitura. Edição: Marcos/Edilson. Confirmação: somente Marcos."} actions=${html`<label className="sheet-select"><span>Ano</span><select value=${sheetYear} onChange=${e=>setSheetYear(Number(e.target.value))}>${yearOptions.map(value=>html`<option value=${value}>${value}</option>`)}</select></label><button className=${`sheet-filter-button ${onlyPending?'active':''}`} onClick=${()=>setOnlyPending(value=>!value)}><${Icon} name="filter"/>${onlyPending?'Só pendentes':'Pendentes'}</button>${canConfirmPayments&&pendingVisibleRows.length>0&&html`<button className="confirm-pending-fast" disabled=${context.saving} onClick=${confirmVisiblePending} title=${`Confirmar ${pendingVisibleRows.length} pendente(s) visível(is)`}><${Icon} name="badge-check"/><span>Confirmar pendentes</span><b>${pendingVisibleRows.length}</b></button>`}<button className="sheet-density-toggle" onClick=${toggleDensity}><${Icon} name=${compactMode?'maximize-2':'minimize-2'}/>${compactMode?'Confortável':'Compacta'}</button>${canEditPayments&&html`<button className="button primary sheet-add" onClick=${addRow}><${Icon} name="plus"/>Nova linha</button>`}`}/>
 
       <div className="workbook-tabs annual-workbook-tabs" role="tablist">${monthSnapshots.map(item=>{const isNow=Number(sheetYear)===new Date().getFullYear()&&item.index===new Date().getMonth();return html`<button role="tab" aria-selected=${sheetMonth===item.index} className=${`${sheetMonth===item.index?'active':''} ${item.state} ${isNow?'is-now':''}`} onClick=${()=>setSheetMonth(item.index)}><span>${item.label}${isNow&&html`<em>Atual</em>`}</span><strong>${item.total?`${Math.round(item.pct)}%`:'—'}</strong><i><u style=${{width:`${item.pct}%`}}></u></i><small>${item.total?`${compactMoney(item.confirmed)} / ${compactMoney(item.total)}`:'sem dados'}</small></button>`;})}</div>
 
       <div className="sheet-command-row"><div className="sheet-stats compact-stats"><span className="stat-total"><small>Total do mês</small><strong>${money(monthTotal)}</strong></span><span className="stat-confirmed-value"><small>Confirmado</small><strong>${money(confirmedAmount)}</strong></span><span className="stat-pending-value"><small>Pendente</small><strong>${money(pendingAmount)}</strong></span><span className=${`stat-signed ${confirmedCount===allMonthRows.length&&allMonthRows.length?'ok':''}`}><small>Status</small><strong>${confirmedCount}/${allMonthRows.length}</strong></span></div><div className="active-sheet-filters">${filteredView&&html`<span className="filtered-sheet-summary"><${Icon} name="list-filter"/>Exibindo ${rows.length}/${allMonthRows.length} · ${money(visibleTotal)}${visibleConfirmedAmount?` · ${money(visibleConfirmedAmount)} confirmado`:''}</span>`}${supplierDrill&&html`<button onClick=${()=>setSupplierDrill('')}><${Icon} name="building-2"/>${supplierDrill}<${Icon} name="x"/></button>`}${onlyPending&&html`<button onClick=${()=>setOnlyPending(false)}><${Icon} name="filter"/>Só pendentes<${Icon} name="x"/></button>`}</div></div>
 
-      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll assisted-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas visíveis" checked=${rows.length>0&&rows.every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>DOCUMENTO</th><th>STATUS</th><th></th></tr></thead><tbody>
-        ${rows.length?rows.map((row,index)=>{const isPaid=supplierRowConfirmed(row.record,row.payment);const sourcePaid=Boolean(row.record._oficial_confirmado);return html`<tr key=${row.record.id} className=${`${isPaid?'signed-row':''} ${selectedRows.has(row.record.id)?'selected-row':''}`} style=${{'--row-delay':`${Math.min(index,35)*12}ms`}}><td className="select-col"><input type="checkbox" checked=${selectedRows.has(row.record.id)} onChange=${()=>toggleSelected(row.record.id)}/></td><td><${EditableSheetCell} value=${row.record.referencia||'COTA'} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td><td className="supplier-sheet-cell"><div className="supplier-edit-wrap"><${EditableSheetCell} value=${row.record.fornecedor||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/><button className="supplier-peek" title="Ver fornecedor" onClick=${()=>context.openSupplier(row.record.fornecedor)}><${Icon} name="panel-right-open"/></button></div></td><td className="money-col unified-value-cell"><${EditableSheetCell} type="money" value=${row.record.valor_acordado} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td><td><${EditableSheetCell} value=${row.payment?.numero_documento||row.record.numero_documento||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td><td><button disabled=${context.saving} className=${`one-click-status status-simple ${isPaid?'paid':'open'} ${sourcePaid?'source-confirmed':''}`} onClick=${()=>context.quickTogglePaid(row.payment,row.record)} title=${sourcePaid?'Confirmado automaticamente pelo MKTG 2026':isPaid?'Clique para desfazer':'Confirmar pagamento'}><span className="status-dot">${isPaid?'✓':'○'}</span><span>${sourcePaid?'Confirmado · fonte':isPaid?'Confirmado':'Pendente'}</span></button></td><td><button className="sheet-open-row" onClick=${()=>context.openRecord(row.record)} title="Mais detalhes"><${Icon} name="more-horizontal"/></button></td></tr>`;}) : html`<tr className="sheet-empty-row"><td colSpan="7"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>${supplierDrill?'Retire o filtro do fornecedor ou escolha outro mês.':'Crie a primeira linha diretamente por aqui.'}</p><button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button></div></td></tr>`}
+      <article className="spreadsheet-card payments-fullscreen-card"><div className="spreadsheet-scroll assisted-scroll"><table className="live-sheet payment-live-sheet"><thead><tr><th className="select-col"><input type="checkbox" aria-label="Selecionar linhas pendentes visíveis" disabled=${!canEditPayments} checked=${rows.filter(row=>!supplierRowConfirmed(row.record,row.payment)).length>0&&rows.filter(row=>!supplierRowConfirmed(row.record,row.payment)).every(row=>selectedRows.has(row.record.id))} onChange=${event=>setSelectedRows(event.target.checked?new Set(rows.filter(row=>!supplierRowConfirmed(row.record,row.payment)).map(row=>row.record.id)):new Set())}/></th><th>CAMPANHA</th><th>FORNECEDOR</th><th className="money-col">VALOR</th><th>DOCUMENTO</th><th>STATUS</th><th></th></tr></thead><tbody>
+        ${rows.length?rows.map((row,index)=>{const isPaid=supplierRowConfirmed(row.record,row.payment);const sourcePaid=Boolean(row.record._oficial_confirmado);const rowLocked=isPaid||!canEditPayments;return html`<tr key=${row.record.id} className=${`${isPaid?'signed-row locked-row':''} ${selectedRows.has(row.record.id)?'selected-row':''}`} style=${{'--row-delay':`${Math.min(index,35)*12}ms`}}><td className="select-col"><input type="checkbox" disabled=${rowLocked} checked=${selectedRows.has(row.record.id)} onChange=${()=>toggleSelected(row.record.id)}/></td><td><${EditableSheetCell} disabled=${rowLocked} title=${isPaid?'Confirmado por Marcos · bloqueado':'Clique para editar'} value=${row.record.referencia||'COTA'} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'campanha',value)}/></td><td className="supplier-sheet-cell"><div className="supplier-edit-wrap"><${EditableSheetCell} disabled=${rowLocked} title=${isPaid?'Confirmado por Marcos · bloqueado':'Clique para editar'} value=${row.record.fornecedor||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'fornecedor',value)}/><button className="supplier-peek" title="Ver fornecedor" onClick=${()=>context.openSupplier(row.record.fornecedor)}><${Icon} name="panel-right-open"/></button></div></td><td className="money-col unified-value-cell"><${EditableSheetCell} disabled=${rowLocked} title=${isPaid?'Confirmado por Marcos · bloqueado':'Clique para editar'} type="money" value=${row.record.valor_acordado} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'valor',value)}/></td><td><${EditableSheetCell} disabled=${rowLocked} title=${isPaid?'Confirmado por Marcos · bloqueado':'Clique para editar'} value=${row.payment?.numero_documento||row.record.numero_documento||''} onSave=${value=>context.quickUpdateSupplierRow(row.record,row.payment,'nf',value)}/></td><td><button disabled=${context.saving||isPaid||!canConfirmPayments} className=${`one-click-status status-simple ${isPaid?'paid':'open'} ${sourcePaid?'source-confirmed':''}`} onClick=${()=>context.quickTogglePaid(row.payment,row.record)} title=${isPaid?'Confirmado e bloqueado':canConfirmPayments?'Confirmar pagamento':'Somente Marcos pode confirmar'}><span className="status-dot">${isPaid?'🔒':'○'}</span><span>${sourcePaid?'Confirmado · fonte':isPaid?'Confirmado · bloqueado':'Pendente'}</span></button></td><td><button className="sheet-open-row" onClick=${()=>context.openRecord(row.record)} title="Mais detalhes"><${Icon} name="more-horizontal"/></button></td></tr>`;}) : html`<tr className="sheet-empty-row"><td colSpan="7"><div><${Icon} name="sheet"/><strong>Nenhuma linha em ${monthLabelLong} de ${sheetYear}</strong><p>${supplierDrill?'Retire o filtro do fornecedor ou escolha outro mês.':'Crie a primeira linha diretamente por aqui.'}</p>${canEditPayments&&html`<button className="button primary" onClick=${addRow}><${Icon} name="plus"/>Adicionar linha</button>`}</div></td></tr>`}
       </tbody><tfoot><tr><th></th><th colSpan="2">${filteredView ? 'TOTAL EXIBIDO' : 'TOTAL'}</th><th className="money-col">${money(filteredView ? visibleTotal : monthTotal)}</th><th></th><th>${filteredView ? visibleConfirmedRows.length : confirmedCount} confirmados</th><th></th></tr></tfoot></table></div></article>
 
-      ${selectedRows.size>0&&html`<div className="sheet-selection-bar bulk-actions-v2"><div><strong>${selectedRows.size}</strong><span>${selectedRows.size===1?'linha selecionada':'linhas selecionadas'}</span></div><button onClick=${async()=>{const open=chosenRows.filter(row=>!supplierRowConfirmed(row.record,row.payment));await context.quickBulkConfirm(open,true);clearSelected();}} disabled=${context.saving}><${Icon} name="badge-check"/>Confirmar pendentes</button><button onClick=${setBulkNF} disabled=${context.saving}><${Icon} name="receipt-text"/>Definir NF</button><button className="bulk-archive" onClick=${archiveBulk} disabled=${context.saving}><${Icon} name="archive"/>Arquivar</button><button className="selection-clear" onClick=${clearSelected}><${Icon} name="x"/>Limpar</button></div>`}
+      ${selectedRows.size>0&&html`<div className="sheet-selection-bar bulk-actions-v2"><div><strong>${selectedRows.size}</strong><span>${selectedRows.size===1?'linha selecionada':'linhas selecionadas'}</span></div>${canConfirmPayments&&html`<button onClick=${async()=>{const open=chosenRows.filter(row=>!supplierRowConfirmed(row.record,row.payment));await context.quickBulkConfirm(open,true);clearSelected();}} disabled=${context.saving}><${Icon} name="badge-check"/>Confirmar pendentes</button>`}${canEditPayments&&html`<button onClick=${setBulkNF} disabled=${context.saving}><${Icon} name="receipt-text"/>Definir NF</button>`}${canEditPayments&&html`<button className="bulk-archive" onClick=${archiveBulk} disabled=${context.saving}><${Icon} name="archive"/>Arquivar</button>`}<button className="selection-clear" onClick=${clearSelected}><${Icon} name="x"/>Limpar</button></div>`}
 
-      <section className="sheet-pendencies"><div className="sheet-section-heading"><div><span>PENDÊNCIAS</span><h3>${monthLabelLong} ${sheetYear}</h3></div><button onClick=${()=>context.newSupplierRow({ano_referencia:sheetYear,monthIndex:sheetMonth,categoria:'pendencia',tipo_documento:'outro'})}><${Icon} name="plus"/>Adicionar pendência</button></div><div className="pendency-sheet-list">${pendingRecords.length?pendingRecords.map(record=>html`<article className=${record.status==='concluido'?'resolved':''}><span className="pendency-mark"><${Icon} name=${record.status==='concluido'?'circle-check':'triangle-alert'}/></span><div><${EditableSheetCell} value=${record.descricao||record.observacoes||record.titulo} onSave=${value=>context.quickUpdateRecord(record,{descricao:value,observacoes:value})}/><small>${record.fornecedor||'Pendência geral'}${record.valor_acordado?` · ${money(record.valor_acordado)}`:''}</small></div><button className="resolve-one-click" onClick=${()=>context.quickUpdateRecord(record,{status:record.status==='concluido'?'negociacao':'concluido'},record.status==='concluido'?'Pendência reaberta.':'Pendência resolvida.')}><${Icon} name="check"/>${record.status==='concluido'?'Reabrir':'Resolver'}</button></article>`):html`<div className="pendency-empty"><${Icon} name="circle-check-big"/><span>Nenhuma pendência nesta competência.</span></div>`}</div></section>
+      <section className="sheet-pendencies"><div className="sheet-section-heading"><div><span>PENDÊNCIAS</span><h3>${monthLabelLong} ${sheetYear}</h3></div>${canEditPayments&&html`<button onClick=${()=>context.newSupplierRow({ano_referencia:sheetYear,monthIndex:sheetMonth,categoria:'pendencia',tipo_documento:'outro'})}><${Icon} name="plus"/>Adicionar pendência</button>`}</div><div className="pendency-sheet-list">${pendingRecords.length?pendingRecords.map(record=>html`<article className=${record.status==='concluido'?'resolved':''}><span className="pendency-mark"><${Icon} name=${record.status==='concluido'?'circle-check':'triangle-alert'}/></span><div><${EditableSheetCell} disabled=${!canEditPayments} value=${record.descricao||record.observacoes||record.titulo} onSave=${value=>context.quickUpdateRecord(record,{descricao:value,observacoes:value})}/><small>${record.fornecedor||'Pendência geral'}${record.valor_acordado?` · ${money(record.valor_acordado)}`:''}</small></div>${canEditPayments&&html`<button className="resolve-one-click" onClick=${()=>context.quickUpdateRecord(record,{status:record.status==='concluido'?'negociacao':'concluido'},record.status==='concluido'?'Pendência reaberta.':'Pendência resolvida.')}><${Icon} name="check"/>${record.status==='concluido'?'Reabrir':'Resolver'}</button>`}</article>`):html`<div className="pendency-empty"><${Icon} name="circle-check-big"/><span>Nenhuma pendência nesta competência.</span></div>`}</div></section>
     </section>`;
   }
 
