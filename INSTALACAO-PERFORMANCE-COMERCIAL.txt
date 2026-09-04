@@ -1,0 +1,40 @@
+PMG CONNECT — PERFORMANCE COMERCIAL
+
+ARQUIVOS NOVOS / SUBSTITUÍDOS
+- local-api/performance-comercial.js
+- public/dashboard.html
+- public/assets/performance-comercial.css
+- public/assets/performance-comercial.js
+- scripts/aplicar-performance-comercial.js
+- scripts/testar-performance-comercial.js
+
+COMO APLICAR
+1. Copie os arquivos acima para as mesmas pastas do projeto PMG Connect.
+2. Na raiz do projeto, rode:
+   node scripts/aplicar-performance-comercial.js
+3. Valide a sintaxe:
+   node --check local-api/performance-comercial.js
+   node --check public/assets/performance-comercial.js
+4. Rode o contrato estático:
+   node scripts/testar-performance-comercial.js
+5. Inicie o PMG Connect normalmente:
+   npm start
+6. Entre com uma conta autorizada e abra:
+   http://localhost:3001/dashboard.html
+
+NÃO HÁ SQL / MIGRATION PARA EXECUTAR.
+NÃO HÁ DEPENDÊNCIA NOVA.
+NÃO É NECESSÁRIO ALTERAR server.js.
+
+OBSERVAÇÃO DE DADOS
+- KPIs de pedido usam dbo.Vendas.
+- Análises de item/fornecedor/grupo usam dbo.VendasProdutos + dbo.Produtos.
+- Carteira usa dbo.Clientes.
+- Com filtro de fornecedor/grupo/subgrupo, faturamento e KG principais representam somente os itens filtrados.
+- Margens líquida/bruta do pedido continuam representando os pedidos selecionados.
+- Risco/reativação usam o contexto comercial completo dos clientes que atendem ao filtro, para evitar transformar sinal de carteira em pseudo-previsão por SKU.
+
+COMMIT
+  git add local-api/performance-comercial.js public/dashboard.html public/assets/performance-comercial.css public/assets/performance-comercial.js public/central.html scripts/aplicar-performance-comercial.js scripts/testar-performance-comercial.js
+  git commit -m "feat: transforma dashboard de vendas em Performance Comercial"
+  git push
