@@ -21,8 +21,8 @@
     "relacionamentos:testar": "node scripts/testar-relacionamentos-wave2.js",
     "wave2:security": "node scripts/testar-wave2-security.js",
     "wave2:testar": "node scripts/testar-wave2.js",
-    "test": "npm run wave2:testar && npm run wave1b:testar && npm run central-hoje:testar && npm run acompanhamento:testar && npm run documentos:testar && node scripts/testar-planejamento.js && node scripts/testar-reescaneamento.js && npm run vercel:check"
-  },
+    "estrategia:testar": "node scripts/testar-planejamento-estrategico.mjs",
+    "test": "npm run wave2:testar && npm run wave1b:testar && npm run central-hoje:testar && npm run acompanhamento:testar && npm run documentos:testar && node scripts/testar-planejamento.js && node scripts/testar-reescaneamento.js && npm run estrategia:testar && npm run vercel:check"},
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "2.108.2",
