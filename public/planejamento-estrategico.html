@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173d2a">
+  <title>Planejamento Estratégico | PMG Connect</title>
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.0.0">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+<body>
+<div class="strategy-shell">
+  <aside class="strategy-nav" id="strategyNav">
+    <a class="brand" href="/central.html" aria-label="Voltar à Central PMG Connect">
+      <span class="brand-mark">P</span>
+      <span><strong>PMG Connect</strong><small>Planejamento Estratégico</small></span>
+    </a>
+
+    <nav aria-label="Navegação do planejamento estratégico">
+      <button class="nav-item active" data-view="executivo" type="button"><span>01</span>Visão executiva</button>
+      <button class="nav-item" data-view="oportunidades" type="button"><span>02</span>Oportunidades</button>
+      <button class="nav-item" data-view="projetos" type="button"><span>03</span>Projetos estratégicos</button>
+      <button class="nav-item" data-view="acompanhamento" type="button"><span>04</span>Acompanhamento 90 dias</button>
+      <button class="nav-item" data-view="revisoes" type="button"><span>05</span>Fechamentos</button>
+    </nav>
+
+    <div class="nav-links">
+      <a href="http://localhost:3001/dashboard-regional.html">Dashboard Regional <span>↗</span></a>
+      <a href="/demandas.html">Demandas <span>↗</span></a>
+      <a href="/central.html">Central de Hoje <span>↗</span></a>
+    </div>
+
+    <div class="nav-user">
+      <div class="avatar" id="userAvatar">P</div>
+      <div><strong id="userName">Conta PMG</strong><small id="userRole">Carregando perfil…</small></div>
+    </div>
+  </aside>
+
+  <main class="strategy-main">
+    <header class="topbar">
+      <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Abrir menu">☰</button>
+      <div>
+        <div class="eyebrow" id="viewEyebrow">Estratégia 200M</div>
+        <h1 id="viewTitle">Visão executiva</h1>
+      </div>
+      <div class="top-actions">
+        <div class="source-pill" id="sourceStatus"><span class="dot"></span><span>Conectando dados</span></div>
+        <button class="btn ghost" id="refreshBtn" type="button">Atualizar</button>
+        <button class="btn" id="presentationBtn" type="button">Apresentar</button>
+        <button class="btn primary" id="pptxBtn" type="button">Exportar PPTX</button>
+      </div>
+    </header>
+
+    <section class="context-bar" aria-label="Contexto de análise">
+      <label><span>Período</span><select id="periodSelect"><option value="">Carregando…</option></select></label>
+      <label><span>Comparação</span><select id="compareSelect"><option value="anterior">Período anterior equivalente</option></select></label>
+      <div class="context-note"><span>Fonte comercial</span><strong id="periodSource">PMG Bridge / SQL Server</strong><small id="freshnessText">Aguardando leitura</small></div>
+    </section>
+
+    <div id="globalWarning" class="notice warning" hidden></div>
+
+    <section class="view active" data-view-panel="executivo">
+      <div class="hero-grid">
+        <article class="goal-card">
+          <div class="goal-copy">
+            <span class="card-kicker">Meta estrutural</span>
+            <h2>Rumo aos <strong id="targetHero">R$ 200 mi</strong></h2>
+            <p>A meta é mensal e sustentável. O painel mostra a distância real do período selecionado e transforma sinais comerciais em projetos mensuráveis.</p>
+          </div>
+          <div class="goal-progress">
+            <div class="ring" id="goalRing"><div><strong id="goalPct">0%</strong><span>da meta</span></div></div>
+            <div class="goal-numbers"><span>Faturamento do período<strong id="heroRevenue">—</strong></span><span>Gap para a meta<strong id="heroGap">—</strong></span></div>
+          </div>
+        </article>
+
+        <article class="executive-score">
+          <span class="card-kicker">Portfólio estratégico</span>
+          <div class="score-row"><strong id="activeProjects">0</strong><span>projetos ativos</span></div>
+          <div class="score-mini"><span><b id="projectsOnTarget">0</b>No ritmo / atingidos</span><span><b id="projectsRisk">0</b>Em atenção / risco</span></div>
+          <div class="score-potential"><span>Potencial comprometido em metas</span><strong id="committedPotential">R$ 0</strong><small>Somente metas cadastradas. Não é previsão automática.</small></div>
+        </article>
+      </div>
+
+      <div class="kpi-grid" id="kpiGrid">
+        <article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article>
+      </div>
+
+      <div class="two-col">
+        <article class="panel">
+          <div class="panel-head"><div><span class="card-kicker">Histórico</span><h2>Evolução de faturamento</h2></div><span class="micro" id="evolutionCaption">Últimos períodos disponíveis</span></div>
+          <div class="evolution-chart" id="evolutionChart"><div class="empty">Carregando evolução…</div></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><span class="card-kicker">Decisão</span><h2>Oportunidades prioritárias</h2></div><button class="text-btn" data-go="oportunidades" type="button">Ver todas →</button></div>
+          <div class="opportunity-mini-list" id="opportunityMiniList"><div class="empty">Analisando sinais comerciais…</div></div>
+        </article>
+      </div>
+
+      <article class="panel">
+        <div class="panel-head"><div><span class="card-kicker">Conexão entre áreas</span><h2>Projetos que exigem atuação conjunta</h2></div><button class="text-btn" data-go="projetos" type="button">Abrir projetos →</button></div>
+        <div class="project-strip" id="projectStrip"><div class="empty">Nenhum projeto carregado.</div></div>
+      </article>
+    </section>
+
+    <section class="view" data-view-panel="oportunidades">
+      <div class="section-intro">
+        <div><span class="card-kicker">Dados → decisão</span><h2>Oportunidades identificadas</h2><p>Regras determinísticas com comparação histórica. Um sinal vira projeto somente depois da validação humana.</p></div>
+        <div class="section-actions"><button class="btn" id="manualOpportunityBtn" type="button">+ Oportunidade manual</button></div>
+      </div>
+      <div class="opportunity-tabs" role="tablist">
+        <button class="active" data-op-filter="all" type="button">Todas</button>
+        <button data-op-filter="regional" type="button">Regiões</button>
+        <button data-op-filter="categoria" type="button">Categorias</button>
+        <button data-op-filter="fornecedor" type="button">Fornecedores</button>
+        <button data-op-filter="saved" type="button">Salvas</button>
+      </div>
+      <div class="opportunity-grid" id="opportunityGrid"><div class="empty">Carregando análise…</div></div>
+      <div class="method-note"><strong>Limite da análise:</strong> cidades sem nenhuma venda não aparecem no agregado atual. Essas oportunidades podem ser registradas manualmente até existir uma fonte externa confiável de potencial de mercado. Nada de atribuir R$ 50 milhões a uma cidade porque alguém sentiu uma energia boa no mapa.</div>
+    </section>
+
+    <section class="view" data-view-panel="projetos">
+      <div class="section-intro">
+        <div><span class="card-kicker">Execução integrada</span><h2>Projetos estratégicos</h2><p>O projeto preserva o baseline do início, a meta de 90 dias e as ações de cada departamento.</p></div>
+        <div class="section-actions"><button class="btn primary" id="newProjectBtn" type="button">+ Novo projeto</button></div>
+      </div>
+      <div class="projects-layout">
+        <div class="project-list" id="projectList"><div class="empty">Nenhum projeto carregado.</div></div>
+        <aside class="project-detail" id="projectDetail"><div class="empty large">Selecione um projeto para ver baseline, meta, áreas envolvidas e plano de ação.</div></aside>
+      </div>
+    </section>
+
+    <section class="view" data-view-panel="acompanhamento">
+      <div class="section-intro">
+        <div><span class="card-kicker">Ciclo de 90 dias</span><h2>Acompanhamento de resultado</h2><p>Baseline imutável, medições reais e status calculado pelo ritmo necessário para atingir a meta.</p></div>
+      </div>
+      <div class="tracking-summary" id="trackingSummary"></div>
+      <div class="tracking-grid" id="trackingGrid"><div class="empty">Nenhum projeto ativo para acompanhar.</div></div>
+    </section>
+
+    <section class="view" data-view-panel="revisoes">
+      <div class="section-intro"><div><span class="card-kicker">Fechamento</span><h2>O que funcionou e o que muda</h2><p>Após o ciclo, registre resultado, gargalos e o próximo movimento. O histórico fica preservado para a próxima reunião.</p></div></div>
+      <div class="review-grid" id="reviewGrid"><div class="empty">Nenhum fechamento registrado.</div></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="opportunityDialog" class="modal">
+  <form method="dialog" id="opportunityForm">
+    <header><div><span class="card-kicker">Oportunidade</span><h2 id="opportunityDialogTitle">Registrar oportunidade</h2></div><button class="icon-btn" value="cancel" aria-label="Fechar">×</button></header>
+    <div class="form-grid">
+      <label><span>Tipo</span><select id="oppType"><option value="regional">Regional</option><option value="categoria">Categoria</option><option value="produto">Produto</option><option value="fornecedor">Fornecedor</option><option value="cliente">Cliente</option><option value="manual">Outro</option></select></label>
+      <label><span>Chave / referência</span><input id="oppKey" maxlength="120" placeholder="Ex.: Ourinhos"></label>
+      <label class="full"><span>Título</span><input id="oppTitle" required maxlength="180"></label>
+      <label class="full"><span>Descrição / hipótese</span><textarea id="oppDescription" rows="4"></textarea></label>
+      <label><span>Cidade</span><input id="oppCity" maxlength="100"></label>
+      <label><span>UF</span><input id="oppUf" maxlength="2"></label>
+      <label><span>Grupo / categoria</span><input id="oppGroup" maxlength="120"></label>
+      <label><span>Fornecedor</span><input id="oppSupplier" maxlength="160"></label>
+    </div>
+    <footer><button class="btn ghost" value="cancel">Cancelar</button><button class="btn primary" id="saveOpportunityBtn" value="default">Salvar oportunidade</button></footer>
+  </form>
+</dialog>
+
+<dialog id="projectDialog" class="modal wide">
+  <form method="dialog" id="projectForm">
+    <header><div><span class="card-kicker">Projeto estratégico</span><h2>Criar projeto de 90 dias</h2></div><button class="icon-btn" value="cancel" aria-label="Fechar">×</button></header>
+    <input id="projectOpportunityId" type="hidden">
+    <div class="form-grid">
+      <label class="full"><span>Título</span><input id="projectTitle" required maxlength="180"></label>
+      <label class="full"><span>Objetivo</span><textarea id="projectObjective" rows="3" required></textarea></label>
+      <label><span>Início</span><input id="projectStart" type="date" required></label>
+      <label><span>Fim</span><input id="projectEnd" type="date" required></label>
+      <label><span>Indicador principal</span><select id="projectIndicator"><option value="faturamento">Faturamento</option><option value="kg">Volume kg</option><option value="pedidos">Pedidos</option><option value="clientes">Clientes positivados</option><option value="ticket">Ticket médio</option></select></label>
+      <label><span>Tipo da meta</span><select id="projectGoalType"><option value="percentual">Crescimento percentual</option><option value="absoluta">Valor absoluto</option></select></label>
+      <label><span>Meta</span><input id="projectGoal" type="number" step="0.01" value="20" required></label>
+      <label><span>Unidade</span><input id="projectGoalUnit" value="%" readonly></label>
+      <fieldset class="full"><legend>Escopo comercial do baseline</legend><div class="scope-grid"><label><span>Cliente ID</span><input id="projectCustomerId" placeholder="Opcional"></label><label><span>Cidade</span><input id="projectCity"></label><label><span>UF</span><input id="projectUf" maxlength="2"></label><label><span>Grupo</span><input id="projectGroup"></label><label><span>Fornecedor</span><input id="projectSupplier"></label></div><small>Deixe vazio para medir a operação inteira. O baseline será capturado dos dados reais no momento da criação.</small></fieldset>
+    </div>
+    <div id="baselinePreview" class="baseline-preview">O baseline será carregado ao salvar.</div>
+    <footer><button class="btn ghost" value="cancel">Cancelar</button><button class="btn primary" id="createProjectBtn" value="default">Criar e capturar baseline</button></footer>
+  </form>
+</dialog>
+
+<dialog id="actionDialog" class="modal">
+  <form method="dialog" id="actionForm">
+    <header><div><span class="card-kicker">Plano de ação</span><h2>Adicionar ação</h2></div><button class="icon-btn" value="cancel" aria-label="Fechar">×</button></header>
+    <input id="actionProjectId" type="hidden"><input id="actionId" type="hidden">
+    <div class="form-grid">
+      <label><span>Departamento</span><select id="actionDepartment"><option>Comercial</option><option>Logística</option><option>Marketing</option><option>Compras</option><option>Financeiro</option><option>Estoque</option><option>Diretoria</option><option>Outros</option></select></label>
+      <label><span>Responsável</span><select id="actionOwner"><option value="">Sem responsável</option></select></label>
+      <label class="full"><span>Ação</span><input id="actionTitle" required maxlength="180"></label>
+      <label class="full"><span>Descrição</span><textarea id="actionDescription" rows="3"></textarea></label>
+      <label><span>Prazo</span><input id="actionDue" type="date"></label>
+      <label><span>Status</span><select id="actionStatus"><option value="pendente">Pendente</option><option value="andamento">Em andamento</option><option value="bloqueada">Bloqueada</option><option value="concluida">Concluída</option><option value="cancelada">Cancelada</option></select></label>
+    </div>
+    <footer><button class="btn ghost" value="cancel">Cancelar</button><button class="btn primary" id="saveActionBtn" value="default">Salvar ação</button></footer>
+  </form>
+</dialog>
+
+<dialog id="reviewDialog" class="modal">
+  <form method="dialog" id="reviewForm">
+    <header><div><span class="card-kicker">Fechamento do ciclo</span><h2>Revisar projeto</h2></div><button class="icon-btn" value="cancel" aria-label="Fechar">×</button></header>
+    <input id="reviewProjectId" type="hidden">
+    <div class="form-grid">
+      <label class="full"><span>Resultado</span><select id="reviewResult"><option value="atingido">Atingido</option><option value="parcial">Parcialmente atingido</option><option value="nao_atingido">Não atingido</option></select></label>
+      <label class="full"><span>O que funcionou?</span><textarea id="reviewWorked" rows="3"></textarea></label>
+      <label class="full"><span>O que não funcionou?</span><textarea id="reviewFailed" rows="3"></textarea></label>
+      <label class="full"><span>Principais gargalos</span><textarea id="reviewBottlenecks" rows="3"></textarea></label>
+      <label class="full"><span>Próximo passo / recalcular rota</span><textarea id="reviewNext" rows="3"></textarea></label>
+    </div>
+    <footer><button class="btn ghost" value="cancel">Cancelar</button><button class="btn primary" id="saveReviewBtn" value="default">Salvar fechamento</button></footer>
+  </form>
+</dialog>
+
+<dialog id="presentationDialog" class="presentation-dialog">
+  <div class="presentation-toolbar"><button id="presentPrev" type="button">←</button><span id="presentCounter">1 / 1</span><button id="presentNext" type="button">→</button><button id="presentPrint" type="button">Imprimir / PDF</button><button id="presentClose" type="button">Fechar</button></div>
+  <div id="presentationStage" class="presentation-stage"></div>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="/assets/estrategia.js?v=1.0.0"></script>
+</body>
+</html>
