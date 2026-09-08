@@ -1,11 +1,17 @@
 import { getPool } from '../src/lib/db.js';
+import { requireGestor } from '../src/lib/colaborador.js';
 
 // Diagnóstico: GET /api/_schema
 // Lista todas as tabelas e colunas do banco conectado, pra descobrir os
 // nomes reais e preencher src/lib/tabelas.js corretamente.
 // Depois que a migração estiver concluída, dá pra apagar esse arquivo.
+//
+// Restrito a gestor: expõe todo o schema do SQL Server (tabelas/colunas via
+// INFORMATION_SCHEMA) e antes disso qualquer colaborador logado conseguia
+// consultar essa estrutura interna.
 export default async function handler(req, res) {
   try {
+    if (req.pmgUser) await requireGestor(req.pmgUser.id);
     const pool = await getPool();
     const result = await pool.request().query(`
       SELECT t.TABLE_SCHEMA, t.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE
@@ -25,6 +31,6 @@ export default async function handler(req, res) {
 
     return res.status(200).json(porTabela);
   } catch (err) {
-    return res.status(500).json({ erro: err.message });
+    return res.status(err.status || 500).json({ erro: err.message });
   }
 }

@@ -1,5 +1,6 @@
 import { getPool, sql } from '../src/lib/db.js';
 import { TABELAS } from '../src/lib/tabelas.js';
+import { requireCapacidade } from '../src/lib/colaborador.js';
 
 export default async function handler(req, res) {
   try {
@@ -14,6 +15,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      if (req.pmgUser) await requireCapacidade(req.pmgUser.id, 'catalogo');
       const request = pool.request();
       request.input('estado', sql.NVarChar(sql.MAX), JSON.stringify(req.body));
       request.input('atualizadoEm', sql.DateTime2, new Date());
@@ -27,6 +29,6 @@ export default async function handler(req, res) {
 
     return res.status(405).json({ erro: 'Método não permitido' });
   } catch (err) {
-    return res.status(500).json({ erro: err.message });
+    return res.status(err.status || 500).json({ erro: err.message });
   }
 }

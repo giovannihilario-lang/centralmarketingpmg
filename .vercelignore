@@ -7,8 +7,12 @@ node_modules
 /.env.*
 !.env.example
 
-# A API SQL continua sendo apenas local. O server.js permanece no deploy como
-# entrypoint Express reconhecido automaticamente pela Vercel.
+# A API SQL continua sendo apenas local. O server.js sobe junto no deploy
+# mas NÃO é reconhecido pela Vercel como Serverless Function (confirmado em
+# 2026-09-08: chamar uma rota só dele em produção retorna 404 da própria
+# Vercel, não do Express) — ele só roda de fato via `npm start`/`node
+# server.js` na máquina local. Rotas que precisam existir em produção têm
+# que ter um arquivo próprio em /api (ou um catch-all, como api/wave2).
 /local-api
 
 # Fontes, ferramentas e arquivos de manutenção não participam do runtime.

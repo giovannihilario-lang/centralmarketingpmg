@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { requireCapacidade } from '../src/lib/colaborador.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORAGE_PATH = path.resolve(__dirname, '../data/campanhas-studio-v5.json');
@@ -43,6 +44,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, campanhas: await readAll() });
     }
 
+    if (req.pmgUser) await requireCapacidade(req.pmgUser.id, 'campanhas');
+
     if (req.method === 'POST' || req.method === 'PUT') {
       const incoming = Array.isArray(req.body?.campanhas)
         ? req.body.campanhas
@@ -78,6 +81,7 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST, PUT, DELETE');
     return res.status(405).json({ ok: false, message: 'Método não permitido.' });
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ ok: false, message: error.message });
     console.error('[campanhas-storage]', error);
     return res.status(500).json({ ok: false, message: 'Falha ao persistir campanhas.', detail: error.message });
   }
