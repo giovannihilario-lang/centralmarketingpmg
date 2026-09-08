@@ -7,6 +7,10 @@
     {
       "source": "/fornecedor/:slug",
       "destination": "/fornecedor/slug.html"
+    },
+    {
+      "source": "/api/wave2/:route*",
+      "destination": "/api/wave2?route=:route*"
     }
   ],
   "headers": [
