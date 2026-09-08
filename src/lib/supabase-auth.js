@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
+import { resolveSupabaseUrl, resolveAnonKey } from './env.js';
 
 let authClient = null;
 
 function getAuthClient() {
   if (authClient) return authClient;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = resolveSupabaseUrl();
+  const key = resolveAnonKey();
   if (!url || !key) {
     const error = new Error('SUPABASE_URL / SUPABASE_ANON_KEY não configuradas.');
     error.status = 503;

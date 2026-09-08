@@ -1,11 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
+import { resolveSupabaseUrl, resolveServiceKey } from './env.js';
 
 let adminClient = null;
 
 function getAdminClient() {
   if (adminClient) return adminClient;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ROLE_KEY;
+  const url = resolveSupabaseUrl();
+  const key = resolveServiceKey();
   if (!url || !key) {
     const error = new Error('SUPABASE_SERVICE_ROLE_KEY não configurada.');
     error.status = 503;

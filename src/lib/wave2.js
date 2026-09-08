@@ -2,13 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'node:crypto';
 import { requireSupabaseUser } from './supabase-auth.js';
 import { requireCapacidade } from './colaborador.js';
+import { resolveSupabaseUrl, resolveServiceKey } from './env.js';
 
 let adminClient = null;
 
 function getAdminClient() {
   if (adminClient) return adminClient;
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ROLE_KEY;
+  const url = resolveSupabaseUrl();
+  const key = resolveServiceKey();
   if (!url || !key) return null;
   adminClient = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }

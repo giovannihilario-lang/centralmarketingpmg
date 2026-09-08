@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { WAVE2_ROUTES } from './src/lib/wave2.js';
+import { resolveSupabaseUrl, resolveAnonKey } from './src/lib/env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -14,8 +15,8 @@ const authInFlight = new Map();
 const AUTH_CACHE_MS = 60 * 1000;
 
 function getSupabaseAuthClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = resolveSupabaseUrl();
+  const key = resolveAnonKey();
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
