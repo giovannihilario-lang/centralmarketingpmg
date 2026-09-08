@@ -16,8 +16,6 @@ node_modules
 /local-api
 
 # Fontes, ferramentas e arquivos de manutenção não participam do runtime.
-/api-backup
-/api-legacy
 /fontes
 /sql
 /scripts

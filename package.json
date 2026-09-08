@@ -24,9 +24,7 @@
     "estrategia:testar": "node scripts/testar-planejamento-estrategico.mjs",
     "test": "npm run wave2:testar && npm run wave1b:testar && npm run central-hoje:testar && npm run acompanhamento:testar && npm run documentos:testar && node scripts/testar-planejamento.js && node scripts/testar-reescaneamento.js && npm run estrategia:testar && npm run vercel:check"},
   "dependencies": {
-    "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "2.108.2",
-    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "mssql": "^12.7.0",
