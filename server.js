@@ -191,8 +191,7 @@ function origemPermitida(origin) {
   const normalized = origin.replace(/\/$/, '');
   if (ORIGENS_EXTRAS.has(normalized)) return true;
   if (['localhost', '127.0.0.1'].includes(url.hostname)) return true;
-  if (url.protocol === 'https:' && (url.hostname === 'pmg-marketing.vercel.app' || /^pmg-marketing-[a-z0-9-]+\.vercel\.app$/i.test(url.hostname))) return true;
-  return false;
+  if (url.protocol === 'https:' && (url.hostname === 'centralpmgconnect.vercel.app' || /^centralpmgconnect-[a-z0-9-]+\.vercel\.app$/i.test(url.hostname))) return true;
 }
 
 app.use((req, res, next) => {
