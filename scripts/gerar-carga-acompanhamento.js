@@ -7,7 +7,7 @@ const sourceDir = path.resolve(process.argv[2] || path.join(projectRoot, 'fontes
 const jsonOutput = path.join(projectRoot, 'data', 'acompanhamento-carga-inicial.json');
 const sqlOutput = path.join(projectRoot, 'sql', '07-CARGA-HISTORICA-ACOMPANHAMENTO.sql');
 const sqlEditorOutputDir = path.join(projectRoot, 'sql', 'carga-acompanhamento-sql-editor');
-const reportOutput = path.join(projectRoot, 'RELATORIO-CONSOLIDACAO-PLANILHAS.md');
+const reportOutput = path.join(projectRoot, 'changelog', 'RELATORIO-CONSOLIDACAO-PLANILHAS.md');
 
 const MONTHS = [
   ['JANEIRO', 'Janeiro'], ['FEVEREIRO', 'Fevereiro'], ['MARÇO', 'Março'],
