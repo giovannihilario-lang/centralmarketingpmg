@@ -754,6 +754,14 @@
     return date;
   }
   function inputDate(date) { return date.toISOString().slice(0,10); }
+  // "Hoje" precisa ser a data local (o negócio é America/Sao_Paulo, UTC-3), não a
+  // data UTC. `new Date().toISOString()` sozinho pode "pular" para o dia seguinte
+  // entre ~21h e ~23h59 no horário de Brasília, pois já é o dia seguinte em UTC.
+  // Fixamos o horário ao meio-dia local antes de converter, igual a nextMonday()/sixthMondayFrom().
+  function todayLocalDate() {
+    const now = new Date();
+    return inputDate(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0));
+  }
 
   function defaultGoal(scope = 'individual') {
     return { id:uid('goal'), scope, mode:'absolute', metric:'positivity', operator:'>=', value:scope === 'collective' ? 100 : 4 };
@@ -2448,7 +2456,7 @@
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,
           periodMode:campaign.periodMode || 'six_mondays',
-          asOfDate:inputDate(new Date()),
+          asOfDate:todayLocalDate(),
           currentStart:periods.currentStart,
           currentEnd:periods.currentEnd,
           previousStart:periods.previousStart,
@@ -2831,7 +2839,7 @@
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,
           periodMode:campaign.periodMode || 'six_mondays',
-          asOfDate:inputDate(new Date()),
+          asOfDate:todayLocalDate(),
           supplierIds:scope.supplierIds,
           productIds:scope.productIds,
           sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
@@ -2968,7 +2976,7 @@
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,
           periodMode:campaign.periodMode || 'six_mondays',
-          asOfDate:inputDate(new Date()),
+          asOfDate:todayLocalDate(),
           seller,
           productIds,
           supplierIds,
@@ -3190,7 +3198,7 @@
           campaignStart:periods.currentStart,
           campaignEnd:periods.currentLast,
           periodMode:campaign.periodMode || 'six_mondays',
-          asOfDate:inputDate(new Date()),
+          asOfDate:todayLocalDate(),
           sellers:campaign.participantMode === 'specific' ? campaign.representatives : [],
           participantMode:campaign.participantMode,
           triggerProductIds:products.triggerProducts.map((product) => product.id),
@@ -3324,7 +3332,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `beneficios-${String(campaign?.name || 'campanha').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase()}-${suffix}-${inputDate(new Date())}.csv`;
+    link.download = `beneficios-${String(campaign?.name || 'campanha').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase()}-${suffix}-${todayLocalDate()}.csv`;
     document.body.append(link);
     link.click();
     link.remove();

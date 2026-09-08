@@ -789,7 +789,9 @@ async function ativarNotificacoes() {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') { toast('⚠️ Permissão negada.'); return; }
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
-    const resp = await fetch('/api/salvar-subscricao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
+    const token = await window.PMGConnectAuth?.ensureAccessToken?.();
+    if (!token) throw new Error('Sessão do PMG Connect indisponível. Faça login novamente.');
+    const resp = await fetch('/api/salvar-subscricao', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(sub) });
 const respJson = await resp.json().catch(() => ({}));
 if (!resp.ok) throw new Error(respJson.erro || `Falha ao salvar inscrição (status ${resp.status})`);
 toast('✅ Alertas ativados! Você vai receber 3 avisos por dia.');

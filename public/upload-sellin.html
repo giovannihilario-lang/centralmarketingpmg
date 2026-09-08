@@ -61,9 +61,11 @@
       });
 
       try {
+        const token = await window.PMGConnectAuth?.ensureAccessToken?.();
+        if (!token) throw new Error('Sessão do PMG Connect indisponível. Faça login novamente.');
         const res = await fetch('/api/processar-sellin', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ fileBase64: base64, fornecedorId: Number(fornecedorId) })
         });
 

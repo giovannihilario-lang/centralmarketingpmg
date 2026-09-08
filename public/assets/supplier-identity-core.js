@@ -12,7 +12,7 @@ export function normalizeSupplierText(value) {
 
 export function normalizeSupplierCnpj(value) {
   const digits = String(value ?? '').replace(/\D/g, '');
-  return digits.length === 14 ? digits : digits;
+  return digits.length === 14 ? digits : '';
 }
 
 export function normalizeSupplierCode(value) {

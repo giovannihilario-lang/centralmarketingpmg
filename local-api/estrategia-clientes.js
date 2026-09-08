@@ -1,47 +1,11 @@
-import sql from 'mssql';
+import { getPool, sql } from '../src/lib/db.js';
 
-let poolPromise = null;
-
-function boolEnv(value, fallback = false) {
-  if (value == null || value === '') return fallback;
-  return /^(1|true|yes|sim)$/i.test(String(value));
-}
-
-function sqlConfig() {
-  const server = process.env.SQL_SERVER;
-  const database = process.env.SQL_DATABASE;
-  const user = process.env.SQL_USER;
-  const password = process.env.SQL_PASSWORD;
-  if (!server || !database || !user || !password) {
-    const error = new Error('Configuração do SQL Server incompleta no .env local.');
-    error.status = 503;
-    throw error;
-  }
-  return {
-    server,
-    database,
-    user,
-    password,
-    pool: { max: 4, min: 0, idleTimeoutMillis: 30000 },
-    options: {
-      encrypt: boolEnv(process.env.SQL_ENCRYPT, true),
-      trustServerCertificate: boolEnv(process.env.SQL_TRUST_SERVER_CERTIFICATE, false),
-      enableArithAbort: true,
-    },
-    requestTimeout: 30000,
-    connectionTimeout: 15000,
-  };
-}
-
-async function pool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool(sqlConfig()).connect().catch(error => {
-      poolPromise = null;
-      throw error;
-    });
-  }
-  return poolPromise;
-}
+// Antes deste ajuste, este arquivo abria seu PRÓPRIO ConnectionPool (config
+// duplicada, sem os nomes de fallback AZURE_SQL_* e sem o handler pool.on('error')
+// que existe em src/lib/db.js). Isso criava uma segunda conexão persistente ao
+// mesmo SQL Server (desperdício no plano limitado da Vercel) e, se a conexão
+// caísse em produção, este endpoint ficava quebrado até reiniciar o processo —
+// getPool() já resolve os dois problemas e é a mesma pool usada pelo resto da API.
 
 function monthStart(value) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(value || ''));
@@ -87,7 +51,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const db = await pool();
+    const db = await getPool();
     const request = db.request();
     request.input('currentStart', sql.Date, currentStart);
     request.input('currentEnd', sql.Date, currentEnd);

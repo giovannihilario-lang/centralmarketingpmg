@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ erro: 'VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY não configuradas no .env' });
     }
     webpush.setVapidDetails(
-      'mailto:marketing04@pmg.com.br',
+      process.env.VAPID_SUBJECT || 'mailto:marketing@pmgatacadista.com.br',
       process.env.VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );
