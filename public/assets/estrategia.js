@@ -226,7 +226,7 @@ function renderKpis(){
   $('kpiGrid').innerHTML=cards.map(([label,cur,old,fmt])=>`<article class="kpi"><div class="label">${label}</div>${metricDelta(cur,old,fmt)}</article>`).join('');
   const ratio=state.target>0?current.total_valor/state.target:0; const percentage=Math.max(0,Math.min(999,ratio*100));
   $('targetHero').textContent=moneyCompact(state.target);$('heroRevenue').textContent=money(current.total_valor);$('heroGap').textContent=money(Math.max(0,state.target-current.total_valor));$('goalPct').textContent=`${percentage.toFixed(1)}%`;
-  $('goalRing').style.background=`conic-gradient(var(--green) ${Math.min(360,ratio*360)}deg,#e7ebe6 0deg)`;
+  $('goalRing').style.background=`conic-gradient(var(--green-dark) ${Math.min(360,ratio*360)}deg,#e7ebe6 0deg)`;
 }
 
 function latestMeasurementsMap(){
