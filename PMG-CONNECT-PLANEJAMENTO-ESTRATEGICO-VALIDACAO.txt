@@ -1,0 +1,29 @@
+PMG CONNECT | PLANEJAMENTO ESTRATEGICO | VALIDACAO LOCAL
+Data: 2026-09-04
+
+PLANEJAMENTO_ESTRATEGICO_INSTALL: PASS
+- instalação pontual em public/central.html: PASS
+- instalação pontual em package.json: PASS
+- segunda execução sem duplicação: PASS
+
+PLANEJAMENTO_ESTRATEGICO: PASS
+- contratos HTML/JS: PASS
+- IDs HTML sem duplicidade: PASS
+- indicador clientes positivados: PASS
+- motor determinístico de oportunidades: PASS
+- estrutura da migration SQL 28: PASS
+- integração ação -> Demandas presente: PASS
+
+SINTAXE NODE
+- local-api/estrategia-clientes.js: PASS
+- public/assets/estrategia-core.js: PASS
+- public/assets/estrategia.js: PASS
+
+SEGURANCA
+- varredura estática de credenciais no patch: PASS
+
+NÃO EXECUTADO NESTA SESSÃO
+- migration SQL 28 no Supabase PMG real
+- consulta contra o SQL Server PMG real
+- deploy Vercel/GitHub real
+Motivo: as conexões ativas desta sessão não expõem o projeto PMG Connect de produção.

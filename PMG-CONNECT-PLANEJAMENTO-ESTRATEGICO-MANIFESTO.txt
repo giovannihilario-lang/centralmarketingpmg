@@ -1,0 +1,28 @@
+PMG CONNECT | PLANEJAMENTO ESTRATEGICO | 2026-09-04
+
+ARQUIVOS NOVOS DO PATCH
+- public/planejamento-estrategico.html
+- public/assets/estrategia-core.js
+- public/assets/estrategia.js
+- public/assets/estrategia.css
+- local-api/estrategia-clientes.js
+- sql/28-PLANEJAMENTO-ESTRATEGICO.sql
+- sql/28-ROLLBACK-PLANEJAMENTO-ESTRATEGICO.sql
+- scripts/instalar-planejamento-estrategico.mjs
+- scripts/testar-planejamento-estrategico.mjs
+- PMG-CONNECT-PLANEJAMENTO-ESTRATEGICO-INSTALACAO.md
+- PMG-CONNECT-PLANEJAMENTO-ESTRATEGICO-PATCH-NOTES.md
+
+ALTERADOS DE FORMA PONTUAL PELO INSTALADOR
+- public/central.html
+- package.json
+
+BANCO
+- executar sql/28-PLANEJAMENTO-ESTRATEGICO.sql no Supabase PMG
+
+TESTE
+- npm run estrategia:testar
+
+PAGINA
+- /planejamento-estrategico.html
+- PMG-CONNECT-PLANEJAMENTO-ESTRATEGICO-VALIDACAO.txt
