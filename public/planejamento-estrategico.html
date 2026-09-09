@@ -47,8 +47,8 @@
       <div class="top-actions">
         <div class="source-pill" id="sourceStatus"><span class="dot"></span><span>Conectando dados</span></div>
         <button class="btn ghost" id="refreshBtn" type="button">Atualizar</button>
-        <button class="btn" id="presentationBtn" type="button">Apresentar</button>
-        <button class="btn primary" id="pptxBtn" type="button">Exportar PPTX</button>
+        <button class="btn" id="presentStage1Btn" type="button">Apresentação 1 · Visão geral</button>
+        <button class="btn primary" id="presentStage2Btn" type="button">Apresentação 2 · Oportunidades</button>
       </div>
     </header>
 
@@ -214,11 +214,11 @@
 </dialog>
 
 <dialog id="presentationDialog" class="presentation-dialog">
-  <div class="presentation-toolbar"><button id="presentPrev" type="button">←</button><span id="presentCounter">1 / 1</span><button id="presentNext" type="button">→</button><button id="presentPrint" type="button">Imprimir / PDF</button><button id="presentClose" type="button">Fechar</button></div>
+  <div class="presentation-toolbar"><button id="presentPrev" type="button">←</button><span id="presentCounter">1 / 1</span><button id="presentNext" type="button">→</button><span id="presentStageLabel"></span><button id="presentExportBtn" type="button">Exportar PPTX</button><button id="presentPrint" type="button">Imprimir / PDF</button><button id="presentClose" type="button">Fechar</button></div>
   <div id="presentationStage" class="presentation-stage"></div>
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.0.1"></script>
+<script type="module" src="/assets/estrategia.js?v=1.0.2"></script>
 </body>
 </html>

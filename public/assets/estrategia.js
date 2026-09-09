@@ -24,7 +24,7 @@ const state = {
   view:'executivo', period:'', compare:null, periods:[], target:DEFAULT_REVENUE_TARGET,
   config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[],
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
-  opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{},
+  opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao',
 };
 
 function toast(message,type='ok'){
@@ -352,29 +352,54 @@ function presentationData(){
   const c=state.commercial||{kpis:normalizeKpis({}),previousKpis:normalizeKpis({}),evolution:[]};const latest=latestMeasurementsMap();const summary=summarizeProjects(state.projects,latest);const topOps=state.generatedOpportunities.slice(0,4);const active=state.projects.filter(p=>!['encerrado','cancelado'].includes(p.status)).slice(0,5);const selected=active[0]||state.projects[0]||null;const actions=selected?state.actions.filter(a=>String(a.projeto_id)===String(selected.id)):[];
   return {c,summary,topOps,active,selected,actions,target:state.target,period:quarterLabel(state.period)};
 }
-function buildSlides(){
-  const d=presentationData();const growth=pct(d.c.kpis.total_valor,d.c.previousKpis.total_valor);const selectedProgress=d.selected?projectHealth(d.selected):null;
+// Placeholder de setor: a apresentação 1 hoje só tem dado real de Comercial
+// (via SQL Server/PMG Bridge). Logística, Marketing, Financeiro e Compras
+// ainda não têm fonte integrada aqui — em vez de inventar número, a área
+// preenche na hora da reunião. Quando cada fonte for definida, estes slides
+// passam a ler dado real do mesmo jeito que o slide Comercial já lê.
+function placeholderSectorSlide(kicker,area,indicadores){
+  return {kicker,title:`${area} — dados do setor`,subtitle:`Espaço reservado para a equipe de ${area} apresentar os indicadores do período nesta reunião.`,columns:indicadores.map(label=>[label,'A apresentar pela área'])};
+}
+
+function buildOverviewSlides(){
+  const d=presentationData();const growth=pct(d.c.kpis.total_valor,d.c.previousKpis.total_valor);
   return [
-    {kind:'cover',kicker:'PMG · Planejamento Estratégico',title:'Rumo aos R$ 200 milhões',subtitle:`Onde estamos, quais oportunidades os dados mostram e como os departamentos se conectam nos próximos 90 dias. Período-base: ${d.period}.`},
-    {kicker:'01 · Onde estamos',title:'A operação atual em números',metrics:[['Faturamento',money(d.c.kpis.total_valor)],['Volume',kg(d.c.kpis.total_kg)],['Clientes positivados',num(d.c.kpis.n_clientes)],['Pedidos',num(d.c.kpis.n_pedidos)],['Ticket médio',money(d.c.kpis.ticket_medio)],['Cidades',num(d.c.kpis.n_cidades)]],subtitle:growth==null?'Sem base anterior comparável.':`Faturamento ${growth>=0?'+':''}${growth.toFixed(1)}% contra o período anterior.`},
+    {kind:'cover',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'Rumo aos R$ 200 milhões',subtitle:`O retrato atual de cada área, antes de olharmos oportunidades e plano de ação. Período-base: ${d.period}.`},
+    {kicker:'01 · Comercial',title:'A operação comercial em números',metrics:[['Faturamento',money(d.c.kpis.total_valor)],['Volume',kg(d.c.kpis.total_kg)],['Clientes positivados',num(d.c.kpis.n_clientes)],['Pedidos',num(d.c.kpis.n_pedidos)],['Ticket médio',money(d.c.kpis.ticket_medio)],['Cidades',num(d.c.kpis.n_cidades)]],subtitle:growth==null?'Sem base anterior comparável.':`Faturamento ${growth>=0?'+':''}${growth.toFixed(1)}% contra o período anterior.`},
     {kicker:'02 · Meta',title:'A distância até a meta precisa virar projetos',metrics:[['Meta mensal',money(d.target)],['Atual',money(d.c.kpis.total_valor)],['Gap',money(Math.max(0,d.target-d.c.kpis.total_valor))]],subtitle:'O gap não é distribuído automaticamente entre cidades ou produtos. Cada iniciativa precisa de uma hipótese verificável, responsável e meta própria.'},
-    {kicker:'03 · Oportunidades',title:'Sinais comerciais que merecem investigação',list:d.topOps.map(op=>[op.title,`Score ${op.score.toFixed(0)} · ${opportunityTypeLabel(op)}`]),subtitle:'Sinais baseados em comparação histórica interna. Não são previsão absoluta de mercado.'},
-    {kicker:'04 · Portfólio',title:'Transformando oportunidade em execução',metrics:[['Projetos ativos',num(d.summary.active)],['No ritmo / atingidos',num(d.summary.achieved+Math.max(0,d.summary.active-d.summary.risk-d.summary.attention-d.summary.below-d.summary.achieved))],['Em risco / atenção',num(d.summary.risk+d.summary.attention+d.summary.below)],['Metas de faturamento comprometidas',money(d.summary.committedPotential)]],subtitle:'Cada projeto preserva o baseline e mede o resultado ao longo de 90 dias.'},
-    ...(d.selected?[{kicker:'05 · Exemplo de projeto',title:d.selected.titulo,subtitle:d.selected.objetivo,metrics:[['Baseline',formatProjectMetric(d.selected,normalizeKpis(safeJson(d.selected.baseline,{})))],['Meta',d.selected.meta_tipo==='percentual'?`${number(d.selected.meta_valor).toFixed(1)}%`:money(d.selected.meta_valor)],['Resultado atual',d.selected.meta_tipo==='percentual'?`${selectedProgress.delta.toFixed(1)}%`:formatProjectMetric(d.selected,normalizeKpis(projectLatest(d.selected)||{}))],['Status',healthLabel(selectedProgress.health)]]}]:[]),
-    {kicker:'06 · Áreas conectadas',title:'O plano de ação é interdepartamental',actions:d.actions.slice(0,8),subtitle:d.selected?`Ações vinculadas ao projeto “${d.selected.titulo}”.`:'Comercial, Logística, Marketing, Compras, Financeiro e Estoque entram conforme a oportunidade.'},
-    {kicker:'07 · 90 dias',title:'Executar, medir e corrigir rota',columns:[['Baseline','Fotografia dos indicadores no início.'],['Mês 1','Primeira medição e remoção de bloqueios.'],['Mês 2','Ajustes e reforço do que está performando.'],['Mês 3','Fechamento, aprendizados e decisão de escalar ou recalcular.']]},
-    {kicker:'08 · Governança',title:'Um número precisa ter fonte e responsável',columns:[['Dados','Regional e SQL comercial alimentam indicadores.'],['Execução','Ações estratégicas podem virar Demandas.'],['Histórico','Baseline e medições ficam preservados no Supabase.'],['Decisão','Resultado final registra o que funcionou, gargalos e próximo passo.']]},
+    placeholderSectorSlide('03 · Logística','Logística',['Frota disponível','Entregas no período','Custo de entrega','Cobertura de rotas']),
+    placeholderSectorSlide('04 · Marketing','Marketing',['Campanhas ativas','Investimento em mídia','Leads / tráfego gerado','Principais ações no período']),
+    placeholderSectorSlide('05 · Financeiro','Financeiro',['Fluxo de caixa','Inadimplência','Prazo médio de recebimento','Custo financeiro']),
+    placeholderSectorSlide('06 · Compras','Compras',['Fornecedores ativos','Nível de estoque','Rupturas no período','Negociações em andamento']),
+    {kicker:'07 · Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'A Apresentação 2 traz os sinais comerciais identificados nos dados e o plano de ação por área para os próximos 90 dias.'},
+  ];
+}
+
+function buildOpportunityActionSlides(){
+  const d=presentationData();const selectedProgress=d.selected?projectHealth(d.selected):null;
+  return [
+    {kind:'cover',kicker:'PMG · Planejamento Estratégico · Apresentação 2 de 2',title:'Oportunidades e plano de ação',subtitle:`A partir do retrato atual, para onde crescemos e o que cada área assume nos próximos 90 dias. Período-base: ${d.period}.`},
+    {kicker:'01 · Oportunidades',title:'Sinais comerciais que merecem investigação',list:d.topOps.map(op=>[op.title,`Score ${op.score.toFixed(0)} · ${opportunityTypeLabel(op)}`]),subtitle:'Sinais baseados em comparação histórica interna. Não são previsão absoluta de mercado.'},
+    {kicker:'02 · Portfólio',title:'Transformando oportunidade em execução',metrics:[['Projetos ativos',num(d.summary.active)],['No ritmo / atingidos',num(d.summary.achieved+Math.max(0,d.summary.active-d.summary.risk-d.summary.attention-d.summary.below-d.summary.achieved))],['Em risco / atenção',num(d.summary.risk+d.summary.attention+d.summary.below)],['Metas de faturamento comprometidas',money(d.summary.committedPotential)]],subtitle:'Cada projeto preserva o baseline e mede o resultado ao longo de 90 dias.'},
+    ...(d.selected?[{kicker:'03 · Exemplo de projeto',title:d.selected.titulo,subtitle:d.selected.objetivo,metrics:[['Baseline',formatProjectMetric(d.selected,normalizeKpis(safeJson(d.selected.baseline,{})))],['Meta',d.selected.meta_tipo==='percentual'?`${number(d.selected.meta_valor).toFixed(1)}%`:money(d.selected.meta_valor)],['Resultado atual',d.selected.meta_tipo==='percentual'?`${selectedProgress.delta.toFixed(1)}%`:formatProjectMetric(d.selected,normalizeKpis(projectLatest(d.selected)||{}))],['Status',healthLabel(selectedProgress.health)]]}]:[]),
+    {kicker:'04 · Áreas conectadas',title:'O plano de ação é interdepartamental',actions:d.actions.slice(0,8),subtitle:d.selected?`Ações vinculadas ao projeto “${d.selected.titulo}”.`:'Comercial, Logística, Marketing, Compras, Financeiro e Estoque entram conforme a oportunidade.'},
+    {kicker:'05 · 90 dias',title:'Executar, medir e corrigir rota',columns:[['Baseline','Fotografia dos indicadores no início.'],['Mês 1','Primeira medição e remoção de bloqueios.'],['Mês 2','Ajustes e reforço do que está performando.'],['Mês 3','Fechamento, aprendizados e decisão de escalar ou recalcular.']]},
+    {kicker:'06 · Governança',title:'Um número precisa ter fonte e responsável',columns:[['Dados','Regional e SQL comercial alimentam indicadores.'],['Execução','Ações estratégicas podem virar Demandas.'],['Histórico','Baseline e medições ficam preservados no Supabase.'],['Decisão','Resultado final registra o que funcionou, gargalos e próximo passo.']]},
     {kind:'cover',kicker:'Próxima reunião',title:'Não discutir só o número. Discutir a decisão.',subtitle:'O objetivo é sair com oportunidades priorizadas, responsáveis definidos, prazos e métricas para os próximos 90 dias.'}
   ];
 }
+
+function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():buildOverviewSlides()}
+function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Visão geral'}
+function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Visao_Geral'}
 function slideHtml(slide){
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p></section>`;
   return `<section class="slide"><span class="slide-kicker">${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics">${slide.metrics.map(([l,v])=>`<div class="slide-metric"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(([l,v])=>`<div><strong>${esc(l)}</strong><span>${esc(v)}</span></div>`).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v])=>`<div class="slide-card"><h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}</section>`}
-function renderPresentation(){state.slides=buildSlides();state.presentationIndex=Math.max(0,Math.min(state.presentationIndex,state.slides.length-1));$('presentationStage').innerHTML=slideHtml(state.slides[state.presentationIndex]);$('presentCounter').textContent=`${state.presentationIndex+1} / ${state.slides.length}`}
-function openPresentation(){state.presentationIndex=0;renderPresentation();$('presentationDialog').showModal()}
+function renderPresentation(){state.slides=slidesForStage(state.presentationStage);state.presentationIndex=Math.max(0,Math.min(state.presentationIndex,state.slides.length-1));$('presentationStage').innerHTML=slideHtml(state.slides[state.presentationIndex]);$('presentCounter').textContent=`${state.presentationIndex+1} / ${state.slides.length}`;$('presentStageLabel').textContent=stageLabel(state.presentationStage)}
+function openPresentation(stage){state.presentationStage=stage;state.presentationIndex=0;renderPresentation();$('presentationDialog').showModal()}
 
-async function exportPptx(){
-  if(!window.PptxGenJS)throw new Error('Biblioteca de PowerPoint não carregou. Use o modo Apresentar/Imprimir como alternativa.'); const slides=buildSlides();const pptx=new window.PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='PMG Connect';pptx.subject='Planejamento Estratégico PMG';pptx.title='PMG Rumo aos R$ 200 milhões';pptx.company='PMG';pptx.lang='pt-BR';
+async function exportPptx(stage){
+  if(!window.PptxGenJS)throw new Error('Biblioteca de PowerPoint não carregou. Use o modo Apresentar/Imprimir como alternativa.'); const slides=slidesForStage(stage);const pptx=new window.PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='PMG Connect';pptx.subject='Planejamento Estratégico PMG';pptx.title='PMG Rumo aos R$ 200 milhões';pptx.company='PMG';pptx.lang='pt-BR';
   const C={green:'173D2A',green2:'28613F',ink:'18221C',muted:'657068',line:'DFE4DF',paper:'F7F7F3',gold:'D9C88E',white:'FFFFFF'};
   for(const s of slides){const slide=pptx.addSlide();slide.background={color:s.kind==='cover'?C.green:C.paper};const fg=s.kind==='cover'?C.white:C.ink;slide.addText(s.kicker,{x:.7,y:.55,w:11.8,h:.25,fontSize:9,bold:true,color:s.kind==='cover'?C.gold:C.green2,charSpacing:1.5,margin:0});slide.addText(s.title,{x:.7,y:1.05,w:11.7,h:1.1,fontSize:s.kind==='cover'?34:28,bold:true,color:fg,margin:0,breakLine:false});if(s.subtitle)slide.addText(s.subtitle,{x:.72,y:2.25,w:10.9,h:.75,fontSize:13,color:s.kind==='cover'?'C0CEC5':C.muted,margin:0,breakLine:false});
     if(s.metrics){const cols=3,w=3.75,h=1.08,startY=3.4;s.metrics.forEach(([label,value],i)=>{const x=.7+(i%cols)*4.05,y=startY+Math.floor(i/cols)*1.35;slide.addShape(pptx.ShapeType.rect,{x,y,w,h,fill:{color:C.white},line:{color:C.line}});slide.addText(label,{x:x+.18,y:y+.18,w:w-.36,h:.18,fontSize:8,bold:true,color:C.muted,margin:0});slide.addText(value,{x:x+.18,y:y+.48,w:w-.36,h:.33,fontSize:19,bold:true,color:C.ink,margin:0})})}
@@ -383,7 +408,7 @@ async function exportPptx(){
     if(s.actions){s.actions.slice(0,8).forEach((a,i)=>{const y=3.05+i*.48;slide.addText(a.departamento,{x:.75,y,w:2.1,h:.25,fontSize:9,bold:true,color:C.green2,margin:0});slide.addText(a.titulo,{x:2.8,y,w:6.8,h:.25,fontSize:10,color:C.ink,margin:0});slide.addText(collaboratorName(a.responsavel_id),{x:9.7,y,w:2.6,h:.25,fontSize:9,color:C.muted,align:'right',margin:0})})}
     slide.addText('PMG CONNECT',{x:10.95,y:7.05,w:1.7,h:.18,fontSize:7,bold:true,color:s.kind==='cover'?'8FA499':'98A49C',charSpacing:1,margin:0,align:'right'});
   }
-  await pptx.writeFile({fileName:`PMG_Planejamento_Estrategico_${state.period||nowKey()}.pptx`});toast('PowerPoint gerado com os dados atuais.');
+  await pptx.writeFile({fileName:`PMG_Planejamento_${stageFileTag(stage)}_${state.period||nowKey()}.pptx`});toast('PowerPoint gerado com os dados atuais.');
 }
 
 function bindEvents(){
@@ -393,7 +418,7 @@ function bindEvents(){
     if(el.dataset.addAction){openAction(el.dataset.addAction);return}if(el.dataset.editAction){openAction(state.actions.find(a=>String(a.id)===String(el.dataset.editAction))?.projeto_id,state.actions.find(a=>String(a.id)===String(el.dataset.editAction)));return}if(el.dataset.demandAction){await createDemand(el.dataset.demandAction);return}if(el.dataset.measureProject){await measureProject(el.dataset.measureProject);return}if(el.dataset.reviewProject){openReview(el.dataset.reviewProject);return}
   }catch(error){console.error(error);toast(error.message||String(error),'error')}});
   document.querySelectorAll('[data-op-filter]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-op-filter]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.opFilter=btn.dataset.opFilter;renderOpportunities()}));
-  $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentationBtn').addEventListener('click',openPresentation);$('pptxBtn').addEventListener('click',()=>exportPptx().catch(e=>toast(e.message,'error')));
+  $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
   $('opportunityForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveManualOpportunity();$('opportunityDialog').close()}catch(e){toast(e.message,'error')}});
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});
