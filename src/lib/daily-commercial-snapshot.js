@@ -890,12 +890,100 @@ export function matchesRegionalFilters(fact, query = {}, { ignore = [] } = {}) {
   return true;
 }
 
-export async function forEachRegionalFact(query, callback, options = {}) {
+// PERF: antes, cada uma das 13M linhas do snapshot passava por até 6
+// comparações de string (matchesRegionalFilters) em TODA chamada — e uma
+// única troca de filtro no Dashboard Regional dispara ~14 chamadas em
+// paralelo, no mesmo processo Node de thread única. Cliente e produto são
+// listas ORDENS DE GRANDEZA menores que as linhas (milhares, não milhões), e
+// os filtros de cidade/região/UF/segmento só dependem do cliente, e os de
+// grupo/subgrupo/fornecedor/produto só dependem do produto — então dá pra
+// resolver quais clientes/produtos batem com o filtro UMA vez (varrendo as
+// listas pequenas) e, na volta grande pelas linhas, trocar as comparações de
+// string por uma checagem O(1) em Set. Resultado idêntico a
+// matchesRegionalFilters, só que ordens de magnitude mais rápido.
+function buildClientMatchSet(snapshot, query, skip) {
+  const needCidade = Boolean(query.p_cidade) && !skip.has('p_cidade');
+  const needRegiao = Boolean(query.p_regiao) && !skip.has('p_regiao');
+  const needUf = Boolean(query.p_uf) && !skip.has('p_uf');
+  const needSegmento = Boolean(query.p_segmento) && !skip.has('p_segmento');
+  if (!needCidade && !needRegiao && !needUf && !needSegmento) return null;
+
+  const ids = new Set();
+  for (const client of snapshot.regionalClients || []) {
+    if (needCidade && !includesFold(`${client.ci} / ${client.uf}`, query.p_cidade)) continue;
+    if (needRegiao && !includesFold(client.z, query.p_regiao)) continue;
+    if (needUf && upper(client.uf) !== upper(query.p_uf)) continue;
+    if (needSegmento && !includesFold(client.se, query.p_segmento)) continue;
+    ids.add(Number(client.c));
+  }
+  return ids;
+}
+
+function buildProductMatchSet(snapshot, query, skip) {
+  const needGrupo = Boolean(query.p_grupo) && !skip.has('p_grupo');
+  const needSubgrupo = Boolean(query.p_subgrupo) && !skip.has('p_subgrupo');
+  const needFornecedor = Boolean(query.p_fornecedor) && !skip.has('p_fornecedor');
+  const produtoRaw = query.p_produto && !skip.has('p_produto') ? String(query.p_produto).trim() : '';
+  const needProduto = /^\d+$/.test(produtoRaw);
+  if (!needGrupo && !needSubgrupo && !needFornecedor && !needProduto) return null;
+
+  const produtoId = needProduto ? Number(produtoRaw) : null;
+  const ids = new Set();
+  for (const product of snapshot.regionalProducts || []) {
+    if (needGrupo && !includesFold(product.g, query.p_grupo)) continue;
+    if (needSubgrupo && !includesFold(product.sg, query.p_subgrupo)) continue;
+    if (needFornecedor && !includesFold(product.sn, query.p_fornecedor)) continue;
+    if (needProduto && Number(product.p) !== produtoId) continue;
+    ids.add(Number(product.p));
+  }
+  return ids;
+}
+
+function buildDateRange(query, skip) {
+  let start = null;
+  let end = null;
+  if (query.p_de && !skip.has('p_de')) {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(query.p_de));
+    if (match) start = Date.UTC(Number(match[1]), Number(match[2]) - 1, 1);
+  }
+  if (query.p_ate && !skip.has('p_ate')) {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(query.p_ate));
+    if (match) end = Date.UTC(Number(match[1]), Number(match[2]), 1);
+  }
+  return { start, end };
+}
+
+export async function forEachRegionalFact(query = {}, callback, options = {}) {
   const snapshot = await ensureDailySnapshot();
+  const skip = new Set(options.ignore || []);
+  const clientIds = buildClientMatchSet(snapshot, query, skip);
+  const productIds = buildProductMatchSet(snapshot, query, skip);
+  const { start, end } = buildDateRange(query, skip);
+  const ordersById = snapshot._idx.regionalOrdersById;
+  const clientsById = snapshot._idx.regionalClientsById;
+  const productsById = snapshot._idx.regionalProductsById;
+
   for (const line of snapshot.lines) {
-    const fact = regionalFact(snapshot, line);
-    if (!matchesRegionalFilters(fact, query, options)) continue;
-    callback(fact, snapshot);
+    const productId = Number(line.p);
+    if (productIds && !productIds.has(productId)) continue;
+
+    const order = ordersById.get(String(line.o));
+    if (!order) continue;
+
+    if (start !== null || end !== null) {
+      const d = orderDateMs(order);
+      if (start !== null && (!Number.isFinite(d) || d < start)) continue;
+      if (end !== null && (!Number.isFinite(d) || d >= end)) continue;
+    }
+
+    const clientId = Number(order.c);
+    if (clientIds && !clientIds.has(clientId)) continue;
+
+    const client = clientsById.get(clientId);
+    const product = productsById.get(productId);
+    if (!client || !product) continue;
+
+    callback({ line, order, client, product }, snapshot);
   }
   return snapshot;
 }
