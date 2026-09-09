@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173d2a">
   <title>Planejamento Estratégico | PMG Connect</title>
-  <link rel="stylesheet" href="/assets/estrategia.css?v=1.0.0">
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.1.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.2"></script>
   <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -215,11 +215,28 @@
 </dialog>
 
 <dialog id="presentationDialog" class="presentation-dialog">
-  <div class="presentation-toolbar"><button id="presentPrev" type="button">←</button><span id="presentCounter">1 / 1</span><button id="presentNext" type="button">→</button><span id="presentStageLabel"></span><button id="presentExportBtn" type="button">Exportar PPTX</button><button id="presentPrint" type="button">Imprimir / PDF</button><button id="presentClose" type="button">Fechar</button></div>
-  <div id="presentationStage" class="presentation-stage"></div>
+  <div class="presentation-toolbar">
+    <div class="pt-group"><span class="pt-stage" id="presentStageLabel"></span></div>
+    <div class="pt-nav">
+      <button class="pt-arrow" id="presentPrev" type="button" aria-label="Slide anterior (←)">‹</button>
+      <span class="pt-counter" id="presentCounter">1 / 1</span>
+      <div class="pt-dots" id="presentDots"></div>
+      <button class="pt-arrow" id="presentNext" type="button" aria-label="Próximo slide (→)">›</button>
+    </div>
+    <div class="pt-group">
+      <button class="pt-action" id="presentExportBtn" type="button">Exportar PPTX</button>
+      <button class="pt-action" id="presentPrint" type="button">Imprimir / PDF</button>
+      <button class="pt-action pt-close" id="presentClose" type="button" aria-label="Fechar (Esc)">✕</button>
+    </div>
+  </div>
+  <div class="presentation-stage" id="presentationStageWrap">
+    <button class="stage-arrow prev" id="presentStagePrev" type="button" aria-label="Slide anterior">‹</button>
+    <div id="presentationStage"></div>
+    <button class="stage-arrow next" id="presentStageNext" type="button" aria-label="Próximo slide">›</button>
+  </div>
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.0.3"></script>
+<script type="module" src="/assets/estrategia.js?v=1.1.0"></script>
 </body>
 </html>

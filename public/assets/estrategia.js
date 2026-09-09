@@ -412,7 +412,22 @@ function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_Plano
 function slideHtml(slide){
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p></section>`;
   return `<section class="slide"><span class="slide-kicker">${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics">${slide.metrics.map(([l,v])=>`<div class="slide-metric"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(([l,v])=>`<div><strong>${esc(l)}</strong><span>${esc(v)}</span></div>`).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v])=>`<div class="slide-card"><h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}</section>`}
-function renderPresentation(){state.slides=slidesForStage(state.presentationStage);state.presentationIndex=Math.max(0,Math.min(state.presentationIndex,state.slides.length-1));$('presentationStage').innerHTML=slideHtml(state.slides[state.presentationIndex]);$('presentCounter').textContent=`${state.presentationIndex+1} / ${state.slides.length}`;$('presentStageLabel').textContent=stageLabel(state.presentationStage)}
+function goToSlide(index,{initial=false}={}){
+  const previous=state.presentationIndex;const clamped=Math.max(0,Math.min(index,state.slides.length-1));
+  const back=!initial&&clamped<previous;state.presentationIndex=clamped;
+  const el=$('presentationStage');el.innerHTML=slideHtml(state.slides[clamped]);
+  if(!initial){const slideEl=el.querySelector('.slide');if(slideEl)slideEl.classList.toggle('slide-back',back)}
+  $('presentCounter').textContent=`${clamped+1} / ${state.slides.length}`;
+  $('presentPrev').disabled=clamped===0;$('presentNext').disabled=clamped===state.slides.length-1;
+  $('presentStagePrev').disabled=clamped===0;$('presentStageNext').disabled=clamped===state.slides.length-1;
+  $('presentDots').querySelectorAll('.pt-dot').forEach((dot,i)=>dot.classList.toggle('active',i===clamped));
+}
+function renderPresentation(){
+  state.slides=slidesForStage(state.presentationStage);
+  $('presentStageLabel').textContent=stageLabel(state.presentationStage);
+  $('presentDots').innerHTML=state.slides.map((_,i)=>`<button type="button" class="pt-dot" data-slide-dot="${i}" aria-label="Ir para o slide ${i+1}"></button>`).join('');
+  goToSlide(state.presentationIndex,{initial:true});
+}
 function openPresentation(stage){state.presentationStage=stage;state.presentationIndex=0;renderPresentation();$('presentationDialog').showModal()}
 
 async function exportPptx(stage){
@@ -441,7 +456,12 @@ function bindEvents(){
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});
   $('actionForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveAction();$('actionDialog').close()}catch(e){toast(e.message,'error')}});
   $('reviewForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveReview();$('reviewDialog').close()}catch(e){toast(e.message,'error')}});
-  $('presentPrev').addEventListener('click',()=>{state.presentationIndex=Math.max(0,state.presentationIndex-1);renderPresentation()});$('presentNext').addEventListener('click',()=>{state.presentationIndex=Math.min(state.slides.length-1,state.presentationIndex+1);renderPresentation()});$('presentClose').addEventListener('click',()=>$('presentationDialog').close());$('presentPrint').addEventListener('click',()=>window.print());document.addEventListener('keydown',e=>{if(!$('presentationDialog').open)return;if(e.key==='ArrowRight')$('presentNext').click();if(e.key==='ArrowLeft')$('presentPrev').click();if(e.key==='Escape')$('presentationDialog').close()});
+  const goPrev=()=>goToSlide(state.presentationIndex-1);const goNext=()=>goToSlide(state.presentationIndex+1);
+  $('presentPrev').addEventListener('click',goPrev);$('presentNext').addEventListener('click',goNext);
+  $('presentStagePrev').addEventListener('click',goPrev);$('presentStageNext').addEventListener('click',goNext);
+  $('presentDots').addEventListener('click',e=>{const dot=e.target.closest('[data-slide-dot]');if(dot)goToSlide(Number(dot.dataset.slideDot))});
+  $('presentClose').addEventListener('click',()=>$('presentationDialog').close());$('presentPrint').addEventListener('click',()=>window.print());
+  document.addEventListener('keydown',e=>{if(!$('presentationDialog').open)return;if(e.key==='ArrowRight')goNext();if(e.key==='ArrowLeft')goPrev();if(e.key==='Escape')$('presentationDialog').close()});
 }
 
 async function init(){
