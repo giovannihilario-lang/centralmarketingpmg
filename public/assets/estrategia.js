@@ -17,6 +17,8 @@ function quarterOf(monthKey){const m=/^(\d{4})-(\d{2})$/.exec(String(monthKey||'
 function quarterRange(quarterKey){const m=/^(\d{4})-Q([1-4])$/.exec(String(quarterKey||''));if(!m)return null;const year=Number(m[1]);const start=(Number(m[2])-1)*3+1;return {de:`${year}-${String(start).padStart(2,'0')}`,ate:`${year}-${String(start+2).padStart(2,'0')}`}}
 function currentQuarter(){return quarterOf(currentMonth())}
 function quarterLabel(quarterKey){const m=/^(\d{4})-Q([1-4])$/.exec(String(quarterKey||''));return m?`${m[2]}º Tri/${m[1]}`:String(quarterKey||'—')}
+function monthLabel(monthKey){const m=/^(\d{4})-(\d{2})$/.exec(String(monthKey||''));return m?`${m[2]}/${m[1]}`:String(monthKey||'—')}
+function periodLabel(period){return /^\d{4}-Q[1-4]$/.test(String(period||''))?quarterLabel(period):monthLabel(period)}
 function periodRange(period){if(period&&typeof period==='object'&&period.de&&period.ate)return period;return quarterRange(period)||{de:period,ate:period}}
 
 const state = {
@@ -24,7 +26,7 @@ const state = {
   view:'executivo', period:'', compare:null, periods:[], target:DEFAULT_REVENUE_TARGET,
   config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[],
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
-  opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao',
+  opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao', periodMode:'trimestral',
 };
 
 function toast(message,type='ok'){
@@ -91,14 +93,29 @@ function periodFromRow(row){
   return null;
 }
 
+let availableMonths=[];
+
 async function loadPeriods(){
   let rows=[];
   try{rows=await regionalApi('/periodos-distintos')}catch(error){state.sourceErrors.Períodos=error.message}
-  const months=[...new Set((Array.isArray(rows)?rows:[]).map(periodFromRow).filter(Boolean))].sort();
-  const quarters=[...new Set(months.map(quarterOf).filter(Boolean))].sort();
-  state.periods=quarters.length?quarters:[currentQuarter()];
-  state.period=state.periods.at(-1);
-  const select=$('periodSelect');select.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${quarterLabel(p)}</option>`).join('');
+  availableMonths=[...new Set((Array.isArray(rows)?rows:[]).map(periodFromRow).filter(Boolean))].sort();
+  rebuildPeriodOptions();
+}
+
+// Troca a lista de períodos entre trimestres e meses sem precisar rebuscar
+// /periodos-distintos de novo (availableMonths já tem os meses com dado).
+// Tenta preservar o trimestre/mês correspondente ao que estava selecionado
+// ao trocar de granularidade, caindo no mais recente se não achar.
+function rebuildPeriodOptions(){
+  const trimestral=state.periodMode==='trimestral';
+  const previousRange=state.period?periodRange(state.period):null;
+  const options=trimestral
+    ? [...new Set(availableMonths.map(quarterOf).filter(Boolean))].sort()
+    : availableMonths.slice();
+  state.periods=options.length?options:[trimestral?currentQuarter():currentMonth()];
+  const matching=previousRange&&state.periods.find(p=>{const r=periodRange(p);return r.de<=previousRange.de&&r.ate>=previousRange.de});
+  state.period=matching||state.periods.at(-1);
+  const select=$('periodSelect');select.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${periodLabel(p)}</option>`).join('');
   const range=periodRange(state.period);
   state.compare=periodShift(range.de,range.ate);
 }
@@ -159,7 +176,7 @@ async function loadCommercial(){
   ].sort((a,b)=>b.score-a.score);
   const failed=results.filter(r=>r.status==='rejected').length;
   setSourceStatus(failed===0,failed===0?'Dados comerciais atualizados':`${failed} fonte(s) indisponível(is)`);
-  $('freshnessText').textContent=`Leitura ${new Intl.DateTimeFormat('pt-BR',{timeStyle:'short'}).format(new Date())} · ${quarterLabel(period)}`;
+  $('freshnessText').textContent=`Leitura ${new Intl.DateTimeFormat('pt-BR',{timeStyle:'short'}).format(new Date())} · ${periodLabel(period)}`;
   const errors=Object.entries(state.sourceErrors);
   if(errors.length)warning(`<strong>Leitura parcial.</strong> ${errors.map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' · ')}`);
   else if(!state.persistenceAvailable)warning('<strong>Análise comercial disponível em modo leitura.</strong> Execute <code>sql/28-PLANEJAMENTO-ESTRATEGICO.sql</code> no Supabase PMG para habilitar projetos, ações, medições e fechamentos.');
@@ -309,7 +326,7 @@ async function saveManualOpportunity(){
 function openProjectDialog(op=null){
   $('projectForm').reset(); const today=nowKey();$('projectStart').value=today;$('projectEnd').value=datePlusDays(today,DEFAULT_CYCLE_DAYS);$('projectIndicator').value='faturamento';$('projectGoalType').value='percentual';$('projectGoal').value='20';$('projectGoalUnit').value='%';$('projectOpportunityId').value=op?.saved?op.id:'';
   $('projectTitle').value=op?.title||'';$('projectObjective').value=op?`Transformar a oportunidade “${op.title}” em crescimento mensurável durante o ciclo de 90 dias.`:'';
-  const f=op?.filters||{};$('projectCustomerId').value=f.p_cliente||'';$('projectCity').value=f.p_cidade||'';$('projectUf').value=f.p_uf||'';$('projectGroup').value=f.p_grupo||'';$('projectSupplier').value=f.p_fornecedor||'';$('baselinePreview').textContent=`Baseline será capturado no período ${quarterLabel(state.period)} a partir do PMG Bridge.`;$('projectDialog').showModal();
+  const f=op?.filters||{};$('projectCustomerId').value=f.p_cliente||'';$('projectCity').value=f.p_cidade||'';$('projectUf').value=f.p_uf||'';$('projectGroup').value=f.p_grupo||'';$('projectSupplier').value=f.p_fornecedor||'';$('baselinePreview').textContent=`Baseline será capturado no período ${periodLabel(state.period)} a partir do PMG Bridge.`;$('projectDialog').showModal();
 }
 function projectFiltersFromForm(){const f={};if($('projectCustomerId').value.trim())f.p_cliente=$('projectCustomerId').value.trim();if($('projectCity').value.trim())f.p_cidade=$('projectCity').value.trim();if($('projectUf').value.trim())f.p_uf=$('projectUf').value.trim().toUpperCase();if($('projectGroup').value.trim())f.p_grupo=$('projectGroup').value.trim();if($('projectSupplier').value.trim())f.p_fornecedor=$('projectSupplier').value.trim();return f}
 function metricEndpoint(filters={},indicator='faturamento'){return filters.p_cliente||indicator==='clientes'?'/estrategia-clientes':'/kpis'}
@@ -341,7 +358,7 @@ async function createDemand(actionId){
 }
 async function measureProject(projectId){
   const project=state.projects.find(p=>String(p.id)===String(projectId));if(!project)throw new Error('Projeto não encontrado.');const filters=safeJson(project.filtros,{});const kpis=await captureKpis(filters,project.meta_indicador);const range=periodRange(state.period);const lineage=sourceLineage({endpoint:metricEndpoint(filters,project.meta_indicador),filters,period:{de:range.de,ate:range.ate},note:'Medição manual do projeto no período selecionado.'});
-  const row={projeto_id:project.id,medido_em:nowKey(),marco:'manual',periodo_de:range.de,periodo_ate:range.ate,indicadores:kpis,lineage,criado_por:state.profile.id};const {error}=await state.db.from('estrategia_medicoes').insert(row);if(error)throw error;await loadPersistence();renderAll();toast(`Medição registrada para ${quarterLabel(state.period)}.`);
+  const row={projeto_id:project.id,medido_em:nowKey(),marco:'manual',periodo_de:range.de,periodo_ate:range.ate,indicadores:kpis,lineage,criado_por:state.profile.id};const {error}=await state.db.from('estrategia_medicoes').insert(row);if(error)throw error;await loadPersistence();renderAll();toast(`Medição registrada para ${periodLabel(state.period)}.`);
 }
 function openReview(projectId){$('reviewForm').reset();$('reviewProjectId').value=projectId;$('reviewDialog').showModal()}
 async function saveReview(){
@@ -350,7 +367,7 @@ async function saveReview(){
 
 function presentationData(){
   const c=state.commercial||{kpis:normalizeKpis({}),previousKpis:normalizeKpis({}),evolution:[]};const latest=latestMeasurementsMap();const summary=summarizeProjects(state.projects,latest);const topOps=state.generatedOpportunities.slice(0,4);const active=state.projects.filter(p=>!['encerrado','cancelado'].includes(p.status)).slice(0,5);const selected=active[0]||state.projects[0]||null;const actions=selected?state.actions.filter(a=>String(a.projeto_id)===String(selected.id)):[];
-  return {c,summary,topOps,active,selected,actions,target:state.target,period:quarterLabel(state.period)};
+  return {c,summary,topOps,active,selected,actions,target:state.target,period:periodLabel(state.period)};
 }
 // Placeholder de setor: a apresentação 1 hoje só tem dado real de Comercial
 // (via SQL Server/PMG Bridge). Logística, Marketing, Financeiro e Compras
@@ -418,7 +435,7 @@ function bindEvents(){
     if(el.dataset.addAction){openAction(el.dataset.addAction);return}if(el.dataset.editAction){openAction(state.actions.find(a=>String(a.id)===String(el.dataset.editAction))?.projeto_id,state.actions.find(a=>String(a.id)===String(el.dataset.editAction)));return}if(el.dataset.demandAction){await createDemand(el.dataset.demandAction);return}if(el.dataset.measureProject){await measureProject(el.dataset.measureProject);return}if(el.dataset.reviewProject){openReview(el.dataset.reviewProject);return}
   }catch(error){console.error(error);toast(error.message||String(error),'error')}});
   document.querySelectorAll('[data-op-filter]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-op-filter]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.opFilter=btn.dataset.opFilter;renderOpportunities()}));
-  $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
   $('opportunityForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveManualOpportunity();$('opportunityDialog').close()}catch(e){toast(e.message,'error')}});
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});
