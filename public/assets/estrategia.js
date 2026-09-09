@@ -5,6 +5,8 @@ import {
 } from './estrategia-core.js';
 
 const $ = id => document.getElementById(id);
+function icons(){const run=()=>{try{window.lucide?.createIcons({attrs:{'stroke-width':1.9}})}catch{}};if('requestIdleCallback' in window)requestIdleCallback(run,{timeout:450});else setTimeout(run,30)}
+window.addEventListener('pmg-lucide-ready',icons);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
 const moneyCompact = value => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',notation:'compact',maximumFractionDigits:1}).format(Number(value||0));
@@ -450,7 +452,8 @@ function bindEvents(){
     if(el.dataset.addAction){openAction(el.dataset.addAction);return}if(el.dataset.editAction){openAction(state.actions.find(a=>String(a.id)===String(el.dataset.editAction))?.projeto_id,state.actions.find(a=>String(a.id)===String(el.dataset.editAction)));return}if(el.dataset.demandAction){await createDemand(el.dataset.demandAction);return}if(el.dataset.measureProject){await measureProject(el.dataset.measureProject);return}if(el.dataset.reviewProject){openReview(el.dataset.reviewProject);return}
   }catch(error){console.error(error);toast(error.message||String(error),'error')}});
   document.querySelectorAll('[data-op-filter]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-op-filter]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.opFilter=btn.dataset.opFilter;renderOpportunities()}));
-  $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));
+  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
   $('opportunityForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveManualOpportunity();$('opportunityDialog').close()}catch(e){toast(e.message,'error')}});
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});
@@ -465,7 +468,9 @@ function bindEvents(){
 }
 
 async function init(){
-  bindEvents(); const initial=new URLSearchParams(location.search).get('view');if(['executivo','oportunidades','projetos','acompanhamento','revisoes'].includes(initial))switchView(initial);
+  bindEvents(); icons();
+  try{if(localStorage.getItem('pmg_estrategia_nav_collapsed')==='1')$('strategyNav').classList.add('collapsed')}catch{}
+  const initial=new URLSearchParams(location.search).get('view');if(['executivo','oportunidades','projetos','acompanhamento','revisoes'].includes(initial))switchView(initial);
   try{const ok=await bootstrapAuth();if(!ok)return;await Promise.all([loadPeriods(),loadPersistence()]);await loadCommercial();renderAll()}catch(error){console.error(error);setSourceStatus(false,'Falha de inicialização');warning(`<strong>Não foi possível iniciar o Planejamento Estratégico.</strong> ${esc(error.message||error)}`);toast(error.message||String(error),'error')}
 }
 init();

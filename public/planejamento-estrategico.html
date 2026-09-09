@@ -5,36 +5,43 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173d2a">
   <title>Planejamento Estratégico | PMG Connect</title>
-  <link rel="stylesheet" href="/assets/estrategia.css?v=1.1.0">
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.2.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.2"></script>
   <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
 </head>
 <body>
 <div class="strategy-shell">
   <aside class="strategy-nav" id="strategyNav">
-    <a class="brand" href="/central.html" aria-label="Voltar à Central PMG Connect">
-      <span class="brand-mark">P</span>
-      <span><strong>PMG Connect</strong><small>Planejamento Estratégico</small></span>
-    </a>
+    <div class="nav-top">
+      <a class="brand" href="/central.html" aria-label="Voltar à Central PMG Connect">
+        <span class="brand-mark"><img src="/imagenssite/pmglogo.png" alt="PMG"></span>
+        <span class="brand-copy"><strong>PMG Connect</strong><small>Planejamento Estratégico</small></span>
+      </a>
+      <button class="collapse-btn" id="collapseNavBtn" type="button" aria-label="Recolher menu"><i data-lucide="chevrons-left"></i></button>
+    </div>
 
     <nav aria-label="Navegação do planejamento estratégico">
-      <button class="nav-item active" data-view="executivo" type="button"><span>01</span>Visão executiva</button>
-      <button class="nav-item" data-view="oportunidades" type="button"><span>02</span>Oportunidades</button>
-      <button class="nav-item" data-view="projetos" type="button"><span>03</span>Projetos estratégicos</button>
-      <button class="nav-item" data-view="acompanhamento" type="button"><span>04</span>Acompanhamento 90 dias</button>
-      <button class="nav-item" data-view="revisoes" type="button"><span>05</span>Fechamentos</button>
+      <span class="nav-section-label">Análise</span>
+      <button class="nav-item active" data-view="executivo" type="button" title="Visão executiva"><i data-lucide="layout-dashboard"></i><span>Visão executiva</span></button>
+      <button class="nav-item" data-view="oportunidades" type="button" title="Oportunidades"><i data-lucide="target"></i><span>Oportunidades</span></button>
+      <span class="nav-section-label">Execução</span>
+      <button class="nav-item" data-view="projetos" type="button" title="Projetos estratégicos"><i data-lucide="folder-kanban"></i><span>Projetos estratégicos</span></button>
+      <button class="nav-item" data-view="acompanhamento" type="button" title="Acompanhamento 90 dias"><i data-lucide="calendar-clock"></i><span>Acompanhamento 90 dias</span></button>
+      <button class="nav-item" data-view="revisoes" type="button" title="Fechamentos"><i data-lucide="check-check"></i><span>Fechamentos</span></button>
     </nav>
 
     <div class="nav-links">
-      <a href="http://localhost:3001/dashboard-regional.html">Dashboard Regional <span>↗</span></a>
-      <a href="/demandas.html">Demandas <span>↗</span></a>
-      <a href="/central.html">Central de Hoje <span>↗</span></a>
+      <span class="nav-section-label">Acesso rápido</span>
+      <a href="http://localhost:3001/dashboard-regional.html" title="Dashboard Regional"><i data-lucide="map"></i><span>Dashboard Regional</span><i data-lucide="arrow-up-right" class="go"></i></a>
+      <a href="/demandas.html" title="Demandas"><i data-lucide="list-checks"></i><span>Demandas</span><i data-lucide="arrow-up-right" class="go"></i></a>
+      <a href="/central.html" title="Central de Hoje"><i data-lucide="house"></i><span>Central de Hoje</span><i data-lucide="arrow-up-right" class="go"></i></a>
     </div>
 
     <div class="nav-user">
       <div class="avatar" id="userAvatar">P</div>
-      <div><strong id="userName">Conta PMG</strong><small id="userRole">Carregando perfil…</small></div>
+      <div class="nav-user-copy"><strong id="userName">Conta PMG</strong><small id="userRole">Carregando perfil…</small></div>
     </div>
   </aside>
 
@@ -237,6 +244,6 @@
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.1.0"></script>
+<script type="module" src="/assets/estrategia.js?v=1.2.0"></script>
 </body>
 </html>
