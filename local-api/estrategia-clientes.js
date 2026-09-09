@@ -1,4 +1,7 @@
 import { getPool, sql } from '../src/lib/db.js';
+import { cacheKeyFor, withResponseCache } from '../src/lib/response-cache.js';
+
+const CACHE_MS = 5 * 60_000;
 
 // Antes deste ajuste, este arquivo abria seu PRÓPRIO ConnectionPool (config
 // duplicada, sem os nomes de fallback AZURE_SQL_* e sem o handler pool.on('error')
@@ -7,25 +10,19 @@ import { getPool, sql } from '../src/lib/db.js';
 // caísse em produção, este endpoint ficava quebrado até reiniciar o processo —
 // getPool() já resolve os dois problemas e é a mesma pool usada pelo resto da API.
 
-function monthStart(value) {
+// Índice de mês (ano*12 + mês-1) pra fazer aritmética de intervalo sem os
+// percalços de Date (mês YYYY-MM vira um inteiro; ex: 2026-03 -> 24315).
+function monthIndex(value) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(value || ''));
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
   if (month < 1 || month > 12) return null;
-  return new Date(Date.UTC(year, month - 1, 1));
+  return year * 12 + (month - 1);
 }
 
-function monthAfter(value) {
-  const start = monthStart(value);
-  if (!start) return null;
-  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
-}
-
-function previousMonthStart(value) {
-  const start = monthStart(value);
-  if (!start) return null;
-  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - 1, 1));
+function dateFromMonthIndex(index) {
+  return new Date(Date.UTC(Math.floor(index / 12), index % 12, 1));
 }
 
 function number(value) {
@@ -36,21 +33,34 @@ function number(value) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Método não permitido.' });
 
-  const period = String(req.query.p_de || req.query.p_ate || '').trim();
+  const periodDe = String(req.query.p_de || '').trim();
+  const periodAte = String(req.query.p_ate || periodDe || '').trim();
   const customerId = String(req.query.p_cliente || '').trim() || null;
   const city = String(req.query.p_cidade || '').trim() || null;
   const uf = String(req.query.p_uf || '').trim().toUpperCase() || null;
   const group = String(req.query.p_grupo || '').trim() || null;
   const supplier = String(req.query.p_fornecedor || '').trim() || null;
-  const currentStart = monthStart(period);
-  const currentEnd = monthAfter(period);
-  const previousStart = previousMonthStart(period);
 
-  if (!currentStart || !currentEnd || !previousStart) {
-    return res.status(400).json({ message: 'Informe p_de no formato YYYY-MM.' });
+  // Antes deste ajuste, este endpoint ignorava p_ate por completo e sempre
+  // tratava p_de como um único mês — então um filtro de trimestre (p_de no
+  // primeiro mês, p_ate no terceiro) só via o primeiro mês, tanto no período
+  // atual quanto no "anterior" (que virava só o mês anterior, não o
+  // trimestre anterior). Agora o período anterior tem sempre o mesmo número
+  // de meses do período atual, igual à lógica de periodShift() no frontend.
+  const startIndex = monthIndex(periodDe);
+  const endIndex = monthIndex(periodAte);
+  if (startIndex == null || endIndex == null || endIndex < startIndex) {
+    return res.status(400).json({ message: 'Informe p_de (e opcionalmente p_ate) no formato YYYY-MM.' });
   }
+  const span = endIndex - startIndex + 1;
+  const currentStart = dateFromMonthIndex(startIndex);
+  const currentEnd = dateFromMonthIndex(endIndex + 1);
+  const previousStart = dateFromMonthIndex(startIndex - span);
+  const period = periodDe === periodAte ? periodDe : `${periodDe}..${periodAte}`;
 
   try {
+    const cacheKey = cacheKeyFor('estrategia-clientes', req.query);
+    const payload = await withResponseCache(cacheKey, CACHE_MS, async () => {
     const db = await getPool();
     const request = db.request();
     request.input('currentStart', sql.Date, currentStart);
@@ -205,7 +215,7 @@ export default async function handler(req, res) {
 
     const currentOrders = number(summaryRow.current_orders);
     const previousOrders = number(summaryRow.previous_orders);
-    return res.json({
+    return {
       ok: true,
       source: 'SQL Server · dbo.Vendas + dbo.Clientes + dbo.VendasProdutos + dbo.Produtos',
       period,
@@ -234,7 +244,9 @@ export default async function handler(req, res) {
         decline: 'faturamento anterior >= R$ 5.000 e queda superior a 40%',
         positivity: 'cliente único com pelo menos uma venda no período e no escopo filtrado',
       },
+    };
     });
+    return res.json(payload);
   } catch (error) {
     console.error('[estrategia-clientes]', error);
     return res.status(error.status || 500).json({

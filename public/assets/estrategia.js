@@ -65,10 +65,15 @@ function regionalBase(){
   return 'http://localhost:3001/api';
 }
 
+// 130s: o endpoint de sinais de clientes roda uma consulta pesada direto no
+// SQL Server (varre dbo.Vendas do período), com timeout próprio de 120s no
+// pool (src/lib/db.js) — o cliente precisa esperar mais que isso pra deixar
+// o erro real do SQL aparecer, em vez de abortar antes com uma mensagem
+// genérica ("signal is aborted without reason").
 async function regionalApi(path,params={}){
   const u=new URL(`${regionalBase()}${path}`);
   Object.entries(params).forEach(([key,value])=>{if(value!==''&&value!==null&&value!==undefined)u.searchParams.set(key,String(value))});
-  const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),15000);
+  const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),130000);
   try{
     const response=await fetch(u,{cache:'no-store',mode:'cors',signal:controller.signal,headers:{Accept:'application/json',Authorization:`Bearer ${state.session.access_token}`}});
     const text=await response.text(); let body=null; try{body=text?JSON.parse(text):null}catch{throw new Error(`A API comercial devolveu resposta inválida em ${path}.`)}
@@ -101,21 +106,39 @@ async function loadPeriods(){
 function filtersForPeriod(period,extra={}){const range=periodRange(period);return {p_de:range.de,p_ate:range.ate,...extra}}
 async function dimension(dimension,period,extra={}){return regionalApi('/agregado-por-dimensao',{p_dimensao:dimension,p_metrica:'Valor',p_limit:80,...filtersForPeriod(period,extra)})}
 
+// As consultas do dashboard regional varrem o snapshot comercial inteiro por
+// requisição; 10 delas ao mesmo tempo competem pelo mesmo processo Node de
+// thread única e podem levar minutos combinadas. Limitar quantas rodam de
+// verdade em paralelo reduz essa disputa (o cache de 5min em cada endpoint
+// cuida do resto: só a primeira troca de período/filtro sente essa espera).
+async function runWithConcurrency(tasks,limit){
+  const results=new Array(tasks.length); let next=0;
+  async function worker(){
+    while(next<tasks.length){
+      const index=next++;
+      try{results[index]={status:'fulfilled',value:await tasks[index]()}}
+      catch(error){results[index]={status:'rejected',reason:error}}
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(limit,tasks.length)},worker));
+  return results;
+}
+
 async function loadCommercial(){
   const period=state.period||currentQuarter(); const range=periodRange(period); const comparison=periodShift(range.de,range.ate); state.compare=comparison;
   setSourceStatus(null,'Atualizando dados');
   for(const key of ['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes']) delete state.sourceErrors[key];
   const currentFilters=filtersForPeriod(period); const previousFilters=comparison?{p_de:comparison.de,p_ate:comparison.ate}:currentFilters;
-  const calls=[
-    regionalApi('/kpis',currentFilters), regionalApi('/kpis',previousFilters),
-    regionalApi('/agregado-cidades',currentFilters), regionalApi('/agregado-cidades',previousFilters),
-    dimension('Grupo',range), dimension('Grupo',comparison||range),
-    dimension('Fornecedor',range), dimension('Fornecedor',comparison||range),
-    regionalApi('/evolucao-mensal',{}),
-    regionalApi('/estrategia-clientes',{p_de:range.de,p_ate:range.ate}),
+  const tasks=[
+    ()=>regionalApi('/kpis',currentFilters), ()=>regionalApi('/kpis',previousFilters),
+    ()=>regionalApi('/agregado-cidades',currentFilters), ()=>regionalApi('/agregado-cidades',previousFilters),
+    ()=>dimension('Grupo',range), ()=>dimension('Grupo',comparison||range),
+    ()=>dimension('Fornecedor',range), ()=>dimension('Fornecedor',comparison||range),
+    ()=>regionalApi('/evolucao-mensal',{}),
+    ()=>regionalApi('/estrategia-clientes',{p_de:range.de,p_ate:range.ate}),
   ];
   const names=['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes'];
-  const results=await Promise.allSettled(calls);
+  const results=await runWithConcurrency(tasks,3);
   const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;state.sourceErrors[names[i]]=r.reason?.message||String(r.reason);return []});
   const [kpisRows,previousKpisRows,cities,previousCities,groups,previousGroups,suppliers,previousSuppliers,evolution,customerSignals]=values;
   const kpis=normalizeKpis(Array.isArray(kpisRows)?kpisRows[0]:kpisRows);
