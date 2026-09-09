@@ -86,6 +86,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .filters-grid label span{display:block;font-size:9px;font-weight:750;color:var(--muted);margin:0 0 5px 2px}
 .filters-grid input,.filters-grid select,.panel select,.search,.compare-selectors select{width:100%;min-height:38px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text);padding:0 10px;font-size:11px;transition:border-color .16s ease}
 .filters-grid input:focus,.filters-grid select:focus{border-color:var(--green-light)}
+.filter-match-hint{display:block;margin:4px 0 0 2px;font-size:9px;color:var(--muted);min-height:11px}
+.filter-match-hint.active{color:var(--green-light);font-weight:700}
 .filter-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
 .filter-actions>span{margin-right:auto;color:var(--muted);font-size:10px}
 .text-btn{border:0;background:transparent;color:var(--green-mid);font-size:10px;font-weight:750}

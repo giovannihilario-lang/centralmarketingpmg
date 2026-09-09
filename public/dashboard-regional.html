@@ -5,12 +5,10 @@
 <title>Mapa Regional de Vendas PMG Connect</title>
   <link rel="stylesheet" href="/assets/connect-core.css?v=1.0.0">
   <link rel="icon" type="image/png" href="/favicon.png">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- PERF: chart.js e papaparse continuam carregando no fim do <body> (usados em vários
+     pontos da página). O CSS/JS do Leaflet (+ leaflet-ant-path) e do xlsx só são baixados
+     sob demanda: o mapa carrega quando a seção dele entra em vista (ensureMapaCarregado()),
+     e o xlsx só quando o usuário exporta em Excel (loadXlsx() dentro de exportarDados()). -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -766,6 +764,8 @@
 
 <div class="toast" id="toast"><span class="toast-dot" id="toastDot"></span><span id="toastMsg"></span></div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script src="geo-data.js"></script>
 <script>
 /* ══════════════════ CONFIG ══════════════════ */
@@ -1269,6 +1269,20 @@ async function atualizarFiltrosContextuais() {
   ]);
 }
 
+// Para os grupos "por nome" (cidade/regiao/segmento/grupo/fornecedor), a caixa
+// de busca deixa de servir só para estreitar os chips visíveis: se nenhum chip
+// específico foi clicado (ainda em "Todos"), o texto digitado vira o próprio
+// filtro — casado por "contém" no servidor (ex.: "Camil" pega todos os
+// fornecedores cujo nome inclui esse trecho, sem precisar escolher um por um).
+function chipFilterValue(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return '';
+  const ativo = container.querySelector('.chip.active');
+  if (ativo && ativo.dataset.val) return ativo.dataset.val;
+  const busca = container.parentElement?.querySelector('.chip-search');
+  return busca ? busca.value.trim() : '';
+}
+
 function selecionarChip(container, chipSelecionado) {
   container.querySelectorAll('.chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-pressed', 'false'); });
   chipSelecionado.classList.add('active');
@@ -1510,12 +1524,12 @@ async function aplicarFiltros() {
   try {
     pararModoDiretoria();
     if (replayAtivo) toggleReplay(); // muda o período/filtros: encerra o replay para não ficar com dado desatualizado
-    filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
-    filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
+    filtroCidade = chipFilterValue('cidadeChips');
+    filtroRegiao = chipFilterValue('regiaoChips');
     filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
-    filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
-    filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
-    filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+    filtroSegmento = chipFilterValue('segmentoChips');
+    filtroGrupo = chipFilterValue('grupoChips');
+    filtroFornecedor = chipFilterValue('fornecedorChips');
     filtroProduto = document.querySelector('#produtoChips .chip.active')?.dataset.val || '';
     const periodoDe = document.getElementById('periodoDe').value;
     const periodoAte = document.getElementById('periodoAte').value;
@@ -1642,10 +1656,21 @@ function atualizarUrlComFiltros() {
 
 // Lê a querystring atual e aplica nos chips/inputs de período, SEM disparar
 // requisição — quem chama decide se e quando renderiza (evita duplo fetch).
+const CHIP_CONTAINERS_POR_NOME = ['cidadeChips', 'regiaoChips', 'segmentoChips', 'grupoChips', 'fornecedorChips'];
+
 function restaurarFiltrosDaURL() {
   const params = new URLSearchParams(window.location.search);
   Object.entries(URL_PARAM_MAP).forEach(([param, containerId]) => {
-    selecionarChipPorValor(containerId, params.get(param) || '');
+    const valor = params.get(param) || '';
+    selecionarChipPorValor(containerId, valor);
+    // Um valor de URL que não bate com nenhum chip exato (ex.: link com
+    // "?fornecedor=Camil") cai em "Todos" no chip — sem isto, o texto se
+    // perderia; aqui ele volta pra caixa de busca, de onde chipFilterValue()
+    // o lê como filtro "contém".
+    if (CHIP_CONTAINERS_POR_NOME.includes(containerId)) {
+      const busca = document.getElementById(containerId)?.parentElement?.querySelector('.chip-search');
+      if (busca) busca.value = document.querySelector(`#${containerId} .chip.active`)?.dataset.val ? '' : valor;
+    }
   });
   document.getElementById('periodoDe').value = params.get('de') || '';
   document.getElementById('periodoAte').value = params.get('ate') || '';
@@ -1654,12 +1679,12 @@ function restaurarFiltrosDaURL() {
 
   // O estado real vem do chip que de fato pôde ser selecionado. Assim uma URL antiga
   // com valor inexistente cai de verdade em "Todos", sem filtro invisível na consulta.
-  filtroCidade = document.querySelector('#cidadeChips .chip.active')?.dataset.val || '';
-  filtroRegiao = document.querySelector('#regiaoChips .chip.active')?.dataset.val || '';
+  filtroCidade = chipFilterValue('cidadeChips');
+  filtroRegiao = chipFilterValue('regiaoChips');
   filtroUF = document.querySelector('#ufChips .chip.active')?.dataset.val || '';
-  filtroSegmento = document.querySelector('#segmentoChips .chip.active')?.dataset.val || '';
-  filtroGrupo = document.querySelector('#grupoChips .chip.active')?.dataset.val || '';
-  filtroFornecedor = document.querySelector('#fornecedorChips .chip.active')?.dataset.val || '';
+  filtroSegmento = chipFilterValue('segmentoChips');
+  filtroGrupo = chipFilterValue('grupoChips');
+  filtroFornecedor = chipFilterValue('fornecedorChips');
   filtroProduto = document.querySelector('#produtoChips .chip.active')?.dataset.val || '';
 
   const temFiltro = filtroCidade || filtroRegiao || filtroUF || filtroSegmento || filtroGrupo || filtroFornecedor || filtroProduto || params.get('de') || params.get('ate');
@@ -1923,7 +1948,61 @@ async function renderAltasQuedas() {
   `;
 }
 
-/* ══════════════════ MAPA ══════════════════ */
+/* ══════════════════ MAPA (Leaflet carregado sob demanda) ══════════════════ */
+// PERF: leaflet.js + leaflet-ant-path só são baixados quando a seção do mapa
+// entra em vista (ver initMapObserver/ensureMapaCarregado, chamado no
+// DOMContentLoaded), em vez de sempre no carregamento da página.
+let leafletLoadPromise = null;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletLoadPromise) return leafletLoadPromise;
+  leafletLoadPromise = new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => {
+      const antScript = document.createElement('script');
+      antScript.src = 'https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js';
+      antScript.onload = () => resolve();
+      antScript.onerror = () => { leafletLoadPromise = null; reject(new Error('Falha ao carregar leaflet-ant-path.')); };
+      document.head.appendChild(antScript);
+    };
+    script.onerror = () => { leafletLoadPromise = null; reject(new Error('Falha ao carregar o Leaflet.')); };
+    document.head.appendChild(script);
+  });
+  return leafletLoadPromise;
+}
+
+let mapaJaInicializado = false;
+function ensureMapaCarregado() {
+  if (mapaJaInicializado) return Promise.resolve();
+  return loadLeaflet().then(() => {
+    if (mapaJaInicializado) return;
+    mapaJaInicializado = true;
+    initMap();
+    renderMapa();
+  }).catch(err => {
+    console.error('[dashboard-regional] falha ao carregar o mapa:', err);
+    showToast('Não foi possível carregar o mapa. Verifique sua conexão e recarregue a página.');
+  });
+}
+
+function initMapObserver() {
+  const container = document.getElementById('mapaLeaflet')?.closest('.chart-box');
+  if (!container) return;
+  if (!('IntersectionObserver' in window)) { ensureMapaCarregado(); return; }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) { io.unobserve(entry.target); ensureMapaCarregado(); }
+    });
+  }, { root: document.querySelector('.main'), threshold: 0.01, rootMargin: '200px 0px' });
+  io.observe(container);
+}
+
 function initMap() {
   leafletMap = L.map('mapaLeaflet', { scrollWheelZoom: true }).setView([-14.5, -51.9], 4);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -1947,6 +2026,7 @@ function setMapMode(mode) {
 }
 
 function renderMapa({ silencioso = false } = {}) {
+  if (!leafletMap) return; // mapa ainda não entrou em vista / Leaflet ainda não carregou
   if (!silencioso) document.getElementById('mapLoading').classList.add('show');
   markerLayer.clearLayers();
   if (flowLayer) flowLayer.clearLayers();
@@ -2659,7 +2739,23 @@ function baixarArquivo(blob, nomeArquivo) {
   URL.revokeObjectURL(url);
 }
 
-function exportarDados(formato) {
+// PERF: xlsx.full.min.js (~1MB) só é baixado quando o usuário realmente exporta
+// em Excel, não no carregamento da página.
+let xlsxLoadPromise = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  if (xlsxLoadPromise) return xlsxLoadPromise;
+  xlsxLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => { xlsxLoadPromise = null; reject(new Error('Falha ao carregar o XLSX.')); };
+    document.head.appendChild(script);
+  });
+  return xlsxLoadPromise;
+}
+
+async function exportarDados(formato) {
   toggleExportMenu(true);
   const linhas = dadosParaExport();
   if (!linhas.length) {
@@ -2667,10 +2763,17 @@ function exportarDados(formato) {
     return;
   }
   if (formato === 'csv') {
-    const csv = Papa.unparse(linhas, { delimiter: ';' }); // ; é o separador padrão do Excel em pt-BR
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM garante acentuação correta ao abrir no Excel
+    const csv = Papa.unparse(linhas, { delimiter: ';' });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     baixarArquivo(blob, nomeArquivoExport('csv'));
   } else {
+    try {
+      await loadXlsx();
+    } catch (err) {
+      console.error('[dashboard-regional] falha ao carregar xlsx:', err);
+      showToast('Não foi possível carregar o exportador de Excel. Tente novamente.');
+      return;
+    }
     const ws = XLSX.utils.json_to_sheet(linhas);
     ws['!cols'] = [{ wch: 28 }, { wch: 6 }, { wch: 16 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
@@ -2696,7 +2799,7 @@ function initScrollReveal() {
 
 window.addEventListener('DOMContentLoaded', () => {
   document.body.appendChild(document.getElementById('periodoPanel'));
-  staggerEntrance(); initScrollReveal(); initMap(); inicializar();
+  staggerEntrance(); initScrollReveal(); initMapObserver(); inicializar();
 });
 </script>
 </body>

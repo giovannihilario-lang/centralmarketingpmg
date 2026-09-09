@@ -13,6 +13,11 @@ const kg = value => `${Number(value || 0).toLocaleString('pt-BR',{maximumFractio
 const date = value => value ? new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo'}).format(new Date(`${String(value).slice(0,10)}T12:00:00-03:00`)) : '—';
 const nowKey = () => new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const currentMonth = () => nowKey().slice(0,7);
+function quarterOf(monthKey){const m=/^(\d{4})-(\d{2})$/.exec(String(monthKey||''));if(!m)return null;const q=Math.ceil(Number(m[2])/3);return `${m[1]}-Q${q}`}
+function quarterRange(quarterKey){const m=/^(\d{4})-Q([1-4])$/.exec(String(quarterKey||''));if(!m)return null;const year=Number(m[1]);const start=(Number(m[2])-1)*3+1;return {de:`${year}-${String(start).padStart(2,'0')}`,ate:`${year}-${String(start+2).padStart(2,'0')}`}}
+function currentQuarter(){return quarterOf(currentMonth())}
+function quarterLabel(quarterKey){const m=/^(\d{4})-Q([1-4])$/.exec(String(quarterKey||''));return m?`${m[2]}º Tri/${m[1]}`:String(quarterKey||'—')}
+function periodRange(period){if(period&&typeof period==='object'&&period.de&&period.ate)return period;return quarterRange(period)||{de:period,ate:period}}
 
 const state = {
   db:null, session:null, profile:null, collaborators:[], persistenceAvailable:true,
@@ -84,28 +89,30 @@ function periodFromRow(row){
 async function loadPeriods(){
   let rows=[];
   try{rows=await regionalApi('/periodos-distintos')}catch(error){state.sourceErrors.Períodos=error.message}
-  const periods=[...new Set((Array.isArray(rows)?rows:[]).map(periodFromRow).filter(Boolean))].sort();
-  state.periods=periods.length?periods:[currentMonth()];
+  const months=[...new Set((Array.isArray(rows)?rows:[]).map(periodFromRow).filter(Boolean))].sort();
+  const quarters=[...new Set(months.map(quarterOf).filter(Boolean))].sort();
+  state.periods=quarters.length?quarters:[currentQuarter()];
   state.period=state.periods.at(-1);
-  const select=$('periodSelect');select.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${p.slice(5)}/${p.slice(0,4)}</option>`).join('');
-  state.compare=periodShift(state.period,state.period);
+  const select=$('periodSelect');select.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${quarterLabel(p)}</option>`).join('');
+  const range=periodRange(state.period);
+  state.compare=periodShift(range.de,range.ate);
 }
 
-function filtersForPeriod(period,extra={}){return {p_de:period,p_ate:period,...extra}}
+function filtersForPeriod(period,extra={}){const range=periodRange(period);return {p_de:range.de,p_ate:range.ate,...extra}}
 async function dimension(dimension,period,extra={}){return regionalApi('/agregado-por-dimensao',{p_dimensao:dimension,p_metrica:'Valor',p_limit:80,...filtersForPeriod(period,extra)})}
 
 async function loadCommercial(){
-  const period=state.period||currentMonth(); const comparison=periodShift(period,period); state.compare=comparison;
+  const period=state.period||currentQuarter(); const range=periodRange(period); const comparison=periodShift(range.de,range.ate); state.compare=comparison;
   setSourceStatus(null,'Atualizando dados');
   for(const key of ['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes']) delete state.sourceErrors[key];
-  const currentFilters=filtersForPeriod(period); const previousFilters=filtersForPeriod(comparison?.de||period);
+  const currentFilters=filtersForPeriod(period); const previousFilters=comparison?{p_de:comparison.de,p_ate:comparison.ate}:currentFilters;
   const calls=[
     regionalApi('/kpis',currentFilters), regionalApi('/kpis',previousFilters),
     regionalApi('/agregado-cidades',currentFilters), regionalApi('/agregado-cidades',previousFilters),
-    dimension('Grupo',period), dimension('Grupo',comparison?.de||period),
-    dimension('Fornecedor',period), dimension('Fornecedor',comparison?.de||period),
+    dimension('Grupo',range), dimension('Grupo',comparison||range),
+    dimension('Fornecedor',range), dimension('Fornecedor',comparison||range),
     regionalApi('/evolucao-mensal',{}),
-    regionalApi('/estrategia-clientes',{p_de:period,p_ate:period}),
+    regionalApi('/estrategia-clientes',{p_de:range.de,p_ate:range.ate}),
   ];
   const names=['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes'];
   const results=await Promise.allSettled(calls);
@@ -129,7 +136,7 @@ async function loadCommercial(){
   ].sort((a,b)=>b.score-a.score);
   const failed=results.filter(r=>r.status==='rejected').length;
   setSourceStatus(failed===0,failed===0?'Dados comerciais atualizados':`${failed} fonte(s) indisponível(is)`);
-  $('freshnessText').textContent=`Leitura ${new Intl.DateTimeFormat('pt-BR',{timeStyle:'short'}).format(new Date())} · período ${period}`;
+  $('freshnessText').textContent=`Leitura ${new Intl.DateTimeFormat('pt-BR',{timeStyle:'short'}).format(new Date())} · ${quarterLabel(period)}`;
   const errors=Object.entries(state.sourceErrors);
   if(errors.length)warning(`<strong>Leitura parcial.</strong> ${errors.map(([k,v])=>`${esc(k)}: ${esc(v)}`).join(' · ')}`);
   else if(!state.persistenceAvailable)warning('<strong>Análise comercial disponível em modo leitura.</strong> Execute <code>sql/28-PLANEJAMENTO-ESTRATEGICO.sql</code> no Supabase PMG para habilitar projetos, ações, medições e fechamentos.');
@@ -261,7 +268,8 @@ function findGenerated(id){return state.generatedOpportunities.find(op=>op.id===
 function findSaved(id){const row=state.savedOpportunities.find(op=>String(op.id)===String(id));return row?savedAsOp(row):null}
 async function saveGeneratedOpportunity(id){
   if(!state.persistenceAvailable)return toast('Execute o SQL 28 para habilitar a persistência estratégica.','error'); const op=findGenerated(id);if(!op)return;
-  const row={tipo:op.kind,chave:op.key,titulo:op.title,descricao:op.description,origem:'motor_deterministico',regra_id:op.rule,score:op.score,filtros:op.filters,evidencias:op.evidence,status:'nova',periodo_de:state.period,periodo_ate:state.period,criado_por:state.profile.id,atualizado_por:state.profile.id};
+  const range=periodRange(state.period);
+  const row={tipo:op.kind,chave:op.key,titulo:op.title,descricao:op.description,origem:'motor_deterministico',regra_id:op.rule,score:op.score,filtros:op.filters,evidencias:op.evidence,status:'nova',periodo_de:range.de,periodo_ate:range.ate,criado_por:state.profile.id,atualizado_por:state.profile.id};
   const {data,error}=await state.db.from('estrategia_oportunidades').insert(row).select().single();if(error)throw error;state.savedOpportunities.unshift(data);renderOpportunities();toast('Oportunidade salva com rastreabilidade.');return data;
 }
 function openManualOpportunity(){
@@ -270,27 +278,30 @@ function openManualOpportunity(){
 async function saveManualOpportunity(){
   if(!state.persistenceAvailable)throw new Error('Execute o SQL 28 antes de salvar oportunidades.');
   const filters={};if($('oppCity').value.trim())filters.p_cidade=$('oppCity').value.trim();if($('oppUf').value.trim())filters.p_uf=$('oppUf').value.trim().toUpperCase();if($('oppGroup').value.trim())filters.p_grupo=$('oppGroup').value.trim();if($('oppSupplier').value.trim())filters.p_fornecedor=$('oppSupplier').value.trim();
-  const row={tipo:$('oppType').value,chave:$('oppKey').value.trim()||$('oppTitle').value.trim(),titulo:$('oppTitle').value.trim(),descricao:$('oppDescription').value.trim(),origem:'manual',regra_id:null,score:null,filtros:filters,evidencias:[],status:'nova',periodo_de:state.period,periodo_ate:state.period,criado_por:state.profile.id,atualizado_por:state.profile.id};
+  const range=periodRange(state.period);
+  const row={tipo:$('oppType').value,chave:$('oppKey').value.trim()||$('oppTitle').value.trim(),titulo:$('oppTitle').value.trim(),descricao:$('oppDescription').value.trim(),origem:'manual',regra_id:null,score:null,filtros:filters,evidencias:[],status:'nova',periodo_de:range.de,periodo_ate:range.ate,criado_por:state.profile.id,atualizado_por:state.profile.id};
   const {data,error}=await state.db.from('estrategia_oportunidades').insert(row).select().single();if(error)throw error;state.savedOpportunities.unshift(data);renderOpportunities();toast('Oportunidade registrada.');
 }
 
 function openProjectDialog(op=null){
   $('projectForm').reset(); const today=nowKey();$('projectStart').value=today;$('projectEnd').value=datePlusDays(today,DEFAULT_CYCLE_DAYS);$('projectIndicator').value='faturamento';$('projectGoalType').value='percentual';$('projectGoal').value='20';$('projectGoalUnit').value='%';$('projectOpportunityId').value=op?.saved?op.id:'';
   $('projectTitle').value=op?.title||'';$('projectObjective').value=op?`Transformar a oportunidade “${op.title}” em crescimento mensurável durante o ciclo de 90 dias.`:'';
-  const f=op?.filters||{};$('projectCustomerId').value=f.p_cliente||'';$('projectCity').value=f.p_cidade||'';$('projectUf').value=f.p_uf||'';$('projectGroup').value=f.p_grupo||'';$('projectSupplier').value=f.p_fornecedor||'';$('baselinePreview').textContent=`Baseline será capturado no período ${state.period} a partir do PMG Bridge.`;$('projectDialog').showModal();
+  const f=op?.filters||{};$('projectCustomerId').value=f.p_cliente||'';$('projectCity').value=f.p_cidade||'';$('projectUf').value=f.p_uf||'';$('projectGroup').value=f.p_grupo||'';$('projectSupplier').value=f.p_fornecedor||'';$('baselinePreview').textContent=`Baseline será capturado no período ${quarterLabel(state.period)} a partir do PMG Bridge.`;$('projectDialog').showModal();
 }
 function projectFiltersFromForm(){const f={};if($('projectCustomerId').value.trim())f.p_cliente=$('projectCustomerId').value.trim();if($('projectCity').value.trim())f.p_cidade=$('projectCity').value.trim();if($('projectUf').value.trim())f.p_uf=$('projectUf').value.trim().toUpperCase();if($('projectGroup').value.trim())f.p_grupo=$('projectGroup').value.trim();if($('projectSupplier').value.trim())f.p_fornecedor=$('projectSupplier').value.trim();return f}
 function metricEndpoint(filters={},indicator='faturamento'){return filters.p_cliente||indicator==='clientes'?'/estrategia-clientes':'/kpis'}
 async function captureKpis(filters={},indicator='faturamento'){
+  const range=periodRange(state.period);
   if(filters.p_cliente||indicator==='clientes'){
-    const body=await regionalApi('/estrategia-clientes',{p_de:state.period,p_ate:state.period,p_cliente:filters.p_cliente,p_cidade:filters.p_cidade,p_uf:filters.p_uf,p_grupo:filters.p_grupo,p_fornecedor:filters.p_fornecedor});
+    const body=await regionalApi('/estrategia-clientes',{p_de:range.de,p_ate:range.ate,p_cliente:filters.p_cliente,p_cidade:filters.p_cidade,p_uf:filters.p_uf,p_grupo:filters.p_grupo,p_fornecedor:filters.p_fornecedor});
     return normalizeKpis(body?.currentKpis||{});
   }
   const rows=await regionalApi('/kpis',filtersForPeriod(state.period,filters));return normalizeKpis(Array.isArray(rows)?rows[0]:rows);
 }
 async function createProject(){
   if(!state.persistenceAvailable)throw new Error('Execute o SQL 28 antes de criar projetos.'); const filters=projectFiltersFromForm();const indicator=$('projectIndicator').value;$('baselinePreview').textContent='Capturando baseline real…';const baseline=await captureKpis(filters,indicator);
-  const lineage=sourceLineage({endpoint:metricEndpoint(filters,indicator),filters,period:{de:state.period,ate:state.period},note:'Baseline imutável capturado ao criar o projeto estratégico.'});
+  const range=periodRange(state.period);
+  const lineage=sourceLineage({endpoint:metricEndpoint(filters,indicator),filters,period:{de:range.de,ate:range.ate},note:'Baseline imutável capturado ao criar o projeto estratégico.'});
   const payload={p_oportunidade_id:$('projectOpportunityId').value||null,p_titulo:$('projectTitle').value.trim(),p_objetivo:$('projectObjective').value.trim(),p_inicio:$('projectStart').value,p_fim:$('projectEnd').value,p_meta_indicador:$('projectIndicator').value,p_meta_tipo:$('projectGoalType').value,p_meta_valor:number($('projectGoal').value),p_filtros:filters,p_baseline:baseline,p_lineage:lineage};
   const {data,error}=await state.db.rpc('criar_projeto_estrategico_v1',payload);if(error)throw error;await loadPersistence();state.selectedProjectId=data;renderAll();switchView('projetos');toast('Projeto criado com baseline preservado.');
 }
@@ -306,8 +317,8 @@ async function createDemand(actionId){
   const {data,error}=await state.db.rpc('criar_demanda_estrategica_v1',{p_acao_id:actionId});if(error)throw error;await loadPersistence();renderAll();toast('Demanda criada e vinculada ao plano de ação.');return data;
 }
 async function measureProject(projectId){
-  const project=state.projects.find(p=>String(p.id)===String(projectId));if(!project)throw new Error('Projeto não encontrado.');const filters=safeJson(project.filtros,{});const kpis=await captureKpis(filters,project.meta_indicador);const lineage=sourceLineage({endpoint:metricEndpoint(filters,project.meta_indicador),filters,period:{de:state.period,ate:state.period},note:'Medição manual do projeto no período selecionado.'});
-  const row={projeto_id:project.id,medido_em:nowKey(),marco:'manual',periodo_de:state.period,periodo_ate:state.period,indicadores:kpis,lineage,criado_por:state.profile.id};const {error}=await state.db.from('estrategia_medicoes').insert(row);if(error)throw error;await loadPersistence();renderAll();toast(`Medição registrada para ${state.period}.`);
+  const project=state.projects.find(p=>String(p.id)===String(projectId));if(!project)throw new Error('Projeto não encontrado.');const filters=safeJson(project.filtros,{});const kpis=await captureKpis(filters,project.meta_indicador);const range=periodRange(state.period);const lineage=sourceLineage({endpoint:metricEndpoint(filters,project.meta_indicador),filters,period:{de:range.de,ate:range.ate},note:'Medição manual do projeto no período selecionado.'});
+  const row={projeto_id:project.id,medido_em:nowKey(),marco:'manual',periodo_de:range.de,periodo_ate:range.ate,indicadores:kpis,lineage,criado_por:state.profile.id};const {error}=await state.db.from('estrategia_medicoes').insert(row);if(error)throw error;await loadPersistence();renderAll();toast(`Medição registrada para ${quarterLabel(state.period)}.`);
 }
 function openReview(projectId){$('reviewForm').reset();$('reviewProjectId').value=projectId;$('reviewDialog').showModal()}
 async function saveReview(){
@@ -316,7 +327,7 @@ async function saveReview(){
 
 function presentationData(){
   const c=state.commercial||{kpis:normalizeKpis({}),previousKpis:normalizeKpis({}),evolution:[]};const latest=latestMeasurementsMap();const summary=summarizeProjects(state.projects,latest);const topOps=state.generatedOpportunities.slice(0,4);const active=state.projects.filter(p=>!['encerrado','cancelado'].includes(p.status)).slice(0,5);const selected=active[0]||state.projects[0]||null;const actions=selected?state.actions.filter(a=>String(a.projeto_id)===String(selected.id)):[];
-  return {c,summary,topOps,active,selected,actions,target:state.target,period:state.period};
+  return {c,summary,topOps,active,selected,actions,target:state.target,period:quarterLabel(state.period)};
 }
 function buildSlides(){
   const d=presentationData();const growth=pct(d.c.kpis.total_valor,d.c.previousKpis.total_valor);const selectedProgress=d.selected?projectHealth(d.selected):null;

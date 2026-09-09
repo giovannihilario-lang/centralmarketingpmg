@@ -114,20 +114,20 @@ function addInputs(request, filters, ranges = {}) {
 
 function clientConditions(alias = 'c') {
   return [
-    `(@fltVendedor IS NULL OR LTRIM(RTRIM(${alias}.[Vendedor])) = @fltVendedor)`,
-    `(@fltZona IS NULL OR LTRIM(RTRIM(${alias}.[Zona])) = @fltZona)`,
-    `(@fltSubregiao IS NULL OR LTRIM(RTRIM(${alias}.[SubRegião])) = @fltSubregiao)`,
-    `(@fltCidade IS NULL OR LTRIM(RTRIM(${alias}.[Cidade])) = @fltCidade)`,
+    `(@fltVendedor IS NULL OR LTRIM(RTRIM(${alias}.[Vendedor])) LIKE '%' + @fltVendedor + '%')`,
+    `(@fltZona IS NULL OR LTRIM(RTRIM(${alias}.[Zona])) LIKE '%' + @fltZona + '%')`,
+    `(@fltSubregiao IS NULL OR LTRIM(RTRIM(${alias}.[SubRegião])) LIKE '%' + @fltSubregiao + '%')`,
+    `(@fltCidade IS NULL OR LTRIM(RTRIM(${alias}.[Cidade])) LIKE '%' + @fltCidade + '%')`,
     `(@fltUf IS NULL OR UPPER(LTRIM(RTRIM(${alias}.[UF]))) = @fltUf)`,
-    `(@fltSegmento IS NULL OR LTRIM(RTRIM(${alias}.[Segmento])) = @fltSegmento)`,
+    `(@fltSegmento IS NULL OR LTRIM(RTRIM(${alias}.[Segmento])) LIKE '%' + @fltSegmento + '%')`,
   ].join('\n      AND ');
 }
 
 function productConditions(alias = 'p') {
   return [
-    `(@fltFornecedor IS NULL OR LTRIM(RTRIM(${alias}.[Fornecedor])) = @fltFornecedor)`,
-    `(@fltGrupo IS NULL OR LTRIM(RTRIM(${alias}.[Grupo])) = @fltGrupo)`,
-    `(@fltSubgrupo IS NULL OR LTRIM(RTRIM(${alias}.[Sub-grupo])) = @fltSubgrupo)`,
+    `(@fltFornecedor IS NULL OR LTRIM(RTRIM(${alias}.[Fornecedor])) LIKE '%' + @fltFornecedor + '%')`,
+    `(@fltGrupo IS NULL OR LTRIM(RTRIM(${alias}.[Grupo])) LIKE '%' + @fltGrupo + '%')`,
+    `(@fltSubgrupo IS NULL OR LTRIM(RTRIM(${alias}.[Sub-grupo])) LIKE '%' + @fltSubgrupo + '%')`,
   ].join('\n      AND ');
 }
 

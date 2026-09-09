@@ -30,6 +30,10 @@ const moneyFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: '
 const moneyFullFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dateFmt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' });
 
+function foldKey(value) {
+  return String(value ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+}
+
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -247,6 +251,7 @@ function clearFilters() {
   for (const id of ['filterVendedor','filterZona','filterSubregiao','filterCidade','filterUf','filterSegmento','filterFornecedor','filterGrupo','filterSubgrupo','filterFormaVenda']) {
     $(id).value = '';
   }
+  Object.keys(CONTAINS_HINT_FIELDS).forEach(updateContainsHint);
   state.filters = readFilters();
   loadCore();
 }
@@ -258,20 +263,66 @@ function fillSelect(id, values, placeholder) {
   if ([...el.options].some(o => o.value === current)) el.value = current;
 }
 
+// Alimenta um <input list="..."> com sugestões de autocompletar, sem travar o
+// filtro em um valor exato: o backend já casa por "contém" (ex.: digitar
+// "Camil" retorna todos os fornecedores cujo nome inclui esse trecho).
+function fillDatalist(inputId, values) {
+  const list = $(`${inputId}List`);
+  if (!list) return;
+  list.innerHTML = (values || []).map(v => `<option value="${esc(v)}"></option>`).join('');
+}
+
 function populateFilters(catalog) {
   state.filtersCatalog = catalog;
-  fillSelect('filterVendedor', catalog.vendedores, 'Todos');
-  fillSelect('filterZona', catalog.zonas, 'Todas');
-  fillSelect('filterSubregiao', catalog.subregioes, 'Todas');
-  fillSelect('filterCidade', catalog.cidades, 'Todas');
+  fillDatalist('filterVendedor', catalog.vendedores);
+  fillDatalist('filterZona', catalog.zonas);
+  fillDatalist('filterSubregiao', catalog.subregioes);
+  fillDatalist('filterCidade', catalog.cidades);
   fillSelect('filterUf', catalog.ufs, 'Todas');
-  fillSelect('filterSegmento', catalog.segmentos, 'Todos');
-  fillSelect('filterFornecedor', catalog.fornecedores, 'Todos');
-  fillSelect('filterGrupo', catalog.grupos, 'Todos');
-  fillSelect('filterSubgrupo', catalog.subgrupos, 'Todos');
+  fillDatalist('filterSegmento', catalog.segmentos);
+  fillDatalist('filterFornecedor', catalog.fornecedores);
+  fillDatalist('filterGrupo', catalog.grupos);
+  fillDatalist('filterSubgrupo', catalog.subgrupos);
   fillSelect('filterFormaVenda', catalog.formasVenda, 'Todas');
   fillSelect('compareA', catalog.vendedores, 'Vendedor A');
   fillSelect('compareB', catalog.vendedores, 'Vendedor B');
+}
+
+// Cada campo "por nome" casa por trecho (ex.: "Camil" já cobre "12405 - CAMIL
+// ALIMENTOS", "210 - CAMIL ALIMENTOS - PRINCIPAL" etc. de uma vez, sem exigir
+// escolher um item da lista de sugestões). Esta dica mostra quantos itens do
+// catálogo entram nesse "contém", pra deixar claro que não é preciso clicar em
+// nenhuma sugestão — digitar e aplicar já basta.
+const CONTAINS_HINT_FIELDS = {
+  filterVendedor: 'vendedores',
+  filterZona: 'zonas',
+  filterSubregiao: 'subregioes',
+  filterCidade: 'cidades',
+  filterSegmento: 'segmentos',
+  filterFornecedor: 'fornecedores',
+  filterGrupo: 'grupos',
+  filterSubgrupo: 'subgrupos',
+};
+
+function updateContainsHint(inputId) {
+  const hint = $(`${inputId}Hint`);
+  const input = $(inputId);
+  if (!hint || !input) return;
+  const termo = foldKey(input.value);
+  const catalogKey = CONTAINS_HINT_FIELDS[inputId];
+  const valores = state.filtersCatalog?.[catalogKey] || [];
+  if (!termo) { hint.textContent = ''; hint.classList.remove('active'); return; }
+  const total = valores.filter(v => foldKey(v).includes(termo)).length;
+  hint.classList.add('active');
+  hint.textContent = total
+    ? `${total} item${total === 1 ? '' : 's'} do catálogo contêm "${input.value.trim()}" — todos entram no filtro, sem precisar escolher um da lista.`
+    : `Nenhum item do catálogo contém "${input.value.trim()}".`;
+}
+
+function wireContainsHints() {
+  Object.keys(CONTAINS_HINT_FIELDS).forEach(inputId => {
+    $(inputId)?.addEventListener('input', () => updateContainsHint(inputId));
+  });
 }
 
 function kpiCard(label, value, change, detail = '', changeType = 'pct') {
@@ -747,6 +798,7 @@ function bindEvents() {
   $('mobileNavBtn').addEventListener('click', () => document.querySelector('.side').classList.toggle('open'));
   document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => setPreset(b.dataset.preset)));
   $('applyFiltersBtn').addEventListener('click', () => { state.filters = readFilters(); loadCore(); });
+  wireContainsHints();
   $('clearFiltersBtn').addEventListener('click', clearFilters);
   $('refreshBtn').addEventListener('click', () => { state.filters = readFilters(); loadCore(); });
   $('evolutionMetric').addEventListener('change', renderEvolution);

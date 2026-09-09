@@ -78,15 +78,15 @@
       <div class="filters-grid">
         <label><span>Início</span><input id="filterInicio" type="date"></label>
         <label><span>Fim</span><input id="filterFim" type="date"></label>
-        <label><span>Vendedor</span><select id="filterVendedor"><option value="">Todos</option></select></label>
-        <label><span>Zona</span><select id="filterZona"><option value="">Todas</option></select></label>
-        <label><span>SubRegião</span><select id="filterSubregiao"><option value="">Todas</option></select></label>
-        <label><span>Cidade</span><select id="filterCidade"><option value="">Todas</option></select></label>
+        <label><span>Vendedor</span><input id="filterVendedor" list="filterVendedorList" placeholder="Todos (digite para filtrar por trecho do nome)"><datalist id="filterVendedorList"></datalist><small class="filter-match-hint" id="filterVendedorHint"></small></label>
+        <label><span>Zona</span><input id="filterZona" list="filterZonaList" placeholder="Todas"><datalist id="filterZonaList"></datalist><small class="filter-match-hint" id="filterZonaHint"></small></label>
+        <label><span>SubRegião</span><input id="filterSubregiao" list="filterSubregiaoList" placeholder="Todas"><datalist id="filterSubregiaoList"></datalist><small class="filter-match-hint" id="filterSubregiaoHint"></small></label>
+        <label><span>Cidade</span><input id="filterCidade" list="filterCidadeList" placeholder="Todas"><datalist id="filterCidadeList"></datalist><small class="filter-match-hint" id="filterCidadeHint"></small></label>
         <label><span>UF</span><select id="filterUf"><option value="">Todas</option></select></label>
-        <label><span>Segmento</span><select id="filterSegmento"><option value="">Todos</option></select></label>
-        <label><span>Fornecedor</span><select id="filterFornecedor"><option value="">Todos</option></select></label>
-        <label><span>Grupo</span><select id="filterGrupo"><option value="">Todos</option></select></label>
-        <label><span>Subgrupo</span><select id="filterSubgrupo"><option value="">Todos</option></select></label>
+        <label><span>Segmento</span><input id="filterSegmento" list="filterSegmentoList" placeholder="Todos"><datalist id="filterSegmentoList"></datalist><small class="filter-match-hint" id="filterSegmentoHint"></small></label>
+        <label><span>Fornecedor</span><input id="filterFornecedor" list="filterFornecedorList" placeholder="Todos (ex.: digite 'Camil' para pegar todos os IDs)"><datalist id="filterFornecedorList"></datalist><small class="filter-match-hint" id="filterFornecedorHint"></small></label>
+        <label><span>Grupo</span><input id="filterGrupo" list="filterGrupoList" placeholder="Todos"><datalist id="filterGrupoList"></datalist><small class="filter-match-hint" id="filterGrupoHint"></small></label>
+        <label><span>Subgrupo</span><input id="filterSubgrupo" list="filterSubgrupoList" placeholder="Todos"><datalist id="filterSubgrupoList"></datalist><small class="filter-match-hint" id="filterSubgrupoHint"></small></label>
         <label><span>Forma de venda</span><select id="filterFormaVenda"><option value="">Todas</option></select></label>
       </div>
       <div class="filter-actions">

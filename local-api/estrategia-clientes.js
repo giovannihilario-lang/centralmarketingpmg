@@ -83,7 +83,7 @@ export default async function handler(req, res) {
           SELECT 1
           FROM dbo.Clientes fc
           WHERE CAST(fc.[ID Cliente] AS nvarchar(120)) = CAST(v.[ID Cliente] AS nvarchar(120))
-            AND LTRIM(RTRIM(CONVERT(nvarchar(160),fc.[Cidade]))) = @city
+            AND LTRIM(RTRIM(CONVERT(nvarchar(160),fc.[Cidade]))) LIKE '%' + @city + '%'
         ))
         AND (@uf IS NULL OR EXISTS (
           SELECT 1
@@ -97,8 +97,8 @@ export default async function handler(req, res) {
           INNER JOIN dbo.Produtos pr
             ON CAST(pr.[ID Produto] AS nvarchar(120)) = CAST(vp.[ID Produto] AS nvarchar(120))
           WHERE CAST(vp.[ID Pedido de Venda] AS nvarchar(120)) = CAST(v.[ID Pedido de Venda] AS nvarchar(120))
-            AND (@group IS NULL OR LTRIM(RTRIM(CONVERT(nvarchar(180),pr.[Grupo]))) = @group)
-            AND (@supplier IS NULL OR LTRIM(RTRIM(CONVERT(nvarchar(220),pr.[Fornecedor]))) = @supplier)
+            AND (@group IS NULL OR LTRIM(RTRIM(CONVERT(nvarchar(180),pr.[Grupo]))) LIKE '%' + @group + '%')
+            AND (@supplier IS NULL OR LTRIM(RTRIM(CONVERT(nvarchar(220),pr.[Fornecedor]))) LIKE '%' + @supplier + '%')
         ));
 
       SELECT

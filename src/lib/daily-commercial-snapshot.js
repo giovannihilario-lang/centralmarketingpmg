@@ -43,6 +43,8 @@ let syncPromise = null;
 
 const text = (value) => String(value ?? '').trim();
 const upper = (value) => text(value).toLocaleUpperCase('pt-BR');
+const foldKey = (value) => text(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+const includesFold = (haystack, needle) => foldKey(haystack).includes(foldKey(needle));
 
 export function snapshotDay(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -857,13 +859,13 @@ export function matchesRegionalFilters(fact, query = {}, { ignore = [] } = {}) {
   const skip = new Set(ignore);
   const { line, order, client, product } = fact;
 
-  if (query.p_cidade && !skip.has('p_cidade') && `${client.ci} / ${client.uf}` !== String(query.p_cidade)) return false;
-  if (query.p_regiao && !skip.has('p_regiao') && client.z !== String(query.p_regiao)) return false;
+  if (query.p_cidade && !skip.has('p_cidade') && !includesFold(`${client.ci} / ${client.uf}`, query.p_cidade)) return false;
+  if (query.p_regiao && !skip.has('p_regiao') && !includesFold(client.z, query.p_regiao)) return false;
   if (query.p_uf && !skip.has('p_uf') && upper(client.uf) !== upper(query.p_uf)) return false;
-  if (query.p_segmento && !skip.has('p_segmento') && client.se !== String(query.p_segmento)) return false;
-  if (query.p_grupo && !skip.has('p_grupo') && product.g !== String(query.p_grupo)) return false;
-  if (query.p_subgrupo && !skip.has('p_subgrupo') && product.sg !== String(query.p_subgrupo)) return false;
-  if (query.p_fornecedor && !skip.has('p_fornecedor') && product.sn !== String(query.p_fornecedor)) return false;
+  if (query.p_segmento && !skip.has('p_segmento') && !includesFold(client.se, query.p_segmento)) return false;
+  if (query.p_grupo && !skip.has('p_grupo') && !includesFold(product.g, query.p_grupo)) return false;
+  if (query.p_subgrupo && !skip.has('p_subgrupo') && !includesFold(product.sg, query.p_subgrupo)) return false;
+  if (query.p_fornecedor && !skip.has('p_fornecedor') && !includesFold(product.sn, query.p_fornecedor)) return false;
 
   if (query.p_produto && !skip.has('p_produto')) {
     const raw = String(query.p_produto).trim();
