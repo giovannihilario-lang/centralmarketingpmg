@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173d2a">
   <title>Planejamento Estratégico | PMG Connect</title>
-  <link rel="stylesheet" href="/assets/estrategia.css?v=1.2.0">
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.3.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.2"></script>
   <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
   <script async src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" onload="window.dispatchEvent(new Event('pmg-lucide-ready'))"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="strategy-shell">
@@ -49,6 +50,7 @@
     <header class="topbar">
       <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Abrir menu">☰</button>
       <div>
+        <div class="breadcrumb"><span>Planejamento Estratégico</span><i data-lucide="chevron-right"></i><span id="viewCrumb">Visão executiva</span></div>
         <div class="eyebrow" id="viewEyebrow">Estratégia 200M</div>
         <h1 id="viewTitle">Visão executiva</h1>
       </div>
@@ -60,9 +62,11 @@
       </div>
     </header>
 
-    <section class="context-bar" aria-label="Contexto de análise">
+    <section class="context-bar" id="contextBar" aria-label="Contexto de análise">
       <label><span>Período</span><select id="periodSelect"><option value="">Carregando…</option></select></label>
       <label><span>Intervalo</span><select id="periodModeSelect"><option value="trimestral">Trimestral</option><option value="mensal">Mensal</option></select></label>
+      <label><span>Comparar com</span><select id="compareModeSelect"><option value="auto">Período anterior equivalente</option><option value="custom">Escolher período…</option></select></label>
+      <label id="compareCustomWrap" hidden><span>Período de comparação</span><select id="compareCustomSelect"></select></label>
       <div class="context-note"><span>Fonte comercial</span><strong id="periodSource">PMG Bridge / SQL Server</strong><small id="freshnessText">Aguardando leitura</small></div>
     </section>
 
@@ -97,7 +101,7 @@
       <div class="two-col">
         <article class="panel">
           <div class="panel-head"><div><span class="card-kicker">Histórico</span><h2>Evolução de faturamento</h2></div><span class="micro" id="evolutionCaption">Últimos períodos disponíveis</span></div>
-          <div class="evolution-chart" id="evolutionChart"><div class="empty">Carregando evolução…</div></div>
+          <div class="evolution-chart"><canvas id="evolutionChart"></canvas><div class="empty" id="evolutionEmpty" hidden>Sem histórico disponível.</div></div>
         </article>
         <article class="panel">
           <div class="panel-head"><div><span class="card-kicker">Decisão</span><h2>Oportunidades prioritárias</h2></div><button class="text-btn" data-go="oportunidades" type="button">Ver todas →</button></div>
@@ -244,6 +248,6 @@
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.2.0"></script>
+<script type="module" src="/assets/estrategia.js?v=1.3.0"></script>
 </body>
 </html>

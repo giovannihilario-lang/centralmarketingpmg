@@ -135,7 +135,7 @@ button,input,select,textarea{font:inherit}
 
 .context-bar{
   margin:22px 0 18px;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:var(--radius);
-  padding:12px 14px;display:flex;gap:12px;align-items:end;box-shadow:var(--shadow-sm);
+  padding:12px 14px;display:flex;flex-wrap:wrap;gap:12px;align-items:end;box-shadow:var(--shadow-sm);
   animation:cardEnter .4s var(--ease-out) both;
 }
 .context-bar label{display:grid;gap:5px;min-width:190px}
@@ -196,7 +196,23 @@ button,input,select,textarea{font:inherit}
 .delta{font-weight:850}
 .delta.up{color:#2f7448}
 .delta.down{color:var(--red)}
-.skeleton{background:linear-gradient(90deg,#fff 25%,#f4f5f2 50%,#fff 75%);background-size:200% 100%;animation:shimmerMove 1.4s infinite}
+.skeleton{background:linear-gradient(90deg,#fff 25%,#f4f5f2 50%,#fff 75%);background-size:200% 100%;animation:shimmerMove 1.4s infinite;border-radius:var(--radius-sm)}
+.skel-card{min-height:150px}
+.skel-row{min-height:64px}
+
+.empty-state{color:var(--muted);font-size:11px;padding:30px 20px;text-align:center;width:100%;display:flex;flex-direction:column;align-items:center;gap:10px}
+.empty-state svg{width:26px;height:26px;color:var(--line-2);stroke-width:1.6}
+.empty-state p{margin:0;max-width:320px;line-height:1.5}
+.empty.large .empty-state{padding:0}
+
+.kpi-spark{display:block;width:100%;margin-top:8px;opacity:.85}
+
+.breadcrumb{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--faint);margin-bottom:4px;font-weight:700}
+.breadcrumb svg{width:11px;height:11px}
+.breadcrumb span:last-child{color:var(--green-mid)}
+
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--green-light);outline-offset:2px;border-radius:6px}
+.nav-item:focus-visible,.nav-links a:focus-visible{outline-offset:-2px}
 
 .two-col{display:grid;grid-template-columns:1.25fr .75fr;gap:16px;margin-bottom:16px}
 .panel{padding:20px}

@@ -7,6 +7,8 @@ import {
 const $ = id => document.getElementById(id);
 function icons(){const run=()=>{try{window.lucide?.createIcons({attrs:{'stroke-width':1.9}})}catch{}};if('requestIdleCallback' in window)requestIdleCallback(run,{timeout:450});else setTimeout(run,30)}
 window.addEventListener('pmg-lucide-ready',icons);
+function emptyState(icon,message,cta){return `<div class="empty-state"><i data-lucide="${icon}"></i><p>${message}</p>${cta?`<button class="btn small" ${cta.attrs}>${esc(cta.label)}</button>`:''}</div>`}
+let evolutionChart=null,revenueSparkline=null;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = value => Number(value || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
 const moneyCompact = value => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',notation:'compact',maximumFractionDigits:1}).format(Number(value||0));
@@ -29,6 +31,7 @@ const state = {
   config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[],
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
   opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao', periodMode:'trimestral',
+  compareMode:'auto', customComparePeriod:null,
 };
 
 function toast(message,type='ok'){
@@ -118,8 +121,15 @@ function rebuildPeriodOptions(){
   const matching=previousRange&&state.periods.find(p=>{const r=periodRange(p);return r.de<=previousRange.de&&r.ate>=previousRange.de});
   state.period=matching||state.periods.at(-1);
   const select=$('periodSelect');select.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${periodLabel(p)}</option>`).join('');
+  const otherPeriods=state.periods.filter(p=>p!==state.period);
+  if(!otherPeriods.includes(state.customComparePeriod))state.customComparePeriod=otherPeriods.at(-1)||null;
+  $('compareCustomSelect').innerHTML=otherPeriods.slice().reverse().map(p=>`<option value="${p}" ${p===state.customComparePeriod?'selected':''}>${periodLabel(p)}</option>`).join('');
   const range=periodRange(state.period);
-  state.compare=periodShift(range.de,range.ate);
+  state.compare=resolveComparison(range);
+}
+function resolveComparison(range){
+  if(state.compareMode==='custom'&&state.customComparePeriod)return periodRange(state.customComparePeriod);
+  return periodShift(range.de,range.ate);
 }
 
 function filtersForPeriod(period,extra={}){const range=periodRange(period);return {p_de:range.de,p_ate:range.ate,...extra}}
@@ -144,7 +154,7 @@ async function runWithConcurrency(tasks,limit){
 }
 
 async function loadCommercial(){
-  const period=state.period||currentQuarter(); const range=periodRange(period); const comparison=periodShift(range.de,range.ate); state.compare=comparison;
+  const period=state.period||currentQuarter(); const range=periodRange(period); const comparison=resolveComparison(range); state.compare=comparison;
   setSourceStatus(null,'Atualizando dados');
   for(const key of ['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes']) delete state.sourceErrors[key];
   const currentFilters=filtersForPeriod(period); const previousFilters=comparison?{p_de:comparison.de,p_ate:comparison.ate}:currentFilters;
@@ -216,17 +226,39 @@ function populateCollaborators(){
   $('actionOwner').innerHTML=options;
 }
 
-function metricDelta(current,previous,formatter){const d=pct(current,previous);return `<div class="value">${formatter(current)}</div>${d==null?'':`<div class="foot"><span class="delta ${d>=0?'up':'down'}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}%</span><span>vs. anterior</span></div>`}`}
+function metricDelta(current,previous,formatter){const d=pct(current,previous);const compareLabel=state.compareMode==='custom'&&state.customComparePeriod?`vs. ${periodLabel(state.customComparePeriod)}`:'vs. anterior';return `<div class="value">${formatter(current)}</div>${d==null?'':`<div class="foot"><span class="delta ${d>=0?'up':'down'}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(1)}%</span><span>${compareLabel}</span></div>`}`}
+function evolutionSeries(){
+  const rows=Array.isArray(state.commercial?.evolution)?state.commercial.evolution:[];
+  const agg=new Map(); rows.forEach(r=>{const p=`${r.ano}-${String(r.mes).padStart(2,'0')}`;agg.set(p,(agg.get(p)||0)+number(r.valor))});
+  return [...agg.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-18);
+}
 function renderKpis(){
   const c=state.commercial;if(!c)return;
   const current=c.kpis,prev=c.previousKpis;
   const cards=[
-    ['Faturamento',current.total_valor,prev.total_valor,money],['Volume',current.total_kg,prev.total_kg,kg],['Clientes positivados',current.n_clientes,prev.n_clientes,num],['Pedidos',current.n_pedidos,prev.n_pedidos,num],['Ticket médio',current.ticket_medio,prev.ticket_medio,money],['Cidades atendidas',current.n_cidades,prev.n_cidades,num],['Fornecedores ativos',current.n_fornecedores,prev.n_fornecedores,num]
+    ['Faturamento',current.total_valor,prev.total_valor,money,true],['Volume',current.total_kg,prev.total_kg,kg],['Clientes positivados',current.n_clientes,prev.n_clientes,num],['Pedidos',current.n_pedidos,prev.n_pedidos,num],['Ticket médio',current.ticket_medio,prev.ticket_medio,money],['Cidades atendidas',current.n_cidades,prev.n_cidades,num],['Fornecedores ativos',current.n_fornecedores,prev.n_fornecedores,num]
   ];
-  $('kpiGrid').innerHTML=cards.map(([label,cur,old,fmt])=>`<article class="kpi"><div class="label">${label}</div>${metricDelta(cur,old,fmt)}</article>`).join('');
+  $('kpiGrid').innerHTML=cards.map(([label,cur,old,fmt,spark])=>`<article class="kpi"><div class="label">${label}</div>${metricDelta(cur,old,fmt)}${spark?'<canvas class="kpi-spark" id="kpiSparkFaturamento" height="28"></canvas>':''}</article>`).join('');
+  renderRevenueSparkline();
   const ratio=state.target>0?current.total_valor/state.target:0; const percentage=Math.max(0,Math.min(999,ratio*100));
   $('targetHero').textContent=moneyCompact(state.target);$('heroRevenue').textContent=money(current.total_valor);$('heroGap').textContent=money(Math.max(0,state.target-current.total_valor));$('goalPct').textContent=`${percentage.toFixed(1)}%`;
-  $('goalRing').style.background=`conic-gradient(var(--green-dark) ${Math.min(360,ratio*360)}deg,#e7ebe6 0deg)`;
+  animateRing(ratio);
+}
+let ringRatio=0;
+function animateRing(target){
+  const start=ringRatio,delta=target-start,duration=650,t0=performance.now();
+  function step(now){
+    const t=Math.min(1,(now-t0)/duration); const eased=1-Math.pow(1-t,3); const value=start+delta*eased;
+    $('goalRing').style.background=`conic-gradient(var(--green-dark) ${Math.max(0,Math.min(360,value*360))}deg,#e7ebe6 0deg)`;
+    if(t<1)requestAnimationFrame(step); else ringRatio=target;
+  }
+  requestAnimationFrame(step);
+}
+function renderRevenueSparkline(){
+  const canvas=$('kpiSparkFaturamento');if(!canvas||!window.Chart)return;
+  const series=evolutionSeries(); const values=series.map(([,v])=>v);
+  revenueSparkline?.destroy();
+  revenueSparkline=new Chart(canvas,{type:'line',data:{labels:series.map(([p])=>p),datasets:[{data:values,borderColor:'#2d7a4f',borderWidth:2,tension:.35,pointRadius:0,fill:true,backgroundColor:'rgba(45,122,79,.1)'}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:500},scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false},tooltip:{enabled:false}},elements:{line:{borderJoinStyle:'round'}}}});
 }
 
 function latestMeasurementsMap(){
@@ -240,10 +272,12 @@ function renderExecutivePortfolio(){
 }
 
 function renderEvolution(){
-  const rows=Array.isArray(state.commercial?.evolution)?state.commercial.evolution:[];
-  const agg=new Map(); rows.forEach(r=>{const p=`${r.ano}-${String(r.mes).padStart(2,'0')}`;agg.set(p,(agg.get(p)||0)+number(r.valor))});
-  const data=[...agg.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-18); const max=Math.max(1,...data.map(x=>x[1]));
-  $('evolutionChart').innerHTML=data.length?data.map(([p,value])=>`<div class="bar-wrap"><div class="bar" style="height:${Math.max(2,value/max*100)}%" data-value="${esc(money(value))}"></div><span class="bar-label">${p.slice(5)}/${p.slice(2,4)}</span></div>`).join(''):'<div class="empty">Sem histórico disponível.</div>';
+  const data=evolutionSeries();
+  $('evolutionEmpty').hidden=data.length>0;
+  const canvas=$('evolutionChart');if(!canvas||!window.Chart)return;
+  evolutionChart?.destroy();
+  if(!data.length)return;
+  evolutionChart=new Chart(canvas,{type:'bar',data:{labels:data.map(([p])=>`${p.slice(5)}/${p.slice(2,4)}`),datasets:[{data:data.map(([,v])=>v),backgroundColor:'#2d7a4f',hoverBackgroundColor:'#173d2a',borderRadius:6,maxBarThickness:34}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:550,easing:'easeOutCubic'},scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#6d766f'}},y:{grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:v=>moneyCompact(v)}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>money(ctx.parsed.y)}}}}});
 }
 
 function opportunityTypeLabel(op){return ({regional:'Região',categoria:'Categoria',produto:'Produto',fornecedor:'Fornecedor',cliente:'Cliente',manual:'Manual'})[op.kind||op.tipo]||'Oportunidade'}
@@ -260,19 +294,19 @@ function allOpportunities(){return [...state.generatedOpportunities,...state.sav
 function renderOpportunities(){
   let list=state.opFilter==='saved'?state.savedOpportunities.map(savedAsOp):state.generatedOpportunities;
   if(!['all','saved'].includes(state.opFilter))list=list.filter(op=>(op.kind||op.tipo)===state.opFilter);
-  $('opportunityGrid').innerHTML=list.length?list.map(op=>opportunityCard(op,!!op.saved)).join(''):'<div class="empty">Nenhuma oportunidade encontrada neste filtro.</div>';
-  const top=state.generatedOpportunities.slice(0,4);$('opportunityMiniList').innerHTML=top.length?top.map(op=>`<div class="mini-op"><div><strong>${esc(op.title)}</strong><p>${esc(op.description)}</p></div><span class="score-badge">${op.score.toFixed(0)}</span></div>`).join(''):'<div class="empty">Sem sinais suficientes no período.</div>';
+  $('opportunityGrid').innerHTML=list.length?list.map(op=>opportunityCard(op,!!op.saved)).join(''):emptyState('search-x','Nenhuma oportunidade encontrada neste filtro.');
+  const top=state.generatedOpportunities.slice(0,4);$('opportunityMiniList').innerHTML=top.length?top.map(op=>`<div class="mini-op"><div><strong>${esc(op.title)}</strong><p>${esc(op.description)}</p></div><span class="score-badge">${op.score.toFixed(0)}</span></div>`).join(''):emptyState('sparkles','Sem sinais suficientes no período.');
 }
 
 function projectLatest(project){return latestMeasurementsMap().get(String(project.id))?.indicadores||null}
 function projectHealth(project){return projectProgress({...project,baseline:safeJson(project.baseline,{})},safeJson(projectLatest(project),{}))}
 function renderProjectStrip(){
   const rows=state.projects.filter(p=>!['encerrado','cancelado'].includes(p.status)).slice(0,6);
-  $('projectStrip').innerHTML=rows.length?rows.map(p=>{const progress=projectHealth(p);return `<div class="project-mini"><header><strong>${esc(p.titulo)}</strong><span class="health ${progress.health}">${healthLabel(progress.health)}</span></header><p>${esc(p.objetivo||'')}</p><div class="progress-track"><i style="width:${Math.max(0,Math.min(100,progress.actualProgress*100))}%"></i></div></div>`}).join(''):'<div class="empty">Ainda não há projetos estratégicos. Transforme uma oportunidade em plano de ação.</div>';
+  $('projectStrip').innerHTML=rows.length?rows.map(p=>{const progress=projectHealth(p);return `<div class="project-mini"><header><strong>${esc(p.titulo)}</strong><span class="health ${progress.health}">${healthLabel(progress.health)}</span></header><p>${esc(p.objetivo||'')}</p><div class="progress-track"><i style="width:${Math.max(0,Math.min(100,progress.actualProgress*100))}%"></i></div></div>`}).join(''):emptyState('folder-kanban','Ainda não há projetos estratégicos. Transforme uma oportunidade em plano de ação.',{attrs:'data-go="oportunidades"',label:'Ver oportunidades'});
 }
 function renderProjectList(){
   const list=$('projectList');
-  if(!state.projects.length){list.innerHTML='<div class="empty">Nenhum projeto criado.</div>';$('projectDetail').innerHTML='<div class="empty large">Transforme uma oportunidade em projeto ou crie um projeto manual.</div>';return}
+  if(!state.projects.length){list.innerHTML=emptyState('folder-plus','Nenhum projeto criado.');$('projectDetail').innerHTML=`<div class="empty large">${emptyState('folder-plus','Transforme uma oportunidade em projeto ou crie um projeto manual.',{attrs:'data-new-project',label:'+ Novo projeto'})}</div>`;return}
   if(!state.selectedProjectId||!state.projects.some(p=>String(p.id)===String(state.selectedProjectId)))state.selectedProjectId=state.projects[0].id;
   list.innerHTML=state.projects.map(p=>{const pr=projectHealth(p);return `<article class="project-card ${String(p.id)===String(state.selectedProjectId)?'active':''}" data-project-id="${p.id}"><span class="type-label">${statusText(p.status)}</span><h3>${esc(p.titulo)}</h3><div class="progress-track"><i style="width:${Math.max(0,Math.min(100,pr.actualProgress*100))}%"></i></div><div class="meta"><span>${date(p.inicio)} → ${date(p.fim)}</span><span class="health ${pr.health}">${healthLabel(pr.health)}</span></div></article>`}).join('');
   renderProjectDetail();
@@ -286,7 +320,7 @@ function renderProjectDetail(){
   <div class="baseline-grid"><div class="mini-stat"><span>Baseline faturamento</span><strong>${money(baseline.total_valor)}</strong></div><div class="mini-stat"><span>Baseline kg</span><strong>${kg(baseline.total_kg)}</strong></div><div class="mini-stat"><span>Baseline pedidos</span><strong>${num(baseline.n_pedidos)}</strong></div><div class="mini-stat"><span>Baseline ticket</span><strong>${money(baseline.ticket_medio)}</strong></div></div>
   <div class="detail-kpis"><div class="mini-stat"><span>Meta principal</span><strong>${project.meta_tipo==='percentual'?`${number(project.meta_valor).toFixed(1)}%`:money(project.meta_valor)}</strong></div><div class="mini-stat"><span>Resultado atual</span><strong>${project.meta_tipo==='percentual'?`${progress.delta.toFixed(1)}%`:money(progress.currentValue)}</strong></div><div class="mini-stat"><span>Tempo do ciclo</span><strong>${Math.round(progress.timeProgress*100)}%</strong></div><div class="mini-stat"><span>Escopo</span><strong>${esc(scopeLabel(safeJson(project.filtros,{})))}</strong></div></div>
   <div class="actions-head"><div><h3>Plano de ação integrado</h3><span class="micro">${actions.length} ação(ões)</span></div><div><button class="btn small" data-measure-project="${project.id}" type="button">Medir agora</button> <button class="btn primary small" data-add-action="${project.id}" type="button">+ Ação</button> <button class="btn small" data-review-project="${project.id}" type="button">Fechar ciclo</button></div></div>
-  <div class="action-list">${actions.length?actions.map(actionRow).join(''):'<div class="empty">Adicione ações de Comercial, Logística, Marketing, Compras, Financeiro e demais áreas envolvidas.</div>'}</div>`;
+  <div class="action-list">${actions.length?actions.map(actionRow).join(''):emptyState('list-plus','Adicione ações de Comercial, Logística, Marketing, Compras, Financeiro e demais áreas envolvidas.')}</div>`;
 }
 function scopeLabel(filters={}){return [filters.p_cidade,filters.p_uf,filters.p_grupo,filters.p_fornecedor].filter(Boolean).join(' · ')||'Operação inteira'}
 function actionRow(a){return `<div class="action-row"><span class="department">${esc(a.departamento)}</span><div class="action-copy"><strong>${esc(a.titulo)}</strong><small>${esc(statusText(a.status))}${a.prazo?` · prazo ${date(a.prazo)}`:''}</small></div><span class="action-owner">${esc(collaboratorName(a.responsavel_id))}</span><div class="action-buttons"><button class="btn small" data-edit-action="${a.id}" type="button">Editar</button>${a.tarefa_id?`<a class="btn small" href="/demandas.html?tarefa=${encodeURIComponent(a.tarefa_id)}">Demanda ↗</a>`:`<button class="btn small" data-demand-action="${a.id}" type="button">Criar demanda</button>`}</div></div>`}
@@ -294,17 +328,17 @@ function actionRow(a){return `<div class="action-row"><span class="department">$
 function renderTracking(){
   const active=state.projects.filter(p=>!['encerrado','cancelado'].includes(p.status)); const latestMap=latestMeasurementsMap();const summary=summarizeProjects(active,latestMap);
   $('trackingSummary').innerHTML=[['Projetos ativos',summary.active],['Atingidos',summary.achieved],['Em risco',summary.risk+summary.below],['Atenção',summary.attention]].map(([label,value])=>`<div class="mini-stat"><span>${label}</span><strong>${num(value)}</strong></div>`).join('');
-  $('trackingGrid').innerHTML=active.length?active.map(p=>{const pr=projectHealth(p);const list=state.measurements.filter(m=>String(m.projeto_id)===String(p.id)).sort((a,b)=>String(a.medido_em).localeCompare(String(b.medido_em))).slice(-3);return `<article class="tracking-card"><header><div><span class="type-label">${esc(p.meta_indicador)}</span><h3>${esc(p.titulo)}</h3><span class="dates">${date(p.inicio)} → ${date(p.fim)}</span></div><span class="health ${pr.health}">${healthLabel(pr.health)}</span></header><div class="cycle-line"><div class="cycle-step"><span>Baseline</span><strong>${formatProjectMetric(p,normalizeKpis(safeJson(p.baseline,{})))}</strong></div>${[0,1,2].map((i)=>`<div class="cycle-step"><span>Medição ${i+1}</span><strong>${list[i]?formatProjectMetric(p,normalizeKpis(safeJson(list[i].indicadores,{}))):'—'}</strong></div>`).join('')}</div><div class="tracking-footer"><div><span class="micro">Resultado atual</span><strong>${p.meta_tipo==='percentual'?` ${pr.delta.toFixed(1)}%`:formatProjectMetric(p,normalizeKpis(projectLatest(p)||{}))}</strong></div><button class="btn small" data-measure-project="${p.id}" type="button">Medir período atual</button></div></article>`}).join(''):'<div class="empty">Nenhum projeto ativo para acompanhar.</div>';
+  $('trackingGrid').innerHTML=active.length?active.map(p=>{const pr=projectHealth(p);const list=state.measurements.filter(m=>String(m.projeto_id)===String(p.id)).sort((a,b)=>String(a.medido_em).localeCompare(String(b.medido_em))).slice(-3);return `<article class="tracking-card"><header><div><span class="type-label">${esc(p.meta_indicador)}</span><h3>${esc(p.titulo)}</h3><span class="dates">${date(p.inicio)} → ${date(p.fim)}</span></div><span class="health ${pr.health}">${healthLabel(pr.health)}</span></header><div class="cycle-line"><div class="cycle-step"><span>Baseline</span><strong>${formatProjectMetric(p,normalizeKpis(safeJson(p.baseline,{})))}</strong></div>${[0,1,2].map((i)=>`<div class="cycle-step"><span>Medição ${i+1}</span><strong>${list[i]?formatProjectMetric(p,normalizeKpis(safeJson(list[i].indicadores,{}))):'—'}</strong></div>`).join('')}</div><div class="tracking-footer"><div><span class="micro">Resultado atual</span><strong>${p.meta_tipo==='percentual'?` ${pr.delta.toFixed(1)}%`:formatProjectMetric(p,normalizeKpis(projectLatest(p)||{}))}</strong></div><button class="btn small" data-measure-project="${p.id}" type="button">Medir período atual</button></div></article>`}).join(''):emptyState('activity','Nenhum projeto ativo para acompanhar.');
 }
 function formatProjectMetric(project,k){if(project.meta_indicador==='kg')return kg(k.total_kg);if(project.meta_indicador==='pedidos')return num(k.n_pedidos);if(project.meta_indicador==='clientes')return num(k.n_clientes);if(project.meta_indicador==='ticket')return money(k.ticket_medio);return money(k.total_valor)}
 function renderReviews(){
   const rows=state.reviews.map(r=>({...r,project:state.projects.find(p=>String(p.id)===String(r.projeto_id))}));
-  $('reviewGrid').innerHTML=rows.length?rows.map(r=>`<article class="review-card"><span class="type-label">${r.resultado==='atingido'?'Atingido':r.resultado==='parcial'?'Parcial':'Não atingido'}</span><h3>${esc(r.project?.titulo||'Projeto')}</h3><div class="review-section"><span>Funcionou</span><p>${esc(r.funcionou||'—')}</p></div><div class="review-section"><span>Não funcionou</span><p>${esc(r.nao_funcionou||'—')}</p></div><div class="review-section"><span>Gargalos</span><p>${esc(r.gargalos||'—')}</p></div><div class="review-section"><span>Próximo passo</span><p>${esc(r.proximo_passo||'—')}</p></div></article>`).join(''):'<div class="empty">Nenhum fechamento registrado.</div>';
+  $('reviewGrid').innerHTML=rows.length?rows.map(r=>`<article class="review-card"><span class="type-label">${r.resultado==='atingido'?'Atingido':r.resultado==='parcial'?'Parcial':'Não atingido'}</span><h3>${esc(r.project?.titulo||'Projeto')}</h3><div class="review-section"><span>Funcionou</span><p>${esc(r.funcionou||'—')}</p></div><div class="review-section"><span>Não funcionou</span><p>${esc(r.nao_funcionou||'—')}</p></div><div class="review-section"><span>Gargalos</span><p>${esc(r.gargalos||'—')}</p></div><div class="review-section"><span>Próximo passo</span><p>${esc(r.proximo_passo||'—')}</p></div></article>`).join(''):emptyState('flag','Nenhum fechamento registrado.');
 }
 
-function renderAll(){if(state.commercial)renderKpis();renderExecutivePortfolio();if(state.commercial)renderEvolution();renderOpportunities();renderProjectStrip();renderProjectList();renderTracking();renderReviews()}
+function renderAll(){if(state.commercial)renderKpis();renderExecutivePortfolio();if(state.commercial)renderEvolution();renderOpportunities();renderProjectStrip();renderProjectList();renderTracking();renderReviews();icons()}
 
-function switchView(view){state.view=view;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.dataset.viewPanel===view));const labels={executivo:['Estratégia 200M','Visão executiva'],oportunidades:['Dados → decisão','Oportunidades'],projetos:['Execução integrada','Projetos estratégicos'],acompanhamento:['Ciclo de 90 dias','Acompanhamento'],revisoes:['Aprendizado','Fechamentos']};$('viewEyebrow').textContent=labels[view][0];$('viewTitle').textContent=labels[view][1];$('strategyNav').classList.remove('open');history.replaceState(null,'',`${location.pathname}?view=${view}`)}
+function switchView(view){state.view=view;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.dataset.viewPanel===view));const labels={executivo:['Estratégia 200M','Visão executiva'],oportunidades:['Dados → decisão','Oportunidades'],projetos:['Execução integrada','Projetos estratégicos'],acompanhamento:['Ciclo de 90 dias','Acompanhamento'],revisoes:['Aprendizado','Fechamentos']};$('viewEyebrow').textContent=labels[view][0];$('viewTitle').textContent=labels[view][1];$('viewCrumb').textContent=labels[view][1];$('contextBar').hidden=!['executivo','oportunidades'].includes(view);$('strategyNav').classList.remove('open');history.replaceState(null,'',`${location.pathname}?view=${view}`)}
 
 function findGenerated(id){return state.generatedOpportunities.find(op=>op.id===id)}
 function findSaved(id){const row=state.savedOpportunities.find(op=>String(op.id)===String(id));return row?savedAsOp(row):null}
@@ -447,13 +481,15 @@ async function exportPptx(stage){
 
 function bindEvents(){
   document.addEventListener('click',async event=>{const el=event.target.closest('button,[data-project-id],a');if(!el)return;try{
-    if(el.matches('.nav-item'))return switchView(el.dataset.view);if(el.dataset.go)return switchView(el.dataset.go);if(el.dataset.projectId){state.selectedProjectId=el.dataset.projectId;renderProjectList();return}
+    if(el.matches('.nav-item'))return switchView(el.dataset.view);if(el.dataset.go)return switchView(el.dataset.go);if('newProject' in el.dataset)return openProjectDialog();if(el.dataset.projectId){state.selectedProjectId=el.dataset.projectId;renderProjectList();return}
     if(el.dataset.saveOp){await saveGeneratedOpportunity(el.dataset.saveOp);return}if(el.dataset.projectOp){let op=el.dataset.saved==='1'?findSaved(el.dataset.projectOp):findGenerated(el.dataset.projectOp);if(!op&&el.dataset.saved!=='1'){const saved=await saveGeneratedOpportunity(el.dataset.projectOp);op=saved?savedAsOp(saved):null}openProjectDialog(op);return}
     if(el.dataset.addAction){openAction(el.dataset.addAction);return}if(el.dataset.editAction){openAction(state.actions.find(a=>String(a.id)===String(el.dataset.editAction))?.projeto_id,state.actions.find(a=>String(a.id)===String(el.dataset.editAction)));return}if(el.dataset.demandAction){await createDemand(el.dataset.demandAction);return}if(el.dataset.measureProject){await measureProject(el.dataset.measureProject);return}if(el.dataset.reviewProject){openReview(el.dataset.reviewProject);return}
   }catch(error){console.error(error);toast(error.message||String(error),'error')}});
   document.querySelectorAll('[data-op-filter]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-op-filter]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.opFilter=btn.dataset.opFilter;renderOpportunities()}));
   $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));
-  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});
+  $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
   $('opportunityForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveManualOpportunity();$('opportunityDialog').close()}catch(e){toast(e.message,'error')}});
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});
@@ -467,8 +503,17 @@ function bindEvents(){
   document.addEventListener('keydown',e=>{if(!$('presentationDialog').open)return;if(e.key==='ArrowRight')goNext();if(e.key==='ArrowLeft')goPrev();if(e.key==='Escape')$('presentationDialog').close()});
 }
 
+function skeletonBlocks(n,cls=''){return Array.from({length:n},()=>`<div class="skeleton ${cls}"></div>`).join('')}
+function showLoadingSkeletons(){
+  $('opportunityGrid').innerHTML=skeletonBlocks(3,'skel-card');
+  $('opportunityMiniList').innerHTML=skeletonBlocks(2,'skel-row');
+  $('projectStrip').innerHTML=skeletonBlocks(3,'skel-card');
+  $('projectList').innerHTML=skeletonBlocks(3,'skel-row');
+  $('trackingGrid').innerHTML=skeletonBlocks(2,'skel-card');
+  $('reviewGrid').innerHTML=skeletonBlocks(2,'skel-card');
+}
 async function init(){
-  bindEvents(); icons();
+  bindEvents(); icons(); showLoadingSkeletons();
   try{if(localStorage.getItem('pmg_estrategia_nav_collapsed')==='1')$('strategyNav').classList.add('collapsed')}catch{}
   const initial=new URLSearchParams(location.search).get('view');if(['executivo','oportunidades','projetos','acompanhamento','revisoes'].includes(initial))switchView(initial);
   try{const ok=await bootstrapAuth();if(!ok)return;await Promise.all([loadPeriods(),loadPersistence()]);await loadCommercial();renderAll()}catch(error){console.error(error);setSourceStatus(false,'Falha de inicialização');warning(`<strong>Não foi possível iniciar o Planejamento Estratégico.</strong> ${esc(error.message||error)}`);toast(error.message||String(error),'error')}
