@@ -660,6 +660,15 @@
       if (error) throw error;
       const remote = (data || []).map((row) => row.dados);
       app.campaigns = remote.map(normalizeCampaign);
+      // Espelha cada campanha do servidor no IndexedDB local: várias telas
+      // (Performance, auditoria de vendedor, diagnóstico, benefício de 1ª
+      // compra) ainda leem uma campanha específica via DB.get('campanhas',
+      // id) em vez de app.campaigns — sem isso, campanhas que só existem no
+      // servidor (nunca abertas neste navegador, ou cadastradas direto no
+      // banco) resolvem pra "não encontrada" e o clique não faz nada.
+      for (const campaign of app.campaigns) {
+        try { await DB.put('campanhas', campaign); } catch (mirrorError) { console.error('[campanhas] falha ao espelhar campanha no IndexedDB', campaign.id, mirrorError); }
+      }
       // Rede de segurança: qualquer campanha que só exista localmente (de
       // uma sessão anterior a essa migração, ou de outro navegador que
       // ainda não perdeu o dado) é enviada uma vez pro servidor.
