@@ -144,6 +144,23 @@
     async remove(store, id) { await this.init(); return new Promise((resolve, reject) => { const req = db.transaction(store,'readwrite').objectStore(store).delete(id); req.onsuccess=()=>resolve(); req.onerror=()=>reject(req.error); }); },
   };
 
+  // Persistência real das campanhas (Supabase) — até 2026-09-10 esse
+  // dado existia só no IndexedDB acima, sem nenhum backend, e sumiu por
+  // completo (provável limpeza automática do navegador). Supabase vira a
+  // fonte de verdade; o IndexedDB continua como cache/fallback local.
+  let supaClient = null;
+  async function getSupaClient() {
+    if (supaClient) return supaClient;
+    const config = window.PMGConnectAuth?.getPublicConfig?.() || {};
+    if (!window.supabase || !config.supabaseUrl || !config.supabasePublishableKey) {
+      throw new Error('Configuração do Supabase indisponível nesta página.');
+    }
+    supaClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
+      auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true },
+    });
+    return supaClient;
+  }
+
   const app = {
     view:'dashboard', campaigns:[], context:{ suppliers:[], products:[], representatives:[] }, contextReady:false, contextCached:false,
     contextStatus:null, contextPromise:null, useCachedAllowed:false, campaignSearch:'', productSearch:'', representativeSearch:'',
@@ -636,8 +653,35 @@
   }
 
   async function loadCampaigns() {
-    app.campaigns = (await DB.all('campanhas')).map(normalizeCampaign).sort((a,b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+    const local = await DB.all('campanhas');
+    try {
+      const client = await getSupaClient();
+      const { data, error } = await client.from('campanhas').select('id,dados');
+      if (error) throw error;
+      const remote = (data || []).map((row) => row.dados);
+      app.campaigns = remote.map(normalizeCampaign);
+      // Rede de segurança: qualquer campanha que só exista localmente (de
+      // uma sessão anterior a essa migração, ou de outro navegador que
+      // ainda não perdeu o dado) é enviada uma vez pro servidor.
+      const remoteIds = new Set(remote.map((c) => c.id));
+      const orphaned = local.filter((c) => c?.id && !remoteIds.has(c.id));
+      for (const orphan of orphaned) {
+        try { await saveCampaignRemote(normalizeCampaign(orphan)); app.campaigns.push(normalizeCampaign(orphan)); }
+        catch (backfillError) { console.error('[campanhas] falha ao migrar campanha local para o servidor', orphan.id, backfillError); }
+      }
+    } catch (error) {
+      console.error('[campanhas] falha ao carregar campanhas do servidor, usando cache local', error);
+      toast('Não foi possível carregar as campanhas do servidor — mostrando cache local.', 'error');
+      app.campaigns = local.map(normalizeCampaign);
+    }
+    app.campaigns.sort((a,b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
     $('#navCampaignCount').textContent = app.campaigns.length;
+  }
+
+  async function saveCampaignRemote(campaign) {
+    const client = await getSupaClient();
+    const { error } = await client.rpc('salvar_campanha_v1', { p_id:campaign.id, p_nome:campaign.name || 'Campanha sem nome', p_dados:campaign });
+    if (error) throw error;
   }
 
   function selectedSupplierLabel(campaign) {
@@ -893,7 +937,7 @@
       productFilters:{ search:'', group:'', subgroup:'', status:'ATIVO' }, productVisibleLimit:100,
     };
     if (id) {
-      const found = await DB.get('campanhas', id);
+      const found = app.campaigns.find((c) => c.id === id) || await DB.get('campanhas', id);
       if (found) app.wizard.campaign = normalizeCampaign(found);
       $('#modalTitle').textContent = 'Editar campanha';
     } else $('#modalTitle').textContent = 'Nova campanha';
@@ -1610,7 +1654,17 @@
       syncCurrentStep();
       const campaign = app.wizard.campaign;
       campaign.updatedAt = new Date().toISOString();
-      await DB.put('campanhas', campaign);
+      await DB.put('campanhas', campaign); // resiliência local: garante o rascunho mesmo se o passo abaixo falhar
+      try {
+        await saveCampaignRemote(campaign);
+      } catch (remoteError) {
+        console.error('[campanhas] falha ao sincronizar campanha com o servidor', remoteError);
+        toast(`Campanha salva só neste navegador — não foi possível sincronizar com o servidor: ${remoteError.message || 'erro inesperado'}. Tente salvar de novo em instantes.`, 'error');
+        await loadCampaigns();
+        closeWizard();
+        renderView();
+        return;
+      }
       await loadCampaigns();
       closeWizard();
       renderView();
