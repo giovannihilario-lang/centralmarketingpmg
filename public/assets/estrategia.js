@@ -133,7 +133,58 @@ function resolveComparison(range){
 }
 
 function filtersForPeriod(period,extra={}){const range=periodRange(period);return {p_de:range.de,p_ate:range.ate,...extra}}
-async function dimension(dimension,period,extra={}){return regionalApi('/agregado-por-dimensao',{p_dimensao:dimension,p_metrica:'Valor',p_limit:80,...filtersForPeriod(period,extra)})}
+async function dimension(dimension,period,metrica='Valor',extra={}){return regionalApi('/agregado-por-dimensao',{p_dimensao:dimension,p_metrica:metrica,p_limit:80,...filtersForPeriod(period,extra)})}
+
+// Janela "ano completo até o último mês fechado" pra comparar 2025 x 2026 de
+// forma justa: mês corrente costuma estar incompleto, então comparar
+// setembro/2026 parcial contra setembro/2025 inteiro infla queda artificial.
+function yoyRanges(){
+  const [y,m]=currentMonth().split('-').map(Number); const pad=n=>String(n).padStart(2,'0');
+  const endMonth=m>1?m-1:12; const endYear=m>1?y:y-1;
+  return {
+    current:{de:`${endYear}-01`,ate:`${endYear}-${pad(endMonth)}`,label:`Jan–${pad(endMonth)}/${endYear}`},
+    previous:{de:`${endYear-1}-01`,ate:`${endYear-1}-${pad(endMonth)}`,label:`Jan–${pad(endMonth)}/${endYear-1}`},
+  };
+}
+function yoyDimensionDelta(currentRows,previousRows,limit=3){
+  const curMap=new Map((currentRows||[]).map(r=>[r.chave,number(r.total)]));
+  const prevMap=new Map((previousRows||[]).map(r=>[r.chave,number(r.total)]));
+  const rows=[...new Set([...curMap.keys(),...prevMap.keys()])].map(chave=>{
+    const cur=curMap.get(chave)||0,prev=prevMap.get(chave)||0;
+    const delta=prev>0?((cur-prev)/prev*100):(cur>0?null:0);
+    return {chave,cur,prev,delta};
+  });
+  const comparable=rows.filter(r=>r.prev>0);
+  return {rows,growing:[...comparable].sort((a,b)=>b.delta-a.delta).slice(0,limit),falling:[...comparable].sort((a,b)=>a.delta-b.delta).slice(0,limit)};
+}
+function deltaText(delta){return delta==null?'novo':`${delta>=0?'▲ +':'▼ '}${delta.toFixed(1)}%`}
+function yoyRankingList(bucket,formatTotal){
+  const seen=new Set();
+  return [...bucket.growing,...bucket.falling].filter(r=>seen.has(r.chave)?false:(seen.add(r.chave),true)).map(r=>[r.chave,`${deltaText(r.delta)} · ${formatTotal(r.cur)}`]);
+}
+async function loadYoyBreakdown(){
+  const {current,previous}=yoyRanges();
+  const tasks=[
+    ()=>regionalApi('/kpis',filtersForPeriod(current)), ()=>regionalApi('/kpis',filtersForPeriod(previous)),
+    ()=>dimension('Regiao',current), ()=>dimension('Regiao',previous),
+    ()=>dimension('Segmento',current), ()=>dimension('Segmento',previous),
+    ()=>dimension('Grupo',current),
+  ];
+  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual'];
+  const results=await runWithConcurrency(tasks,3);
+  const errors=[];
+  const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;errors.push(`${names[i]}: ${r.reason?.message||r.reason}`);return []});
+  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCur,segmentoPrev,grupoCur]=values;
+  state.yoy={
+    current,previous,errors,
+    kpisCur:normalizeKpis(Array.isArray(kpisCurRows)?kpisCurRows[0]:kpisCurRows),
+    kpisPrev:normalizeKpis(Array.isArray(kpisPrevRows)?kpisPrevRows[0]:kpisPrevRows),
+    regiao:yoyDimensionDelta(regiaoCur,regiaoPrev),
+    segmento:yoyDimensionDelta(segmentoCur,segmentoPrev),
+    grupo:(Array.isArray(grupoCur)?grupoCur:[]).slice(0,6),
+  };
+  return state.yoy;
+}
 
 // As consultas do dashboard regional varrem o snapshot comercial inteiro por
 // requisição; 10 delas ao mesmo tempo competem pelo mesmo processo Node de
@@ -403,7 +454,8 @@ async function saveReview(){
 
 function presentationData(){
   const c=state.commercial||{kpis:normalizeKpis({}),previousKpis:normalizeKpis({}),evolution:[]};const latest=latestMeasurementsMap();const summary=summarizeProjects(state.projects,latest);const topOps=state.generatedOpportunities.slice(0,4);const active=state.projects.filter(p=>!['encerrado','cancelado'].includes(p.status)).slice(0,5);const selected=active[0]||state.projects[0]||null;const actions=selected?state.actions.filter(a=>String(a.projeto_id)===String(selected.id)):[];
-  return {c,summary,topOps,active,selected,actions,target:state.target,period:periodLabel(state.period)};
+  const yoy=state.yoy||{current:{label:'—'},previous:{label:'—'},kpisCur:normalizeKpis({}),kpisPrev:normalizeKpis({}),regiao:{growing:[],falling:[]},segmento:{growing:[],falling:[]},grupo:[]};
+  return {c,summary,topOps,active,selected,actions,target:state.target,period:periodLabel(state.period),yoy};
 }
 // Placeholder de setor: a apresentação 1 hoje só tem dado real de Comercial
 // (via SQL Server/PMG Bridge). Logística, Marketing, Financeiro e Compras
@@ -415,16 +467,19 @@ function placeholderSectorSlide(kicker,area,indicadores){
 }
 
 function buildOverviewSlides(){
-  const d=presentationData();const growth=pct(d.c.kpis.total_valor,d.c.previousKpis.total_valor);
+  const d=presentationData();const y=d.yoy;
+  const growthValor=pct(y.kpisCur.total_valor,y.kpisPrev.total_valor);const growthKg=pct(y.kpisCur.total_kg,y.kpisPrev.total_kg);
   return [
-    {kind:'cover',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'Rumo aos R$ 200 milhões',subtitle:`O retrato atual de cada área, antes de olharmos oportunidades e plano de ação. Período-base: ${d.period}.`},
-    {kicker:'01 · Comercial',title:'A operação comercial em números',metrics:[['Faturamento',money(d.c.kpis.total_valor)],['Volume',kg(d.c.kpis.total_kg)],['Clientes positivados',num(d.c.kpis.n_clientes)],['Pedidos',num(d.c.kpis.n_pedidos)],['Ticket médio',money(d.c.kpis.ticket_medio)],['Cidades',num(d.c.kpis.n_cidades)]],subtitle:growth==null?'Sem base anterior comparável.':`Faturamento ${growth>=0?'+':''}${growth.toFixed(1)}% contra o período anterior.`},
-    {kicker:'02 · Meta',title:'A distância até a meta precisa virar projetos',metrics:[['Meta mensal',money(d.target)],['Atual',money(d.c.kpis.total_valor)],['Gap',money(Math.max(0,d.target-d.c.kpis.total_valor))]],subtitle:'O gap não é distribuído automaticamente entre cidades ou produtos. Cada iniciativa precisa de uma hipótese verificável, responsável e meta própria.'},
-    placeholderSectorSlide('03 · Logística','Logística',['Frota disponível','Entregas no período','Custo de entrega','Cobertura de rotas']),
-    placeholderSectorSlide('04 · Marketing','Marketing',['Campanhas ativas','Investimento em mídia','Leads / tráfego gerado','Principais ações no período']),
-    placeholderSectorSlide('05 · Financeiro','Financeiro',['Fluxo de caixa','Inadimplência','Prazo médio de recebimento','Custo financeiro']),
-    placeholderSectorSlide('06 · Compras','Compras',['Fornecedores ativos','Nível de estoque','Rupturas no período','Negociações em andamento']),
-    {kicker:'07 · Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'A Apresentação 2 traz os sinais comerciais identificados nos dados e o plano de ação por área para os próximos 90 dias.'},
+    {kind:'cover',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'2025 → 2026: onde crescemos, onde caímos',subtitle:`Faturamento e peso comparados ano a ano, por região e por segmento. Período: ${y.current.label} contra ${y.previous.label}.`},
+    {kicker:'01 · Faturamento e peso',title:'O ano em números, lado a lado',metrics:[['Faturamento '+y.previous.label,money(y.kpisPrev.total_valor)],['Faturamento '+y.current.label,money(y.kpisCur.total_valor)],['Variação de faturamento',growthValor==null?'—':deltaText(growthValor)],['Peso '+y.previous.label,kg(y.kpisPrev.total_kg)],['Peso '+y.current.label,kg(y.kpisCur.total_kg)],['Variação de peso',growthKg==null?'—':deltaText(growthKg)]],subtitle:'Base: mesmos meses fechados nos dois anos, para uma comparação justa.'},
+    placeholderSectorSlide('02 · Meta 2026','Meta 2026',['Meta de faturamento no ano','Meta de peso (kg) no ano','Gap até o momento','Iniciativas para fechar a conta']),
+    {kicker:'03 · Por região',title:'Onde crescemos e onde caímos por região',list:yoyRankingList(y.regiao,money),subtitle:'3 maiores crescimentos e 3 maiores quedas em faturamento, região com base comparável nos dois anos.'},
+    {kicker:'04 · Por segmento',title:'Onde crescemos e onde caímos por segmento',list:yoyRankingList(y.segmento,money),subtitle:'Mesmo recorte, agora por segmento de cliente.'},
+    {kicker:'05 · O que isso exige',title:'Toda queda vira plano de ação, todo crescimento vira replicação',subtitle:'Nenhuma dessas variações se resolve sozinha. As próximas seções mostram quem somos hoje e o que vendemos — a Apresentação 2 transforma cada sinal em oportunidade priorizada, com responsável e prazo.'},
+    {kicker:'06 · O que somos hoje',title:'A fotografia atual da operação',metrics:[['Faturamento no período',money(y.kpisCur.total_valor)],['Clientes positivados',num(y.kpisCur.n_clientes)],['Cidades atendidas',num(y.kpisCur.n_cidades)],['Pedidos',num(y.kpisCur.n_pedidos)],['Ticket médio',money(y.kpisCur.ticket_medio)],['Fornecedores ativos',num(y.kpisCur.n_fornecedores)]],subtitle:`Período: ${y.current.label}.`},
+    {kicker:'07 · O que vendemos',title:'O mix de produtos que sustenta o faturamento',list:y.grupo.map(r=>[r.chave,money(r.total)]),subtitle:`Principais categorias por faturamento em ${y.current.label}.`},
+    placeholderSectorSlide('08 · Próximas estratégias','Estratégia',['Onde dobrar a aposta','Onde corrigir rota','Onde reduzir investimento','Prioridade dos próximos 90 dias']),
+    {kicker:'09 · Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'A Apresentação 2 traz os sinais comerciais identificados nos dados e o plano de ação por área para os próximos 90 dias.'},
   ];
 }
 
@@ -443,8 +498,8 @@ function buildOpportunityActionSlides(){
 }
 
 function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():buildOverviewSlides()}
-function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Visão geral'}
-function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Visao_Geral'}
+function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Comparativo 2025×2026'}
+function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Comparativo_2025x2026'}
 function slideHtml(slide){
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p></section>`;
   return `<section class="slide"><span class="slide-kicker">${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics">${slide.metrics.map(([l,v])=>`<div class="slide-metric"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(([l,v])=>`<div><strong>${esc(l)}</strong><span>${esc(v)}</span></div>`).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v])=>`<div class="slide-card"><h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}</section>`}
@@ -464,7 +519,14 @@ function renderPresentation(){
   $('presentDots').innerHTML=state.slides.map((_,i)=>`<button type="button" class="pt-dot" data-slide-dot="${i}" aria-label="Ir para o slide ${i+1}"></button>`).join('');
   goToSlide(state.presentationIndex,{initial:true});
 }
-function openPresentation(stage){state.presentationStage=stage;state.presentationIndex=0;renderPresentation();$('presentationDialog').showModal()}
+async function openPresentation(stage){
+  state.presentationStage=stage;state.presentationIndex=0;$('presentationDialog').showModal();
+  if(stage==='visao'&&!state.yoy){
+    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando o comparativo 2025 × 2026…</h2><p class="slide-sub">Buscando faturamento, peso, região e segmento do período.</p></section>`;
+    try{await loadYoyBreakdown()}catch(error){toast(error.message||String(error),'error')}
+  }
+  renderPresentation();
+}
 
 async function exportPptx(stage){
   if(!window.PptxGenJS)throw new Error('Biblioteca de PowerPoint não carregou. Use o modo Apresentar/Imprimir como alternativa.'); const slides=slidesForStage(stage);const pptx=new window.PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='PMG Connect';pptx.subject='Planejamento Estratégico PMG';pptx.title='PMG Rumo aos R$ 200 milhões';pptx.company='PMG';pptx.lang='pt-BR';
@@ -489,7 +551,7 @@ function bindEvents(){
   $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));
   $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});
   $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao'));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades'));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
   $('opportunityForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveManualOpportunity();$('opportunityDialog').close()}catch(e){toast(e.message,'error')}});
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});
