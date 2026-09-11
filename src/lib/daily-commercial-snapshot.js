@@ -386,6 +386,7 @@ async function querySnapshotFromSql(onProgress = () => {}) {
         v.[Data] AS orderDate,
         v.[ID Cliente] AS clientId,
         NULLIF(LTRIM(RTRIM(v.[Vendedor])), '') AS seller,
+        v.[ID Digitador] AS digitadorId,
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Tipo]))), '') AS saleType,
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(200), v.[Forma de Venda]))), '') AS saleForm,
         ISNULL(v.[Valor Total], 0) AS wholeOrderValue,
@@ -400,7 +401,7 @@ async function querySnapshotFromSql(onProgress = () => {}) {
       FROM dbo.Vendas v
       WHERE v.[ID Pedido de Venda] IS NOT NULL
     )
-    SELECT orderId, orderDate, clientId, seller, saleType, saleForm, wholeOrderValue
+    SELECT orderId, orderDate, clientId, seller, digitadorId, saleType, saleForm, wholeOrderValue
     FROM VendasRank
     WHERE rn = 1;
 
@@ -548,6 +549,15 @@ async function querySnapshotFromSql(onProgress = () => {}) {
     SELECT DISTINCT p.[ID Produto] AS productId, p.[ID Fornecedor] AS supplierId
     FROM dbo.Produtos p
     WHERE p.[ID Produto] IS NOT NULL AND p.[ID Fornecedor] IS NOT NULL;
+
+    -- Diretório digitador -> nome (dbo.Usuarios.Codigo é o que Vendas.[ID Digitador] referencia).
+    -- Usado por Campanhas pra identificar quem realmente lançou a venda, no
+    -- lugar do texto livre Vendas.Vendedor (que não tem ID nenhum por trás).
+    SELECT
+      u.[Codigo] AS id,
+      NULLIF(LTRIM(RTRIM(u.[Nome])), '') AS nome
+    FROM dbo.Usuarios u
+    WHERE u.[Codigo] IS NOT NULL;
   `);
 
   onProgress('transform', 72, 'Consulta concluída. Organizando os dados comerciais…');
@@ -555,6 +565,7 @@ async function querySnapshotFromSql(onProgress = () => {}) {
   const [
     ordersRaw = [], regionalOrdersRaw = [], linesRaw = [], productsRaw = [], regionalProductsRaw = [],
     regionalClientsRaw = [], activeClientsRaw = [], activeSellersRaw = [], productSuppliersRaw = [],
+    usuariosRaw = [],
   ] = result.recordsets || [];
 
   const snapshot = {
@@ -563,6 +574,7 @@ async function querySnapshotFromSql(onProgress = () => {}) {
       d: row.orderDate ? new Date(row.orderDate).toISOString() : null,
       c: Number(row.clientId) || null,
       s: text(row.seller),
+      di: Number.isFinite(Number(row.digitadorId)) && row.digitadorId != null ? Number(row.digitadorId) : null,
       t: text(row.saleType),
       f: text(row.saleForm),
       v: Number(row.wholeOrderValue) || 0,
@@ -627,6 +639,12 @@ async function querySnapshotFromSql(onProgress = () => {}) {
       p: Number(row.productId),
       s: Number(row.supplierId),
     })).filter((row) => Number.isFinite(row.p) && Number.isFinite(row.s)),
+    // Diretório digitador -> nome (dbo.Usuarios). Substitui, pra Campanhas, a
+    // identificação por texto livre Vendas.Vendedor por um ID real.
+    digitadores: usuariosRaw.map((row) => ({
+      id: Number(row.id),
+      n: text(row.nome),
+    })).filter((row) => Number.isFinite(row.id)),
   };
 
   onProgress('transform', 82, 'Dados organizados. Preparando o snapshot local…');

@@ -1041,10 +1041,13 @@
   }
 
   function representativeSelector() {
-    const selected = new Set(app.wizard.campaign.representatives || []);
+    // representative.id agora é o digitadorId real (dbo.Vendas.[ID Digitador]
+    // -> dbo.Usuarios.Codigo/Nome) — não precisa mais adivinhar código via
+    // regex no nome (sellerIdentity() fica só como fallback de exibição
+    // pra campanhas antigas salvas antes desta mudança).
+    const selected = new Set((app.wizard.campaign.representatives || []).map(Number));
     return `<div class="field full"><label>Representantes selecionados (${selected.size})</label><div class="search-field"><i data-lucide="search"></i><input id="wizardRepSearch" placeholder="Buscar nome ou ID"></div><div class="table-wrap" id="wizardRepList" style="max-height:280px;margin-top:8px"><table><tbody>${app.context.representatives.map((representative) => {
-      const identity = sellerIdentity(representative.name);
-      return `<tr data-rep-row="${esc(norm(`${identity.name} ${identity.code} ${representative.name}`))}"><td><input type="checkbox" data-representative="${esc(representative.name)}" ${selected.has(representative.name) ? 'checked' : ''}></td><td><strong>${esc(identity.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}</td><td>${number(representative.activeClients)} clientes ativos</td></tr>`;
+      return `<tr data-rep-row="${esc(norm(`${representative.name} ${representative.id}`))}"><td><input type="checkbox" data-representative="${esc(representative.id)}" ${selected.has(Number(representative.id)) ? 'checked' : ''}></td><td><strong>${esc(representative.name)}</strong><small class="rep-code">ID ${esc(representative.id)}</small></td><td>${number(representative.activeClients)} clientes ativos</td></tr>`;
     }).join('')}</tbody></table></div></div>`;
   }
 
@@ -1525,7 +1528,7 @@
       campaign.end = campaign.periodMode === 'custom'
         ? ($('#campaignEnd')?.value || campaign.end || campaign.start)
         : (sixthMondayFrom(campaign.start) || campaign.end);
-      campaign.representatives = $$('[data-representative]:checked').map((input) => input.dataset.representative);
+      campaign.representatives = $$('[data-representative]:checked').map((input) => Number(input.dataset.representative)).filter(Number.isFinite);
     }
     if (app.wizard.step === 1) {
       campaign.rankingMode = $('#rankingMode')?.value || campaign.rankingMode;
@@ -2248,7 +2251,7 @@
     const current = { ...currentRaw, points:currentPoints };
     const previous = { ...previousRaw, points:previousPoints };
     return {
-      name:seller.name,
+      id:seller.id, name:seller.name,
       current, previous,
       revenue:current.revenue, previousRevenue:previous.revenue, revenueGrowth:growth(current.revenue, previous.revenue),
       kg:current.kg, previousKg:previous.kg, kgGrowth:growth(current.kg, previous.kg),
@@ -2321,10 +2324,15 @@
   }
 
   function calculatePerformance(campaign, data, periods) {
+    // row.seller agora é o digitadorId real (dbo.Vendas.[ID Digitador]) — o
+    // servidor não manda mais nome nenhum aqui. Resolve pra exibição via o
+    // diretório de representantes já carregado no contexto.
+    const repNameById = new Map((app.context.representatives || []).map((r) => [Number(r.id), text(r.name)]));
+    const sellerLabel = (id) => repNameById.get(Number(id)) || `Digitador ${id}`;
     const sellers = new Map();
     const orderMap = new Map((data.ordersBySeller || []).map((row) => [`${row.period}|${row.seller}`, Number(row.orders) || 0]));
     for (const row of data.lines || []) {
-      if (!sellers.has(row.seller)) sellers.set(row.seller, { name:row.seller, current:periodBucket(), previous:periodBucket() });
+      if (!sellers.has(row.seller)) sellers.set(row.seller, { id:row.seller, name:sellerLabel(row.seller), current:periodBucket(), previous:periodBucket() });
       const seller = sellers.get(row.seller);
       const bucket = row.period === 'current' ? seller.current : seller.previous;
       bucket.revenue += Number(row.revenue) || 0;
@@ -2335,13 +2343,13 @@
       bucket.rows.push(row);
     }
     for (const row of data.orderLines || []) {
-      if (!sellers.has(row.seller)) sellers.set(row.seller, { name:row.seller, current:periodBucket(), previous:periodBucket() });
+      if (!sellers.has(row.seller)) sellers.set(row.seller, { id:row.seller, name:sellerLabel(row.seller), current:periodBucket(), previous:periodBucket() });
       const seller = sellers.get(row.seller);
       (row.period === 'current' ? seller.current : seller.previous).orderLines.push(row);
     }
     for (const seller of sellers.values()) {
-      seller.current.orders = orderMap.get(`current|${seller.name}`) || 0;
-      seller.previous.orders = orderMap.get(`previous|${seller.name}`) || 0;
+      seller.current.orders = orderMap.get(`current|${seller.id}`) || 0;
+      seller.previous.orders = orderMap.get(`previous|${seller.id}`) || 0;
     }
 
     const historicalTriggerClients = new Set((data.historicalTriggerClientIds || []).map((id) => String(id)));
@@ -2922,7 +2930,10 @@
   }
 
   function sellerAuditHtml(campaign, data) {
-    const identity = sellerIdentity(data.seller);
+    // data.seller agora é o digitadorId real; o nome é o já resolvido em
+    // openSellerAudit() via o diretório de representantes, com o texto
+    // original do SQL (sellerAliases) como referência complementar.
+    const sellerName = app.sellerAudit?.sellerName || data.sellerAliases?.[0] || `Digitador ${data.seller}`;
     const current = data.summaries?.current || {};
     const previous = data.summaries?.previous || {};
     const rows = data.rows || [];
@@ -2930,8 +2941,8 @@
 
     return `<div class="seller-audit-top">
       <div>
-        <span class="eyebrow">${esc(identity.code ? `ID ${identity.code}` : 'Representante')}</span>
-        <h3>${esc(identity.name || data.seller)}</h3>
+        <span class="eyebrow">${esc(data.seller != null ? `ID ${data.seller}` : 'Representante')}</span>
+        <h3>${esc(sellerName)}</h3>
         <p>Linhas participantes exatamente como a API local recebeu do SQL.</p>
         ${data.sellerAliases?.length ? `<small class="seller-alias-note"><strong>Aliases encontrados no SQL:</strong> ${esc(data.sellerAliases.join(' · '))}</small>` : ''}
       </div>
@@ -3021,9 +3032,14 @@
     const campaign = normalizeCampaign(await DB.get('campanhas', campaignId));
     if (!campaign?.id) return;
 
+    // seller agora chega como digitadorId real; resolve o nome pro título
+    // via o diretório de representantes já carregado no contexto.
+    const sellerId = Number(seller);
+    const sellerName = app.context.representatives.find((r) => Number(r.id) === sellerId)?.name || `Digitador ${seller}`;
+
     backdrop.hidden = false;
-    body.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Auditando ${esc(sellerIdentity(seller).name || seller)}</h3><p>Auditando pedidos e produtos no snapshot comercial diário para conferir a origem dos números.</p></div></div>`;
-    $('#sellerAuditTitle').textContent = `Origem dos números · ${sellerIdentity(seller).name || seller}`;
+    body.innerHTML = `<div class="loading-stage"><div><div class="spinner"></div><h3>Auditando ${esc(sellerName)}</h3><p>Auditando pedidos e produtos no snapshot comercial diário para conferir a origem dos números.</p></div></div>`;
+    $('#sellerAuditTitle').textContent = `Origem dos números · ${sellerName}`;
     icons(backdrop);
 
     const periods = calculatePeriods(campaign);
@@ -3040,13 +3056,13 @@
           campaignEnd:periods.currentLast,
           periodMode:campaign.periodMode || 'six_mondays',
           asOfDate:todayLocalDate(),
-          seller,
+          seller:sellerId,
           productIds,
           supplierIds,
           salesScopeMode:salesScope.mode,
         }),
       });
-      app.sellerAudit = { campaignId, seller, data };
+      app.sellerAudit = { campaignId, seller:sellerId, sellerName, data };
       body.innerHTML = sellerAuditHtml(campaign, data);
       icons(body);
     } catch (error) {
@@ -3503,7 +3519,6 @@
   }
 
   function outcomeSellerCompact(campaign, item, kind) {
-    const identity = sellerIdentity(item.name);
     const metric = resultPrimaryMetric(campaign, item);
     const prize = prizeForPosition(campaign, item.position);
     const reason = item.reasons?.[0] || '';
@@ -3520,8 +3535,8 @@
       <div class="outcome-seller-rank">${number(item.position)}</div>
       <div class="outcome-seller-main">
         <div class="outcome-seller-name">
-          <strong>${esc(identity.name || item.name)}</strong>
-          ${identity.code ? `<small>ID ${esc(identity.code)}</small>` : ''}
+          <strong>${esc(item.name)}</strong>
+          ${item.id != null ? `<small>ID ${esc(item.id)}</small>` : ''}
         </div>
         <div class="outcome-seller-metrics">
           <span><small>${esc(metric.primaryLabel)}</small><strong>${esc(metric.primaryValue)}</strong></span>
@@ -3532,7 +3547,7 @@
       </div>
       <div class="outcome-seller-side">
         <span class="outcome-status ${kind}">${esc(statusLabel)}</span>
-        <button class="outcome-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.name)}" title="Auditar origem">
+        <button class="outcome-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.id)}" title="Auditar origem">
           <i data-lucide="scan-search"></i>
         </button>
       </div>
@@ -3770,14 +3785,11 @@
   function performanceMeta(label, value, detail) { return `<div class="meta-card"><span>${label}</span><strong>${value}</strong><small>${detail}</small></div>`; }
   function performanceRow(item, collectiveHit, audit, campaign) {
     const status = !item.eligible ? 'Inelegível' : !collectiveHit ? 'Meta coletiva pendente' : item.classified ? 'Classificado' : 'Elegível';
-    const identity = sellerIdentity(item.name);
 
     const sellerAudit = [
-      `Representante consolidado: ${identity.name || item.name}`,
-      identity.code ? `ID: ${identity.code}` : '',
-      `Chave principal: ID numérico final quando disponível`,
-      `Fallback: nome normalizado sem o sufixo`,
-      `Fonte: dbo.Vendas.[Vendedor]`,
+      `Representante: ${item.name}`,
+      item.id != null ? `ID Digitador: ${item.id}` : '',
+      `Fonte: dbo.Vendas.[ID Digitador] -> dbo.Usuarios`,
     ];
 
     const mixAudit = [
@@ -3804,8 +3816,8 @@
     return `<tr>
       <td><span class="rank-badge">${item.position}</span></td>
       <td class="ranking-seller-cell">
-        ${auditValue(`<strong class="rep-name">${esc(identity.name || item.name)}</strong>${identity.code ? `<small class="rep-code">ID ${esc(identity.code)}</small>` : ''}`, sellerAudit, 'rep-audit')}
-        <button class="row-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.name)}"><i data-lucide="scan-search"></i>Auditar origem</button>
+        ${auditValue(`<strong class="rep-name">${esc(item.name)}</strong>${item.id != null ? `<small class="rep-code">ID ${esc(item.id)}</small>` : ''}`, sellerAudit, 'rep-audit')}
+        <button class="row-audit-btn" type="button" data-action="audit-seller" data-campaign-id="${esc(campaign.id)}" data-seller="${esc(item.id)}"><i data-lucide="scan-search"></i>Auditar origem</button>
         ${item.reasons.length ? `<small class="ranking-first-reason" title="${esc(item.reasons.join(' · '))}">${esc(item.reasons[0])}</small>` : ''}
       </td>
       <td>${comparisonMetricCell(
@@ -3938,8 +3950,9 @@
 
   document.addEventListener('change', (event) => {
     if (event.target.matches('[data-representative]')) {
-      const selected = new Set(app.wizard.campaign.representatives || []);
-      event.target.checked ? selected.add(event.target.dataset.representative) : selected.delete(event.target.dataset.representative);
+      const id = Number(event.target.dataset.representative);
+      const selected = new Set((app.wizard.campaign.representatives || []).map(Number));
+      event.target.checked ? selected.add(id) : selected.delete(id);
       app.wizard.campaign.representatives = [...selected];
     }
     if (event.target.id === 'rankingMode') app.wizard.campaign.rankingMode = event.target.value;

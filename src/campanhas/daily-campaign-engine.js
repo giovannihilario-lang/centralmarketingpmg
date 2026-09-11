@@ -1,8 +1,6 @@
 import {
   ensureDailySnapshot,
-  resolveActiveSeller,
   productMatchesSuppliers,
-  parseSeller,
   dateMs,
   orderDateMs,
 } from '../lib/daily-commercial-snapshot.js';
@@ -65,12 +63,30 @@ export async function campaignContextFromSnapshot() {
       status: text(p.st),
     }));
 
-  const representatives = (snapshot.activeSellers || []).map((row) => ({
-    name: text(row.s),
-    portfolioClients: Number(row.t) || 0,
-    activeClients: Number(row.a) || 0,
-    lastOrderDate: row.lp || null,
-  }));
+  // Identidade real do vendedor: dbo.Vendas.[ID Digitador] -> dbo.Usuarios,
+  // no lugar do texto livre Vendas.Vendedor (sem ID nenhum por trás). Ver
+  // sql "digitador" em daily-commercial-snapshot.js. activeClients/
+  // lastOrderDate são calculados aqui (não vêm prontos do SQL) contando os
+  // pedidos do snapshot por digitadorId.
+  const activityByDigitador = new Map();
+  for (const order of snapshot.orders || []) {
+    if (order.di == null) continue;
+    const id = Number(order.di);
+    if (!activityByDigitador.has(id)) activityByDigitador.set(id, { clients: new Set(), lastOrderDate: null });
+    const bucket = activityByDigitador.get(id);
+    if (Number.isFinite(Number(order.c))) bucket.clients.add(Number(order.c));
+    if (order.d && (!bucket.lastOrderDate || order.d > bucket.lastOrderDate)) bucket.lastOrderDate = order.d;
+  }
+  const representatives = (snapshot.digitadores || []).map((row) => {
+    const id = Number(row.id);
+    const activity = activityByDigitador.get(id);
+    return {
+      id,
+      name: text(row.n),
+      activeClients: activity ? activity.clients.size : 0,
+      lastOrderDate: activity ? activity.lastOrderDate : null,
+    };
+  }).filter((row) => Number.isFinite(row.id));
 
   return { snapshot, products, representatives };
 }
@@ -91,7 +107,10 @@ export async function performanceRecordsets({
   const snapshot = await ensureDailySnapshot();
   const productIdsSet = new Set(productIds.map(Number));
   const supplierIdsSet = new Set(supplierIds.map(Number));
-  const selectedSellers = new Set(sellers.map(text));
+  // sellers agora chega como lista de digitadorId (number) — identidade
+  // real de dbo.Vendas.[ID Digitador], no lugar do antigo texto livre
+  // Vendas.Vendedor. Ver campaignContextFromSnapshot() acima.
+  const selectedSellers = new Set(sellers.map(Number).filter(Number.isFinite));
   const activationIds = new Set(activationProductIds.map(Number));
   const triggerIds = new Set(activationTriggerProductIds.map(Number));
   const currentStartMs = dateMs(currentStart);
@@ -111,9 +130,11 @@ export async function performanceRecordsets({
     if (!period) continue;
 
     const rawSeller = text(order.s);
+    const digitadorId = Number.isFinite(Number(order.di)) && order.di != null ? Number(order.di) : null;
     const scopeRow = {
       period,
       seller: rawSeller,
+      digitadorId,
       clientId: Number(order.c),
       orderId: String(line.o),
       orderDate: order.d || null,
@@ -124,10 +145,12 @@ export async function performanceRecordsets({
     };
     scopeBase.push(scopeRow);
 
-    const matchedSeller = resolveActiveSeller(snapshot, rawSeller);
-    if (!matchedSeller) continue;
-    if (selectedSellers.size && !selectedSellers.has(matchedSeller)) continue;
-    campaignBase.push({ ...scopeRow, seller: matchedSeller, sellerAlias: rawSeller });
+    // Identidade real pelo ID Digitador (dbo.Vendas.[ID Digitador]). Pedido
+    // sem digitador não entra em apuração por vendedor específico — ainda
+    // conta pro total coletivo via scopeBase acima.
+    if (digitadorId == null) continue;
+    if (selectedSellers.size && !selectedSellers.has(digitadorId)) continue;
+    campaignBase.push({ ...scopeRow, seller: digitadorId, sellerAlias: rawSeller });
   }
 
   const lineGroups = new Map();
@@ -351,22 +374,21 @@ export async function firstPurchaseBenefitRecordsets({ currentStart, currentEnd,
 
 export async function sellerAuditRecordsets({ seller, currentStart, currentEnd, previousStart, previousEnd, productIds = [], supplierIds = [] }) {
   const snapshot = await ensureDailySnapshot();
-  const target = parseSeller(seller);
+  // seller agora chega como digitadorId (number) — ver performanceRecordsets.
+  const targetDigitadorId = Number(seller);
   const productIdsSet = new Set(productIds.map(Number));
   const supplierIdsSet = new Set(supplierIds.map(Number));
   const c0 = dateMs(currentStart), c1 = dateMs(currentEnd), p0 = dateMs(previousStart), p1 = dateMs(previousEnd);
 
-  function matchesSeller(raw) {
-    const parsed = parseSeller(raw);
-    if (target.code != null && parsed.code === target.code) return true;
-    return Boolean(target.nameKey && parsed.nameKey && target.nameKey === parsed.nameKey);
+  function matchesSeller(order) {
+    return Number.isFinite(targetDigitadorId) && Number(order?.di) === targetDigitadorId;
   }
 
   const rows = [];
   const parityRows = [];
   for (const line of snapshot.lines || []) {
     const order = snapshot._idx.ordersById.get(String(line.o));
-    if (!order || !matchesSeller(order.s)) continue;
+    if (!order || !matchesSeller(order)) continue;
     const period = periodOf(order, c0, c1, p0, p1);
     if (!period) continue;
     const inScope = productScope(snapshot, line.p, productIdsSet, supplierIdsSet);

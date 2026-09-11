@@ -39,7 +39,7 @@ function stablePerformanceKey({ currentStart, currentEnd, previousStart, previou
     previousEnd:String(previousEnd),
     productIds:[...productIds].sort((a,b) => a-b),
     supplierIds:[...supplierIds].sort((a,b) => a-b),
-    sellers:[...sellers].sort((a,b) => a.localeCompare(b, 'pt-BR')),
+    sellers:[...sellers].sort((a,b) => a-b),
     activationProductIds:[...activationProductIds].sort((a,b) => a-b),
     activationTriggerProductIds:[...activationTriggerProductIds].sort((a,b) => a-b),
     activationFirstPurchaseMode,
@@ -217,12 +217,12 @@ function sanitizeContext(context = {}) {
 
   const repMap = new Map();
   for (const raw of Array.isArray(context.representatives) ? context.representatives : []) {
+    const id = Number(raw?.id);
     const name = text(raw?.name);
-    if (!name) continue;
-    const key = norm(name);
-    const current = repMap.get(key);
+    if (!Number.isFinite(id) || !name) continue;
+    const current = repMap.get(id);
     if (!current || Number(raw?.activeClients || 0) > Number(current?.activeClients || 0)) {
-      repMap.set(key, { ...raw, name });
+      repMap.set(id, { ...raw, id, name });
     }
   }
   const representatives = [...repMap.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -245,15 +245,16 @@ async function queryContext() {
       || a.subgroup.localeCompare(b.subgroup, 'pt-BR')
       || a.name.localeCompare(b.name, 'pt-BR'));
 
+  // id agora é o digitadorId real (dbo.Vendas.[ID Digitador] -> dbo.Usuarios),
+  // não mais um pseudo-id derivado do nome em texto livre.
   const representatives = rawRepresentatives.map((row) => ({
-    id: `snapshot:${text(row.name)}`,
+    id: Number(row.id),
     name: text(row.name),
     active: true,
     activeClients: Number(row.activeClients) || 0,
-    portfolioClients: Number(row.portfolioClients) || 0,
     lastOrderDate: row.lastOrderDate || null,
     source: 'snapshot diário local',
-  })).filter((item) => item.name);
+  })).filter((item) => item.name && Number.isFinite(item.id));
 
   return {
     suppliers: deriveSuppliers(products),
@@ -488,7 +489,9 @@ export async function queryPerformance(payload = {}) {
   const previousEnd = campaignPeriods?.previousEnd || parseDate(payload.previousEnd, 'previousEnd');
   const productIds = uniqueIntegers(payload.productIds);
   const supplierIds = uniqueIntegers(payload.supplierIds);
-  const sellers = uniqueTexts(payload.sellers);
+  // sellers agora é o digitadorId real (dbo.Vendas.[ID Digitador]), não mais
+  // o texto livre do vendedor.
+  const sellers = uniqueIntegers(payload.sellers);
   const activationProductIds = payload.orderActivationEnabled ? uniqueIntegers(payload.activationProductIds) : [];
   const activationTriggerProductIds = payload.orderActivationEnabled ? uniqueIntegers(payload.activationTriggerProductIds) : [];
   const activationFirstPurchaseMode = text(payload.activationFirstPurchaseMode) === 'historical_trigger' ? 'historical_trigger' : 'campaign_trigger';
@@ -1121,8 +1124,9 @@ export async function queryFirstPurchaseBenefit(payload = {}) {
 
 export async function querySellerAudit(payload = {}) {
   const startedAt = Date.now();
-  const seller = text(payload.seller);
-  if (!seller) {
+  // seller agora é o digitadorId real (dbo.Vendas.[ID Digitador]).
+  const seller = Number(payload.seller);
+  if (!Number.isFinite(seller)) {
     const error = new Error('Informe o representante que será auditado.');
     error.code = 'VENDEDOR_AUSENTE';
     throw error;
