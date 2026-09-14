@@ -18,4 +18,4 @@ jobs:
           test -n "$CRON_SECRET" || { echo "CRON_SECRET não configurado no repositório"; exit 1; }
           curl --fail --silent --show-error \
             -H "Authorization: Bearer $CRON_SECRET" \
-            https://pmgmarketing.vercel.app/api/notificar-debitos
+            https://centralpmgconnect.vercel.app/api/notificar-debitos
