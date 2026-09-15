@@ -551,10 +551,17 @@ function buildOpportunityActionSlides(){
 function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():buildOverviewSlides()}
 function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Comparativo 2025×2026'}
 function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Comparativo_2025x2026'}
+function metricColumns(count){
+  if(count<=3)return Math.max(1,count);
+  if(count%4===0)return 4;
+  if(count%3===0)return 3;
+  if(count%2===0)return count<=6?count/2:4;
+  return 3;
+}
 function slideHtml(slide){
   const brand=`<div class="slide-brand"><img src="/imagenssite/pmglogo.png" alt=""><span>PMG Connect</span></div>`;
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker"><i></i>${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p>${brand}</section>`;
-  return `<section class="slide">${brand}<span class="slide-kicker"><i></i>${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics">${slide.metrics.map(([l,v])=>`<div class="slide-metric"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(([l,v])=>`<div><strong>${esc(l)}</strong><span class="${/^-/.test(String(v).trim())?'is-negative':''}">${esc(v)}</span></div>`).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v])=>`<div class="slide-card"><h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}</section>`}
+  return `<section class="slide">${brand}<span class="slide-kicker"><i></i>${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v])=>`<div class="slide-metric"><span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(([l,v])=>`<div><strong>${esc(l)}</strong><span class="${/^-/.test(String(v).trim())?'is-negative':''}">${esc(v)}</span></div>`).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v])=>`<div class="slide-card"><h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}</section>`}
 function goToSlide(index,{initial=false}={}){
   const previous=state.presentationIndex;const clamped=Math.max(0,Math.min(index,state.slides.length-1));
   const back=!initial&&clamped<previous;state.presentationIndex=clamped;
