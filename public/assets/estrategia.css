@@ -245,6 +245,16 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .health.atingido,.health.no_ritmo{background:var(--green-pale);color:#2c6a43}
 .health.em_risco,.health.abaixo{background:var(--red-soft);color:var(--red)}
 .health.atencao{background:var(--amber-soft);color:var(--amber)}
+.monthly-pace-today{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--radius-sm);background:var(--green-pale);color:#2c6a43;font-size:12.5px;margin-bottom:14px}
+.monthly-pace-today strong{font-weight:850}
+.monthly-pace-today i{flex:none;width:18px;height:18px}
+.monthly-pace-table-wrap{overflow-x:auto}
+.monthly-pace-table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
+.monthly-pace-table th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:800;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+.monthly-pace-table td{padding:9px 10px;border-bottom:1px solid var(--line-2)}
+.monthly-pace-table tbody tr:last-child td{border-bottom:0}
+.monthly-pace-table tr.is-current td{background:var(--surface-2);font-weight:750}
+.monthly-pace-table td small{display:block;color:var(--muted);font-weight:600;font-size:9px}
 .section-intro{margin:8px 0 18px}
 .section-intro p{color:var(--muted);font-size:12px;margin:6px 0 0;max-width:720px}
 .section-actions{display:flex;gap:8px}

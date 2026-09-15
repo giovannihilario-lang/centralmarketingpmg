@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173d2a">
   <title>Planejamento Estratégico | PMG Connect</title>
-  <link rel="stylesheet" href="/assets/estrategia.css?v=1.3.1">
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.4.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.2"></script>
   <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -97,6 +97,18 @@
       <div class="kpi-grid" id="kpiGrid">
         <article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article><article class="kpi skeleton"></article>
       </div>
+
+      <article class="panel" id="monthlyPacePanel">
+        <div class="panel-head"><div><span class="card-kicker">Ritmo da meta</span><h2>Onde estamos e onde precisamos chegar</h2></div><span class="micro" id="monthlyPaceCaption">Meta mensal</span></div>
+        <div class="monthly-pace-today" id="monthlyPaceToday"></div>
+        <div class="monthly-pace-table-wrap">
+          <table class="monthly-pace-table">
+            <thead><tr><th>Mês</th><th>Faturado</th><th>% da meta</th><th>Kg vendido</th><th>R$/kg</th><th>Média/dia realizada</th><th>Média/dia necessária</th><th>Projeção fim do mês</th><th>Status</th></tr></thead>
+            <tbody id="monthlyPaceBody"></tbody>
+          </table>
+          <div class="empty" id="monthlyPaceEmpty" hidden>Sem histórico mensal disponível.</div>
+        </div>
+      </article>
 
       <div class="two-col">
         <article class="panel">
@@ -248,6 +260,6 @@
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.4.0"></script>
+<script type="module" src="/assets/estrategia.js?v=1.5.0"></script>
 </body>
 </html>

@@ -312,6 +312,52 @@ function renderRevenueSparkline(){
   revenueSparkline=new Chart(canvas,{type:'line',data:{labels:series.map(([p])=>p),datasets:[{data:values,borderColor:'#2d7a4f',borderWidth:2,tension:.35,pointRadius:0,fill:true,backgroundColor:'rgba(45,122,79,.1)'}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:500},scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false},tooltip:{enabled:false}},elements:{line:{borderJoinStyle:'round'}}}});
 }
 
+function monthlyPaceRows(){
+  const rows=Array.isArray(state.commercial?.evolution)?state.commercial.evolution:[];
+  const agg=new Map();
+  rows.forEach(r=>{
+    const key=`${r.ano}-${String(r.mes).padStart(2,'0')}`;
+    const cur=agg.get(key)||{valor:0,volume:0};
+    cur.valor+=number(r.valor);cur.volume+=number(r.volume);
+    agg.set(key,cur);
+  });
+  const today=currentMonth();
+  const todayDay=Number(nowKey().slice(8,10));
+  const meta=state.target;
+  return [...agg.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([key,v])=>{
+    const [y,m]=key.split('-').map(Number);
+    const daysInMonth=new Date(Date.UTC(y,m,0)).getUTCDate();
+    const isCurrent=key===today;
+    const isFuture=key>today;
+    const elapsedDays=isCurrent?Math.min(todayDay,daysInMonth):(isFuture?0:daysInMonth);
+    const remainingDays=Math.max(0,daysInMonth-elapsedDays);
+    const gap=Math.max(0,meta-v.valor);
+    const avgDiaRealizado=elapsedDays>0?v.valor/elapsedDays:0;
+    const avgDiaNecessario=isCurrent&&remainingDays>0&&gap>0?gap/remainingDays:null;
+    const projecao=isCurrent?avgDiaRealizado*daysInMonth:v.valor;
+    const ratio=meta>0?v.valor/meta:0;
+    const valorPorKg=v.volume>0?v.valor/v.volume:0;
+    let health;
+    if(isFuture)health='atencao';
+    else if(!isCurrent)health=v.valor>=meta?'atingido':'abaixo';
+    else{const projRatio=meta>0?projecao/meta:0;health=projRatio>=1?'no_ritmo':(projRatio>=.9?'atencao':'em_risco')}
+    return {key,label:monthLabel(key),valor:v.valor,volume:v.volume,valorPorKg,ratio,daysInMonth,elapsedDays,remainingDays,avgDiaRealizado,avgDiaNecessario,projecao,gap,isCurrent,health};
+  });
+}
+function renderMonthlyPace(){
+  const tbody=$('monthlyPaceBody');if(!tbody)return;
+  const rows=monthlyPaceRows();
+  $('monthlyPaceEmpty').hidden=rows.length>0;
+  $('monthlyPaceCaption').textContent=`Meta: ${moneyCompact(state.target)}/mês`;
+  tbody.innerHTML=rows.map(r=>`<tr class="${r.isCurrent?'is-current':''}"><td>${esc(r.label)}${r.isCurrent?'<small>em andamento</small>':''}</td><td>${money(r.valor)}</td><td>${(r.ratio*100).toFixed(1)}%</td><td>${kg(r.volume)}</td><td>${money(r.valorPorKg)}/kg</td><td>${money(r.avgDiaRealizado)}</td><td>${r.isCurrent?(r.avgDiaNecessario!=null?money(r.avgDiaNecessario):'meta batida'):'—'}</td><td>${r.isCurrent?money(r.projecao):'—'}</td><td><span class="health ${r.health}">${healthLabel(r.health)}</span></td></tr>`).join('');
+  const current=rows.find(r=>r.isCurrent);
+  const todayEl=$('monthlyPaceToday');
+  if(!current){todayEl.innerHTML='';icons();return}
+  todayEl.innerHTML=current.gap<=0
+    ? `<i data-lucide="party-popper"></i><span><strong>Meta de ${moneyCompact(state.target)} já batida em ${esc(current.label)}.</strong> Faturado até agora: ${money(current.valor)}.</span>`
+    : `<i data-lucide="gauge"></i><span><strong>Faltam ${money(current.gap)} para bater a meta de ${esc(current.label)}.</strong> Restam ${current.remainingDays} dia(s) · média até agora ${money(current.avgDiaRealizado)}/dia · precisa vender ${current.avgDiaNecessario!=null?money(current.avgDiaNecessario):'—'}/dia nos dias restantes.</span>`;
+  icons();
+}
 function latestMeasurementsMap(){
   const map=new Map();
   [...state.measurements].sort((a,b)=>String(b.medido_em||b.criado_em).localeCompare(String(a.medido_em||a.criado_em))).forEach(m=>{const key=String(m.projeto_id);if(!map.has(key))map.set(key,m)});
@@ -387,7 +433,7 @@ function renderReviews(){
   $('reviewGrid').innerHTML=rows.length?rows.map(r=>`<article class="review-card"><span class="type-label">${r.resultado==='atingido'?'Atingido':r.resultado==='parcial'?'Parcial':'Não atingido'}</span><h3>${esc(r.project?.titulo||'Projeto')}</h3><div class="review-section"><span>Funcionou</span><p>${esc(r.funcionou||'—')}</p></div><div class="review-section"><span>Não funcionou</span><p>${esc(r.nao_funcionou||'—')}</p></div><div class="review-section"><span>Gargalos</span><p>${esc(r.gargalos||'—')}</p></div><div class="review-section"><span>Próximo passo</span><p>${esc(r.proximo_passo||'—')}</p></div></article>`).join(''):emptyState('flag','Nenhum fechamento registrado.');
 }
 
-function renderAll(){if(state.commercial)renderKpis();renderExecutivePortfolio();if(state.commercial)renderEvolution();renderOpportunities();renderProjectStrip();renderProjectList();renderTracking();renderReviews();icons()}
+function renderAll(){if(state.commercial)renderKpis();renderExecutivePortfolio();if(state.commercial)renderEvolution();if(state.commercial)renderMonthlyPace();renderOpportunities();renderProjectStrip();renderProjectList();renderTracking();renderReviews();icons()}
 
 function switchView(view){state.view=view;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.dataset.viewPanel===view));const labels={executivo:['Estratégia 200M','Visão executiva'],oportunidades:['Dados → decisão','Oportunidades'],projetos:['Execução integrada','Projetos estratégicos'],acompanhamento:['Ciclo de 90 dias','Acompanhamento'],revisoes:['Aprendizado','Fechamentos']};$('viewEyebrow').textContent=labels[view][0];$('viewTitle').textContent=labels[view][1];$('viewCrumb').textContent=labels[view][1];$('contextBar').hidden=!['executivo','oportunidades'].includes(view);$('strategyNav').classList.remove('open');history.replaceState(null,'',`${location.pathname}?view=${view}`)}
 
