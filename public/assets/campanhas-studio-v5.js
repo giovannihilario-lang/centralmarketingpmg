@@ -2347,7 +2347,7 @@
     // row.seller agora é o digitadorId real (dbo.Vendas.[ID Digitador]) — o
     // servidor não manda mais nome nenhum aqui. Resolve pra exibição via o
     // diretório de representantes já carregado no contexto.
-    const repNameById = new Map((app.context.representatives || []).map((r) => [Number(r.id), text(r.name)]));
+    const repNameById = new Map((app.context.representatives || []).map((r) => [Number(r.id), String(r.name || '').trim()]));
     const sellerLabel = (id) => repNameById.get(Number(id)) || `Digitador ${id}`;
     const sellers = new Map();
     const orderMap = new Map((data.ordersBySeller || []).map((row) => [`${row.period}|${row.seller}`, Number(row.orders) || 0]));
