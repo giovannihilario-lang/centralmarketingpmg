@@ -149,6 +149,24 @@ function buildIndexes(snapshot) {
     if (parsed.nameKey && !activeSellerByNameKey.has(parsed.nameKey)) activeSellerByNameKey.set(parsed.nameKey, text(seller.s));
   }
 
+  // PERF: forEachRegionalFact varria as ~10M linhas do snapshot inteiro em
+  // toda chamada, mesmo quando a consulta já vem com p_de/p_ate (o caso mais
+  // comum: Planejamento Estratégico e a maior parte do Dashboard Regional
+  // sempre informam um intervalo de mês). Agrupar as linhas por mês uma
+  // única vez, aqui, deixa forEachRegionalFact varrer só os meses que caem
+  // dentro do intervalo pedido, sem mudar nenhum resultado.
+  const linesByMonth = new Map();
+  for (const line of snapshot.lines || []) {
+    const order = regionalOrdersById.get(String(line.o));
+    const ms = order?.d ? Date.parse(order.d) : NaN;
+    const monthStart = Number.isFinite(ms)
+      ? Date.UTC(new Date(ms).getUTCFullYear(), new Date(ms).getUTCMonth(), 1)
+      : NaN;
+    let bucket = linesByMonth.get(monthStart);
+    if (!bucket) { bucket = []; linesByMonth.set(monthStart, bucket); }
+    bucket.push(line);
+  }
+
   Object.defineProperty(snapshot, '_idx', {
     value: {
       ordersById,
@@ -161,11 +179,28 @@ function buildIndexes(snapshot) {
       activeSellerByCode,
       activeSellerByNameKey,
       activeSellerExact,
+      linesByMonth,
     },
     enumerable: false,
     configurable: true,
   });
   return snapshot;
+}
+
+// Mesmas linhas que um scan completo visitaria com esse intervalo de data
+// (matchesRegionalFilters exclui datas não numéricas sempre que start/end
+// está presente, então o bucket de meses com data ilegível fica de fora).
+function linesForMonthRange(snapshot, start, end) {
+  const byMonth = snapshot._idx.linesByMonth;
+  const buckets = [];
+  for (const [monthStart, bucket] of byMonth) {
+    if (Number.isNaN(monthStart)) continue;
+    if (start !== null && monthStart < start) continue;
+    if (end !== null && monthStart >= end) continue;
+    buckets.push(bucket);
+  }
+  if (buckets.length === 1) return buckets[0];
+  return buckets.length ? buckets.flat() : [];
 }
 
 function normalizeLoaded(parsed) {
@@ -981,7 +1016,11 @@ export async function forEachRegionalFact(query = {}, callback, options = {}) {
   const clientsById = snapshot._idx.regionalClientsById;
   const productsById = snapshot._idx.regionalProductsById;
 
-  for (const line of snapshot.lines) {
+  const lineSource = (start !== null || end !== null)
+    ? linesForMonthRange(snapshot, start, end)
+    : snapshot.lines;
+
+  for (const line of lineSource) {
     const productId = Number(line.p);
     if (productIds && !productIds.has(productId)) continue;
 
