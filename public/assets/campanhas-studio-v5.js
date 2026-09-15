@@ -54,6 +54,7 @@
     { id:'kg', label:'Volume em KG', icon:'weight', description:'Quantidade total vendida em quilos' },
     { id:'pieces', label:'Quantidade de unidades', icon:'package', description:'Quantidade total vendida em unidades' },
     { id:'positivity', label:'Positivação', icon:'user-round-plus', description:'Clientes atuais menos clientes do período anterior' },
+    { id:'recompra', label:'Recompra', icon:'repeat', description:'Clientes que já compravam no período anterior e voltaram a comprar' },
     { id:'mix', label:'Mix de categorias', icon:'boxes', description:'Percentual de categorias obrigatórias cumpridas' },
     { id:'revenueGrowth', label:'Crescimento de R$', icon:'trending-up', description:'Crescimento percentual do faturamento' },
     { id:'kgGrowth', label:'Crescimento de KG', icon:'chart-no-axes-combined', description:'Crescimento percentual do volume' },
@@ -63,6 +64,7 @@
 
   const BASE_METRICS = [
     ['positivity', 'Positivação líquida', 'clientes'],
+    ['recompra', 'Recompra (clientes que já compravam e voltaram a comprar)', 'clientes'],
     ['revenue', 'Faturamento', 'R$'],
     ['kg', 'Volume', 'KG'],
     ['pieces', 'Quantidade de unidades', 'unidades'],
@@ -80,7 +82,7 @@
   ];
 
   const POINT_SOURCES = [
-    ['positivity', 'Positivação líquida'], ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Quantidade de unidades'],
+    ['positivity', 'Positivação líquida'], ['recompra', 'Recompra (clientes que já compravam)'], ['revenue', 'Faturamento'], ['kg', 'Volume em KG'], ['pieces', 'Quantidade de unidades'],
     ['customers', 'Clientes únicos'], ['orders', 'Pedidos'], ['mixCategories', 'Categorias de mix cumpridas'], ['distinctProducts', 'Produtos distintos'],
     ['activationClients', 'Benefícios utilizados'], ['activationOrders', 'Pedidos com benefício'],
   ];
@@ -109,7 +111,7 @@
   ];
 
   const TIE_OPTIONS = [
-    ['positivity', 'Maior positivação'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais unidades'],
+    ['positivity', 'Maior positivação'], ['recompra', 'Maior recompra'], ['revenue', 'Maior faturamento'], ['kg', 'Maior volume'], ['pieces', 'Mais unidades'],
     ['mix', 'Maior mix'], ['points', 'Maior pontuação'], ['orders', 'Mais pedidos'],
     ['revenueGrowth', 'Maior crescimento de faturamento'], ['kgGrowth', 'Maior crescimento de volume'],
     ['activationClients', 'Mais benefícios utilizados'], ['activationRate', 'Maior aproveitamento da 1ª compra'],
@@ -844,7 +846,7 @@
         discountType:'pending',
         discountValue:0,
       },
-      tieBreaks:[{ metric:'positivity', direction:'desc' }, { metric:'revenue', direction:'desc' }], prizes:[],
+      tieBreaks:[{ metric:'positivity', direction:'desc' }, { metric:'revenue', direction:'desc' }], prizes:[], bonusRules:[],
       createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
     };
   }
@@ -1515,6 +1517,9 @@
       <div class="subsection"><div class="subsection-head"><div><h4>Premiação</h4><p>Registre valores, produtos, vouchers ou descrições livres.</p></div><button class="secondary-btn" type="button" data-action="add-prize"><i data-lucide="plus"></i>Adicionar prêmio</button></div>
         <div class="prize-list">${campaign.prizes.map((prize, index) => `<div class="prize-row"><input data-prize-field="position" data-index="${index}" type="number" min="1" value="${Number(prize.position) || index + 1}"><select data-prize-field="type" data-index="${index}"><option value="money" ${prize.type === 'money' ? 'selected' : ''}>Dinheiro</option><option value="voucher" ${prize.type === 'voucher' ? 'selected' : ''}>Vale/Voucher</option><option value="product" ${prize.type === 'product' ? 'selected' : ''}>Produto</option><option value="other" ${prize.type === 'other' ? 'selected' : ''}>Descrição livre</option></select><input data-prize-field="description" data-index="${index}" value="${esc(prize.description || '')}" placeholder="Ex.: R$ 1.000 ou Smart TV"><button class="icon-btn" type="button" data-action="remove-prize" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhuma premiação registrada.</div>'}</div>
       </div>
+      <div class="subsection"><div class="subsection-head"><div><h4>Bônus por meta individual</h4><p>Paga um valor fixo pra qualquer representante que bater a meta, independente da posição no ranking.</p></div><button class="secondary-btn" type="button" data-action="add-bonus"><i data-lucide="plus"></i>Adicionar bônus</button></div>
+        <div class="bonus-list">${(campaign.bonusRules || []).map((bonus, index) => `<div class="bonus-row"><select data-bonus-field="metric" data-index="${index}">${BASE_METRICS.map(([id,label]) => `<option value="${id}" ${bonus.metric === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select><span class="bonus-op">≥</span><input data-bonus-field="value" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.value) || 0}" placeholder="Meta"><input data-bonus-field="amount" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.amount) || 0}" placeholder="Valor do bônus (R$)"><input data-bonus-field="label" data-index="${index}" value="${esc(bonus.label || '')}" placeholder="Ex.: Bônus por recompra"><button class="icon-btn" type="button" data-action="remove-bonus" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhum bônus registrado.</div>'}</div>
+      </div>
       <div class="meta-block"><div class="meta-block-head"><div><h5>Resumo da campanha</h5><span class="hint">Revise antes de salvar.</span></div></div><div class="campaign-meta" style="margin-top:10px"><div><span>Fornecedores</span><strong>${number(campaign.suppliers.length)}</strong></div><div><span>Categorias</span><strong>${number(campaign.categories.length)}</strong></div><div><span>Métricas de ranking</span><strong>${number(campaign.rankingMetrics.length)}</strong></div></div></div>`;
   }
 
@@ -1596,6 +1601,12 @@
     for (const field of $$('[data-prize-field]')) {
       const item = app.wizard.campaign.prizes[Number(field.dataset.index)];
       if (item) item[field.dataset.prizeField] = field.dataset.prizeField === 'position' ? Number(field.value) || 1 : field.value;
+    }
+    for (const field of $$('[data-bonus-field]')) {
+      const item = (app.wizard.campaign.bonusRules || [])[Number(field.dataset.index)];
+      if (!item) continue;
+      const name = field.dataset.bonusField;
+      item[name] = ['value','amount'].includes(name) ? Number(field.value) || 0 : field.value;
     }
   }
 
@@ -2069,6 +2080,7 @@
     if (metric === 'customers') return `${number(value, 0)} clientes`;
     if (metric === 'orders') return `${number(value, 0)} pedidos`;
     if (metric === 'positivity') return `${Number(value || 0) >= 0 ? '+' : ''}${number(value, 0)} clientes`;
+    if (metric === 'recompra') return `${number(value, 0)} clientes`;
     if (metric === 'mix') return `${number(value, 1)}%`;
     if (metric === 'points') return `${number(value, 1)} pts`;
     if (metric === 'activationClients') return `${number(value, 0)} ativações`;
@@ -2137,6 +2149,14 @@
     }).join('')}</div>`;
   }
 
+
+  function bonusesHtml(item) {
+    if (!item.bonusesEarned?.length) return '';
+    return `<div class="individual-goal-audit">${item.bonusesEarned.map((bonus) => {
+      const label = bonus.label || metricLabel(bonus.metric);
+      return `<small class="hit">🎁 ${esc(label)}: ${number(bonus.achievedValue,0)} ≥ ${number(bonus.value,0)} · +${money(bonus.amount)}</small>`;
+    }).join('')}</div>`;
+  }
 
   function activationMeasure(order, productIds, measure) {
     const relevant = order.lines.filter((line) => productIds.has(Number(line.productId)));
@@ -2235,12 +2255,12 @@
     const previousBasePoints = categoryPoints(campaign.categories, seller.previous.rows);
     const currentRaw = {
       revenue:seller.current.revenue, kg:seller.current.kg, pieces:seller.current.pieces, customers:seller.current.customers.size,
-      orders:seller.current.orders, distinctProducts:seller.current.products.size, positivity, mix:currentMix.percent, mixCategories:currentMix.fulfilled,
+      orders:seller.current.orders, distinctProducts:seller.current.products.size, positivity, recompra:retainedCustomers, mix:currentMix.percent, mixCategories:currentMix.fulfilled,
       activationClients:currentActivation.clients, activationOrders:currentActivation.orders, activationRate:currentActivation.rate,
     };
     const previousRaw = {
       revenue:seller.previous.revenue, kg:seller.previous.kg, pieces:seller.previous.pieces, customers:seller.previous.customers.size,
-      orders:seller.previous.orders, distinctProducts:seller.previous.products.size, positivity:previousPositivity, mix:previousMix.percent, mixCategories:previousMix.fulfilled,
+      orders:seller.previous.orders, distinctProducts:seller.previous.products.size, positivity:previousPositivity, recompra:0, mix:previousMix.percent, mixCategories:previousMix.fulfilled,
       activationClients:previousActivation.clients, activationOrders:previousActivation.orders, activationRate:previousActivation.rate,
     };
     const currentRulePoints = performanceRulePointsDetailed(campaign, campaign.pointRules, currentRaw, seller.current.rows);
@@ -2258,7 +2278,7 @@
       pieces:current.pieces, previousPieces:previous.pieces, piecesGrowth:growth(current.pieces, previous.pieces),
       customers:current.customers, previousCustomers:previous.customers, customersGrowth:growth(current.customers, previous.customers),
       orders:current.orders, previousOrders:previous.orders, ordersGrowth:growth(current.orders, previous.orders),
-      positivity, mix:current.mix, mixDone:currentMix.fulfilled, mixTotal:currentMix.total, mixMissing:currentMix.missing,
+      positivity, recompra:current.recompra, mix:current.mix, mixDone:currentMix.fulfilled, mixTotal:currentMix.total, mixMissing:currentMix.missing,
       points:current.points, previousPoints:previous.points, pointsGrowth:growth(current.points, previous.points),
       pointRuleAudit:currentRulePoints.details,
       previousPointRuleAudit:previousRulePoints.details,
@@ -2373,6 +2393,10 @@
           }
         }
       }
+      item.bonusesEarned = (campaign.bonusRules || [])
+        .filter((bonus) => compareOp(rankMetric(item, bonus.metric), '>=', Number(bonus.value) || 0))
+        .map((bonus) => ({ ...bonus, achievedValue:rankMetric(item, bonus.metric) }));
+      item.bonusTotal = item.bonusesEarned.reduce((sum, bonus) => sum + (Number(bonus.amount) || 0), 0);
     }
 
     const collectiveCurrent = teamMetrics(campaign, sellers, results, 'current');
@@ -3851,7 +3875,7 @@
           ${auditValue(`<strong>${number(item.points,1)}</strong><small>pontos</small>`, pointsAudit)}
         </div>
       </td>
-      <td class="ranking-status-cell"><span class="badge ${item.classified && collectiveHit ? 'active' : !item.eligible ? 'danger' : 'scheduled'}">${status}</span>${individualGoalsHtml(item)}</td>
+      <td class="ranking-status-cell"><span class="badge ${item.classified && collectiveHit ? 'active' : !item.eligible ? 'danger' : 'scheduled'}">${status}</span>${individualGoalsHtml(item)}${bonusesHtml(item)}</td>
     </tr>`;
   }
 
@@ -3989,7 +4013,7 @@
     'add-goal','remove-goal','add-point-rule','remove-point-rule','add-rule-template','remove-rule',
     'sales-scope','toggle-activation-rule','apply-harald-fortunata','add-category','remove-category',
     'remove-product-category','add-selected-products','add-all-filtered','add-tie','remove-tie','move-tie-up',
-    'add-prize','remove-prize'
+    'add-prize','remove-prize','add-bonus','remove-bonus'
   ]);
 
   document.addEventListener('click', async (event) => {
@@ -4155,6 +4179,8 @@
     if (action === 'move-tie-up') { const index = Number(node.dataset.index); if (index > 0) { const list = app.wizard.campaign.tieBreaks; [list[index - 1], list[index]] = [list[index], list[index - 1]]; } renderWizard(); return; }
     if (action === 'add-prize') { app.wizard.campaign.prizes.push({ position:app.wizard.campaign.prizes.length + 1, type:'money', description:'' }); renderWizard(); return; }
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
+    if (action === 'add-bonus') { app.wizard.campaign.bonusRules = app.wizard.campaign.bonusRules || []; app.wizard.campaign.bonusRules.push({ id:uid('bonus'), metric:'recompra', value:0, amount:0, label:'' }); renderWizard(); return; }
+    if (action === 'remove-bonus') { app.wizard.campaign.bonusRules.splice(Number(node.dataset.index), 1); renderWizard(); return; }
     if (action === 'performance-tab') { switchPerformanceTab(node.dataset.performanceTab, node.dataset.id); return; }
     if (action === 'refresh-benefit-inline') return loadBenefitReportInline(node.dataset.id || app.benefitReport?.campaignId, { force:true });
     if (action === 'export-benefit-eligible') { exportBenefitCsv('eligible'); return; }
