@@ -512,13 +512,18 @@ function placeholderSectorSlide(kicker,area,indicadores){
   return {kicker,title:`${area} — dados do setor`,subtitle:`Espaço reservado para a equipe de ${area} apresentar os indicadores do período nesta reunião.`,columns:indicadores.map(label=>[label,'A apresentar pela área'])};
 }
 
+function metaMensalSlide(){
+  const rows=monthlyPaceRows();const current=rows.find(r=>r.isCurrent)||rows[rows.length-1];
+  if(!current)return placeholderSectorSlide('02 · Meta mensal','Meta mensal',['Meta de faturamento no mês','Faturado até agora','Gap para a meta','Média diária necessária']);
+  return {kicker:'02 · Meta mensal',title:`Ritmo de ${current.label}: rumo aos ${moneyCompact(state.target)}`,subtitle:current.gap<=0?`Meta já batida em ${current.label}. Faturado: ${money(current.valor)}.`:`Faltam ${money(current.gap)} para bater a meta de ${current.label}. Restam ${current.remainingDays} dia(s).`,metrics:[['Meta do mês',moneyCompact(state.target)],['Faturado até agora',money(current.valor)],['% da meta',`${(current.ratio*100).toFixed(1)}%`],['Kg vendido',kg(current.volume)],['Média diária realizada',money(current.avgDiaRealizado)],['Média diária necessária',current.avgDiaNecessario!=null?money(current.avgDiaNecessario):'Meta batida'],['Projeção fim do mês',money(current.projecao)],['Status',healthLabel(current.health)]]};
+}
 function buildOverviewSlides(){
   const d=presentationData();const y=d.yoy;
   const growthValor=pct(y.kpisCur.total_valor,y.kpisPrev.total_valor);const growthKg=pct(y.kpisCur.total_kg,y.kpisPrev.total_kg);
   return [
     {kind:'cover',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'2025 → 2026: onde crescemos, onde caímos',subtitle:`Faturamento e peso comparados ano a ano, por região e por segmento. Período: ${y.current.label} contra ${y.previous.label}.`},
     {kicker:'01 · Faturamento e peso',title:'O ano em números, lado a lado',metrics:[['Faturamento '+y.previous.label,money(y.kpisPrev.total_valor)],['Faturamento '+y.current.label,money(y.kpisCur.total_valor)],['Variação de faturamento',growthValor==null?'—':deltaText(growthValor)],['Peso '+y.previous.label,kg(y.kpisPrev.total_kg)],['Peso '+y.current.label,kg(y.kpisCur.total_kg)],['Variação de peso',growthKg==null?'—':deltaText(growthKg)]],subtitle:'Base: mesmos meses fechados nos dois anos, para uma comparação justa.'},
-    placeholderSectorSlide('02 · Meta 2026','Meta 2026',['Meta de faturamento no ano','Meta de peso (kg) no ano','Gap até o momento','Iniciativas para fechar a conta']),
+    metaMensalSlide(),
     {kicker:'03 · Por região',title:'Onde crescemos e onde caímos por região',list:yoyRankingList(y.regiao,money),subtitle:'3 maiores crescimentos e 3 maiores quedas em faturamento, região com base comparável nos dois anos.'},
     {kicker:'04 · Por segmento',title:'Onde crescemos e onde caímos por segmento',list:yoyRankingList(y.segmento,money),subtitle:'Mesmo recorte, agora por segmento de cliente.'},
     {kicker:'05 · O que isso exige',title:'Toda queda vira plano de ação, todo crescimento vira replicação',subtitle:'Nenhuma dessas variações se resolve sozinha. As próximas seções mostram quem somos hoje e o que vendemos — a Apresentação 2 transforma cada sinal em oportunidade priorizada, com responsável e prazo.'},
