@@ -228,6 +228,7 @@ const SNAPSHOT_SECTIONS = [
   ['a', 'activeClients'],
   ['s', 'activeSellers'],
   ['f', 'productSuppliers'],
+  ['d', 'digitadores'],
 ];
 const SNAPSHOT_SECTION_BY_CODE = new Map(SNAPSHOT_SECTIONS);
 
@@ -309,6 +310,7 @@ function computeCounts(snapshot) {
     clientesAtivos: snapshot.activeClients?.length || 0,
     representantesAtivos: snapshot.activeSellers?.length || 0,
     vinculosProdutoFornecedor: snapshot.productSuppliers?.length || 0,
+    digitadores: snapshot.digitadores?.length || 0,
   };
 }
 
