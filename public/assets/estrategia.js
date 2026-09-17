@@ -23,8 +23,16 @@ function currentQuarter(){return quarterOf(currentMonth())}
 function quarterLabel(quarterKey){const m=/^(\d{4})-Q([1-4])$/.exec(String(quarterKey||''));return m?`${m[2]}º Tri/${m[1]}`:String(quarterKey||'—')}
 const MONTH_ABBR=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 function monthLabel(monthKey){const m=/^(\d{4})-(\d{2})$/.exec(String(monthKey||''));return m?`${MONTH_ABBR[Number(m[2])-1]||m[2]}/${m[1]}`:String(monthKey||'—')}
-function periodLabel(period){return /^\d{4}-Q[1-4]$/.test(String(period||''))?quarterLabel(period):monthLabel(period)}
-function periodRange(period){if(period&&typeof period==='object'&&period.de&&period.ate)return period;return quarterRange(period)||{de:period,ate:period}}
+function isCustomRange(period){return typeof period==='string'&&period.startsWith('range:')}
+function periodRange(period){
+  if(period&&typeof period==='object'&&period.de&&period.ate)return period;
+  if(isCustomRange(period)){const [,de,ate]=period.split(':');return {de,ate}}
+  return quarterRange(period)||{de:period,ate:period};
+}
+function periodLabel(period){
+  if(isCustomRange(period))return rangeLabel(periodRange(period));
+  return /^\d{4}-Q[1-4]$/.test(String(period||''))?quarterLabel(period):monthLabel(period);
+}
 const EXCLUDED_GROUP_TERMS=['papelaria','embalagem','escritorio','contabilidade','outros','fornecedor','nao selecionado','nao informado'];
 const normalizeTerm=value=>String(value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 function isExcludedGroup(chave){const normalized=normalizeTerm(chave);return EXCLUDED_GROUP_TERMS.some(term=>normalized.includes(term))}
@@ -34,6 +42,7 @@ const state = {
   db:null, session:null, profile:null, collaborators:[], persistenceAvailable:true,
   view:'executivo', period:'', compare:null, periods:[], target:DEFAULT_REVENUE_TARGET,
   config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[], entregaRetira:null, baseEntrega:null,
+  rangeSelectMode:false, rangeSelectStart:null,
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
   opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao', periodMode:'trimestral',
   compareMode:'auto', customComparePeriod:null,
@@ -176,29 +185,49 @@ function periodCalendarHTML(cellClass){
       const mm=String(i+1).padStart(2,'0');const val=`${year}-${mm}`;
       const disabled=!available.has(val);
       const active=!disabled&&val>=activeRange.de&&val<=activeRange.ate;
-      return `<button type="button" class="${cellClass}${disabled?' disabled':''}${active?' active':''}" data-val="${val}" ${disabled?'disabled':''}>${label}</button>`;
+      const pending=!disabled&&val===state.rangeSelectStart;
+      return `<button type="button" class="${cellClass}${disabled?' disabled':''}${active?' active':''}${pending?' pending':''}" data-val="${val}" ${disabled?'disabled':''}>${label}</button>`;
     }).join('');
     return `<div class="period-year-row"><div class="period-year-label">${year}</div><div class="period-months">${cells}</div></div>`;
   }).join('');
 }
 function syncMainPeriodControls(){
   const panel=$('periodPanel');if(!panel)return;
-  $('periodTriggerLabel').textContent=periodLabel(state.period);
-  panel.querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode===state.periodMode));
+  $('periodTriggerLabel').textContent=state.rangeSelectStart?`${monthLabel(state.rangeSelectStart)} → escolha o fim…`:periodLabel(state.period);
+  panel.querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode==='intervalo'?state.rangeSelectMode:!state.rangeSelectMode&&btn.dataset.mode===state.periodMode));
   $('periodCalendar').innerHTML=periodCalendarHTML('context-month-cell');
 }
 function syncPresentPeriodControls(){
   const panel=$('presentPeriodPanel');if(!panel)return;
-  $('presentPeriodLabel').textContent=periodLabel(state.period);
-  panel.querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode===state.periodMode));
+  $('presentPeriodLabel').textContent=state.rangeSelectStart?`${monthLabel(state.rangeSelectStart)} → escolha o fim…`:periodLabel(state.period);
+  panel.querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode==='intervalo'?state.rangeSelectMode:!state.rangeSelectMode&&btn.dataset.mode===state.periodMode));
   $('presentPeriodCalendar').innerHTML=periodCalendarHTML('pt-month-cell');
+}
+function toggleRangeSelectMode(on){
+  state.rangeSelectMode=on;state.rangeSelectStart=null;
+  syncMainPeriodControls();syncPresentPeriodControls();
+}
+// Clique num mês: se estiver no modo Intervalo, o primeiro clique marca o
+// início e o segundo marca o fim — o período vira o acumulado entre os
+// dois, mesmo atravessando trimestres. Fora do modo Intervalo, um clique só
+// aplica direto (mês exato, ou o trimestre inteiro se Trimestral).
+function handlePeriodCellClick(val){
+  if(state.rangeSelectMode){
+    if(!state.rangeSelectStart){state.rangeSelectStart=val;syncMainPeriodControls();syncPresentPeriodControls();return null}
+    const de=val<state.rangeSelectStart?val:state.rangeSelectStart;
+    const ate=val<state.rangeSelectStart?state.rangeSelectStart:val;
+    state.rangeSelectStart=null;
+    return de===ate?de:`range:${de}:${ate}`;
+  }
+  return state.periodMode==='trimestral'?quarterOf(val):val;
 }
 async function applyPeriodChange({period,periodMode}={}){
   let changed=false;
   if(periodMode&&periodMode!==state.periodMode){state.periodMode=periodMode;changed=true}
   if(period&&period!==state.period){state.period=period;changed=true}
   if(!changed)return false;
-  rebuildPeriodOptions();
+  if(period&&isCustomRange(period)){syncMainPeriodControls();syncPresentPeriodControls()}
+  else{rebuildPeriodOptions()}
   await loadCommercial();
   await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)});
   return true;
@@ -905,11 +934,16 @@ function bindEvents(){
   $('periodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('periodPanel').hidden;$('periodPanel').hidden=!hidden;$('periodFilter').setAttribute('aria-expanded',String(hidden))});
   $('periodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('periodPanel').hidden){$('periodPanel').hidden=true;$('periodFilter').setAttribute('aria-expanded','false')}});
-  $('periodPanel').querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.addEventListener('click',()=>applyPeriodChange({periodMode:btn.dataset.mode}).catch(e=>toast(e.message,'error'))));
+  $('periodPanel').querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{
+    if(btn.dataset.mode==='intervalo')return toggleRangeSelectMode(!state.rangeSelectMode);
+    toggleRangeSelectMode(false);
+    applyPeriodChange({periodMode:btn.dataset.mode}).catch(e=>toast(e.message,'error'));
+  }));
   $('periodCalendar').addEventListener('click',event=>{
     const cell=event.target.closest('.context-month-cell');if(!cell||cell.disabled)return;
-    const val=cell.dataset.val;const target=state.periodMode==='trimestral'?quarterOf(val):val;
-    if(!target||!state.periods.includes(target))return;
+    const target=handlePeriodCellClick(cell.dataset.val);
+    if(!target)return;
+    if(!isCustomRange(target)&&!state.periods.includes(target))return;
     $('periodPanel').hidden=true;$('periodFilter').setAttribute('aria-expanded','false');
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
@@ -918,11 +952,16 @@ function bindEvents(){
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});
-  $('presentPeriodPanel').querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.addEventListener('click',()=>changePresentationPeriod({periodMode:btn.dataset.mode,closePanel:false}).catch(e=>toast(e.message,'error'))));
+  $('presentPeriodPanel').querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.addEventListener('click',()=>{
+    if(btn.dataset.mode==='intervalo')return toggleRangeSelectMode(!state.rangeSelectMode);
+    toggleRangeSelectMode(false);
+    changePresentationPeriod({periodMode:btn.dataset.mode,closePanel:false}).catch(e=>toast(e.message,'error'));
+  }));
   $('presentPeriodCalendar').addEventListener('click',event=>{
     const cell=event.target.closest('.pt-month-cell');if(!cell||cell.disabled)return;
-    const val=cell.dataset.val;const target=state.periodMode==='trimestral'?quarterOf(val):val;
-    if(!target||!state.periods.includes(target))return;
+    const target=handlePeriodCellClick(cell.dataset.val);
+    if(!target)return;
+    if(!isCustomRange(target)&&!state.periods.includes(target))return;
     changePresentationPeriod({period:target}).catch(e=>toast(e.message,'error'));
   });
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});

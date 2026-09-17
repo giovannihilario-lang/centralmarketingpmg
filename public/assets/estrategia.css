@@ -167,6 +167,7 @@ button,input,select,textarea{font:inherit}
 .context-month-cell:hover:not(.disabled){background:var(--green-pale);transform:translateY(-1px)}
 .context-month-cell.disabled{color:#c7cfc9;background:transparent;cursor:not-allowed}
 .context-month-cell.active{background:var(--green-dark);color:#fff}
+.context-month-cell.pending{background:var(--gold);color:#fff;box-shadow:0 0 0 2px var(--gold-soft)}
 .context-note{margin-left:auto;display:grid;min-width:230px}
 .context-note span{font-size:9px;color:var(--muted);text-transform:uppercase;font-weight:800}
 .context-note strong{font-size:12px;margin-top:2px}
@@ -413,6 +414,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .presentation-toolbar .pt-month-cell:hover:not(.disabled){background:var(--green-mid);color:#fff;transform:translateY(-1px)}
 .presentation-toolbar .pt-month-cell.disabled{color:#4a5850;background:transparent;cursor:not-allowed}
 .presentation-toolbar .pt-month-cell.active{background:var(--green-light);color:#0b1510}
+.presentation-toolbar .pt-month-cell.pending{background:var(--gold);color:#0b1510;box-shadow:0 0 0 2px rgba(181,138,53,.4)}
 .presentation-stage{height:calc(100vh - 60px);display:grid;place-items:center;padding:22px;position:relative}
 .presentation-stage .stage-arrow{
   position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;
