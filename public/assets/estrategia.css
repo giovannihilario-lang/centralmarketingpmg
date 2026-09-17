@@ -406,6 +406,12 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
   color:var(--green-dark);font-weight:850;background:var(--green-pale);border:1px solid var(--green-border);
   padding:.5cqw 1.1cqw;border-radius:99px;
 }
+.slide .slide-kicker svg{width:1.1cqw;height:1.1cqw;flex:none;stroke:var(--green-dark);stroke-width:2.2}
+.slide-cover .slide-kicker svg{stroke:#e9dcb0}
+.slide-metric-icon{width:1.3cqw;height:1.3cqw;stroke:var(--gold);stroke-width:2;margin-bottom:.4cqw}
+.slide-card-icon{display:inline-flex;align-items:center;justify-content:center;width:2.2cqw;height:2.2cqw;border-radius:50%;background:var(--green-pale);margin-bottom:.6cqw}
+.slide-card-icon svg{width:1.15cqw;height:1.15cqw;stroke:var(--green-dark);stroke-width:2.2}
+.slide-rank{display:inline-flex;align-items:center;justify-content:center;width:1.5cqw;height:1.5cqw;min-width:18px;min-height:18px;border-radius:50%;background:var(--green-dark);color:#fff;font-size:.75cqw;font-weight:850;flex:none;margin-right:.15cqw}
 .slide .slide-kicker i{width:.55cqw;height:.55cqw;border-radius:50%;background:var(--gold);flex:none;box-shadow:0 0 0 3px var(--gold-soft)}
 .slide h2{font-size:3.2cqw;line-height:1.1;letter-spacing:-.01em;margin:1.5cqw 0 1.3cqw;max-width:82%;font-weight:800}
 .slide h2 em{font-style:normal;color:#245a3b}
@@ -429,7 +435,9 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .slide-metric strong{display:block;font-size:2cqw;margin-top:.55cqw;color:var(--green-dark);font-weight:800}
 .slide-list{display:grid;gap:.6cqw;margin-top:1.5cqw}
 .slide-list-row{background:#fff;border:1px solid #e3e7e1;border-radius:.8cqw;padding:.7cqw 1.1cqw;display:flex;flex-direction:column;gap:.5cqw;box-shadow:0 4px 14px rgba(20,50,32,.05)}
-.slide-list-head{display:flex;justify-content:space-between;align-items:center;gap:2cqw;font-size:1.05cqw}
+.slide-list-head{display:flex;align-items:center;gap:.6cqw;font-size:1.05cqw}
+.slide-list-head strong{flex:1}
+.slide-list-head>span{margin-left:auto}
 .slide-list-head strong{color:var(--ink);font-weight:750}
 .slide-list-head span{color:var(--green-mid);font-weight:850;white-space:nowrap}
 .slide-list-head span.is-negative{color:var(--red)}
