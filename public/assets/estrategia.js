@@ -167,13 +167,28 @@ function rebuildPeriodOptions(){
   syncPresentPeriodControls();
 }
 function syncPresentPeriodControls(){
-  const sel=$('presentPeriodSelect');if(!sel)return;
-  sel.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${periodLabel(p)}</option>`).join('');
-  $('presentPeriodModeSelect').value=state.periodMode;
+  const panel=$('presentPeriodPanel');if(!panel)return;
   $('presentPeriodLabel').textContent=periodLabel(state.period);
+  panel.querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode===state.periodMode));
+  buildPresentPeriodCalendar();
 }
-async function changePresentationPeriod({period,periodMode}={}){
-  $('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false');
+function buildPresentPeriodCalendar(){
+  const cal=$('presentPeriodCalendar');if(!cal)return;
+  const available=new Set(availableMonths);
+  const activeRange=periodRange(state.period);
+  const years=[...new Set(availableMonths.map(m=>m.slice(0,4)))].sort();
+  cal.innerHTML=years.length?years.map(year=>{
+    const cells=MONTH_ABBR.map((label,i)=>{
+      const mm=String(i+1).padStart(2,'0');const val=`${year}-${mm}`;
+      const disabled=!available.has(val);
+      const active=!disabled&&val>=activeRange.de&&val<=activeRange.ate;
+      return `<button type="button" class="pt-month-cell${disabled?' disabled':''}${active?' active':''}" data-val="${val}" ${disabled?'disabled':''}>${label}</button>`;
+    }).join('');
+    return `<div class="pt-year-row"><div class="pt-year-label">${year}</div><div class="pt-months">${cells}</div></div>`;
+  }).join(''):'<div style="font-size:11px;color:#aebbb2;padding:6px 2px">Sem períodos disponíveis.</div>';
+}
+async function changePresentationPeriod({period,periodMode,closePanel=true}={}){
+  if(closePanel){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}
   if(periodMode&&periodMode!==state.periodMode){state.periodMode=periodMode;$('periodModeSelect').value=periodMode;rebuildPeriodOptions()}
   else if(period&&period!==state.period){state.period=period;$('periodSelect').value=period;syncPresentPeriodControls()}
   else return;
@@ -721,8 +736,13 @@ function bindEvents(){
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});
-  $('presentPeriodSelect').addEventListener('change',()=>changePresentationPeriod({period:$('presentPeriodSelect').value}).catch(e=>toast(e.message,'error')));
-  $('presentPeriodModeSelect').addEventListener('change',()=>changePresentationPeriod({periodMode:$('presentPeriodModeSelect').value}).catch(e=>toast(e.message,'error')));
+  $('presentPeriodPanel').querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.addEventListener('click',()=>changePresentationPeriod({periodMode:btn.dataset.mode,closePanel:false}).catch(e=>toast(e.message,'error'))));
+  $('presentPeriodCalendar').addEventListener('click',event=>{
+    const cell=event.target.closest('.pt-month-cell');if(!cell||cell.disabled)return;
+    const val=cell.dataset.val;const target=state.periodMode==='trimestral'?quarterOf(val):val;
+    if(!target||!state.periods.includes(target))return;
+    changePresentationPeriod({period:target}).catch(e=>toast(e.message,'error'));
+  });
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
   $('opportunityForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();try{await saveManualOpportunity();$('opportunityDialog').close()}catch(e){toast(e.message,'error')}});
   $('projectForm').addEventListener('submit',async event=>{if(event.submitter?.value==='cancel')return;event.preventDefault();const b=event.submitter;b.disabled=true;try{await createProject();$('projectDialog').close()}catch(e){console.error(e);toast(e.message,'error')}finally{b.disabled=false}});

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173d2a">
   <title>Planejamento Estratégico | PMG Connect</title>
-  <link rel="stylesheet" href="/assets/estrategia.css?v=1.9.5">
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.9.6">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.2"></script>
   <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -245,8 +245,11 @@
       <div class="pt-period">
         <button class="pt-action pt-period-trigger" id="presentPeriodTrigger" type="button" aria-haspopup="true" aria-expanded="false"><i data-lucide="calendar-range"></i><span id="presentPeriodLabel">Período</span></button>
         <div class="pt-period-panel" id="presentPeriodPanel" hidden>
-          <label><span>Período</span><select id="presentPeriodSelect"></select></label>
-          <label><span>Intervalo</span><select id="presentPeriodModeSelect"><option value="trimestral">Trimestral</option><option value="mensal">Mensal</option></select></label>
+          <div class="pt-preset-row">
+            <button class="pt-preset-btn" type="button" data-mode="trimestral">Trimestral</button>
+            <button class="pt-preset-btn" type="button" data-mode="mensal">Mensal</button>
+          </div>
+          <div class="pt-calendar" id="presentPeriodCalendar"></div>
         </div>
       </div>
     </div>
@@ -270,6 +273,6 @@
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.9.7"></script>
+<script type="module" src="/assets/estrategia.js?v=1.9.8"></script>
 </body>
 </html>
