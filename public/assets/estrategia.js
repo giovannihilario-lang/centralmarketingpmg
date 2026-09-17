@@ -212,12 +212,14 @@ function syncMainPeriodControls(){
   const panel=$('periodPanel');if(!panel)return;
   $('periodTriggerLabel').textContent=state.rangeSelectStart?`${monthLabel(state.rangeSelectStart)} → escolha o fim…`:periodLabel(state.period);
   panel.querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode==='intervalo'?state.rangeSelectMode:!state.rangeSelectMode&&btn.dataset.mode===state.periodMode));
+  panel.querySelectorAll('.context-preset-btn[data-compare]').forEach(btn=>btn.classList.toggle('active',state.compareMode===btn.dataset.compare));
   $('periodCalendar').innerHTML=periodCalendarHTML('context-month-cell');
 }
 function syncPresentPeriodControls(){
   const panel=$('presentPeriodPanel');if(!panel)return;
   $('presentPeriodLabel').textContent=state.rangeSelectStart?`${monthLabel(state.rangeSelectStart)} → escolha o fim…`:periodLabel(state.period);
   panel.querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode==='intervalo'?state.rangeSelectMode:!state.rangeSelectMode&&btn.dataset.mode===state.periodMode));
+  panel.querySelectorAll('.pt-preset-btn[data-compare]').forEach(btn=>btn.classList.toggle('active',state.compareMode===btn.dataset.compare));
   $('presentPeriodCalendar').innerHTML=periodCalendarHTML('pt-month-cell');
 }
 function toggleRangeSelectMode(on){
@@ -249,6 +251,19 @@ async function applyPeriodChange({period,periodMode}={}){
   await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)});
   return true;
 }
+// Alterna a régua de comparação (período anterior × mesmo período do ano
+// passado), independente do período em si — afeta o quê o período atual é
+// comparado com, não qual período está selecionado.
+async function applyCompareModeChange(mode){
+  if(mode===state.compareMode)return false;
+  state.compareMode=mode;
+  const sel=$('compareModeSelect');if(sel)sel.value=mode;
+  $('compareCustomWrap').hidden=mode!=='custom';
+  await loadCommercial();
+  await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)});
+  syncMainPeriodControls();syncPresentPeriodControls();
+  return true;
+}
 async function changePresentationPeriod({period,periodMode,closePanel=true}={}){
   if(closePanel){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}
   if((periodMode&&periodMode!==state.periodMode)||(period&&period!==state.period)){
@@ -257,8 +272,16 @@ async function changePresentationPeriod({period,periodMode,closePanel=true}={}){
   try{const changed=await applyPeriodChange({period,periodMode});if(!changed)return}catch(error){toast(error.message||String(error),'error')}
   renderPresentation();
 }
+// Comparação anual "proporcional": mesmos meses, ano anterior — jan-ago/2026
+// contra jan-ago/2025, em vez de comparar um ano inteiro contra um período
+// parcial (o que infla queda/crescimento artificialmente).
+function yearShift(de,ate){
+  const shift=key=>{const m=/^(\d{4})-(\d{2})$/.exec(String(key||''));return m?`${Number(m[1])-1}-${m[2]}`:key};
+  return {de:shift(de),ate:shift(ate)};
+}
 function resolveComparison(range){
   if(state.compareMode==='custom'&&state.customComparePeriod)return periodRange(state.customComparePeriod);
+  if(state.compareMode==='anual')return yearShift(range.de,range.ate);
   return periodShift(range.de,range.ate);
 }
 
@@ -655,22 +678,10 @@ function placeholderSectorSlide(kicker,area,indicadores,icon='layout-grid'){
   return {kicker,icon,title:`${area} — dados do setor`,subtitle:`Espaço reservado para a equipe de ${area} apresentar os indicadores do período nesta reunião.`,columns:indicadores.map(label=>[label,'A apresentar pela área'])};
 }
 
-function metaMensalSlide(){
-  const rows=monthlyPaceRows();const current=rows.find(r=>r.isCurrent)||rows[rows.length-1];
-  if(!current)return placeholderSectorSlide('Meta mensal','Meta mensal',['Meta de faturamento no mês','Faturado até agora','Gap para a meta','Média diária necessária']);
-  return {kicker:'Meta mensal',icon:'target',title:`Ritmo de ${current.label}: rumo aos ${moneyCompact(state.target)}`,subtitle:current.gap<=0?`Meta já batida em ${current.label}. Faturado: ${money(current.valor)}.`:`Faltam ${money(current.gap)} para bater a meta de ${current.label}. Restam ${current.remainingDays} dia(s).`,metrics:[['Meta do mês',moneyCompact(state.target),'flag'],['Faturado até agora',money(current.valor),'banknote'],['% da meta',`${(current.ratio*100).toFixed(1)}%`,'gauge'],['Kg vendido',kg(current.volume),'package'],['Média diária realizada',money(current.avgDiaRealizado),'calendar-days'],['Média diária necessária',current.avgDiaNecessario!=null?money(current.avgDiaNecessario):'Meta batida','alarm-clock'],['Projeção fim do mês',money(current.projecao),'trending-up'],['Status',healthLabel(current.health),current.health==='no_ritmo'?'circle-check':current.health==='atencao'?'circle-alert':'circle-x']]};
-}
 function buildOverviewSlides(){
   const d=presentationData();const y=d.yoy;
-  const growthValor=pct(y.kpisCur.total_valor,y.kpisPrev.total_valor);const growthKg=pct(y.kpisCur.total_kg,y.kpisPrev.total_kg);
-  const growthPedidos=pct(y.kpisCur.n_pedidos,y.kpisPrev.n_pedidos);const growthClientes=pct(y.kpisCur.n_clientes,y.kpisPrev.n_clientes);const growthTicket=pct(y.kpisCur.ticket_medio,y.kpisPrev.ticket_medio);
-  const geral=growthValor==null?null:growthValor>=1?'Crescendo':growthValor<=-1?'Caindo':'Estável';
   const opsPreview=state.generatedOpportunities.slice(0,6);
   const body=[
-    {icon:'trending-up',kicker:'Onde crescemos, onde caímos',title:growthValor==null?'Comparando com o período anterior':`Faturamento ${growthValor>=0?'cresceu':'caiu'} ${deltaText(growthValor).replace(/[▲▼]\s*/,'')} contra o período anterior`,
-      metrics:[['Variação de faturamento',growthValor==null?'—':deltaText(growthValor),growthValor>=0?'trending-up':'trending-down'],['Variação de peso',growthKg==null?'—':deltaText(growthKg),growthKg>=0?'trending-up':'trending-down'],['Variação de pedidos',growthPedidos==null?'—':deltaText(growthPedidos),growthPedidos>=0?'trending-up':'trending-down'],['Variação de clientes',growthClientes==null?'—':deltaText(growthClientes),growthClientes>=0?'trending-up':'trending-down'],['Variação de ticket médio',growthTicket==null?'—':deltaText(growthTicket),growthTicket>=0?'trending-up':'trending-down'],['Situação geral',geral||'—',geral==='Crescendo'?'circle-check':geral==='Caindo'?'circle-alert':'gauge']],
-      subtitle:`Cada número compara ${y.current.label} com o período anterior equivalente (${y.previous.label}) — mesma duração, pra não comparar coisas diferentes. Verde é crescimento, vermelho é queda.`,source:'Fonte: SQL Server · dbo.Vendas / dbo.VendasProdutos'},
-    metaMensalSlide(),
     {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),list:yoyRankingList(y.regiao,moneyCompact),
       subtitle:`As 3 regiões que mais cresceram e as 3 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
     {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,moneyCompact),
@@ -970,6 +981,9 @@ function bindEvents(){
     toggleRangeSelectMode(false);
     applyPeriodChange({periodMode:btn.dataset.mode}).catch(e=>toast(e.message,'error'));
   }));
+  $('periodPanel').querySelectorAll('.context-preset-btn[data-compare]').forEach(btn=>btn.addEventListener('click',()=>{
+    applyCompareModeChange(state.compareMode===btn.dataset.compare?'auto':btn.dataset.compare).catch(e=>toast(e.message,'error'));
+  }));
   $('periodCalendar').addEventListener('click',event=>{
     const cell=event.target.closest('.context-month-cell');if(!cell||cell.disabled)return;
     const target=handlePeriodCellClick(cell.dataset.val);
@@ -978,8 +992,8 @@ function bindEvents(){
     $('periodPanel').hidden=true;$('periodFilter').setAttribute('aria-expanded','false');
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
-  $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('dados').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareModeSelect').addEventListener('change',()=>applyCompareModeChange($('compareModeSelect').value).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('dados').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});
@@ -987,6 +1001,12 @@ function bindEvents(){
     if(btn.dataset.mode==='intervalo')return toggleRangeSelectMode(!state.rangeSelectMode);
     toggleRangeSelectMode(false);
     changePresentationPeriod({periodMode:btn.dataset.mode,closePanel:false}).catch(e=>toast(e.message,'error'));
+  }));
+  $('presentPeriodPanel').querySelectorAll('.pt-preset-btn[data-compare]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const nextMode=state.compareMode===btn.dataset.compare?'auto':btn.dataset.compare;
+    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Atualizando comparação…</h2><p class="slide-sub">Recalculando indicadores com a nova régua de comparação.</p></section>`;
+    try{await applyCompareModeChange(nextMode)}catch(error){toast(error.message||String(error),'error')}
+    renderPresentation();
   }));
   $('presentPeriodCalendar').addEventListener('click',event=>{
     const cell=event.target.closest('.pt-month-cell');if(!cell||cell.disabled)return;

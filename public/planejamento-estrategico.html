@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#173d2a">
   <title>Planejamento Estratégico | PMG Connect</title>
-  <link rel="stylesheet" href="/assets/estrategia.css?v=1.10.2">
+  <link rel="stylesheet" href="/assets/estrategia.css?v=1.10.3">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="/assets/connect-auth.js?v=1.2.2"></script>
   <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -74,10 +74,13 @@
             <button class="context-preset-btn" type="button" data-mode="mensal">Mensal</button>
             <button class="context-preset-btn" type="button" data-mode="intervalo" title="Clique num mês de início e depois num de fim para acumular o intervalo">Intervalo</button>
           </div>
+          <div class="context-preset-row context-compare-row">
+            <button class="context-preset-btn" type="button" data-compare="anual" title="Compara o mesmo intervalo de meses do ano anterior (ex.: jan–ago/2026 × jan–ago/2025), em vez do período imediatamente anterior">↻ Comparar com ano anterior</button>
+          </div>
           <div class="context-calendar" id="periodCalendar"></div>
         </div>
       </div>
-      <label><span>Comparar com</span><select id="compareModeSelect"><option value="auto">Período anterior equivalente</option><option value="custom">Escolher período…</option></select></label>
+      <label><span>Comparar com</span><select id="compareModeSelect"><option value="auto">Período anterior equivalente</option><option value="anual">Mesmo período, ano anterior</option><option value="custom">Escolher período…</option></select></label>
       <label id="compareCustomWrap" hidden><span>Período de comparação</span><select id="compareCustomSelect"></select></label>
       <div class="context-note"><span>Fonte comercial</span><strong id="periodSource">PMG Bridge / SQL Server</strong><small id="freshnessText">Aguardando leitura</small></div>
     </section>
@@ -261,6 +264,9 @@
             <button class="pt-preset-btn" type="button" data-mode="mensal">Mensal</button>
             <button class="pt-preset-btn" type="button" data-mode="intervalo" title="Clique num mês de início e depois num de fim para acumular o intervalo">Intervalo</button>
           </div>
+          <div class="pt-preset-row pt-compare-row">
+            <button class="pt-preset-btn" type="button" data-compare="anual" title="Compara o mesmo intervalo de meses do ano anterior (ex.: jan–ago/2026 × jan–ago/2025), em vez do período imediatamente anterior">↻ Comparar com ano anterior</button>
+          </div>
           <div class="pt-calendar" id="presentPeriodCalendar"></div>
         </div>
       </div>
@@ -286,6 +292,6 @@
 </dialog>
 
 <div class="toast" id="toast" hidden></div>
-<script type="module" src="/assets/estrategia.js?v=1.15.0"></script>
+<script type="module" src="/assets/estrategia.js?v=1.16.0"></script>
 </body>
 </html>
