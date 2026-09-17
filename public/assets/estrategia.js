@@ -58,7 +58,7 @@ function keepOnlyFoodSegments(rows){return (Array.isArray(rows)?rows:[]).filter(
 const state = {
   db:null, session:null, profile:null, collaborators:[], persistenceAvailable:true,
   view:'executivo', period:'', compare:null, periods:[], target:DEFAULT_REVENUE_TARGET,
-  config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[], entregaRetira:null, baseEntrega:null,
+  config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[],
   rangeSelectMode:false, rangeSelectStart:null,
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
   opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao', periodMode:'trimestral',
@@ -301,7 +301,15 @@ function yoyDimensionDelta(currentRows,previousRows,limit=3){
   });
   const comparable=rows.filter(r=>r.prev>0);
   const leaders=[...rows].sort((a,b)=>b.cur-a.cur).slice(0,limit*2);
-  return {rows,leaders,growing:[...comparable].sort((a,b)=>b.delta-a.delta).slice(0,limit),falling:[...comparable].sort((a,b)=>a.delta-b.delta).slice(0,limit)};
+  // growing e falling não podem se sobrepor: com poucos itens comparáveis
+  // (ex.: só 16 categorias de produto no total), o "top 3 que mais cresceu"
+  // e o "top 3 que mais caiu" podem ser quase o mesmo conjunto — falling
+  // exclui quem já está em growing antes de cortar em 3, em vez de deixar
+  // pra deduplicação depois (que só encolhia a lista final).
+  const growing=[...comparable].sort((a,b)=>b.delta-a.delta).slice(0,limit);
+  const growingKeys=new Set(growing.map(r=>r.chave));
+  const falling=[...comparable].filter(r=>!growingKeys.has(r.chave)).sort((a,b)=>a.delta-b.delta).slice(0,limit);
+  return {rows,leaders,growing,falling};
 }
 function deltaText(delta){return delta==null?'novo':`${delta>=0?'▲ +':'▼ '}${delta.toFixed(1)}%`}
 function yoyRankingList(bucket,formatTotal){
@@ -312,6 +320,40 @@ function yoyRankingList(bucket,formatTotal){
 }
 function shareLeadersMetrics(bucket,formatTotal,limit=4){
   return (bucket?.leaders||[]).slice(0,limit).map(r=>[r.chave,`${r.share.toFixed(1)}% da base · ${formatTotal(r.cur)}`,'pie-chart']);
+}
+// Ponte de faturamento (waterfall/bridge chart): técnica padrão de mercado
+// (popularizada pela McKinsey nos anos 90) pra explicar variação de
+// faturamento pra board/diretoria sem enterrar a história numa planilha —
+// mostra o quanto cada categoria empurrou o total pra cima ou pra baixo,
+// em vez de só listar percentuais soltos. As barras reconciliam por
+// construção: os dois pontos-âncora são a SOMA das categorias (não o KPI
+// geral), então "anterior + todas as contribuições = atual" sempre fecha.
+function revenueBridgeChart(y){
+  const rows=(y.categoria?.rows||[]).filter(r=>r.cur>0||r.prev>0);
+  if(!rows.length)return null;
+  const sorted=[...rows].sort((a,b)=>Math.abs(b.cur-b.prev)-Math.abs(a.cur-a.prev));
+  const top=sorted.slice(0,7);
+  const rest=sorted.slice(7);
+  const prevTotal=rows.reduce((s,r)=>s+r.prev,0);
+  const curTotal=rows.reduce((s,r)=>s+r.cur,0);
+  const segs=[];let running=prevTotal;const levels=[prevTotal];
+  for(const r of top){const delta=r.cur-r.prev;const end=running+delta;segs.push({label:r.chave,delta,start:running,end});levels.push(end);running=end}
+  if(rest.length){const delta=rest.reduce((s,r)=>s+(r.cur-r.prev),0);const end=running+delta;segs.push({label:'Demais categorias',delta,start:running,end});levels.push(end);running=end}
+  levels.push(curTotal);
+  // Eixo não começa em zero de propósito: numa ponte de faturamento, o que
+  // importa é o tamanho relativo de cada contribuição, não a escala
+  // absoluta — com o eixo em zero, variações de categoria (tipicamente
+  // pequenas perto do faturamento total) viram tracinhos ilegíveis lá em
+  // cima do gráfico. O "chão" aqui é o menor nível realmente tocado pela
+  // ponte, com uma folga pequena, e as barras-âncora (anterior/atual)
+  // partem desse chão em vez de zero de verdade.
+  const floor=Math.min(...levels)*0.985;
+  const ceiling=Math.max(...levels)*1.03;
+  const labels=['Anterior',...segs.map(s=>s.label),'Atual'];
+  const data=[[floor,prevTotal],...segs.map(s=>[Math.min(s.start,s.end),Math.max(s.start,s.end)]),[floor,curTotal]];
+  const pointColors=['gold',...segs.map(s=>s.delta>=0?'green':'red'),'blue'];
+  const deltas=[prevTotal,...segs.map(s=>s.delta),curTotal];
+  return {waterfall:true,format:'money',labels,yMin:floor,yMax:ceiling,datasets:[{data,pointColors,deltas}]};
 }
 function topBottomHeadline(bucket,noun){
   const top=bucket?.growing?.[0],bottom=bucket?.falling?.find(r=>r.chave!==top?.chave)||bucket?.falling?.[0];
@@ -681,7 +723,10 @@ function placeholderSectorSlide(kicker,area,indicadores,icon='layout-grid'){
 function buildOverviewSlides(){
   const d=presentationData();const y=d.yoy;
   const opsPreview=state.generatedOpportunities.slice(0,6);
+  const bridge=revenueBridgeChart(y);
   const body=[
+    ...(bridge?[{icon:'git-commit-horizontal',kicker:'Ponte do faturamento',title:`De ${y.previous.label} a ${y.current.label}: o que puxou o faturamento pra cima ou pra baixo`,chart:bridge,
+      subtitle:'Cada barra é o quanto aquela categoria empurrou o faturamento — verde soma, vermelho tira. As pontas (dourado e azul) são o total antes e depois; elas sempre batem com a soma das barras do meio.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
     {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),list:yoyRankingList(y.regiao,moneyCompact),
       subtitle:`As 3 regiões que mais cresceram e as 3 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
     {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,moneyCompact),
@@ -696,7 +741,7 @@ function buildOverviewSlides(){
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
   return [
-    {kind:'cover',icon:'compass',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 3',title:'Onde crescemos, onde caímos',subtitle:`Comparação entre ${y.current.label} e o período anterior equivalente (${y.previous.label}) — por região, segmento e categoria.`},
+    {kind:'cover',icon:'compass',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'Onde crescemos, onde caímos',subtitle:`Comparação entre ${y.current.label} e o período anterior equivalente (${y.previous.label}) — por região, segmento e categoria.`},
     ...numbered,
     {kind:'cover',icon:'arrow-right-circle',kicker:'Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'Este comparativo mostra onde crescemos e onde caímos. O passo seguinte é transformar cada sinal em prioridade, responsável e prazo — Apresentação 2.'},
   ];
@@ -720,75 +765,15 @@ function buildOpportunityActionSlides(){
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
   return [
-    {kind:'cover',icon:'target',kicker:'PMG · Planejamento Estratégico · Apresentação 2 de 3',title:'Oportunidades e plano de ação',subtitle:`Sinais comerciais priorizados, com responsável, prazo e meta por área para os próximos 90 dias. Período-base: ${d.period}.`},
+    {kind:'cover',icon:'target',kicker:'PMG · Planejamento Estratégico · Apresentação 2 de 2',title:'Oportunidades e plano de ação',subtitle:`Sinais comerciais priorizados, com responsável, prazo e meta por área para os próximos 90 dias. Período-base: ${d.period}.`},
     ...numbered,
     {kind:'cover',icon:'flag',kicker:'Próxima reunião',title:'Não discutir só o número. Discutir a decisão.',subtitle:'O objetivo é sair com oportunidades priorizadas, responsáveis definidos, prazos e métricas para os próximos 90 dias.'}
   ];
 }
 
-function monthlySeriesFromEvolution(){
-  const rows=Array.isArray(state.commercial?.evolution)?state.commercial.evolution.slice():[];
-  return rows.sort((a,b)=>a.ano-b.ano||a.mes-b.mes).map(r=>{const key=`${r.ano}-${String(r.mes).padStart(2,'0')}`;return{key,label:monthLabel(key),valor:Number(r.valor)||0,volume:Number(r.volume)||0,pedidos:Number(r.pedidos)||0,clientes:Number(r.clientes)||0}});
-}
-function entregaRetiraSeries(){
-  const rows=Array.isArray(state.entregaRetira)?state.entregaRetira:[];
-  const months=[...new Set(rows.map(r=>`${r.ano}-${String(r.mes).padStart(2,'0')}`))].sort();
-  const pick=tipo=>months.map(key=>{const [ano,mes]=key.split('-').map(Number);return rows.find(r=>r.ano===ano&&r.mes===mes&&r.tipo===tipo)||null});
-  return {months,labels:months.map(monthLabel),entrega:pick('Entrega'),retira:pick('Retira')};
-}
-const BASE_ENTREGA_HUBS=['Bauru','Campinas','Guarulhos','Ribeirão Preto','Taubaté','Avaré','Litoral Norte'];
-function baseEntregaSeries(hub){
-  const rows=(Array.isArray(state.baseEntrega)?state.baseEntrega:[]).filter(r=>r.hub===hub);
-  const months=[...new Set(rows.map(r=>`${r.ano}-${String(r.mes).padStart(2,'0')}`))].sort();
-  const pick=field=>months.map(key=>{const [ano,mes]=key.split('-').map(Number);const row=rows.find(r=>r.ano===ano&&r.mes===mes);return row?row[field]:0});
-  return {labels:months.map(monthLabel),pedidos:pick('pedidos'),clientes:pick('clientes')};
-}
-function buildDataSlides(){
-  const monthly=monthlySeriesFromEvolution();const er=entregaRetiraSeries();
-  const first=monthly[0],last=monthly[monthly.length-1];
-  const windowLabel=first&&last?`${first.label} a ${last.label}`:'período disponível';
-  const totalValor=monthly.reduce((s,m)=>s+m.valor,0);const totalVolume=monthly.reduce((s,m)=>s+m.volume,0);
-  const totalPedidos=monthly.reduce((s,m)=>s+m.pedidos,0);const mediaClientesMes=monthly.length?Math.round(monthly.reduce((s,m)=>s+m.clientes,0)/monthly.length):0;
-  const body=[
-    {icon:'layout-grid',kicker:'Resumo do período',title:`O período em números: ${windowLabel}`,
-      metrics:[['Faturamento total',money(totalValor),'banknote'],['Peso total',kg(totalVolume),'package'],['Pedidos faturados',num(totalPedidos),'receipt'],['Ticket médio geral',money(totalPedidos?totalValor/totalPedidos:0),'wallet'],['Média de clientes/mês',num(mediaClientesMes),'user-round-plus'],['Meses no painel',num(monthly.length),'calendar-days']],
-      subtitle:'Totais e médias de todo o período disponível, antes de entrar mês a mês em cada indicador.',source:'Fonte: SQL Server · dbo.Vendas'},
-    {icon:'bar-chart-3',kicker:'Faturamento mensal',title:`Faturamento mês a mês: ${windowLabel}`,
-      chart:{type:'bar',labels:monthly.map(m=>m.label),datasets:[{label:'Faturamento',data:monthly.map(m=>m.valor),color:'green'}],format:'money'},
-      subtitle:'Faturamento realizado por mês, com base nos pedidos faturados no período.',source:'Fonte: SQL Server · dbo.Vendas'},
-    {icon:'scale',kicker:'Peso vendido mensal',title:'Volume vendido em Kg, mês a mês',
-      chart:{type:'line',labels:monthly.map(m=>m.label),datasets:[{label:'Peso (Kg)',data:monthly.map(m=>m.volume),color:'green'}],format:'kg'},
-      subtitle:'Peso total vendido por mês, em quilogramas.',source:'Fonte: SQL Server · dbo.VendasProdutos'},
-    {icon:'users-round',kicker:'Clientes e pedidos',title:'Clientes atendidos e pedidos faturados, mês a mês',
-      chart:{type:'bar',labels:monthly.map(m=>m.label),datasets:[{label:'Pedidos faturados',data:monthly.map(m=>m.pedidos),color:'gold'},{label:'Clientes atendidos',data:monthly.map(m=>m.clientes),color:'blue'}],format:'num'},
-      subtitle:'Contagem de pedidos e de clientes distintos por mês.',source:'Fonte: SQL Server · dbo.Vendas'},
-    {icon:'circle-alert',kicker:'Devoluções e cancelamentos',title:'Ainda não dá para mostrar este indicador',
-      columns:[['O que falta','O sistema hoje não lê nenhuma coluna de status/devolução/cancelamento de dbo.Vendas — não é filtro, é ausência do dado na origem.','circle-x'],['Próximo passo','Confirmar com quem tem acesso direto ao SQL Server se existe essa coluna na tabela de vendas. Confirmado, o indicador entra aqui do mesmo jeito que os outros, mês a mês, sem refazer a apresentação.','database']],
-      subtitle:'Preferimos deixar isso em branco a mostrar um número inventado.'},
-    {icon:'truck',kicker:'Ticket médio por modalidade',title:'Ticket médio por pedido: Entrega × Retira',
-      chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.ticketMedio:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.ticketMedio:null),color:'gold'}],format:'money'},
-      subtitle:'Valor médio por pedido, separado por modalidade de entrega.',source:'Fonte: SQL Server · dbo.Vendas'},
-    {icon:'package-search',kicker:'Itens por pedido',title:'Itens por pedido: Entrega × Retira',
-      chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.itensPorPedido:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.itensPorPedido:null),color:'gold'}],format:'num'},
-      subtitle:'Média de itens por pedido, todos os pedidos, separado por modalidade de entrega.',source:'Fonte: SQL Server · dbo.Vendas + dbo.VendasProdutos'},
-    {icon:'package-search',kicker:'Itens por pedido de alto ticket',title:'Itens por pedido em vendas acima de R$ 900: Entrega × Retira',
-      chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.itensPorPedidoAltoTicket:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.itensPorPedidoAltoTicket:null),color:'gold'}],format:'num'},
-      subtitle:'Média de itens por pedido, somente em pedidos com valor a partir de R$ 900,00.',source:'Fonte: SQL Server · dbo.Vendas + dbo.VendasProdutos'},
-    ...BASE_ENTREGA_HUBS.map(hub=>{const s=baseEntregaSeries(hub);return{icon:'map-pin',kicker:`Base ${hub}`,title:`${hub}: clientes e pedidos, mês a mês`,
-      chart:{type:'bar',labels:s.labels,datasets:[{label:'Clientes distintos',data:s.clientes,color:'blue'},{label:'Pedidos distintos',data:s.pedidos,color:'gold'}],format:'num'},
-      subtitle:`Clientes e pedidos distintos atendidos na base de ${hub}, mês a mês.`,source:'Fonte: SQL Server · dbo.Vendas + dbo.Clientes.Zona'}}),
-  ];
-  const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
-  return [
-    {kind:'cover',icon:'bar-chart-3',kicker:'PMG · Planejamento Estratégico · Apresentação 3 de 3',title:'Dados e indicadores',subtitle:`Painel de indicadores comerciais mês a mês: faturamento, peso, clientes, pedidos, ticket médio, itens por pedido e bases regionais. Janela disponível: ${windowLabel}.`},
-    ...numbered,
-    {kind:'cover',icon:'flag',kicker:'Fechamento',title:'Os números por trás da decisão',subtitle:'Este painel documenta a base numérica do período — útil para checar uma métrica específica sem abrir o SQL.'}
-  ];
-}
-
-function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():stage==='dados'?buildDataSlides():buildOverviewSlides()}
-function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 3 · Oportunidades e plano':stage==='dados'?'Etapa 3 de 3 · Dados e indicadores':'Etapa 1 de 3 · Comparativo 2025×2026'}
-function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':stage==='dados'?'Dados_Indicadores':'Comparativo_2025x2026'}
+function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():buildOverviewSlides()}
+function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Comparativo do período'}
+function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Comparativo_Periodo'}
 function metricColumns(count){
   if(count<=3)return Math.max(1,count);
   if(count%4===0)return 4;
@@ -823,6 +808,18 @@ function paintSlideChart(chartCfg,root,{animate=true}={}){
   const formatAxis=chartCfg.format==='money'?v=>moneyCompact(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
   const formatTip=chartCfg.format==='money'?v=>money(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
   const single=chartCfg.datasets.length===1;
+  if(chartCfg.waterfall){
+    const ds=chartCfg.datasets[0];
+    return new Chart(canvas,{type:'bar',data:{labels:chartCfg.labels,datasets:[{
+      data:ds.data,
+      backgroundColor:ds.pointColors.map(c=>SLIDE_CHART_PALETTE[c]||SLIDE_CHART_PALETTE.green),
+      borderRadius:6,borderSkipped:false,maxBarThickness:56,
+    }]},options:{
+      responsive:true,maintainAspectRatio:false,animation:animate?{duration:900,easing:'easeOutCubic'}:false,
+      scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'},color:'#6d766f',maxRotation:0,autoSkip:false}},y:{min:chartCfg.yMin,max:chartCfg.yMax,grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:formatAxis}}},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'#173d2a',padding:10,cornerRadius:8,titleFont:{size:11},bodyFont:{size:11},callbacks:{label:ctx=>formatTip(ds.deltas[ctx.dataIndex])}}},
+    }});
+  }
   const datasets=chartCfg.datasets.map(ds=>{
     const color=SLIDE_CHART_PALETTE[ds.color]||SLIDE_CHART_PALETTE.green;
     const light=SLIDE_CHART_PALETTE_LIGHT[ds.color]||SLIDE_CHART_PALETTE_LIGHT.green;
@@ -867,19 +864,7 @@ async function openPresentation(stage){
     $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados do período…</h2><p class="slide-sub">Buscando faturamento, peso, região, segmento e clientes do período.</p></section>`;
     try{await loadYoyBreakdown()}catch(error){toast(error.message||String(error),'error')}
   }
-  if(stage==='dados'&&(!state.entregaRetira||!state.baseEntrega)){
-    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados e gráficos…</h2><p class="slide-sub">Buscando ticket médio, itens por pedido e bases regionais.</p></section>`;
-    try{await Promise.all([loadEntregaRetiraMensal(),loadBaseEntregaMensal()])}catch(error){toast(error.message||String(error),'error')}
-  }
   renderPresentation();
-}
-async function loadEntregaRetiraMensal(){
-  try{state.entregaRetira=await regionalApi('/entrega-retira-mensal',{})}
-  catch(error){state.entregaRetira=[];state.sourceErrors['Entrega x Retira']=error.message||String(error);throw error}
-}
-async function loadBaseEntregaMensal(){
-  try{state.baseEntrega=await regionalApi('/base-entrega-mensal',{})}
-  catch(error){state.baseEntrega=[];state.sourceErrors['Base de entrega']=error.message||String(error);throw error}
 }
 
 async function captureSlideImage(slideData,container){
@@ -993,7 +978,7 @@ function bindEvents(){
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
   $('compareModeSelect').addEventListener('change',()=>applyCompareModeChange($('compareModeSelect').value).catch(e=>toast(e.message,'error')));
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('dados').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});

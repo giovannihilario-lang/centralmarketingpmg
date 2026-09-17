@@ -543,7 +543,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
   .strategy-main{padding-inline:11px}
   .topbar h1{font-size:18px}
   .top-actions .btn{padding:8px 9px;font-size:10px}
-  .top-actions #presentStage1Btn,.top-actions #presentStage2Btn,.top-actions #presentStage3Btn{display:none}
+  .top-actions #presentStage1Btn,.top-actions #presentStage2Btn{display:none}
   .context-bar label,.context-bar .context-field{min-width:calc(50% - 6px);flex:1}
   .context-period-panel{width:min(290px,calc(100vw - 32px))}
   .context-note{width:100%}
