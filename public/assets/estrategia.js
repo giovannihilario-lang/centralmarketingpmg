@@ -37,6 +37,23 @@ const EXCLUDED_GROUP_TERMS=['papelaria','embalagem','escritorio','contabilidade'
 const normalizeTerm=value=>String(value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 function isExcludedGroup(chave){const normalized=normalizeTerm(chave);return EXCLUDED_GROUP_TERMS.some(term=>normalized.includes(term))}
 function excludeNonCoreGroups(rows){return (Array.isArray(rows)?rows:[]).filter(row=>!isExcludedGroup(row?.chave))}
+// Lista positiva (não negativa) de segmentos de cliente que são food service
+// de verdade — bloqueio por termo ("outros", "escritório"...) não é
+// suficiente porque dbo.Clientes.Segmento também tem valores completamente
+// fora do negócio (ex.: Oficina Mecânica, Imobiliária, Autopeças,
+// Transportadora, Farmácia), que nenhuma lista de termos ruins previa.
+// Conferido 1:1 contra os 50 valores reais de Segmento no snapshot.
+const FOOD_SEGMENTS=new Set([
+  'pizzaria','restaurante / cantina','lanchonete / espetinhos / cafeteria','supermercado',
+  'panificadora / padaria','mercearia / sacolao / emporio','hamburgueria','bar / chopperia',
+  'pastelaria','cozinha industrial','confeitaria','adega','loja de conveniencia','cozinha oriental',
+  'hotel / motel / pousada','distribuidor alimentos / bebidas','esfiharia','acougue',
+  'buffet / catering','churrascaria','fabrica de massas / salgados / doces','rotisseria',
+  'casa noturna','clube / associacao desportiva','ambulante / foodtruck / quiosque',
+  'hospital / casa de repouso','instituicao de ensino','dark kitchen','marmitaria','sorveteria',
+].map(normalizeTerm));
+function isFoodSegment(chave){return FOOD_SEGMENTS.has(normalizeTerm(chave))}
+function keepOnlyFoodSegments(rows){return (Array.isArray(rows)?rows:[]).filter(row=>isFoodSegment(row?.chave))}
 
 const state = {
   db:null, session:null, profile:null, collaborators:[], persistenceAvailable:true,
@@ -300,7 +317,7 @@ async function loadYoyBreakdown(){
   const errors=[];
   const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;errors.push(`${names[i]}: ${r.reason?.message||r.reason}`);return []});
   const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCurRaw,segmentoPrevRaw,grupoCur,grupoPrev]=values;
-  const segmentoCur=excludeNonCoreGroups(segmentoCurRaw),segmentoPrev=excludeNonCoreGroups(segmentoPrevRaw);
+  const segmentoCur=keepOnlyFoodSegments(segmentoCurRaw),segmentoPrev=keepOnlyFoodSegments(segmentoPrevRaw);
   state.yoy={
     current,previous,errors,
     kpisCur:normalizeKpis(Array.isArray(kpisCurRows)?kpisCurRows[0]:kpisCurRows),
@@ -684,7 +701,7 @@ function buildOpportunityActionSlides(){
     ],subtitle:'Sinais de região e categoria, baseados em comparação histórica interna. Não são previsão de mercado.',source:'Fonte: SQL Server · dbo.Vendas'},
     {icon:'lightbulb',kicker:'Oportunidades priorizadas',title:d.topOps[0]?`Maior prioridade: ${d.topOps[0].title}`:'Sinais comerciais que merecem investigação',list:d.topOps.map(op=>[op.title,`Score ${op.score.toFixed(0)} · ${opportunityTypeLabel(op)}`,Math.max(6,Math.round(op.score))]),subtitle:'Ranking por score interno: quanto maior, mais o sinal se destaca do padrão histórico.'},
     ...(d.riskyProjects.length?[{icon:'circle-alert',kicker:'Atenção nos projetos',title:`${num(d.riskyProjects.length)} projeto(s) fora do ritmo esperado`,list:d.riskyProjects.slice(0,6).map(p=>[p.titulo,healthLabel(p.health),null,true]),subtitle:'Projetos estratégicos ativos com resultado abaixo do esperado para o tempo já decorrido.'}]:[]),
-    {icon:'layout-grid',kicker:'Portfólio em execução',title:'Transformando oportunidade em execução',metrics:[['Faturamento no período',money(d.yoy.kpisCur.total_valor),'banknote'],['Clientes positivados',num(d.yoy.kpisCur.n_clientes),'user-round-plus'],['Projetos ativos',num(d.summary.active),'folder-kanban'],['No ritmo / atingidos',num(d.summary.achieved+Math.max(0,d.summary.active-d.summary.risk-d.summary.attention-d.summary.below-d.summary.achieved)),'circle-check'],['Em risco / atenção',num(d.summary.risk+d.summary.attention+d.summary.below),'circle-alert'],['Metas de faturamento comprometidas',money(d.summary.committedPotential),'target']],subtitle:'Cada projeto preserva o baseline e mede o resultado ao longo de 90 dias.',source:'Fonte: SQL Server · dbo.Vendas / dbo.Clientes'},
+    {icon:'layout-grid',kicker:'Portfólio em execução',title:`${num(d.summary.active)} projeto(s) ativo(s), ${money(d.summary.committedPotential)} em metas comprometidas`,metrics:[['Faturamento no período',money(d.yoy.kpisCur.total_valor),'banknote'],['Clientes positivados',num(d.yoy.kpisCur.n_clientes),'user-round-plus'],['Projetos ativos',num(d.summary.active),'folder-kanban'],['No ritmo / atingidos',num(d.summary.achieved+Math.max(0,d.summary.active-d.summary.risk-d.summary.attention-d.summary.below-d.summary.achieved)),'circle-check'],['Em risco / atenção',num(d.summary.risk+d.summary.attention+d.summary.below),'circle-alert'],['Metas de faturamento comprometidas',money(d.summary.committedPotential),'target']],subtitle:'Cada projeto preserva o baseline (o número no início) e mede o resultado a cada 90 dias — dá pra ver o que já melhorou, não só a meta.',source:'Fonte: SQL Server · dbo.Vendas / dbo.Clientes'},
     ...(d.selected?[{icon:'folder-kanban',kicker:'Exemplo em execução',title:d.selected.titulo,subtitle:d.selected.objetivo,metrics:[['Baseline',formatProjectMetric(d.selected,normalizeKpis(safeJson(d.selected.baseline,{}))),'flag'],['Meta',d.selected.meta_tipo==='percentual'?`${number(d.selected.meta_valor).toFixed(1)}%`:money(d.selected.meta_valor),'target'],['Resultado atual',d.selected.meta_tipo==='percentual'?`${selectedProgress.delta.toFixed(1)}%`:formatProjectMetric(d.selected,normalizeKpis(projectLatest(d.selected)||{})),'gauge'],['Status',healthLabel(selectedProgress.health),selectedProgress.health==='atingido'?'circle-check':selectedProgress.health==='atencao'?'circle-alert':'circle-x']]}]:[]),
     {icon:'users-round',kicker:'Plano de ação por área',title:d.allActions.length?`${num(d.allActions.length)} ação(ões) em aberto nos projetos ativos`:'O plano de ação é interdepartamental',actions:d.allActions.slice(0,8),subtitle:'Ações registradas nos projetos estratégicos ativos, por departamento e responsável.'},
     {icon:'calendar-clock',kicker:'Ciclo de 90 dias',title:'Executar, medir e corrigir rota',columns:[['Baseline','Fotografia dos indicadores no início.','flag'],['Mês 1','Primeira medição e remoção de bloqueios.','footprints'],['Mês 2','Ajustes e reforço do que está performando.','settings-2'],['Mês 3','Fechamento, aprendizados e decisão de escalar ou recalcular.','flag-triangle-right']]},
@@ -782,22 +799,36 @@ function slideHtml(slide){
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p>${brand}</section>`;
   return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}</section>`}
 const SLIDE_CHART_PALETTE={green:'#2d7a4f',gold:'#b58a35',blue:'#3b82f6',red:'#a8443f'};
-function paintSlideChart(chartCfg,root){
+const SLIDE_CHART_PALETTE_LIGHT={green:'#7bd39a',gold:'#e9dcb0',blue:'#a6cbfd',red:'#e0a19c'};
+function verticalGradient(ctx,chartArea,stops){
+  if(!chartArea)return stops[stops.length-1][1];
+  const gradient=ctx.createLinearGradient(0,chartArea.top,0,chartArea.bottom);
+  stops.forEach(([offset,color])=>gradient.addColorStop(offset,color));
+  return gradient;
+}
+function paintSlideChart(chartCfg,root,{animate=true}={}){
   const canvas=root.querySelector('.slide-chart canvas');
   if(!canvas||!chartCfg||!window.Chart)return null;
   const formatAxis=chartCfg.format==='money'?v=>moneyCompact(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
   const formatTip=chartCfg.format==='money'?v=>money(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
   const single=chartCfg.datasets.length===1;
-  const datasets=chartCfg.datasets.map(ds=>{const color=SLIDE_CHART_PALETTE[ds.color]||SLIDE_CHART_PALETTE.green;return{
-    label:ds.label,data:ds.data,borderColor:color,
-    backgroundColor:chartCfg.type==='bar'?color:`${color}22`,
-    borderWidth:2,tension:.35,pointRadius:0,fill:chartCfg.type==='line'&&single,
-    borderRadius:chartCfg.type==='bar'?6:0,maxBarThickness:34,spanGaps:true,
-  }});
+  const datasets=chartCfg.datasets.map(ds=>{
+    const color=SLIDE_CHART_PALETTE[ds.color]||SLIDE_CHART_PALETTE.green;
+    const light=SLIDE_CHART_PALETTE_LIGHT[ds.color]||SLIDE_CHART_PALETTE_LIGHT.green;
+    return{
+      label:ds.label,data:ds.data,borderColor:color,
+      backgroundColor:chartCfg.type==='bar'
+        ?(context)=>verticalGradient(context.chart.ctx,context.chart.chartArea,[[0,light],[1,color]])
+        :(context)=>verticalGradient(context.chart.ctx,context.chart.chartArea,[[0,`${color}59`],[1,`${color}02`]]),
+      borderWidth:chartCfg.type==='bar'?0:3,tension:.4,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:color,pointHoverBorderColor:'#fff',pointHoverBorderWidth:2,
+      fill:chartCfg.type==='line'&&single,borderRadius:chartCfg.type==='bar'?{topLeft:8,topRight:8}:0,borderSkipped:false,maxBarThickness:38,spanGaps:true,
+    };
+  });
   return new Chart(canvas,{type:chartCfg.type,data:{labels:chartCfg.labels,datasets},options:{
-    responsive:true,maintainAspectRatio:false,animation:false,
+    responsive:true,maintainAspectRatio:false,animation:animate?{duration:900,easing:'easeOutCubic'}:false,
+    interaction:{mode:'index',intersect:false},
     scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#6d766f',maxRotation:0,autoSkip:true}},y:{grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:formatAxis}}},
-    plugins:{legend:{display:!single,position:'top',align:'end',labels:{boxWidth:10,font:{size:10},color:'#6d766f'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatTip(ctx.parsed.y)}`}}},
+    plugins:{legend:{display:!single,position:'top',align:'end',labels:{boxWidth:10,usePointStyle:true,pointStyle:'circle',font:{size:10},color:'#6d766f'}},tooltip:{backgroundColor:'#173d2a',padding:10,cornerRadius:8,titleFont:{size:11},bodyFont:{size:11},callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatTip(ctx.parsed.y)}`}}},
   }});
 }
 let presentSlideChart=null;
@@ -846,7 +877,7 @@ async function captureSlideImage(slideData,container){
   slideEl.classList.add('slide-export');
   try{window.lucide?.createIcons({attrs:{'stroke-width':1.9}})}catch{}
   let exportChart=null;
-  if(slideData.chart)exportChart=paintSlideChart(slideData.chart,container);
+  if(slideData.chart)exportChart=paintSlideChart(slideData.chart,container,{animate:false});
   const logo=slideEl.querySelector('.slide-brand img');
   if(logo&&!logo.complete)await new Promise(resolve=>{logo.addEventListener('load',resolve,{once:true});logo.addEventListener('error',resolve,{once:true})});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
