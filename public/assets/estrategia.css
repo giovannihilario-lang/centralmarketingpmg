@@ -139,6 +139,7 @@ button,input,select,textarea{font:inherit}
   margin:22px 0 18px;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:var(--radius);
   padding:12px 14px;display:flex;flex-wrap:wrap;gap:12px;align-items:end;box-shadow:var(--shadow-sm);
   animation:cardEnter .4s var(--ease-out) both;
+  position:relative;z-index:5;
 }
 .context-bar label,.context-bar .context-field{display:grid;gap:5px;min-width:190px}
 .context-bar label span,.form-grid label>span,.scope-grid label>span,.context-field>span{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.06em}
@@ -373,7 +374,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .presentation-dialog{border:0;padding:0;width:100vw;height:100vh;max-width:none;max-height:none;background:#0e1712}
 .presentation-toolbar{
   height:auto;min-height:60px;background:#0b1510;color:#fff;display:flex;align-items:center;justify-content:space-between;
-  gap:14px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.08);position:relative;
+  gap:14px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.08);position:relative;z-index:5;
 }
 .presentation-toolbar::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--green-light),transparent);background-size:200% 100%;animation:shimmerMove 4.5s linear infinite}
 .presentation-toolbar .pt-group{display:flex;align-items:center;gap:8px}
