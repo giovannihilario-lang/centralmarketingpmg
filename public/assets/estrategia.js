@@ -33,7 +33,7 @@ function excludeNonCoreGroups(rows){return (Array.isArray(rows)?rows:[]).filter(
 const state = {
   db:null, session:null, profile:null, collaborators:[], persistenceAvailable:true,
   view:'executivo', period:'', compare:null, periods:[], target:DEFAULT_REVENUE_TARGET,
-  config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[], entregaRetira:null,
+  config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[], entregaRetira:null, baseEntrega:null,
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
   opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao', periodMode:'trimestral',
   compareMode:'auto', customComparePeriod:null,
@@ -668,11 +668,23 @@ function entregaRetiraSeries(){
   const pick=tipo=>months.map(key=>{const [ano,mes]=key.split('-').map(Number);return rows.find(r=>r.ano===ano&&r.mes===mes&&r.tipo===tipo)||null});
   return {months,labels:months.map(monthLabel),entrega:pick('Entrega'),retira:pick('Retira')};
 }
+const BASE_ENTREGA_HUBS=['Bauru','Campinas','Guarulhos','Ribeirão Preto','Taubaté','Avaré','Litoral Norte'];
+function baseEntregaSeries(hub){
+  const rows=(Array.isArray(state.baseEntrega)?state.baseEntrega:[]).filter(r=>r.hub===hub);
+  const months=[...new Set(rows.map(r=>`${r.ano}-${String(r.mes).padStart(2,'0')}`))].sort();
+  const pick=field=>months.map(key=>{const [ano,mes]=key.split('-').map(Number);const row=rows.find(r=>r.ano===ano&&r.mes===mes);return row?row[field]:0});
+  return {labels:months.map(monthLabel),pedidos:pick('pedidos'),clientes:pick('clientes')};
+}
 function buildDataSlides(){
   const monthly=monthlySeriesFromEvolution();const er=entregaRetiraSeries();
   const first=monthly[0],last=monthly[monthly.length-1];
   const windowLabel=first&&last?`${first.label} a ${last.label}`:'período disponível';
+  const totalValor=monthly.reduce((s,m)=>s+m.valor,0);const totalVolume=monthly.reduce((s,m)=>s+m.volume,0);
+  const totalPedidos=monthly.reduce((s,m)=>s+m.pedidos,0);const mediaClientesMes=monthly.length?Math.round(monthly.reduce((s,m)=>s+m.clientes,0)/monthly.length):0;
   const body=[
+    {icon:'layout-grid',kicker:'Resumo do período',title:`O período em números: ${windowLabel}`,
+      metrics:[['Faturamento total',money(totalValor),'banknote'],['Peso total',kg(totalVolume),'package'],['Pedidos faturados',num(totalPedidos),'receipt'],['Ticket médio geral',money(totalPedidos?totalValor/totalPedidos:0),'wallet'],['Média de clientes/mês',num(mediaClientesMes),'user-round-plus'],['Meses no painel',num(monthly.length),'calendar-days']],
+      subtitle:'Totais e médias de todo o período disponível, antes de entrar mês a mês em cada indicador.',source:'Fonte: SQL Server · dbo.Vendas'},
     {icon:'bar-chart-3',kicker:'Faturamento mensal',title:`Faturamento mês a mês: ${windowLabel}`,
       chart:{type:'bar',labels:monthly.map(m=>m.label),datasets:[{label:'Faturamento',data:monthly.map(m=>m.valor),color:'green'}],format:'money'},
       subtitle:'Faturamento realizado por mês, com base nos pedidos faturados no período.',source:'Fonte: SQL Server · dbo.Vendas'},
@@ -682,16 +694,25 @@ function buildDataSlides(){
     {icon:'users-round',kicker:'Clientes e pedidos',title:'Clientes atendidos e pedidos faturados, mês a mês',
       chart:{type:'bar',labels:monthly.map(m=>m.label),datasets:[{label:'Pedidos faturados',data:monthly.map(m=>m.pedidos),color:'gold'},{label:'Clientes atendidos',data:monthly.map(m=>m.clientes),color:'blue'}],format:'num'},
       subtitle:'Contagem de pedidos e de clientes distintos por mês.',source:'Fonte: SQL Server · dbo.Vendas'},
+    {icon:'circle-alert',kicker:'Devoluções e cancelamentos',title:'Ainda não dá para mostrar este indicador',
+      columns:[['O que falta','O sistema hoje não lê nenhuma coluna de status/devolução/cancelamento de dbo.Vendas — não é filtro, é ausência do dado na origem.','circle-x'],['Próximo passo','Confirmar com quem tem acesso direto ao SQL Server se existe essa coluna na tabela de vendas. Confirmado, o indicador entra aqui do mesmo jeito que os outros, mês a mês, sem refazer a apresentação.','database']],
+      subtitle:'Preferimos deixar isso em branco a mostrar um número inventado.'},
     {icon:'truck',kicker:'Ticket médio por modalidade',title:'Ticket médio por pedido: Entrega × Retira',
       chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.ticketMedio:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.ticketMedio:null),color:'gold'}],format:'money'},
       subtitle:'Valor médio por pedido, separado por modalidade de entrega.',source:'Fonte: SQL Server · dbo.Vendas'},
+    {icon:'package-search',kicker:'Itens por pedido',title:'Itens por pedido: Entrega × Retira',
+      chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.itensPorPedido:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.itensPorPedido:null),color:'gold'}],format:'num'},
+      subtitle:'Média de itens por pedido, todos os pedidos, separado por modalidade de entrega.',source:'Fonte: SQL Server · dbo.Vendas + dbo.VendasProdutos'},
     {icon:'package-search',kicker:'Itens por pedido de alto ticket',title:'Itens por pedido em vendas acima de R$ 900: Entrega × Retira',
       chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.itensPorPedidoAltoTicket:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.itensPorPedidoAltoTicket:null),color:'gold'}],format:'num'},
       subtitle:'Média de itens por pedido, somente em pedidos com valor a partir de R$ 900,00.',source:'Fonte: SQL Server · dbo.Vendas + dbo.VendasProdutos'},
+    ...BASE_ENTREGA_HUBS.map(hub=>{const s=baseEntregaSeries(hub);return{icon:'map-pin',kicker:`Base ${hub}`,title:`${hub}: clientes e pedidos, mês a mês`,
+      chart:{type:'bar',labels:s.labels,datasets:[{label:'Clientes distintos',data:s.clientes,color:'blue'},{label:'Pedidos distintos',data:s.pedidos,color:'gold'}],format:'num'},
+      subtitle:`Clientes e pedidos distintos atendidos na base de ${hub}, mês a mês.`,source:'Fonte: SQL Server · dbo.Vendas + dbo.Clientes.Zona'}}),
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
   return [
-    {kind:'cover',icon:'bar-chart-3',kicker:'PMG · Planejamento Estratégico · Apresentação 3 de 3',title:'Dados e indicadores',subtitle:`Painel de indicadores comerciais mês a mês: faturamento, peso, clientes, pedidos, ticket médio e itens por pedido. Janela disponível: ${windowLabel}.`},
+    {kind:'cover',icon:'bar-chart-3',kicker:'PMG · Planejamento Estratégico · Apresentação 3 de 3',title:'Dados e indicadores',subtitle:`Painel de indicadores comerciais mês a mês: faturamento, peso, clientes, pedidos, ticket médio, itens por pedido e bases regionais. Janela disponível: ${windowLabel}.`},
     ...numbered,
     {kind:'cover',icon:'flag',kicker:'Fechamento',title:'Os números por trás da decisão',subtitle:'Este painel documenta a base numérica do período — útil para checar uma métrica específica sem abrir o SQL.'}
   ];
@@ -764,15 +785,19 @@ async function openPresentation(stage){
     $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados do período…</h2><p class="slide-sub">Buscando faturamento, peso, região, segmento e clientes do período.</p></section>`;
     try{await loadYoyBreakdown()}catch(error){toast(error.message||String(error),'error')}
   }
-  if(stage==='dados'&&!state.entregaRetira){
-    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados e gráficos…</h2><p class="slide-sub">Buscando ticket médio e itens por pedido, por modalidade de entrega.</p></section>`;
-    try{await loadEntregaRetiraMensal()}catch(error){toast(error.message||String(error),'error')}
+  if(stage==='dados'&&(!state.entregaRetira||!state.baseEntrega)){
+    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados e gráficos…</h2><p class="slide-sub">Buscando ticket médio, itens por pedido e bases regionais.</p></section>`;
+    try{await Promise.all([loadEntregaRetiraMensal(),loadBaseEntregaMensal()])}catch(error){toast(error.message||String(error),'error')}
   }
   renderPresentation();
 }
 async function loadEntregaRetiraMensal(){
   try{state.entregaRetira=await regionalApi('/entrega-retira-mensal',{})}
   catch(error){state.entregaRetira=[];state.sourceErrors['Entrega x Retira']=error.message||String(error);throw error}
+}
+async function loadBaseEntregaMensal(){
+  try{state.baseEntrega=await regionalApi('/base-entrega-mensal',{})}
+  catch(error){state.baseEntrega=[];state.sourceErrors['Base de entrega']=error.message||String(error);throw error}
 }
 
 async function captureSlideImage(slideData,container){
