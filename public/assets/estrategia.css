@@ -414,7 +414,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .slide-metric-icon svg{width:1.35cqw;height:1.35cqw;stroke:var(--green-dark);stroke-width:2.2}
 .slide-card-icon{display:inline-flex;align-items:center;justify-content:center;width:2.2cqw;height:2.2cqw;border-radius:50%;background:var(--green-pale);margin-bottom:.6cqw}
 .slide-card-icon svg{width:1.15cqw;height:1.15cqw;stroke:var(--green-dark);stroke-width:2.2}
-.slide-rank{display:inline-flex;align-items:center;justify-content:center;width:1.5cqw;height:1.5cqw;min-width:18px;min-height:18px;border-radius:50%;background:var(--green-dark);color:#fff;font-size:.75cqw;font-weight:850;flex:none;margin-right:.15cqw}
+.slide-rank{display:inline-flex;align-items:center;justify-content:center;width:1.5cqw;height:1.5cqw;min-width:18px;min-height:18px;border-radius:50%;background:var(--green-dark);color:#fff;font-size:max(11px,.75cqw);line-height:1;font-weight:800;flex:none;margin-right:.15cqw}
 .slide .slide-kicker i{width:.55cqw;height:.55cqw;border-radius:50%;background:var(--gold);flex:none;box-shadow:0 0 0 3px var(--gold-soft)}
 .slide h2{font-size:3.2cqw;line-height:1.1;letter-spacing:-.01em;margin:1.5cqw 0 1.3cqw;max-width:82%;font-weight:800}
 .slide h2 em{font-style:normal;color:#245a3b}
