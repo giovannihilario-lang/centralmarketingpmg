@@ -397,6 +397,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
   display:flex;flex-direction:column;
 }
 .slide.slide-back{animation-name:slideInBack}
+.slide.slide-export{width:1280px;max-height:none;border-radius:0;box-shadow:none;animation:none}
 .slide-brand{position:absolute;right:4%;bottom:3.4%;display:flex;align-items:center;gap:.5cqw;opacity:.62}
 .slide-brand img{width:1.9cqw;height:1.9cqw;object-fit:contain;border-radius:.4cqw}
 .slide-brand span{font-size:.85cqw;font-weight:850;letter-spacing:.06em;color:#6a756d}

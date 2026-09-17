@@ -639,18 +639,33 @@ async function openPresentation(stage){
   renderPresentation();
 }
 
+async function captureSlideImage(slideData,container){
+  container.innerHTML=slideHtml(slideData);
+  const slideEl=container.querySelector('.slide');
+  slideEl.classList.add('slide-export');
+  icons();
+  const logo=slideEl.querySelector('.slide-brand img');
+  if(logo&&!logo.complete)await new Promise(resolve=>{logo.addEventListener('load',resolve,{once:true});logo.addEventListener('error',resolve,{once:true})});
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const canvas=await window.html2canvas(slideEl,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+  return canvas.toDataURL('image/jpeg',0.93);
+}
 async function exportPptx(stage){
-  if(!window.PptxGenJS)throw new Error('Biblioteca de PowerPoint não carregou. Use o modo Apresentar/Imprimir como alternativa.'); const slides=slidesForStage(stage);const pptx=new window.PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='PMG Connect';pptx.subject='Planejamento Estratégico PMG';pptx.title='PMG Rumo aos R$ 200 milhões';pptx.company='PMG';pptx.lang='pt-BR';
-  const C={green:'173D2A',green2:'28613F',ink:'18221C',muted:'657068',line:'DFE4DF',paper:'F7F7F3',gold:'D9C88E',white:'FFFFFF',red:'A8443F',barTrack:'EEF1EE'};
-  const rr=pptx.ShapeType.roundRect;
-  for(const s of slides){const slide=pptx.addSlide();slide.background={color:s.kind==='cover'?C.green:C.paper};const fg=s.kind==='cover'?C.white:C.ink;slide.addText(s.kicker,{x:.7,y:.55,w:11.8,h:.25,fontSize:9,bold:true,color:s.kind==='cover'?C.gold:C.green2,charSpacing:1.5,margin:0});slide.addText(s.title,{x:.7,y:1.05,w:11.7,h:1.1,fontSize:s.kind==='cover'?34:26,bold:true,color:fg,margin:0,breakLine:false});if(s.subtitle)slide.addText(s.subtitle,{x:.72,y:2.25,w:10.9,h:.75,fontSize:13,color:s.kind==='cover'?'C0CEC5':C.muted,margin:0,breakLine:false});
-    if(s.metrics){const cols=metricColumns(s.metrics.length),w=(12.3-.7*2)/cols-.15,h=1.08,startY=3.4;s.metrics.forEach(([label,value],i)=>{const x=.7+(i%cols)*(w+.15),y=startY+Math.floor(i/cols)*1.3;slide.addShape(rr,{x,y,w,h,rectRadius:.06,fill:{color:C.white},line:{color:C.line,width:.75}});slide.addShape(pptx.ShapeType.rect,{x,y,w:.05,h,fill:{type:'gradient',stops:[{color:C.green2,position:0},{color:C.gold,position:100}],angle:90}});slide.addText(label,{x:x+.2,y:y+.16,w:w-.36,h:.2,fontSize:8,bold:true,color:C.muted,margin:0});slide.addText(value,{x:x+.2,y:y+.46,w:w-.36,h:.36,fontSize:18,bold:true,color:C.green,margin:0})})}
-    if(s.list){s.list.slice(0,6).forEach(([label,value,barPct,neg],i)=>{const y=3.15+i*(barPct!=null?.68:.55),negative=neg===true||/^-/.test(String(value).trim());slide.addShape(rr,{x:.7,y,w:11.5,h:barPct!=null?.58:.42,rectRadius:.05,fill:{color:C.white},line:{color:C.line,width:.75}});slide.addShape(pptx.ShapeType.ellipse,{x:.85,y:y+.09,w:.24,h:.24,fill:{color:C.green},line:{type:'none'}});slide.addText(String(i+1),{x:.85,y:y+.09,w:.24,h:.24,fontSize:9,bold:true,color:C.white,align:'center',valign:'middle',margin:0});slide.addText(label,{x:1.2,y:y+.06,w:7.45,h:.26,fontSize:11.5,bold:true,color:C.ink,margin:0});slide.addText(value,{x:8.8,y:y+.06,w:3.25,h:.26,fontSize:10,bold:true,color:negative?C.red:C.green2,align:'right',margin:0});if(barPct!=null){slide.addShape(rr,{x:1.2,y:y+.36,w:10.55,h:.09,rectRadius:.045,fill:{color:C.barTrack},line:{type:'none'}});slide.addShape(rr,{x:1.2,y:y+.36,w:Math.max(.15,10.55*Math.min(100,Math.max(0,barPct))/100),h:.09,rectRadius:.045,fill:{color:negative?C.red:C.green2},line:{type:'none'}})}})}
-    if(s.columns){s.columns.forEach(([label,value],i)=>{const x=.7+(i%2)*6.05,y=3.3+Math.floor(i/2)*1.55;slide.addShape(rr,{x,y,w:5.65,h:1.25,rectRadius:.06,fill:{color:C.white},line:{color:C.line,width:.75}});slide.addShape(pptx.ShapeType.rect,{x,y,w:5.65,h:.05,fill:{type:'gradient',stops:[{color:C.green2,position:0},{color:C.gold,position:100}],angle:0}});slide.addText(label,{x:x+.2,y:y+.22,w:5.25,h:.28,fontSize:14,bold:true,color:C.green,margin:0});slide.addText(value,{x:x+.2,y:y+.57,w:5.25,h:.5,fontSize:10,color:C.muted,margin:0})})}
-    if(s.actions){s.actions.slice(0,8).forEach((a,i)=>{const y=3.05+i*.48;slide.addText(a.departamento,{x:.75,y,w:2.1,h:.25,fontSize:9,bold:true,color:C.green2,margin:0});slide.addText(a.titulo,{x:2.8,y,w:6.8,h:.25,fontSize:10,color:C.ink,margin:0});slide.addText(collaboratorName(a.responsavel_id),{x:9.7,y,w:2.6,h:.25,fontSize:9,color:C.muted,align:'right',margin:0})})}
-    if(s.source)slide.addText(s.source,{x:.7,y:7.05,w:6,h:.18,fontSize:7,color:'8A978F',margin:0});
-    slide.addText('PMG CONNECT',{x:10.95,y:7.05,w:1.7,h:.18,fontSize:7,bold:true,color:s.kind==='cover'?'8FA499':'98A49C',charSpacing:1,margin:0,align:'right'});
-  }
+  if(!window.PptxGenJS)throw new Error('Biblioteca de PowerPoint não carregou. Use o modo Apresentar/Imprimir como alternativa.');
+  if(!window.html2canvas)throw new Error('Biblioteca de captura de slide não carregou. Recarregue a página e tente novamente.');
+  const slides=slidesForStage(stage);
+  toast(`Gerando PowerPoint com ${slides.length} slide(s)…`);
+  const pptx=new window.PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='PMG Connect';pptx.subject='Planejamento Estratégico PMG';pptx.title='PMG Rumo aos R$ 200 milhões';pptx.company='PMG';pptx.lang='pt-BR';
+  const container=document.createElement('div');
+  container.style.cssText='position:fixed;left:-10000px;top:0;width:1280px;pointer-events:none;';
+  document.body.appendChild(container);
+  try{
+    for(const s of slides){
+      const dataUrl=await captureSlideImage(s,container);
+      const slide=pptx.addSlide();slide.background={color:'FFFFFF'};
+      slide.addImage({data:dataUrl,x:0,y:0,w:13.333,h:7.5});
+    }
+  }finally{container.remove()}
   await pptx.writeFile({fileName:`PMG_Planejamento_${stageFileTag(stage)}_${state.period||nowKey()}.pptx`});toast('PowerPoint gerado com os dados atuais.');
 }
 
