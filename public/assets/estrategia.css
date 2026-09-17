@@ -351,7 +351,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .presentation-dialog{border:0;padding:0;width:100vw;height:100vh;max-width:none;max-height:none;background:#0e1712}
 .presentation-toolbar{
   height:auto;min-height:60px;background:#0b1510;color:#fff;display:flex;align-items:center;justify-content:space-between;
-  gap:14px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.08);position:relative;overflow:hidden;
+  gap:14px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.08);position:relative;
 }
 .presentation-toolbar::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--green-light),transparent);background-size:200% 100%;animation:shimmerMove 4.5s linear infinite}
 .presentation-toolbar .pt-group{display:flex;align-items:center;gap:8px}
@@ -372,6 +372,13 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .presentation-toolbar button.pt-action:hover{background:var(--green-mid);border-color:var(--green-mid);transform:translateY(-1px)}
 .presentation-toolbar button.pt-close{background:transparent;border-color:transparent;color:#aebbb2}
 .presentation-toolbar button.pt-close:hover{background:rgba(255,255,255,.08);color:#fff}
+.presentation-toolbar .pt-period{position:relative}
+.presentation-toolbar .pt-period-trigger{display:inline-flex;align-items:center;gap:6px}
+.presentation-toolbar .pt-period-trigger svg{width:13px;height:13px;stroke:#aebbb2}
+.presentation-toolbar .pt-period-panel{position:absolute;top:calc(100% + 8px);left:0;background:#0f1d15;border:1px solid #2c3b31;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:200px;box-shadow:0 18px 40px rgba(0,0,0,.5);z-index:30}
+.presentation-toolbar .pt-period-panel[hidden]{display:none}
+.presentation-toolbar .pt-period-panel label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:#aebbb2;text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.presentation-toolbar .pt-period-panel select{background:#16251c;border:1px solid #34443a;color:#fff;border-radius:8px;padding:7px 8px;font-size:12px;font-weight:600}
 .presentation-stage{height:calc(100vh - 60px);display:grid;place-items:center;padding:22px;position:relative}
 .presentation-stage .stage-arrow{
   position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;
