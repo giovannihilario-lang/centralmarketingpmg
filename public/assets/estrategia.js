@@ -201,8 +201,8 @@ function topBottomHeadline(bucket,noun){
   const top=bucket?.growing?.[0],bottom=bucket?.falling?.find(r=>r.chave!==top?.chave)||bucket?.falling?.[0];
   if(!top&&!bottom)return `Comparativo por ${noun}: sem base comparável no per\xEDodo`;
   const parts=[];
-  if(top)parts.push(`${top.chave} lidera o crescimento`);
-  if(bottom&&bottom.chave!==top?.chave)parts.push(`${bottom.chave} puxa a queda`);
+  if(top)parts.push(`Maior crescimento: ${top.chave}`);
+  if(bottom&&bottom.chave!==top?.chave)parts.push(`Maior queda: ${bottom.chave}`);
   return parts.join(' · ')||`Comparativo por ${noun}`;
 }
 async function loadYoyBreakdown(){
@@ -571,7 +571,7 @@ function buildOverviewSlides(){
     {icon:'users',kicker:'04 · Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,money),subtitle:'Mesmo recorte, agora por segmento de cliente.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
     {icon:'zap',kicker:'05 · O que isso exige',title:'Toda queda vira plano de ação, todo crescimento vira replicação',subtitle:'Nenhuma dessas variações se resolve sozinha. As próximas seções mostram quem somos hoje e o que vendemos — a Apresentação 2 transforma cada sinal em oportunidade priorizada, com responsável e prazo.'},
     {icon:'activity',kicker:'06 · O que somos hoje',title:'A fotografia atual da operação',metrics:[['Faturamento no período',money(y.kpisCur.total_valor),'banknote'],['Clientes positivados',num(y.kpisCur.n_clientes),'user-round-plus'],['Cidades atendidas',num(y.kpisCur.n_cidades),'map-pin'],['Pedidos',num(y.kpisCur.n_pedidos),'receipt'],['Ticket médio',money(y.kpisCur.ticket_medio),'wallet'],['Fornecedores ativos',num(y.kpisCur.n_fornecedores),'truck']],subtitle:`Período: ${y.current.label}.`},
-    {icon:'package',kicker:'07 · O que vendemos',title:y.grupo?.[0]?`${y.grupo[0].chave} lidera o mix, com ${money(y.grupo[0].total)}`:'O mix de produtos que sustenta o faturamento',list:(()=>{const maxTotal=Math.max(1,...(y.grupo||[]).map(r=>Number(r.total)||0));return (y.grupo||[]).map(r=>[r.chave,money(r.total),Math.max(6,Math.round((Number(r.total)||0)/maxTotal*100)),false])})(),subtitle:`Principais categorias por faturamento em ${y.current.label}.`,source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
+    {icon:'package',kicker:'07 · O que vendemos',title:y.grupo?.[0]?`Categoria líder do mix: ${y.grupo[0].chave} (${money(y.grupo[0].total)})`:'O mix de produtos que sustenta o faturamento',list:(()=>{const maxTotal=Math.max(1,...(y.grupo||[]).map(r=>Number(r.total)||0));return (y.grupo||[]).map(r=>[r.chave,money(r.total),Math.max(6,Math.round((Number(r.total)||0)/maxTotal*100)),false])})(),subtitle:`Principais categorias por faturamento em ${y.current.label}.`,source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
     placeholderSectorSlide('08 · Próximas estratégias','Estratégia',['Onde dobrar a aposta','Onde corrigir rota','Onde reduzir investimento','Prioridade dos próximos 90 dias'],'compass'),
     {icon:'arrow-right-circle',kicker:'09 · Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'A Apresentação 2 traz os sinais comerciais identificados nos dados e o plano de ação por área para os próximos 90 dias.'},
   ];
