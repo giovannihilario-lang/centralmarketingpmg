@@ -158,42 +158,56 @@ function rebuildPeriodOptions(){
   state.periods=options.length?options:[trimestral?currentQuarter():currentMonth()];
   const matching=previousRange&&state.periods.find(p=>{const r=periodRange(p);return r.de<=previousRange.de&&r.ate>=previousRange.de});
   state.period=matching||state.periods.at(-1);
-  const select=$('periodSelect');select.innerHTML=state.periods.slice().reverse().map(p=>`<option value="${p}" ${p===state.period?'selected':''}>${periodLabel(p)}</option>`).join('');
   const otherPeriods=state.periods.filter(p=>p!==state.period);
   if(!otherPeriods.includes(state.customComparePeriod))state.customComparePeriod=otherPeriods.at(-1)||null;
   $('compareCustomSelect').innerHTML=otherPeriods.slice().reverse().map(p=>`<option value="${p}" ${p===state.customComparePeriod?'selected':''}>${periodLabel(p)}</option>`).join('');
   const range=periodRange(state.period);
   state.compare=resolveComparison(range);
+  syncMainPeriodControls();
   syncPresentPeriodControls();
+}
+function periodCalendarHTML(cellClass){
+  const available=new Set(availableMonths);
+  const activeRange=periodRange(state.period);
+  const years=[...new Set(availableMonths.map(m=>m.slice(0,4)))].sort();
+  if(!years.length)return '<div class="period-calendar-empty">Sem períodos disponíveis.</div>';
+  return years.map(year=>{
+    const cells=MONTH_ABBR.map((label,i)=>{
+      const mm=String(i+1).padStart(2,'0');const val=`${year}-${mm}`;
+      const disabled=!available.has(val);
+      const active=!disabled&&val>=activeRange.de&&val<=activeRange.ate;
+      return `<button type="button" class="${cellClass}${disabled?' disabled':''}${active?' active':''}" data-val="${val}" ${disabled?'disabled':''}>${label}</button>`;
+    }).join('');
+    return `<div class="period-year-row"><div class="period-year-label">${year}</div><div class="period-months">${cells}</div></div>`;
+  }).join('');
+}
+function syncMainPeriodControls(){
+  const panel=$('periodPanel');if(!panel)return;
+  $('periodTriggerLabel').textContent=periodLabel(state.period);
+  panel.querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode===state.periodMode));
+  $('periodCalendar').innerHTML=periodCalendarHTML('context-month-cell');
 }
 function syncPresentPeriodControls(){
   const panel=$('presentPeriodPanel');if(!panel)return;
   $('presentPeriodLabel').textContent=periodLabel(state.period);
   panel.querySelectorAll('.pt-preset-btn[data-mode]').forEach(btn=>btn.classList.toggle('active',btn.dataset.mode===state.periodMode));
-  buildPresentPeriodCalendar();
+  $('presentPeriodCalendar').innerHTML=periodCalendarHTML('pt-month-cell');
 }
-function buildPresentPeriodCalendar(){
-  const cal=$('presentPeriodCalendar');if(!cal)return;
-  const available=new Set(availableMonths);
-  const activeRange=periodRange(state.period);
-  const years=[...new Set(availableMonths.map(m=>m.slice(0,4)))].sort();
-  cal.innerHTML=years.length?years.map(year=>{
-    const cells=MONTH_ABBR.map((label,i)=>{
-      const mm=String(i+1).padStart(2,'0');const val=`${year}-${mm}`;
-      const disabled=!available.has(val);
-      const active=!disabled&&val>=activeRange.de&&val<=activeRange.ate;
-      return `<button type="button" class="pt-month-cell${disabled?' disabled':''}${active?' active':''}" data-val="${val}" ${disabled?'disabled':''}>${label}</button>`;
-    }).join('');
-    return `<div class="pt-year-row"><div class="pt-year-label">${year}</div><div class="pt-months">${cells}</div></div>`;
-  }).join(''):'<div style="font-size:11px;color:#aebbb2;padding:6px 2px">Sem períodos disponíveis.</div>';
+async function applyPeriodChange({period,periodMode}={}){
+  let changed=false;
+  if(periodMode&&periodMode!==state.periodMode){state.periodMode=periodMode;changed=true}
+  if(period&&period!==state.period){state.period=period;changed=true}
+  if(!changed)return false;
+  rebuildPeriodOptions();
+  await loadCommercial();
+  return true;
 }
 async function changePresentationPeriod({period,periodMode,closePanel=true}={}){
   if(closePanel){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}
-  if(periodMode&&periodMode!==state.periodMode){state.periodMode=periodMode;$('periodModeSelect').value=periodMode;rebuildPeriodOptions()}
-  else if(period&&period!==state.period){state.period=period;$('periodSelect').value=period;syncPresentPeriodControls()}
-  else return;
-  $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Atualizando para ${esc(periodLabel(state.period))}…</h2><p class="slide-sub">Recalculando oportunidades, projetos e indicadores do período.</p></section>`;
-  try{await loadCommercial()}catch(error){toast(error.message||String(error),'error')}
+  if((periodMode&&periodMode!==state.periodMode)||(period&&period!==state.period)){
+    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Atualizando período…</h2><p class="slide-sub">Recalculando oportunidades, projetos e indicadores do período.</p></section>`;
+  }
+  try{const changed=await applyPeriodChange({period,periodMode});if(!changed)return}catch(error){toast(error.message||String(error),'error')}
   renderPresentation();
 }
 function resolveComparison(range){
@@ -730,7 +744,18 @@ function bindEvents(){
   }catch(error){console.error(error);toast(error.message||String(error),'error')}});
   document.querySelectorAll('[data-op-filter]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-op-filter]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.opFilter=btn.dataset.opFilter;renderOpportunities()}));
   $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));
-  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{pollSnapshotStatus();await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});
+  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{pollSnapshotStatus();await loadCommercial();await loadPersistence();renderAll()});
+  $('periodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('periodPanel').hidden;$('periodPanel').hidden=!hidden;$('periodFilter').setAttribute('aria-expanded',String(hidden))});
+  $('periodPanel').addEventListener('click',event=>event.stopPropagation());
+  document.addEventListener('click',()=>{if(!$('periodPanel').hidden){$('periodPanel').hidden=true;$('periodFilter').setAttribute('aria-expanded','false')}});
+  $('periodPanel').querySelectorAll('.context-preset-btn[data-mode]').forEach(btn=>btn.addEventListener('click',()=>applyPeriodChange({periodMode:btn.dataset.mode}).catch(e=>toast(e.message,'error'))));
+  $('periodCalendar').addEventListener('click',event=>{
+    const cell=event.target.closest('.context-month-cell');if(!cell||cell.disabled)return;
+    const val=cell.dataset.val;const target=state.periodMode==='trimestral'?quarterOf(val):val;
+    if(!target||!state.periods.includes(target))return;
+    $('periodPanel').hidden=true;$('periodFilter').setAttribute('aria-expanded','false');
+    applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
+  });
   $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
   $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
