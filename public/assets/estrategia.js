@@ -25,7 +25,7 @@ const MONTH_ABBR=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','N
 function monthLabel(monthKey){const m=/^(\d{4})-(\d{2})$/.exec(String(monthKey||''));return m?`${MONTH_ABBR[Number(m[2])-1]||m[2]}/${m[1]}`:String(monthKey||'—')}
 function periodLabel(period){return /^\d{4}-Q[1-4]$/.test(String(period||''))?quarterLabel(period):monthLabel(period)}
 function periodRange(period){if(period&&typeof period==='object'&&period.de&&period.ate)return period;return quarterRange(period)||{de:period,ate:period}}
-const EXCLUDED_GROUP_TERMS=['papelaria','embalagem','escritorio'];
+const EXCLUDED_GROUP_TERMS=['papelaria','embalagem','escritorio','contabilidade','outros','fornecedor','nao selecionado','nao informado'];
 const normalizeTerm=value=>String(value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 function isExcludedGroup(chave){const normalized=normalizeTerm(chave);return EXCLUDED_GROUP_TERMS.some(term=>normalized.includes(term))}
 function excludeNonCoreGroups(rows){return (Array.isArray(rows)?rows:[]).filter(row=>!isExcludedGroup(row?.chave))}
@@ -200,6 +200,7 @@ async function applyPeriodChange({period,periodMode}={}){
   if(!changed)return false;
   rebuildPeriodOptions();
   await loadCommercial();
+  await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)});
   return true;
 }
 async function changePresentationPeriod({period,periodMode,closePanel=true}={}){
@@ -218,34 +219,30 @@ function resolveComparison(range){
 function filtersForPeriod(period,extra={}){const range=periodRange(period);return {p_de:range.de,p_ate:range.ate,...extra}}
 async function dimension(dimension,period,metrica='Valor',extra={}){return regionalApi('/agregado-por-dimensao',{p_dimensao:dimension,p_metrica:metrica,p_limit:80,...filtersForPeriod(period,extra)})}
 
-// Janela "ano completo até o último mês fechado" pra comparar 2025 x 2026 de
-// forma justa: mês corrente costuma estar incompleto, então comparar
-// setembro/2026 parcial contra setembro/2025 inteiro infla queda artificial.
-function yoyRanges(){
-  const [y,m]=currentMonth().split('-').map(Number); const pad=n=>String(n).padStart(2,'0');
-  const endMonth=m>1?m-1:12; const endYear=m>1?y:y-1;
-  return {
-    current:{de:`${endYear}-01`,ate:`${endYear}-${pad(endMonth)}`,label:`JAN–${MONTH_ABBR[endMonth-1]}/${endYear}`},
-    previous:{de:`${endYear-1}-01`,ate:`${endYear-1}-${pad(endMonth)}`,label:`JAN–${MONTH_ABBR[endMonth-1]}/${endYear-1}`},
-  };
-}
+// Rótulo de um intervalo {de,ate} genérico (mês único ou vários meses).
+function rangeLabel(range){if(!range?.de)return '—';return range.de===range.ate?monthLabel(range.de):`${monthLabel(range.de)}–${monthLabel(range.ate)}`}
 function yoyDimensionDelta(currentRows,previousRows,limit=3){
   const curMap=new Map((currentRows||[]).map(r=>[r.chave,number(r.total)]));
   const prevMap=new Map((previousRows||[]).map(r=>[r.chave,number(r.total)]));
+  const curTotalGeral=number(currentRows?.[0]?.total_geral)||[...curMap.values()].reduce((s,v)=>s+v,0)||1;
   const rows=[...new Set([...curMap.keys(),...prevMap.keys()])].map(chave=>{
     const cur=curMap.get(chave)||0,prev=prevMap.get(chave)||0;
     const delta=prev>0?((cur-prev)/prev*100):(cur>0?null:0);
-    return {chave,cur,prev,delta};
+    return {chave,cur,prev,delta,share:cur/curTotalGeral*100};
   });
   const comparable=rows.filter(r=>r.prev>0);
-  return {rows,growing:[...comparable].sort((a,b)=>b.delta-a.delta).slice(0,limit),falling:[...comparable].sort((a,b)=>a.delta-b.delta).slice(0,limit)};
+  const leaders=[...rows].sort((a,b)=>b.cur-a.cur).slice(0,limit*2);
+  return {rows,leaders,growing:[...comparable].sort((a,b)=>b.delta-a.delta).slice(0,limit),falling:[...comparable].sort((a,b)=>a.delta-b.delta).slice(0,limit)};
 }
 function deltaText(delta){return delta==null?'novo':`${delta>=0?'▲ +':'▼ '}${delta.toFixed(1)}%`}
 function yoyRankingList(bucket,formatTotal){
   const seen=new Set();
   const rows=[...bucket.growing,...bucket.falling].filter(r=>seen.has(r.chave)?false:(seen.add(r.chave),true));
   const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.delta)||0));
-  return rows.map(r=>[r.chave,`${deltaText(r.delta)} · ${formatTotal(r.cur)}`,Math.max(6,Math.round((Math.abs(r.delta)||0)/maxAbs*100)),r.delta<0]);
+  return rows.map(r=>[r.chave,`${deltaText(r.delta)} · antes ${formatTotal(r.prev)} → agora ${formatTotal(r.cur)}`,Math.max(6,Math.round((Math.abs(r.delta)||0)/maxAbs*100)),r.delta<0]);
+}
+function shareLeadersMetrics(bucket,formatTotal,limit=4){
+  return (bucket?.leaders||[]).slice(0,limit).map(r=>[r.chave,`${r.share.toFixed(1)}% da base · ${formatTotal(r.cur)}`,'pie-chart']);
 }
 function topBottomHeadline(bucket,noun){
   const top=bucket?.growing?.[0],bottom=bucket?.falling?.find(r=>r.chave!==top?.chave)||bucket?.falling?.[0];
@@ -255,26 +252,33 @@ function topBottomHeadline(bucket,noun){
   if(bottom&&bottom.chave!==top?.chave)parts.push(`Maior queda: ${bottom.chave}`);
   return parts.join(' · ')||`Comparativo por ${noun}`;
 }
+// A comparação usa sempre o período selecionado no filtro (mês OU trimestre)
+// contra o período imediatamente anterior de mesmo tamanho (state.compare —
+// o mesmo "período anterior equivalente" já usado no resto do painel), em
+// vez de um recorte fixo de ano civil. Assim o botão de período muda de
+// verdade o que a Apresentação 1 mostra, em qualquer granularidade.
 async function loadYoyBreakdown(){
-  const {current,previous}=yoyRanges();
+  const current={...periodRange(state.period),label:periodLabel(state.period)};
+  const previous={...state.compare,label:rangeLabel(state.compare)};
   const tasks=[
     ()=>regionalApi('/kpis',filtersForPeriod(current)), ()=>regionalApi('/kpis',filtersForPeriod(previous)),
     ()=>dimension('Regiao',current), ()=>dimension('Regiao',previous),
     ()=>dimension('Segmento',current), ()=>dimension('Segmento',previous),
-    ()=>dimension('Grupo',current),
+    ()=>dimension('Grupo',current), ()=>dimension('Grupo',previous),
   ];
-  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual'];
+  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual','Grupo anterior'];
   const results=await runWithConcurrency(tasks,3);
   const errors=[];
   const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;errors.push(`${names[i]}: ${r.reason?.message||r.reason}`);return []});
-  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCur,segmentoPrev,grupoCur]=values;
+  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCurRaw,segmentoPrevRaw,grupoCur,grupoPrev]=values;
+  const segmentoCur=excludeNonCoreGroups(segmentoCurRaw),segmentoPrev=excludeNonCoreGroups(segmentoPrevRaw);
   state.yoy={
     current,previous,errors,
     kpisCur:normalizeKpis(Array.isArray(kpisCurRows)?kpisCurRows[0]:kpisCurRows),
     kpisPrev:normalizeKpis(Array.isArray(kpisPrevRows)?kpisPrevRows[0]:kpisPrevRows),
     regiao:yoyDimensionDelta(regiaoCur,regiaoPrev),
     segmento:yoyDimensionDelta(segmentoCur,segmentoPrev),
-    grupo:excludeNonCoreGroups(grupoCur).slice(0,6),
+    categoria:yoyDimensionDelta(excludeNonCoreGroups(grupoCur),excludeNonCoreGroups(grupoPrev)),
   };
   return state.yoy;
 }
@@ -300,35 +304,29 @@ async function runWithConcurrency(tasks,limit){
 async function loadCommercial(){
   const period=state.period||currentQuarter(); const range=periodRange(period); const comparison=resolveComparison(range); state.compare=comparison;
   setSourceStatus(null,'Atualizando dados');
-  for(const key of ['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes']) delete state.sourceErrors[key];
+  for(const key of ['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Evolução','Clientes']) delete state.sourceErrors[key];
   const currentFilters=filtersForPeriod(period); const previousFilters=comparison?{p_de:comparison.de,p_ate:comparison.ate}:currentFilters;
   const tasks=[
     ()=>regionalApi('/kpis',currentFilters), ()=>regionalApi('/kpis',previousFilters),
     ()=>regionalApi('/agregado-cidades',currentFilters), ()=>regionalApi('/agregado-cidades',previousFilters),
     ()=>dimension('Grupo',range), ()=>dimension('Grupo',comparison||range),
-    ()=>dimension('Fornecedor',range), ()=>dimension('Fornecedor',comparison||range),
     ()=>regionalApi('/evolucao-mensal',{}),
     ()=>regionalApi('/estrategia-clientes',{p_de:range.de,p_ate:range.ate}),
   ];
-  const names=['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Fornecedores atuais','Fornecedores anteriores','Evolução','Clientes'];
+  const names=['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Evolução','Clientes'];
   const results=await runWithConcurrency(tasks,3);
   const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;state.sourceErrors[names[i]]=r.reason?.message||String(r.reason);return []});
-  const [kpisRows,previousKpisRows,cities,previousCities,groups,previousGroups,suppliers,previousSuppliers,evolution,customerSignals]=values;
+  const [kpisRows,previousKpisRows,cities,previousCities,groups,previousGroups,evolution,customerSignals]=values;
   const kpis=normalizeKpis(Array.isArray(kpisRows)?kpisRows[0]:kpisRows);
   const previousKpis=normalizeKpis(Array.isArray(previousKpisRows)?previousKpisRows[0]:previousKpisRows);
   if(customerSignals?.summary){kpis.n_clientes=number(customerSignals.summary.currentCustomers);previousKpis.n_clientes=number(customerSignals.summary.previousCustomers)}
-  state.commercial={period,comparison,kpis,previousKpis,cities,previousCities,groups,previousGroups,suppliers,previousSuppliers,evolution,customerSignals,capturedAt:new Date().toISOString()};
-  const customerOps=(customerSignals?.opportunities||[]).map((item,index)=>({
-    id:`cliente:${item.type||'sinal'}:${item.customerId||index}`,kind:'cliente',title:item.title||item.customerName||'Oportunidade de cliente',scopeLabel:[item.customerName,item.city,item.uf].filter(Boolean).join(' · '),score:number(item.score)||50,
-    description:item.description||'Sinal comercial baseado no comportamento histórico do cliente.',
-    evidence:[{label:'Faturamento atual',current:number(item.currentRevenue),previous:number(item.previousRevenue)}],
-    suggestedGoal:item.type==='reativacao'?15:10,source:'SQL Server · dbo.Vendas + dbo.Clientes',filters:{p_cliente:item.customerId||null,p_cidade:item.city||null,p_uf:item.uf||null},metadata:item
-  }));
+  state.commercial={period,comparison,kpis,previousKpis,cities,previousCities,groups,previousGroups,evolution,customerSignals,capturedAt:new Date().toISOString()};
+  // Oportunidades ficam restritas a região e categoria (produto) — sinais de
+  // cliente/fornecedor individuais saíram por decisão explícita: ruído
+  // demais pra decisão estratégica, cabem melhor em uma análise pontual.
   state.generatedOpportunities=[
     ...detectRegionalOpportunities(cities,previousCities,{minRevenue:50000,max:9}),
     ...detectDimensionOpportunities(excludeNonCoreGroups(groups),excludeNonCoreGroups(previousGroups),'categoria',{minRevenue:100000,max:8}),
-    ...detectDimensionOpportunities(suppliers,previousSuppliers,'fornecedor',{minRevenue:100000,max:8}),
-    ...customerOps,
   ].sort((a,b)=>b.score-a.score);
   const failed=results.filter(r=>r.status==='rejected').length;
   setSourceStatus(failed===0,failed===0?'Dados comerciais atualizados':`${failed} fonte(s) indisponível(is)`);
@@ -613,23 +611,37 @@ function placeholderSectorSlide(kicker,area,indicadores,icon='layout-grid'){
 
 function metaMensalSlide(){
   const rows=monthlyPaceRows();const current=rows.find(r=>r.isCurrent)||rows[rows.length-1];
-  if(!current)return placeholderSectorSlide('02 · Meta mensal','Meta mensal',['Meta de faturamento no mês','Faturado até agora','Gap para a meta','Média diária necessária']);
-  return {kicker:'02 · Meta mensal',icon:'target',title:`Ritmo de ${current.label}: rumo aos ${moneyCompact(state.target)}`,subtitle:current.gap<=0?`Meta já batida em ${current.label}. Faturado: ${money(current.valor)}.`:`Faltam ${money(current.gap)} para bater a meta de ${current.label}. Restam ${current.remainingDays} dia(s).`,metrics:[['Meta do mês',moneyCompact(state.target),'flag'],['Faturado até agora',money(current.valor),'banknote'],['% da meta',`${(current.ratio*100).toFixed(1)}%`,'gauge'],['Kg vendido',kg(current.volume),'package'],['Média diária realizada',money(current.avgDiaRealizado),'calendar-days'],['Média diária necessária',current.avgDiaNecessario!=null?money(current.avgDiaNecessario):'Meta batida','alarm-clock'],['Projeção fim do mês',money(current.projecao),'trending-up'],['Status',healthLabel(current.health),current.health==='no_ritmo'?'circle-check':current.health==='atencao'?'circle-alert':'circle-x']]};
+  if(!current)return placeholderSectorSlide('Meta mensal','Meta mensal',['Meta de faturamento no mês','Faturado até agora','Gap para a meta','Média diária necessária']);
+  return {kicker:'Meta mensal',icon:'target',title:`Ritmo de ${current.label}: rumo aos ${moneyCompact(state.target)}`,subtitle:current.gap<=0?`Meta já batida em ${current.label}. Faturado: ${money(current.valor)}.`:`Faltam ${money(current.gap)} para bater a meta de ${current.label}. Restam ${current.remainingDays} dia(s).`,metrics:[['Meta do mês',moneyCompact(state.target),'flag'],['Faturado até agora',money(current.valor),'banknote'],['% da meta',`${(current.ratio*100).toFixed(1)}%`,'gauge'],['Kg vendido',kg(current.volume),'package'],['Média diária realizada',money(current.avgDiaRealizado),'calendar-days'],['Média diária necessária',current.avgDiaNecessario!=null?money(current.avgDiaNecessario):'Meta batida','alarm-clock'],['Projeção fim do mês',money(current.projecao),'trending-up'],['Status',healthLabel(current.health),current.health==='no_ritmo'?'circle-check':current.health==='atencao'?'circle-alert':'circle-x']]};
 }
 function buildOverviewSlides(){
   const d=presentationData();const y=d.yoy;
   const growthValor=pct(y.kpisCur.total_valor,y.kpisPrev.total_valor);const growthKg=pct(y.kpisCur.total_kg,y.kpisPrev.total_kg);
-  return [
-    {kind:'cover',icon:'compass',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'2025 → 2026: onde crescemos, onde caímos',subtitle:`Faturamento e peso comparados ano a ano, por região e por segmento. Período: ${y.current.label} contra ${y.previous.label}.`},
-    {icon:'banknote',kicker:'01 · Faturamento e peso',title:growthValor==null?'O ano em números, lado a lado':`Faturamento ${growthValor>=0?'cresceu':'caiu'} ${deltaText(growthValor).replace(/[▲▼]\s*/,'')} na comparação anual`,metrics:[['Faturamento '+y.previous.label,money(y.kpisPrev.total_valor),'calendar'],['Faturamento '+y.current.label,money(y.kpisCur.total_valor),'calendar-check'],['Variação de faturamento',growthValor==null?'—':deltaText(growthValor),growthValor>=0?'trending-up':'trending-down'],['Peso '+y.previous.label,kg(y.kpisPrev.total_kg),'package'],['Peso '+y.current.label,kg(y.kpisCur.total_kg),'package-check'],['Variação de peso',growthKg==null?'—':deltaText(growthKg),growthKg>=0?'trending-up':'trending-down']],subtitle:'Base: mesmos meses fechados nos dois anos, para uma comparação justa.',source:'Fonte: SQL Server · dbo.Vendas / dbo.VendasProdutos'},
+  const growthPedidos=pct(y.kpisCur.n_pedidos,y.kpisPrev.n_pedidos);const growthClientes=pct(y.kpisCur.n_clientes,y.kpisPrev.n_clientes);const growthTicket=pct(y.kpisCur.ticket_medio,y.kpisPrev.ticket_medio);
+  const geral=growthValor==null?null:growthValor>=1?'Crescendo':growthValor<=-1?'Caindo':'Estável';
+  const opsPreview=state.generatedOpportunities.slice(0,6);
+  const body=[
+    {icon:'trending-up',kicker:'Onde crescemos, onde caímos',title:growthValor==null?'Comparando com o período anterior':`Faturamento ${growthValor>=0?'cresceu':'caiu'} ${deltaText(growthValor).replace(/[▲▼]\s*/,'')} contra o período anterior`,
+      metrics:[['Variação de faturamento',growthValor==null?'—':deltaText(growthValor),growthValor>=0?'trending-up':'trending-down'],['Variação de peso',growthKg==null?'—':deltaText(growthKg),growthKg>=0?'trending-up':'trending-down'],['Variação de pedidos',growthPedidos==null?'—':deltaText(growthPedidos),growthPedidos>=0?'trending-up':'trending-down'],['Variação de clientes',growthClientes==null?'—':deltaText(growthClientes),growthClientes>=0?'trending-up':'trending-down'],['Variação de ticket médio',growthTicket==null?'—':deltaText(growthTicket),growthTicket>=0?'trending-up':'trending-down'],['Situação geral',geral||'—',geral==='Crescendo'?'circle-check':geral==='Caindo'?'circle-alert':'gauge']],
+      subtitle:`Cada número compara ${y.current.label} com o período anterior equivalente (${y.previous.label}) — mesma duração, pra não comparar coisas diferentes. Verde é crescimento, vermelho é queda.`,source:'Fonte: SQL Server · dbo.Vendas / dbo.VendasProdutos'},
     metaMensalSlide(),
-    {icon:'map-pin',kicker:'03 · Por região',title:topBottomHeadline(y.regiao,'região'),list:yoyRankingList(y.regiao,money),subtitle:'3 maiores crescimentos e 3 maiores quedas em faturamento, região com base comparável nos dois anos.',source:'Fonte: SQL Server · dbo.Clientes.Zona'},
-    {icon:'users',kicker:'04 · Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,money),subtitle:'Mesmo recorte, agora por segmento de cliente.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
-    {icon:'zap',kicker:'05 · O que isso exige',title:'Toda queda vira plano de ação, todo crescimento vira replicação',subtitle:'Nenhuma dessas variações se resolve sozinha. As próximas seções mostram quem somos hoje e o que vendemos, antes de olhar para onde investir agora.'},
-    {icon:'activity',kicker:'06 · O que somos hoje',title:'A fotografia atual da operação',metrics:[['Faturamento no período',money(y.kpisCur.total_valor),'banknote'],['Clientes positivados',num(y.kpisCur.n_clientes),'user-round-plus'],['Cidades atendidas',num(y.kpisCur.n_cidades),'map-pin'],['Pedidos',num(y.kpisCur.n_pedidos),'receipt'],['Ticket médio',money(y.kpisCur.ticket_medio),'wallet'],['Fornecedores ativos',num(y.kpisCur.n_fornecedores),'truck']],subtitle:`Período: ${y.current.label}.`},
-    {icon:'package',kicker:'07 · O que vendemos',title:y.grupo?.[0]?`Categoria líder do mix: ${y.grupo[0].chave} (${money(y.grupo[0].total)})`:'O mix de produtos que sustenta o faturamento',list:(()=>{const maxTotal=Math.max(1,...(y.grupo||[]).map(r=>Number(r.total)||0));return (y.grupo||[]).map(r=>[r.chave,money(r.total),Math.max(6,Math.round((Number(r.total)||0)/maxTotal*100)),false])})(),subtitle:`Principais categorias por faturamento em ${y.current.label}.`,source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
-    placeholderSectorSlide('08 · Próximas estratégias','Estratégia',['Onde dobrar a aposta','Onde corrigir rota','Onde reduzir investimento','Prioridade dos próximos 90 dias'],'compass'),
-    {icon:'arrow-right-circle',kicker:'09 · Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'O comparativo anual mostra onde crescemos e onde caímos. O passo seguinte é transformar cada sinal em prioridade, responsável e prazo.'},
+    {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),list:yoyRankingList(y.regiao,moneyCompact),
+      subtitle:`As 3 regiões que mais cresceram e as 3 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
+    {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,moneyCompact),
+      subtitle:'Mesmo recorte, agora por segmento de cliente — onde o segmento cresceu ou caiu mais forte.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
+    {icon:'pie-chart',kicker:'Segmentos líderes',title:'Quem concentra a base de faturamento da PMG',metrics:shareLeadersMetrics(y.segmento,moneyCompact),
+      subtitle:'Quanto cada segmento representa do faturamento total no período — quanto maior o share, maior a dependência dele.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
+    {icon:'package',kicker:'Por categoria',title:topBottomHeadline(y.categoria,'categoria'),list:yoyRankingList(y.categoria,moneyCompact),
+      subtitle:'As categorias de produto que mais cresceram e mais caíram — mesma lógica de região e segmento, aqui é onde reforçar ou corrigir o mix.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
+    ...(opsPreview.length?[{icon:'radar',kicker:'Sinais de oportunidade',title:`${num(opsPreview.length)} sinal(is) de região e categoria fora do padrão`,list:opsPreview.map(op=>[op.title,`Score ${op.score.toFixed(0)} · ${opportunityTypeLabel(op)}`,Math.max(6,Math.round(op.score))]),
+      subtitle:'Sinais automáticos de queda ou aceleração fora do padrão histórico. Cada um vira projeto priorizado, com dono e prazo, na Apresentação 2.'}]:[]),
+    placeholderSectorSlide('Próximas estratégias','Estratégia',['Onde dobrar a aposta','Onde corrigir rota','Onde reduzir investimento','Prioridade dos próximos 90 dias'],'compass'),
+  ];
+  const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
+  return [
+    {kind:'cover',icon:'compass',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 3',title:'Onde crescemos, onde caímos',subtitle:`Comparação entre ${y.current.label} e o período anterior equivalente (${y.previous.label}) — por região, segmento e categoria.`},
+    ...numbered,
+    {kind:'cover',icon:'arrow-right-circle',kicker:'Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'Este comparativo mostra onde crescemos e onde caímos. O passo seguinte é transformar cada sinal em prioridade, responsável e prazo — Apresentação 2.'},
   ];
 }
 
@@ -639,9 +651,8 @@ function buildOpportunityActionSlides(){
     {icon:'radar',kicker:'Radar de oportunidades',title:`${num(state.generatedOpportunities.length)} sinal(is) comercial(is) identificado(s) no período`,metrics:[
       ['Oportunidades identificadas',num(state.generatedOpportunities.length),'radar'],
       ['Por região',num(state.generatedOpportunities.filter(op=>op.kind==='regional').length),'map-pin'],
-      ['Por categoria e fornecedor',num(state.generatedOpportunities.filter(op=>op.kind==='categoria'||op.kind==='fornecedor').length),'package'],
-      ['De clientes',num(state.generatedOpportunities.filter(op=>op.kind==='cliente').length),'users-round'],
-    ],subtitle:'Sinais baseados em comparação histórica interna dos dados comerciais. Não são previsão de mercado.',source:'Fonte: SQL Server · dbo.Vendas / dbo.Clientes'},
+      ['Por categoria',num(state.generatedOpportunities.filter(op=>op.kind==='categoria').length),'package'],
+    ],subtitle:'Sinais de região e categoria, baseados em comparação histórica interna. Não são previsão de mercado.',source:'Fonte: SQL Server · dbo.Vendas'},
     {icon:'lightbulb',kicker:'Oportunidades priorizadas',title:d.topOps[0]?`Maior prioridade: ${d.topOps[0].title}`:'Sinais comerciais que merecem investigação',list:d.topOps.map(op=>[op.title,`Score ${op.score.toFixed(0)} · ${opportunityTypeLabel(op)}`,Math.max(6,Math.round(op.score))]),subtitle:'Ranking por score interno: quanto maior, mais o sinal se destaca do padrão histórico.'},
     ...(d.riskyProjects.length?[{icon:'circle-alert',kicker:'Atenção nos projetos',title:`${num(d.riskyProjects.length)} projeto(s) fora do ritmo esperado`,list:d.riskyProjects.slice(0,6).map(p=>[p.titulo,healthLabel(p.health),null,true]),subtitle:'Projetos estratégicos ativos com resultado abaixo do esperado para o tempo já decorrido.'}]:[]),
     {icon:'layout-grid',kicker:'Portfólio em execução',title:'Transformando oportunidade em execução',metrics:[['Faturamento no período',money(d.yoy.kpisCur.total_valor),'banknote'],['Clientes positivados',num(d.yoy.kpisCur.n_clientes),'user-round-plus'],['Projetos ativos',num(d.summary.active),'folder-kanban'],['No ritmo / atingidos',num(d.summary.achieved+Math.max(0,d.summary.active-d.summary.risk-d.summary.attention-d.summary.below-d.summary.achieved)),'circle-check'],['Em risco / atenção',num(d.summary.risk+d.summary.attention+d.summary.below),'circle-alert'],['Metas de faturamento comprometidas',money(d.summary.committedPotential),'target']],subtitle:'Cada projeto preserva o baseline e mede o resultado ao longo de 90 dias.',source:'Fonte: SQL Server · dbo.Vendas / dbo.Clientes'},
@@ -652,7 +663,7 @@ function buildOpportunityActionSlides(){
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
   return [
-    {kind:'cover',icon:'target',kicker:'PMG · Planejamento Estratégico · Apresentação 2 de 2',title:'Oportunidades e plano de ação',subtitle:`Sinais comerciais priorizados, com responsável, prazo e meta por área para os próximos 90 dias. Período-base: ${d.period}.`},
+    {kind:'cover',icon:'target',kicker:'PMG · Planejamento Estratégico · Apresentação 2 de 3',title:'Oportunidades e plano de ação',subtitle:`Sinais comerciais priorizados, com responsável, prazo e meta por área para os próximos 90 dias. Período-base: ${d.period}.`},
     ...numbered,
     {kind:'cover',icon:'flag',kicker:'Próxima reunião',title:'Não discutir só o número. Discutir a decisão.',subtitle:'O objetivo é sair com oportunidades priorizadas, responsáveis definidos, prazos e métricas para os próximos 90 dias.'}
   ];
