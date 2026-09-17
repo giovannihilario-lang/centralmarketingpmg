@@ -643,7 +643,7 @@ async function captureSlideImage(slideData,container){
   container.innerHTML=slideHtml(slideData);
   const slideEl=container.querySelector('.slide');
   slideEl.classList.add('slide-export');
-  icons();
+  try{window.lucide?.createIcons({attrs:{'stroke-width':1.9}})}catch{}
   const logo=slideEl.querySelector('.slide-brand img');
   if(logo&&!logo.complete)await new Promise(resolve=>{logo.addEventListener('load',resolve,{once:true});logo.addEventListener('error',resolve,{once:true})});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
