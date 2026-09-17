@@ -33,7 +33,7 @@ function excludeNonCoreGroups(rows){return (Array.isArray(rows)?rows:[]).filter(
 const state = {
   db:null, session:null, profile:null, collaborators:[], persistenceAvailable:true,
   view:'executivo', period:'', compare:null, periods:[], target:DEFAULT_REVENUE_TARGET,
-  config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[],
+  config:null, commercial:null, generatedOpportunities:[], savedOpportunities:[], entregaRetira:null,
   projects:[], actions:[], measurements:[], reviews:[], selectedProjectId:null,
   opFilter:'all', presentationIndex:0, slides:[], sourceErrors:{}, presentationStage:'visao', periodMode:'trimestral',
   compareMode:'auto', customComparePeriod:null,
@@ -658,9 +658,48 @@ function buildOpportunityActionSlides(){
   ];
 }
 
-function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():buildOverviewSlides()}
-function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Comparativo 2025×2026'}
-function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Comparativo_2025x2026'}
+function monthlySeriesFromEvolution(){
+  const rows=Array.isArray(state.commercial?.evolution)?state.commercial.evolution.slice():[];
+  return rows.sort((a,b)=>a.ano-b.ano||a.mes-b.mes).map(r=>{const key=`${r.ano}-${String(r.mes).padStart(2,'0')}`;return{key,label:monthLabel(key),valor:Number(r.valor)||0,volume:Number(r.volume)||0,pedidos:Number(r.pedidos)||0,clientes:Number(r.clientes)||0}});
+}
+function entregaRetiraSeries(){
+  const rows=Array.isArray(state.entregaRetira)?state.entregaRetira:[];
+  const months=[...new Set(rows.map(r=>`${r.ano}-${String(r.mes).padStart(2,'0')}`))].sort();
+  const pick=tipo=>months.map(key=>{const [ano,mes]=key.split('-').map(Number);return rows.find(r=>r.ano===ano&&r.mes===mes&&r.tipo===tipo)||null});
+  return {months,labels:months.map(monthLabel),entrega:pick('Entrega'),retira:pick('Retira')};
+}
+function buildDataSlides(){
+  const monthly=monthlySeriesFromEvolution();const er=entregaRetiraSeries();
+  const first=monthly[0],last=monthly[monthly.length-1];
+  const windowLabel=first&&last?`${first.label} a ${last.label}`:'período disponível';
+  const body=[
+    {icon:'bar-chart-3',kicker:'Faturamento mensal',title:`Faturamento mês a mês: ${windowLabel}`,
+      chart:{type:'bar',labels:monthly.map(m=>m.label),datasets:[{label:'Faturamento',data:monthly.map(m=>m.valor),color:'green'}],format:'money'},
+      subtitle:'Faturamento realizado por mês, com base nos pedidos faturados no período.',source:'Fonte: SQL Server · dbo.Vendas'},
+    {icon:'scale',kicker:'Peso vendido mensal',title:'Volume vendido em Kg, mês a mês',
+      chart:{type:'line',labels:monthly.map(m=>m.label),datasets:[{label:'Peso (Kg)',data:monthly.map(m=>m.volume),color:'green'}],format:'kg'},
+      subtitle:'Peso total vendido por mês, em quilogramas.',source:'Fonte: SQL Server · dbo.VendasProdutos'},
+    {icon:'users-round',kicker:'Clientes e pedidos',title:'Clientes atendidos e pedidos faturados, mês a mês',
+      chart:{type:'bar',labels:monthly.map(m=>m.label),datasets:[{label:'Pedidos faturados',data:monthly.map(m=>m.pedidos),color:'gold'},{label:'Clientes atendidos',data:monthly.map(m=>m.clientes),color:'blue'}],format:'num'},
+      subtitle:'Contagem de pedidos e de clientes distintos por mês.',source:'Fonte: SQL Server · dbo.Vendas'},
+    {icon:'truck',kicker:'Ticket médio por modalidade',title:'Ticket médio por pedido: Entrega × Retira',
+      chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.ticketMedio:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.ticketMedio:null),color:'gold'}],format:'money'},
+      subtitle:'Valor médio por pedido, separado por modalidade de entrega.',source:'Fonte: SQL Server · dbo.Vendas'},
+    {icon:'package-search',kicker:'Itens por pedido de alto ticket',title:'Itens por pedido em vendas acima de R$ 900: Entrega × Retira',
+      chart:{type:'line',labels:er.labels,datasets:[{label:'Entrega',data:er.entrega.map(r=>r?r.itensPorPedidoAltoTicket:null),color:'green'},{label:'Retira',data:er.retira.map(r=>r?r.itensPorPedidoAltoTicket:null),color:'gold'}],format:'num'},
+      subtitle:'Média de itens por pedido, somente em pedidos com valor a partir de R$ 900,00.',source:'Fonte: SQL Server · dbo.Vendas + dbo.VendasProdutos'},
+  ];
+  const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
+  return [
+    {kind:'cover',icon:'bar-chart-3',kicker:'PMG · Planejamento Estratégico · Apresentação 3 de 3',title:'Dados e indicadores',subtitle:`Painel de indicadores comerciais mês a mês: faturamento, peso, clientes, pedidos, ticket médio e itens por pedido. Janela disponível: ${windowLabel}.`},
+    ...numbered,
+    {kind:'cover',icon:'flag',kicker:'Fechamento',title:'Os números por trás da decisão',subtitle:'Este painel documenta a base numérica do período — útil para checar uma métrica específica sem abrir o SQL.'}
+  ];
+}
+
+function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():stage==='dados'?buildDataSlides():buildOverviewSlides()}
+function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 3 · Oportunidades e plano':stage==='dados'?'Etapa 3 de 3 · Dados e indicadores':'Etapa 1 de 3 · Comparativo 2025×2026'}
+function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':stage==='dados'?'Dados_Indicadores':'Comparativo_2025x2026'}
 function metricColumns(count){
   if(count<=3)return Math.max(1,count);
   if(count%4===0)return 4;
@@ -680,11 +719,33 @@ function slideHtml(slide){
   const source=slide.source?`<div class="slide-source">${esc(slide.source)}</div>`:'';
   const kickerIcon=slide.icon?`<i data-lucide="${esc(slide.icon)}"></i>`:'<i></i>';
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p>${brand}</section>`;
-  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}</section>`}
+  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}</section>`}
+const SLIDE_CHART_PALETTE={green:'#2d7a4f',gold:'#b58a35',blue:'#3b82f6',red:'#a8443f'};
+function paintSlideChart(chartCfg,root){
+  const canvas=root.querySelector('.slide-chart canvas');
+  if(!canvas||!chartCfg||!window.Chart)return null;
+  const formatAxis=chartCfg.format==='money'?v=>moneyCompact(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
+  const formatTip=chartCfg.format==='money'?v=>money(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
+  const single=chartCfg.datasets.length===1;
+  const datasets=chartCfg.datasets.map(ds=>{const color=SLIDE_CHART_PALETTE[ds.color]||SLIDE_CHART_PALETTE.green;return{
+    label:ds.label,data:ds.data,borderColor:color,
+    backgroundColor:chartCfg.type==='bar'?color:`${color}22`,
+    borderWidth:2,tension:.35,pointRadius:0,fill:chartCfg.type==='line'&&single,
+    borderRadius:chartCfg.type==='bar'?6:0,maxBarThickness:34,spanGaps:true,
+  }});
+  return new Chart(canvas,{type:chartCfg.type,data:{labels:chartCfg.labels,datasets},options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    scales:{x:{grid:{display:false},ticks:{font:{size:10},color:'#6d766f',maxRotation:0,autoSkip:true}},y:{grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:formatAxis}}},
+    plugins:{legend:{display:!single,position:'top',align:'end',labels:{boxWidth:10,font:{size:10},color:'#6d766f'}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatTip(ctx.parsed.y)}`}}},
+  }});
+}
+let presentSlideChart=null;
 function goToSlide(index,{initial=false}={}){
   const previous=state.presentationIndex;const clamped=Math.max(0,Math.min(index,state.slides.length-1));
   const back=!initial&&clamped<previous;state.presentationIndex=clamped;
   const el=$('presentationStage');el.innerHTML=slideHtml(state.slides[clamped]);icons();
+  presentSlideChart?.destroy();presentSlideChart=null;
+  if(state.slides[clamped].chart)presentSlideChart=paintSlideChart(state.slides[clamped].chart,el);
   if(!initial){const slideEl=el.querySelector('.slide');if(slideEl)slideEl.classList.toggle('slide-back',back)}
   $('presentCounter').textContent=`${clamped+1} / ${state.slides.length}`;
   $('presentPrev').disabled=clamped===0;$('presentNext').disabled=clamped===state.slides.length-1;
@@ -703,7 +764,15 @@ async function openPresentation(stage){
     $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados do período…</h2><p class="slide-sub">Buscando faturamento, peso, região, segmento e clientes do período.</p></section>`;
     try{await loadYoyBreakdown()}catch(error){toast(error.message||String(error),'error')}
   }
+  if(stage==='dados'&&!state.entregaRetira){
+    $('presentationStage').innerHTML=`<section class="slide slide-cover"><span class="slide-kicker">Carregando</span><h2>Preparando os dados e gráficos…</h2><p class="slide-sub">Buscando ticket médio e itens por pedido, por modalidade de entrega.</p></section>`;
+    try{await loadEntregaRetiraMensal()}catch(error){toast(error.message||String(error),'error')}
+  }
   renderPresentation();
+}
+async function loadEntregaRetiraMensal(){
+  try{state.entregaRetira=await regionalApi('/entrega-retira-mensal',{})}
+  catch(error){state.entregaRetira=[];state.sourceErrors['Entrega x Retira']=error.message||String(error);throw error}
 }
 
 async function captureSlideImage(slideData,container){
@@ -711,10 +780,13 @@ async function captureSlideImage(slideData,container){
   const slideEl=container.querySelector('.slide');
   slideEl.classList.add('slide-export');
   try{window.lucide?.createIcons({attrs:{'stroke-width':1.9}})}catch{}
+  let exportChart=null;
+  if(slideData.chart)exportChart=paintSlideChart(slideData.chart,container);
   const logo=slideEl.querySelector('.slide-brand img');
   if(logo&&!logo.complete)await new Promise(resolve=>{logo.addEventListener('load',resolve,{once:true});logo.addEventListener('error',resolve,{once:true})});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
   const canvas=await window.html2canvas(slideEl,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+  exportChart?.destroy();
   return canvas.toDataURL('image/jpeg',0.93);
 }
 async function exportPptx(stage){
@@ -757,7 +829,7 @@ function bindEvents(){
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
   $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('dados').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});

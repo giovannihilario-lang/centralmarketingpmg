@@ -15,15 +15,16 @@ export default async function handler(req, res) {
         const ano = d.getUTCFullYear();
         const mes = d.getUTCMonth() + 1;
         const key = `${ano}-${mes}`;
-        const current = map.get(key) || { ano, mes, valor: 0, volume: 0, pedidos: new Set() };
+        const current = map.get(key) || { ano, mes, valor: 0, volume: 0, pedidos: new Set(), clientes: new Set() };
         current.valor += Number(line.v) || 0;
         current.volume += Number(line.kg) || 0;
         current.pedidos.add(String(line.o));
+        if (order?.c != null) current.clientes.add(Number(order.c));
         map.set(key, current);
       });
       return [...map.values()]
         .sort((a, b) => a.ano - b.ano || a.mes - b.mes)
-        .map((row) => ({ ano: row.ano, mes: row.mes, valor: row.valor, volume: row.volume, pedidos: row.pedidos.size }));
+        .map((row) => ({ ano: row.ano, mes: row.mes, valor: row.valor, volume: row.volume, pedidos: row.pedidos.size, clientes: row.clientes.size }));
     });
     res.setHeader('X-PMG-Data-Source', 'DAILY-SNAPSHOT');
     return res.status(200).json(data);
