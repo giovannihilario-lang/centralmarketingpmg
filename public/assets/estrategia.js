@@ -833,6 +833,55 @@ async function exportPptx(stage){
   await pptx.writeFile({fileName:`PMG_Planejamento_${stageFileTag(stage)}_${state.period||nowKey()}.pptx`});toast('PowerPoint gerado com os dados atuais.');
 }
 
+// Arquivo .html único e autocontido: cada slide vira uma imagem embutida em
+// base64 (mesma captura usada no PPTX), sem nenhuma chamada de API depois de
+// gerado. Dá pra abrir em qualquer computador, fora da rede da PMG, sem
+// precisar da ponte local (localhost:3001) nem de login — é só a "foto" da
+// apresentação no momento da exportação, não um espelho ao vivo do site.
+async function exportStandaloneHtml(stage){
+  if(!window.html2canvas)throw new Error('Biblioteca de captura de slide não carregou. Recarregue a página e tente novamente.');
+  const slides=slidesForStage(stage);
+  toast(`Gerando arquivo HTML com ${slides.length} slide(s)…`);
+  const container=document.createElement('div');
+  container.style.cssText='position:fixed;left:-10000px;top:0;width:1280px;pointer-events:none;';
+  document.body.appendChild(container);
+  const images=[];
+  try{for(const s of slides)images.push(await captureSlideImage(s,container))}
+  finally{container.remove()}
+  const title=`PMG · Planejamento Estratégico · ${stageLabel(stage).split(' · ').slice(1).join(' · ')}`;
+  const html=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)}</title>
+<style>
+html,body{margin:0;height:100%;background:#0e1712;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+#stage img{max-width:100%;max-height:100%;box-shadow:0 30px 80px rgba(0,0,0,.5);border-radius:10px;user-select:none}
+.nav{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;background:#0b1510;padding:10px 18px;border-radius:999px;color:#fff;font-size:13px;box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.nav button{background:#16251c;border:1px solid #34443a;color:#fff;border-radius:999px;width:34px;height:34px;cursor:pointer;font-size:16px;line-height:1}
+.nav button:hover:not(:disabled){background:#2d7a4f;border-color:#2d7a4f}
+.nav button:disabled{opacity:.3;cursor:default}
+.nav span{min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
+</style></head>
+<body>
+<div id="stage"><img id="slideImg" alt="Slide da apresentação"></div>
+<div class="nav"><button id="prevBtn" aria-label="Slide anterior">‹</button><span id="counter"></span><button id="nextBtn" aria-label="Próximo slide">›</button></div>
+<script>
+const SLIDES=${JSON.stringify(images)};
+let i=0;
+const img=document.getElementById('slideImg'),counter=document.getElementById('counter'),prevBtn=document.getElementById('prevBtn'),nextBtn=document.getElementById('nextBtn');
+function render(){img.src=SLIDES[i];counter.textContent=(i+1)+' / '+SLIDES.length;prevBtn.disabled=i===0;nextBtn.disabled=i===SLIDES.length-1}
+function go(delta){const next=i+delta;if(next<0||next>=SLIDES.length)return;i=next;render()}
+prevBtn.addEventListener('click',()=>go(-1));nextBtn.addEventListener('click',()=>go(1));
+document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(-1);if(e.key==='ArrowRight')go(1)});
+render();
+</script>
+</body></html>`;
+  const blob=new Blob([html],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`PMG_Planejamento_${stageFileTag(stage)}_${state.period||nowKey()}.html`;document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(url);
+  toast('Arquivo HTML gerado — pode ser aberto em qualquer computador, sem precisar da rede da PMG.');
+}
+
 function bindEvents(){
   document.addEventListener('click',async event=>{const el=event.target.closest('button,[data-project-id],a');if(!el)return;try{
     if(el.matches('.nav-item'))return switchView(el.dataset.view);if(el.dataset.go)return switchView(el.dataset.go);if('newProject' in el.dataset)return openProjectDialog();if(el.dataset.projectId){state.selectedProjectId=el.dataset.projectId;renderProjectList();return}
@@ -854,7 +903,7 @@ function bindEvents(){
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
   $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('dados').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('dados').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});
