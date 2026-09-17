@@ -131,6 +131,8 @@ button,input,select,textarea{font:inherit}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(181,138,53,.12)}
 .source-pill.ok .dot{background:#3f8459;animation:pulseGlow 2.4s ease-in-out infinite}
 .source-pill.error .dot{background:#b34a43}
+.source-pill.syncing{background:#e7edf7;border-color:#c7d6ef}
+.source-pill.syncing .dot{background:var(--blue);animation:pulseGlow 1s ease-in-out infinite}
 .mobile-menu{display:none}
 
 .context-bar{

@@ -38,7 +38,40 @@ function toast(message,type='ok'){
   const el=$('toast'); el.textContent=message; el.className=`toast ${type==='error'?'error':''}`; el.hidden=false;
   clearTimeout(toast.timer); toast.timer=setTimeout(()=>el.hidden=true,5000);
 }
-function setSourceStatus(ok,text){const el=$('sourceStatus');el.classList.toggle('ok',ok===true);el.classList.toggle('error',ok===false);el.querySelector('span:last-child').textContent=text;}
+function setSourceStatus(ok,text){const el=$('sourceStatus');el.classList.remove('syncing');el.classList.toggle('ok',ok===true);el.classList.toggle('error',ok===false);el.querySelector('span:last-child').textContent=text;}
+let snapshotStatusTimer=null;
+function renderSnapshotStatus(status){
+  const freshness=$('freshnessText'),pill=$('sourceStatus');
+  if(!freshness||!pill||!status)return;
+  pill.classList.remove('ok','error','syncing');
+  if(status.syncing){
+    freshness.textContent=`Atualizando dados de hoje… ${Number(status.progress)||0}%${status.message?` · ${status.message}`:''}`;
+    pill.classList.add('syncing');pill.querySelector('span:last-child').textContent='Sincronizando';
+  }else if(status.stale){
+    freshness.textContent=`Mostrando dados de ${date(status.day)} · hoje (${date(status.today)}) ainda n\xE3o sincronizou`;
+    pill.classList.add('error');pill.querySelector('span:last-child').textContent='Dados de ontem';
+  }else if(status.ready){
+    const updated=status.updatedAt?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(status.updatedAt)):'';
+    freshness.textContent=`Dados de hoje (${date(status.day)}) atualizados${updated?` às ${updated}`:''}`;
+    pill.classList.add('ok');pill.querySelector('span:last-child').textContent='Dados em dia';
+  }else if(status.error){
+    freshness.textContent=`Falha ao sincronizar dados de hoje: ${status.message||status.error}`;
+    pill.classList.add('error');pill.querySelector('span:last-child').textContent='Erro na sincroniza\xE7\xE3o';
+  }else{
+    freshness.textContent='Aguardando primeira sincroniza\xE7\xE3o do dia…';
+    pill.querySelector('span:last-child').textContent='Preparando dados';
+  }
+}
+async function pollSnapshotStatus(){
+  clearTimeout(snapshotStatusTimer);
+  try{
+    const status=await regionalApi('/dados-diarios',{acao:'status'});
+    renderSnapshotStatus(status);
+    snapshotStatusTimer=setTimeout(pollSnapshotStatus,status.syncing?5000:status.stale?20000:60000);
+  }catch(error){
+    snapshotStatusTimer=setTimeout(pollSnapshotStatus,30000);
+  }
+}
 function warning(message=''){const el=$('globalWarning');el.hidden=!message;el.innerHTML=message;}
 function safeJson(value,fallback={}){try{return typeof value==='string'?JSON.parse(value):value||fallback}catch{return fallback}}
 function healthLabel(value){return ({atingido:'Atingido',no_ritmo:'No ritmo',atencao:'Atenção',em_risco:'Em risco',abaixo:'Abaixo da meta'})[value]||value}
@@ -608,7 +641,7 @@ function bindEvents(){
   }catch(error){console.error(error);toast(error.message||String(error),'error')}});
   document.querySelectorAll('[data-op-filter]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-op-filter]').forEach(x=>x.classList.remove('active'));btn.classList.add('active');state.opFilter=btn.dataset.opFilter;renderOpportunities()}));
   $('mobileMenu').addEventListener('click',()=>$('strategyNav').classList.toggle('open'));
-  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});
+  $('collapseNavBtn').addEventListener('click',()=>{const collapsed=$('strategyNav').classList.toggle('collapsed');try{localStorage.setItem('pmg_estrategia_nav_collapsed',collapsed?'1':'0')}catch{}});$('refreshBtn').addEventListener('click',async()=>{pollSnapshotStatus();await loadCommercial();await loadPersistence();renderAll()});$('periodSelect').addEventListener('change',async()=>{state.period=$('periodSelect').value;await loadCommercial()});$('periodModeSelect').addEventListener('change',async()=>{state.periodMode=$('periodModeSelect').value;rebuildPeriodOptions();await loadCommercial()});
   $('compareModeSelect').addEventListener('change',async()=>{state.compareMode=$('compareModeSelect').value;$('compareCustomWrap').hidden=state.compareMode!=='custom';await loadCommercial()});
   $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial()});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('projectGoalType').addEventListener('change',()=>{$('projectGoalUnit').value=$('projectGoalType').value==='percentual'?'%':'valor do indicador'});
@@ -637,6 +670,6 @@ async function init(){
   bindEvents(); icons(); showLoadingSkeletons();
   try{if(localStorage.getItem('pmg_estrategia_nav_collapsed')==='1')$('strategyNav').classList.add('collapsed')}catch{}
   const initial=new URLSearchParams(location.search).get('view');if(['executivo','oportunidades','projetos','acompanhamento','revisoes'].includes(initial))switchView(initial);
-  try{const ok=await bootstrapAuth();if(!ok)return;await Promise.all([loadPeriods(),loadPersistence()]);await loadCommercial();renderAll()}catch(error){console.error(error);setSourceStatus(false,'Falha de inicialização');warning(`<strong>Não foi possível iniciar o Planejamento Estratégico.</strong> ${esc(error.message||error)}`);toast(error.message||String(error),'error')}
+  try{const ok=await bootstrapAuth();if(!ok)return;pollSnapshotStatus();await Promise.all([loadPeriods(),loadPersistence()]);await loadCommercial();renderAll()}catch(error){console.error(error);setSourceStatus(false,'Falha de inicialização');warning(`<strong>Não foi possível iniciar o Planejamento Estratégico.</strong> ${esc(error.message||error)}`);toast(error.message||String(error),'error')}
 }
 init();
