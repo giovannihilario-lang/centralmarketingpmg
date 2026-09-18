@@ -365,14 +365,33 @@ function topBottomHeadline(bucket,noun){
   if(bottom&&bottom.chave!==top?.chave)parts.push(`Maior queda: ${bottom.chave}`);
   return parts.join(' · ')||`Comparativo por ${noun}`;
 }
+// Um trimestre/intervalo que ainda está em andamento (ex.: 3º Tri com
+// setembro só até o dia 18) comparado contra um trimestre anterior 100%
+// completo faz quase toda região/segmento/categoria parecer "em queda" —
+// não é queda de verdade, é mês incompleto arrastando a soma pra baixo
+// (o snapshot só tem pedido que já aconteceu, não inventa os dias que
+// faltam). Corta o mês em andamento do período atual antes de comparar, e
+// resolveComparison desloca a janela anterior pelo mesmo tamanho menor —
+// sempre completo contra completo.
+function trimIncompleteMonths(range){
+  if(!range?.de||!range?.ate||range.de===range.ate||range.ate!==currentMonth())return range;
+  const [y,m]=range.ate.split('-').map(Number);
+  const prevIndex=y*12+(m-1)-1;
+  const newAte=`${Math.floor(prevIndex/12)}-${String(prevIndex%12+1).padStart(2,'0')}`;
+  return newAte>=range.de?{de:range.de,ate:newAte}:range;
+}
 // A comparação usa sempre o período selecionado no filtro (mês OU trimestre)
-// contra o período imediatamente anterior de mesmo tamanho (state.compare —
-// o mesmo "período anterior equivalente" já usado no resto do painel), em
+// contra o período imediatamente anterior de mesmo tamanho (resolveComparison
+// — o mesmo "período anterior equivalente" já usado no resto do painel), em
 // vez de um recorte fixo de ano civil. Assim o botão de período muda de
 // verdade o que a Apresentação 1 mostra, em qualquer granularidade.
 async function loadYoyBreakdown(){
-  const current={...periodRange(state.period),label:periodLabel(state.period)};
-  const previous={...state.compare,label:rangeLabel(state.compare)};
+  const rawCurrent=periodRange(state.period);
+  const trimmedCurrent=trimIncompleteMonths(rawCurrent);
+  const partial=trimmedCurrent.ate!==rawCurrent.ate;
+  const current={...trimmedCurrent,label:partial?rangeLabel(trimmedCurrent):periodLabel(state.period)};
+  const previousRange=resolveComparison(trimmedCurrent);
+  const previous={...previousRange,label:rangeLabel(previousRange)};
   const tasks=[
     ()=>regionalApi('/kpis',filtersForPeriod(current)), ()=>regionalApi('/kpis',filtersForPeriod(previous)),
     ()=>dimension('Regiao',current), ()=>dimension('Regiao',previous),
@@ -388,6 +407,7 @@ async function loadYoyBreakdown(){
   const segmentoCur=keepOnlyFoodSegments(segmentoCurRaw),segmentoPrev=keepOnlyFoodSegments(segmentoPrevRaw);
   state.yoy={
     current,previous,errors,
+    partialExcludedMonth:partial?monthLabel(rawCurrent.ate):null,
     kpisCur:normalizeKpis(Array.isArray(kpisCurRows)?kpisCurRows[0]:kpisCurRows),
     kpisPrev:normalizeKpis(Array.isArray(kpisPrevRows)?kpisPrevRows[0]:kpisPrevRows),
     regiao:yoyDimensionDelta(regiaoCur,regiaoPrev),
@@ -764,7 +784,7 @@ function buildOverviewSlides(){
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
   return [
-    {kind:'cover',icon:'compass',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'Onde crescemos, onde caímos',subtitle:`Comparação entre ${y.current.label} e o período anterior equivalente (${y.previous.label}) — por região, segmento e categoria.`},
+    {kind:'cover',icon:'compass',kicker:'PMG · Planejamento Estratégico · Apresentação 1 de 2',title:'Onde crescemos, onde caímos',subtitle:`Comparação entre ${y.current.label} e o período anterior equivalente (${y.previous.label}) — por região, segmento e categoria.${y.partialExcludedMonth?` ${y.partialExcludedMonth} ainda está em andamento e fica fora da comparação até fechar o mês, pra não puxar a queda artificialmente.`:''}`},
     ...numbered,
     {kind:'cover',icon:'arrow-right-circle',kicker:'Próximo passo',title:'Com o retrato de hoje em mãos, seguimos para oportunidades',subtitle:'Este comparativo mostra onde crescemos e onde caímos. O passo seguinte é transformar cada sinal em prioridade, responsável e prazo — Apresentação 2.'},
   ];
