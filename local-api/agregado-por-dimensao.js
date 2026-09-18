@@ -3,12 +3,24 @@ import { erroApi } from '../src/lib/regional-dashboard.js';
 import { cacheKeyFor, withResponseCache } from '../src/lib/response-cache.js';
 
 const CACHE_MS = 5 * 60_000;
+// Zona e Cidade são texto livre digitado por gente — a mesma cidade/zona
+// aparece com casing diferente em pedidos diferentes ("São Paulo" e "SAO
+// PAULO", "Nova Zona" e "NOVA ZONA" — confirmado no snapshot real), o que
+// divide o faturamento de UM lugar em duas linhas separadas e quebra
+// qualquer comparação de crescimento/queda por esse lugar (aparecia como
+// dois estados/cidades "bugados" na Apresentação 1). Uniformiza pra Title
+// Case sem acento antes de agrupar — sem acento pra não depender de qual
+// grafia "ganha" por sorte — então as duas variantes caem no mesmo balde.
+const titleCase = (value) => String(value || '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase()
+  .replace(/\b\p{L}/gu, (c) => c.toUpperCase());
 const DIMENSOES = {
-  Regiao: ({ client }) => client.z,
+  Regiao: ({ client }) => titleCase(client.z),
   UF: ({ client }) => client.uf,
   // Cidade sozinha repete nome entre estados (ex.: duas "Bonito" diferentes)
   // — "Cidade (UF)" desambigua sem precisar de outra coluna no snapshot.
-  Cidade: ({ client }) => client.ci ? `${client.ci} (${client.uf})` : '',
+  Cidade: ({ client }) => client.ci ? `${titleCase(client.ci)} (${client.uf})` : '',
   Segmento: ({ client }) => client.se,
   Grupo: ({ product }) => product.g,
   Fornecedor: ({ product }) => product.sn,
