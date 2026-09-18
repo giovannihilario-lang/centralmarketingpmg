@@ -979,7 +979,15 @@ async function captureSlideImage(slideData,container){
   const logo=slideEl.querySelector('.slide-brand img');
   if(logo&&!logo.complete)await new Promise(resolve=>{logo.addEventListener('load',resolve,{once:true});logo.addEventListener('error',resolve,{once:true})});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-  const canvas=await window.html2canvas(slideEl,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+  // slide-export força a largura pra 1920px (16:9 => 1080 de altura, via
+  // aspect-ratio do CSS) — exporta sempre em tela cheia Full HD, não no
+  // tamanho reduzido usado só pra caber na tela durante a apresentação.
+  // Captura em scale:2 (3840x2160) e reduz pra exatamente 1920x1080 depois,
+  // pra manter a nitidez de uma captura maior sem estourar o tamanho do
+  // arquivo final.
+  const raw=await window.html2canvas(slideEl,{scale:2,useCORS:true,backgroundColor:'#ffffff'});
+  const canvas=document.createElement('canvas');canvas.width=1920;canvas.height=1080;
+  canvas.getContext('2d').drawImage(raw,0,0,1920,1080);
   exportChart?.destroy();
   return canvas.toDataURL('image/jpeg',0.93);
 }
@@ -990,7 +998,7 @@ async function exportPptx(stage){
   toast(`Gerando PowerPoint com ${slides.length} slide(s)…`);
   const pptx=new window.PptxGenJS();pptx.layout='LAYOUT_WIDE';pptx.author='PMG Connect';pptx.subject='Planejamento Estratégico PMG';pptx.title='PMG Rumo aos R$ 200 milhões';pptx.company='PMG';pptx.lang='pt-BR';
   const container=document.createElement('div');
-  container.style.cssText='position:fixed;left:-10000px;top:0;width:1280px;pointer-events:none;';
+  container.style.cssText='position:fixed;left:-10000px;top:0;width:1920px;pointer-events:none;';
   document.body.appendChild(container);
   try{
     for(const s of slides){
@@ -1012,7 +1020,7 @@ async function exportStandaloneHtml(stage){
   const slides=slidesForStage(stage);
   toast(`Gerando arquivo HTML com ${slides.length} slide(s)…`);
   const container=document.createElement('div');
-  container.style.cssText='position:fixed;left:-10000px;top:0;width:1280px;pointer-events:none;';
+  container.style.cssText='position:fixed;left:-10000px;top:0;width:1920px;pointer-events:none;';
   document.body.appendChild(container);
   const images=[];
   try{for(const s of slides)images.push(await captureSlideImage(s,container))}
