@@ -812,9 +812,52 @@ function buildOpportunityActionSlides(){
   ];
 }
 
-function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():buildOverviewSlides()}
-function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':'Etapa 1 de 2 · Comparativo do período'}
-function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Comparativo_Periodo'}
+// Primeiro rascunho de layout pra Convenção de Fornecedores: reaproveita o
+// MESMO state.yoy já carregado pra Apresentação 1 (nenhuma consulta nova ao
+// SQL), só que numa seleção e num tom diferente — pensado pra público
+// externo (fornecedor), não pra reunião interna. Fica mais positivo por
+// escolha: mostra só o lado "cresceram" das categorias (não os dois lados
+// como a Apresentação 1), porque não faz sentido mostrar queda interna
+// pro fornecedor. O mapa por estado é o único slide "espelhado" 1:1 da
+// Apresentação 1 (mesmo componente, mesma leitura verde/vermelho) porque
+// aqui é sobre presença geográfica, não sobre performance. Os slides de
+// parceria/metas ficam como placeholder — esse conteúdo é institucional,
+// não vem do SQL, precisa ser escrito com o time.
+function supplierGrowthList(bucket,formatTotal,limit=5){
+  const rows=(bucket?.growing||[]).slice(0,limit);
+  if(!rows.length)return null;
+  const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.delta)||0));
+  return rows.map(r=>[r.chave,`${deltaText(r.delta)} · antes ${formatTotal(r.prev)} → agora ${formatTotal(r.cur)}`,Math.max(6,Math.round((Math.abs(r.delta)||0)/maxAbs*100))]);
+}
+function buildSupplierConventionSlides(){
+  const d=presentationData();const y=d.yoy;
+  const growthList=supplierGrowthList(y.categoria,moneyCompact);
+  const body=[
+    {icon:'trending-up',kicker:'A PMG hoje',title:`Faturamento de ${money(y.kpisCur.total_valor)} em ${y.current.label}`,metrics:[
+      ['Faturamento do período',money(y.kpisCur.total_valor),'banknote'],
+      ['Pedidos no período',num(y.kpisCur.n_pedidos),'shopping-cart'],
+      ['Clientes ativos',num(y.kpisCur.n_clientes),'user-round-plus'],
+      ['Peso vendido',kg(y.kpisCur.total_kg),'package'],
+    ],subtitle:`Comparado a ${y.previous.label}, o período anterior equivalente.`,source:'Fonte: SQL Server · dbo.Vendas'},
+    ...(growthList?[{icon:'sprout',kicker:'Onde mais crescemos',title:'Categorias em maior aceleração no período',list:growthList,
+      subtitle:'As categorias de produto que mais cresceram, em faturamento, no período — reflexo direto do trabalho de vocês, nossos fornecedores.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
+    {icon:'map',kicker:'Presença em todo o Brasil',title:'Onde a PMG está crescendo por estado',map:regionMapData(y),sideLists:mapSideLists(y.uf,moneyCompact),
+      subtitle:'Verde é crescimento, vermelho é queda — quanto mais forte a cor, maior a variação. Ao lado, os 5 estados que mais cresceram e os 5 que mais caíram.',source:'Fonte: SQL Server · dbo.Clientes.UF'},
+    {icon:'pie-chart',kicker:'Quem compõe nossa base',title:'Os segmentos que mais representam nosso faturamento',metrics:shareLeadersMetrics(y.segmento,moneyCompact),
+      subtitle:'Os segmentos de cliente que representam a maior fatia do faturamento total no período.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
+    placeholderSectorSlide('Nossa parceria com você','Parceria',['O que a PMG oferece em troca da parceria','Como acompanhamos a performance do fornecedor','Reconhecimentos e destaques do período'],'handshake'),
+    placeholderSectorSlide('Metas conjuntas pra frente','Metas',['O que esperamos da parceria nos próximos 12 meses','Compromissos da PMG com o fornecedor','Como vamos medir o sucesso conjunto'],'target'),
+  ];
+  const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
+  return [
+    {kind:'cover',icon:'handshake',kicker:'PMG · Convenção de Fornecedores',title:'Crescendo junto com quem constrói a PMG',subtitle:`Um retrato de ${y.current.label} e o que vem pela frente — obrigado por fazer parte dessa história.`},
+    ...numbered,
+    {kind:'cover',icon:'heart-handshake',kicker:'Obrigado',title:'Seguimos construindo isso juntos',subtitle:'Próximos passos: agenda de reuniões individuais durante a convenção.'},
+  ];
+}
+function slidesForStage(stage){return stage==='oportunidades'?buildOpportunityActionSlides():stage==='fornecedores'?buildSupplierConventionSlides():buildOverviewSlides()}
+function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oportunidades e plano':stage==='fornecedores'?'Convenção de Fornecedores':'Etapa 1 de 2 · Comparativo do período'}
+function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':stage==='fornecedores'?'Convencao_Fornecedores':'Comparativo_Periodo'}
 function metricColumns(count){
   if(count<=3)return Math.max(1,count);
   if(count===5)return 5;
@@ -1086,7 +1129,7 @@ function bindEvents(){
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
   $('compareModeSelect').addEventListener('change',()=>applyCompareModeChange($('compareModeSelect').value).catch(e=>toast(e.message,'error')));
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('fornecedores').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});
