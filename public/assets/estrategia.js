@@ -587,6 +587,11 @@ function opportunityTypeLabel(op){return ({regional:'Região',categoria:'Categor
 // "Score" sozinho não diz nada pra quem não construiu o algoritmo — troca
 // por antes→agora sempre que a oportunidade já vem com evidência real
 // (a maioria vem, de detectRegionalOpportunities/detectDimensionOpportunities).
+function opportunityDelta(op){
+  const ev=Array.isArray(op.evidence)?op.evidence[0]:null;
+  if(ev&&ev.previous!=null&&ev.previous>0)return pct(ev.current,ev.previous);
+  return null;
+}
 function opportunityRowValue(op){
   const ev=Array.isArray(op.evidence)?op.evidence[0]:null;
   if(ev&&ev.previous!=null&&ev.previous>0){
@@ -745,16 +750,16 @@ function buildOverviewSlides(){
       subtitle:'Quanto cada categoria somou (verde) ou tirou (vermelho) do faturamento total, comparando com o período anterior.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
     {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),sideLists:sideBySideLists(y.regiao,moneyCompact),
       subtitle:`As 5 regiões que mais cresceram e as 5 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
-    {icon:'map',kicker:'Região no mapa',title:'O mesmo comparativo, agora por estado',map:regionMapData(y),
-      subtitle:'Verde é crescimento, vermelho é queda — quanto mais forte a cor, maior a variação. Cinza é estado sem base comparável no período. Passe o mouse num estado pra ver o número.',source:'Fonte: SQL Server · dbo.Clientes.UF'},
+    {icon:'map',kicker:'Região no mapa',title:'O mesmo comparativo, agora por estado',map:regionMapData(y),sideLists:mapSideLists(y.uf,moneyCompact),
+      subtitle:'Verde é crescimento, vermelho é queda — quanto mais forte a cor, maior a variação. Cinza é estado sem base comparável no período. Ao lado, os 5 estados que mais cresceram e os 5 que mais caíram.',source:'Fonte: SQL Server · dbo.Clientes.UF'},
     {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),sideLists:sideBySideLists(y.segmento,moneyCompact),
       subtitle:'Mesmo recorte, agora por segmento de cliente — as 5 que mais cresceram e as 5 que mais caíram, lado a lado.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
     {icon:'pie-chart',kicker:'Segmentos líderes',title:'Quem concentra a base de faturamento da PMG',metrics:shareLeadersMetrics(y.segmento,moneyCompact),
       subtitle:'Os 5 segmentos que representam a maior fatia do faturamento total no período — quanto maior o share, maior a dependência dele.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
     {icon:'package',kicker:'Por categoria',title:topBottomHeadline(y.categoria,'categoria'),sideLists:sideBySideLists(y.categoria,moneyCompact),
       subtitle:'As categorias de produto que mais cresceram e mais caíram, lado a lado — mesma lógica de região e segmento, aqui é onde reforçar ou corrigir o mix.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
-    ...(opsPreview.length?[{icon:'radar',kicker:'Sinais de oportunidade',title:`${num(opsPreview.length)} sinal(is) de região e categoria fora do padrão`,list:opsPreview.map(op=>[op.title,opportunityRowValue(op),Math.max(6,Math.round(op.score))]),
-      subtitle:'Sinais automáticos de queda ou aceleração fora do padrão histórico, com o número real por trás de cada um. Cada sinal vira projeto priorizado, com dono e prazo, na Apresentação 2.'}]:[]),
+    ...(opsPreview.length?[{icon:'radar',kicker:'Sinais de oportunidade',title:`${num(opsPreview.length)} sinal(is) de região e categoria fora do padrão`,list:opsPreview.map(op=>{const delta=opportunityDelta(op);return [op.title,opportunityRowValue(op),Math.max(6,Math.round(op.score)),delta!=null?delta<0:false]}),
+      subtitle:'Sinais automáticos de queda (vermelho) ou aceleração (verde) fora do padrão histórico, com o número real por trás de cada um. Cada sinal vira projeto priorizado, com dono e prazo, na Apresentação 2.'}]:[]),
     placeholderSectorSlide('Próximas estratégias','Estratégia',['Onde dobrar a aposta','Onde corrigir rota','Onde reduzir investimento','Prioridade dos próximos 90 dias'],'compass'),
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
@@ -807,12 +812,24 @@ function slideListRowHtml(item,index){
   return `<div class="slide-list-row"><div class="slide-list-head"><span class="slide-rank">${index+1}</span><strong>${esc(l)}</strong><span class="${negative?'is-negative':''}">${esc(v)}</span></div>${bar}</div>`;
 }
 function slideIconHtml(name,cls){return name?`<i data-lucide="${esc(name)}" class="${cls}"></i>`:''}
+function sideListsHtml(sideLists){
+  return `<div class="slide-side-lists"><div class="slide-side-list-col"><div class="slide-side-list-head is-up"><i data-lucide="trending-up"></i>Cresceram</div><div class="slide-list">${sideLists.growing.length?sideLists.growing.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem crescimento comparável no período.</p>'}</div></div><div class="slide-side-list-col"><div class="slide-side-list-head is-down"><i data-lucide="trending-down"></i>Caíram</div><div class="slide-list">${sideLists.falling.length?sideLists.falling.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem queda comparável no período.</p>'}</div></div></div>`;
+}
+// Ao lado do mapa a coluna fica estreita demais pra duas sub-colunas
+// (cresceram/caíram lado a lado) com o texto completo "antes → agora" —
+// empilha as duas em vez de dividir a largura de novo.
+function mapSideListsHtml(sideLists){
+  return `<div class="slide-map-lists"><div class="slide-side-list-col"><div class="slide-side-list-head is-up"><i data-lucide="trending-up"></i>Cresceram</div><div class="slide-list slide-list-compact">${sideLists.growing.length?sideLists.growing.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem crescimento comparável no período.</p>'}</div></div><div class="slide-side-list-col"><div class="slide-side-list-head is-down"><i data-lucide="trending-down"></i>Caíram</div><div class="slide-list slide-list-compact">${sideLists.falling.length?sideLists.falling.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem queda comparável no período.</p>'}</div></div></div>`;
+}
+function mapHtml(){
+  return `<div class="slide-map"><div class="map-svg-wrap"></div><div class="map-legend"><span class="map-legend-item"><i class="map-legend-swatch is-up"></i>Cresceu</span><span class="map-legend-item"><i class="map-legend-swatch is-down"></i>Caiu</span><span class="map-legend-item"><i class="map-legend-swatch is-flat"></i>Sem base comparável</span></div></div>`;
+}
 function slideHtml(slide){
   const brand=`<div class="slide-brand"><img src="/imagenssite/pmglogo.png" alt=""><span>PMG Connect</span></div>`;
   const source=slide.source?`<div class="slide-source">${esc(slide.source)}</div>`:'';
   const kickerIcon=slide.icon?`<i data-lucide="${esc(slide.icon)}"></i>`:'<i></i>';
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p>${brand}</section>`;
-  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.sideLists?`<div class="slide-side-lists"><div class="slide-side-list-col"><div class="slide-side-list-head is-up"><i data-lucide="trending-up"></i>Cresceram</div><div class="slide-list">${slide.sideLists.growing.length?slide.sideLists.growing.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem crescimento comparável no período.</p>'}</div></div><div class="slide-side-list-col"><div class="slide-side-list-head is-down"><i data-lucide="trending-down"></i>Caíram</div><div class="slide-list">${slide.sideLists.falling.length?slide.sideLists.falling.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem queda comparável no período.</p>'}</div></div></div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}${slide.map?`<div class="slide-map"><div class="map-svg-wrap"></div><div class="map-legend"><span class="map-legend-item"><i class="map-legend-swatch is-up"></i>Cresceu</span><span class="map-legend-item"><i class="map-legend-swatch is-down"></i>Caiu</span><span class="map-legend-item"><i class="map-legend-swatch is-flat"></i>Sem base comparável</span></div></div>`:''}</section>`}
+  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.map&&slide.sideLists?`<div class="slide-map-row">${mapHtml()}${mapSideListsHtml(slide.sideLists)}</div>`:slide.sideLists?sideListsHtml(slide.sideLists):''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}${slide.map&&!slide.sideLists?mapHtml():''}</section>`}
 const SLIDE_CHART_PALETTE={green:'#2d7a4f',gold:'#b58a35',blue:'#3b82f6',red:'#a8443f'};
 const SLIDE_CHART_PALETTE_LIGHT={green:'#7bd39a',gold:'#e9dcb0',blue:'#a6cbfd',red:'#e0a19c'};
 function verticalGradient(ctx,chartArea,stops){
@@ -862,12 +879,27 @@ function paintSlideChart(chartCfg,root,{animate=true}={}){
 // granular demais pra um mapa (525 valores, tipo "ZONA SUL 2"), mas
 // dbo.Clientes.UF já dá o estado de verdade — usa a mesma comparação
 // (período atual x anterior) e só muda de granularidade geográfica.
+const UF_NAMES={ac:'Acre',al:'Alagoas',ap:'Amapá',am:'Amazonas',ba:'Bahia',ce:'Ceará',df:'Distrito Federal',es:'Espírito Santo',go:'Goiás',ma:'Maranhão',mt:'Mato Grosso',ms:'Mato Grosso do Sul',mg:'Minas Gerais',pa:'Pará',pb:'Paraíba',pr:'Paraná',pe:'Pernambuco',pi:'Piauí',rj:'Rio de Janeiro',rn:'Rio Grande do Norte',rs:'Rio Grande do Sul',ro:'Rondônia',rr:'Roraima',sc:'Santa Catarina',sp:'São Paulo',se:'Sergipe',to:'Tocantins'};
 function regionMapData(y){
   const rows=y.uf?.rows||[];
   const byUf=new Map();
   for(const r of rows){const code=String(r.chave||'').trim().toLowerCase();if(code.length===2)byUf.set(code,r)}
   const maxAbs=Math.max(1,...rows.filter(r=>r.prev>0).map(r=>Math.abs(r.delta)||0));
   return {byUf,maxAbs};
+}
+// Ao lado do mapa: os 5 estados (nome completo, não a sigla) que mais
+// cresceram e os 5 que mais caíram — o mapa por si só só mostra a sigla
+// no hover, o que não é o suficiente pra quem quer o nome do estado.
+function mapSideLists(bucket,formatTotal,limit=5){
+  const growingAll=(bucket?.growing||[]).slice(0,limit);
+  const fallingAll=(bucket?.falling||[]).slice(0,limit);
+  const all=[...growingAll,...fallingAll];
+  const maxAbs=Math.max(1,...all.map(r=>Math.abs(r.delta)||0));
+  const row=r=>{
+    const name=UF_NAMES[String(r.chave||'').trim().toLowerCase()]||r.chave;
+    return [name,`${deltaText(r.delta)} · antes ${formatTotal(r.prev)} → agora ${formatTotal(r.cur)}`,Math.max(6,Math.round((Math.abs(r.delta)||0)/maxAbs*100)),r.delta<0];
+  };
+  return {growing:growingAll.map(row),falling:fallingAll.map(row)};
 }
 function ufFillColor(row,maxAbs){
   if(!row||(row.cur<=0&&row.prev<=0))return '#e3e7e1';

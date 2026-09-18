@@ -514,6 +514,15 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .slide-action-table{display:grid;gap:.55cqw;margin-top:1.6cqw;flex:1;align-content:center}
 .slide-chart{position:relative;flex:1;min-height:0;margin-top:2cqw}
 .slide-chart canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+.slide-map-row{display:flex;gap:1.8cqw;flex:1;min-height:0;margin-top:1.2cqw}
+.slide-map-row .slide-map{margin-top:0;flex:1.15;min-width:0}
+.slide-map-lists{flex:1;min-width:0;display:flex;flex-direction:column;gap:.9cqw}
+.slide-map-lists .slide-side-list-col{flex:1;min-height:0}
+.slide-map-lists .slide-list{margin-top:0}
+.slide-list-compact{gap:.5cqw}
+.slide-list-compact .slide-list-row{padding:.6cqw .9cqw;min-height:auto;gap:.35cqw}
+.slide-list-compact .slide-list-head{font-size:.82cqw}
+.slide-list-compact .slide-bar-track{height:.35cqw}
 .slide-map{position:relative;flex:1;min-height:0;margin-top:1.4cqw;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.8cqw}
 .map-svg-wrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center}
 .map-svg-wrap svg{max-width:100%;max-height:100%;width:auto;height:100%}
