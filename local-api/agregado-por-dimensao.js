@@ -6,6 +6,9 @@ const CACHE_MS = 5 * 60_000;
 const DIMENSOES = {
   Regiao: ({ client }) => client.z,
   UF: ({ client }) => client.uf,
+  // Cidade sozinha repete nome entre estados (ex.: duas "Bonito" diferentes)
+  // — "Cidade (UF)" desambigua sem precisar de outra coluna no snapshot.
+  Cidade: ({ client }) => client.ci ? `${client.ci} (${client.uf})` : '',
   Segmento: ({ client }) => client.se,
   Grupo: ({ product }) => product.g,
   Fornecedor: ({ product }) => product.sn,

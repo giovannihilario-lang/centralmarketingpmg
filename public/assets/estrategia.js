@@ -394,12 +394,13 @@ async function loadYoyBreakdown(){
     ()=>dimension('Segmento',current), ()=>dimension('Segmento',previous),
     ()=>dimension('Grupo',current), ()=>dimension('Grupo',previous),
     ()=>dimension('UF',current), ()=>dimension('UF',previous),
+    ()=>dimension('Cidade',current), ()=>dimension('Cidade',previous),
   ];
-  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual','Grupo anterior','UF atual','UF anterior'];
+  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual','Grupo anterior','UF atual','UF anterior','Cidade atual','Cidade anterior'];
   const results=await runWithConcurrency(tasks,3);
   const errors=[];
   const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;errors.push(`${names[i]}: ${r.reason?.message||r.reason}`);return []});
-  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCurRaw,segmentoPrevRaw,grupoCur,grupoPrev,ufCur,ufPrev]=values;
+  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCurRaw,segmentoPrevRaw,grupoCur,grupoPrev,ufCur,ufPrev,cidadeCur,cidadePrev]=values;
   const segmentoCur=keepOnlyFoodSegments(segmentoCurRaw),segmentoPrev=keepOnlyFoodSegments(segmentoPrevRaw);
   state.yoy={
     current,previous,errors,
@@ -410,6 +411,7 @@ async function loadYoyBreakdown(){
     segmento:yoyDimensionDelta(segmentoCur,segmentoPrev),
     categoria:yoyDimensionDelta(excludeNonCoreGroups(grupoCur),excludeNonCoreGroups(grupoPrev)),
     uf:yoyDimensionDelta(ufCur,ufPrev,27),
+    cidade:yoyDimensionDelta(cidadeCur,cidadePrev),
   };
   return state.yoy;
 }
@@ -768,6 +770,8 @@ function buildOverviewSlides(){
       subtitle:`As 5 regiões que mais cresceram e as 5 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
     {icon:'map',kicker:'Região no mapa',title:'O mesmo comparativo, agora por estado',map:regionMapData(y),sideLists:mapSideLists(y.uf,moneyCompact),
       subtitle:'Verde é crescimento, vermelho é queda — quanto mais forte a cor, maior a variação. Cinza é estado sem base comparável no período. Ao lado, os 5 estados que mais cresceram e os 5 que mais caíram.',source:'Fonte: SQL Server · dbo.Clientes.UF'},
+    {icon:'building-2',kicker:'Região no mapa, por cidade',title:topBottomHeadline(y.cidade,'cidade'),sideLists:sideBySideLists(y.cidade,moneyCompact),
+      subtitle:'O mesmo comparativo, agora no nível de cidade — as 5 que mais cresceram e as 5 que mais caíram em faturamento. Sem mapa aqui: não há forma confiável de desenhar fronteira de cidade, só de estado.',source:'Fonte: SQL Server · dbo.Clientes.Cidade'},
     {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),sideLists:sideBySideLists(y.segmento,moneyCompact),
       subtitle:'Mesmo recorte, agora por segmento de cliente — as 5 que mais cresceram e as 5 que mais caíram, lado a lado.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
     {icon:'pie-chart',kicker:'Segmentos líderes',title:'Quem concentra a base de faturamento da PMG',metrics:shareLeadersMetrics(y.segmento,moneyCompact),
