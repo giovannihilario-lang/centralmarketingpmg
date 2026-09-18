@@ -306,9 +306,14 @@ function yoyDimensionDelta(currentRows,previousRows,limit=3){
   // e o "top 3 que mais caiu" podem ser quase o mesmo conjunto — falling
   // exclui quem já está em growing antes de cortar em 3, em vez de deixar
   // pra deduplicação depois (que só encolhia a lista final).
-  const growing=[...comparable].sort((a,b)=>b.delta-a.delta).slice(0,limit);
-  const growingKeys=new Set(growing.map(r=>r.chave));
-  const falling=[...comparable].filter(r=>!growingKeys.has(r.chave)).sort((a,b)=>a.delta-b.delta).slice(0,limit);
+  // Só entra em "cresceu" quem realmente cresceu (delta>0), só entra em
+  // "caiu" quem realmente caiu (delta<0) — antes pegava sempre os top/
+  // bottom N por ordenação, então com poucos ganhadores de verdade (comum
+  // em categoria, que só tem 16 valores possíveis), uma categoria em queda
+  // (só que "menos pior" que as outras) aparecia rotulada como "maior
+  // crescimento", o que lia como "o crescimento não aparece".
+  const growing=comparable.filter(r=>r.delta>0).sort((a,b)=>b.delta-a.delta).slice(0,limit);
+  const falling=comparable.filter(r=>r.delta<0).sort((a,b)=>a.delta-b.delta).slice(0,limit);
   return {rows,leaders,growing,falling};
 }
 function deltaText(delta){return delta==null?'novo':`${delta>=0?'▲ +':'▼ '}${delta.toFixed(1)}%`}
@@ -328,32 +333,21 @@ function shareLeadersMetrics(bucket,formatTotal,limit=4){
 // em vez de só listar percentuais soltos. As barras reconciliam por
 // construção: os dois pontos-âncora são a SOMA das categorias (não o KPI
 // geral), então "anterior + todas as contribuições = atual" sempre fecha.
+// Um waterfall/ponte "de verdade" (barras flutuantes, sem tocar o eixo)
+// é a técnica de mercado pra isso, mas é uma convenção que só quem já viu
+// antes reconhece de cara — pra quem não conhece, barra que não encosta no
+// chão parece gráfico quebrado. Prioriza clareza: mostra a mesma pergunta
+// (o que puxou o faturamento pra cima ou pra baixo) como barras normais,
+// partindo de zero como todas as outras barras da apresentação.
 function revenueBridgeChart(y){
   const rows=(y.categoria?.rows||[]).filter(r=>r.cur>0||r.prev>0);
   if(!rows.length)return null;
   const sorted=[...rows].sort((a,b)=>Math.abs(b.cur-b.prev)-Math.abs(a.cur-a.prev));
   const top=sorted.slice(0,7);
   const rest=sorted.slice(7);
-  const prevTotal=rows.reduce((s,r)=>s+r.prev,0);
-  const curTotal=rows.reduce((s,r)=>s+r.cur,0);
-  const segs=[];let running=prevTotal;const levels=[prevTotal];
-  for(const r of top){const delta=r.cur-r.prev;const end=running+delta;segs.push({label:r.chave,delta,start:running,end});levels.push(end);running=end}
-  if(rest.length){const delta=rest.reduce((s,r)=>s+(r.cur-r.prev),0);const end=running+delta;segs.push({label:'Demais categorias',delta,start:running,end});levels.push(end);running=end}
-  levels.push(curTotal);
-  // Eixo não começa em zero de propósito: numa ponte de faturamento, o que
-  // importa é o tamanho relativo de cada contribuição, não a escala
-  // absoluta — com o eixo em zero, variações de categoria (tipicamente
-  // pequenas perto do faturamento total) viram tracinhos ilegíveis lá em
-  // cima do gráfico. O "chão" aqui é o menor nível realmente tocado pela
-  // ponte, com uma folga pequena, e as barras-âncora (anterior/atual)
-  // partem desse chão em vez de zero de verdade.
-  const floor=Math.min(...levels)*0.985;
-  const ceiling=Math.max(...levels)*1.03;
-  const labels=['Anterior',...segs.map(s=>s.label),'Atual'];
-  const data=[[floor,prevTotal],...segs.map(s=>[Math.min(s.start,s.end),Math.max(s.start,s.end)]),[floor,curTotal]];
-  const pointColors=['gold',...segs.map(s=>s.delta>=0?'green':'red'),'blue'];
-  const deltas=[prevTotal,...segs.map(s=>s.delta),curTotal];
-  return {waterfall:true,format:'money',labels,yMin:floor,yMax:ceiling,datasets:[{data,pointColors,deltas}]};
+  const segs=top.map(r=>({label:r.chave,delta:r.cur-r.prev}));
+  if(rest.length)segs.push({label:'Demais categorias',delta:rest.reduce((s,r)=>s+(r.cur-r.prev),0)});
+  return {waterfall:true,format:'money',labels:segs.map(s=>s.label),datasets:[{data:segs.map(s=>s.delta),pointColors:segs.map(s=>s.delta>=0?'green':'red'),deltas:segs.map(s=>s.delta)}]};
 }
 function topBottomHeadline(bucket,noun){
   const top=bucket?.growing?.[0],bottom=bucket?.falling?.find(r=>r.chave!==top?.chave)||bucket?.falling?.[0];
@@ -376,12 +370,13 @@ async function loadYoyBreakdown(){
     ()=>dimension('Regiao',current), ()=>dimension('Regiao',previous),
     ()=>dimension('Segmento',current), ()=>dimension('Segmento',previous),
     ()=>dimension('Grupo',current), ()=>dimension('Grupo',previous),
+    ()=>dimension('UF',current), ()=>dimension('UF',previous),
   ];
-  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual','Grupo anterior'];
+  const names=['KPIs período atual','KPIs período anterior','Região atual','Região anterior','Segmento atual','Segmento anterior','Grupo atual','Grupo anterior','UF atual','UF anterior'];
   const results=await runWithConcurrency(tasks,3);
   const errors=[];
   const values=results.map((r,i)=>{if(r.status==='fulfilled')return r.value;errors.push(`${names[i]}: ${r.reason?.message||r.reason}`);return []});
-  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCurRaw,segmentoPrevRaw,grupoCur,grupoPrev]=values;
+  const [kpisCurRows,kpisPrevRows,regiaoCur,regiaoPrev,segmentoCurRaw,segmentoPrevRaw,grupoCur,grupoPrev,ufCur,ufPrev]=values;
   const segmentoCur=keepOnlyFoodSegments(segmentoCurRaw),segmentoPrev=keepOnlyFoodSegments(segmentoPrevRaw);
   state.yoy={
     current,previous,errors,
@@ -390,6 +385,7 @@ async function loadYoyBreakdown(){
     regiao:yoyDimensionDelta(regiaoCur,regiaoPrev),
     segmento:yoyDimensionDelta(segmentoCur,segmentoPrev),
     categoria:yoyDimensionDelta(excludeNonCoreGroups(grupoCur),excludeNonCoreGroups(grupoPrev)),
+    uf:yoyDimensionDelta(ufCur,ufPrev,27),
   };
   return state.yoy;
 }
@@ -725,10 +721,12 @@ function buildOverviewSlides(){
   const opsPreview=state.generatedOpportunities.slice(0,6);
   const bridge=revenueBridgeChart(y);
   const body=[
-    ...(bridge?[{icon:'git-commit-horizontal',kicker:'Ponte do faturamento',title:`De ${y.previous.label} a ${y.current.label}: o que puxou o faturamento pra cima ou pra baixo`,chart:bridge,
-      subtitle:'Cada barra é o quanto aquela categoria empurrou o faturamento — verde soma, vermelho tira. As pontas (dourado e azul) são o total antes e depois; elas sempre batem com a soma das barras do meio.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
+    ...(bridge?[{icon:'git-commit-horizontal',kicker:'O que puxou o faturamento',title:`De ${y.previous.label} a ${y.current.label}: o que puxou o faturamento pra cima ou pra baixo`,chart:bridge,
+      subtitle:'Quanto cada categoria somou (verde) ou tirou (vermelho) do faturamento total, comparando com o período anterior.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
     {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),list:yoyRankingList(y.regiao,moneyCompact),
       subtitle:`As 3 regiões que mais cresceram e as 3 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
+    {icon:'map',kicker:'Região no mapa',title:'O mesmo comparativo, agora por estado',map:regionMapData(y),
+      subtitle:'Verde é crescimento, vermelho é queda — quanto mais forte a cor, maior a variação. Cinza é estado sem base comparável no período. Passe o mouse num estado pra ver o número.',source:'Fonte: SQL Server · dbo.Clientes.UF'},
     {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,moneyCompact),
       subtitle:'Mesmo recorte, agora por segmento de cliente — onde o segmento cresceu ou caiu mais forte.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
     {icon:'pie-chart',kicker:'Segmentos líderes',title:'Quem concentra a base de faturamento da PMG',metrics:shareLeadersMetrics(y.segmento,moneyCompact),
@@ -793,7 +791,7 @@ function slideHtml(slide){
   const source=slide.source?`<div class="slide-source">${esc(slide.source)}</div>`:'';
   const kickerIcon=slide.icon?`<i data-lucide="${esc(slide.icon)}"></i>`:'<i></i>';
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p>${brand}</section>`;
-  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}</section>`}
+  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}${slide.map?`<div class="slide-map"><div class="map-svg-wrap"></div><div class="map-legend"><span class="map-legend-item"><i class="map-legend-swatch is-up"></i>Cresceu</span><span class="map-legend-item"><i class="map-legend-swatch is-down"></i>Caiu</span><span class="map-legend-item"><i class="map-legend-swatch is-flat"></i>Sem base comparável</span></div></div>`:''}</section>`}
 const SLIDE_CHART_PALETTE={green:'#2d7a4f',gold:'#b58a35',blue:'#3b82f6',red:'#a8443f'};
 const SLIDE_CHART_PALETTE_LIGHT={green:'#7bd39a',gold:'#e9dcb0',blue:'#a6cbfd',red:'#e0a19c'};
 function verticalGradient(ctx,chartArea,stops){
@@ -816,7 +814,7 @@ function paintSlideChart(chartCfg,root,{animate=true}={}){
       borderRadius:6,borderSkipped:false,maxBarThickness:56,
     }]},options:{
       responsive:true,maintainAspectRatio:false,animation:animate?{duration:900,easing:'easeOutCubic'}:false,
-      scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'},color:'#6d766f',maxRotation:0,autoSkip:false}},y:{min:chartCfg.yMin,max:chartCfg.yMax,grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:formatAxis}}},
+      scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'},color:'#6d766f',maxRotation:0,autoSkip:false}},y:{grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:formatAxis}}},
       plugins:{legend:{display:false},tooltip:{backgroundColor:'#173d2a',padding:10,cornerRadius:8,titleFont:{size:11},bodyFont:{size:11},callbacks:{label:ctx=>formatTip(ds.deltas[ctx.dataIndex])}}},
     }});
   }
@@ -839,6 +837,47 @@ function paintSlideChart(chartCfg,root,{animate=true}={}){
     plugins:{legend:{display:!single,position:'top',align:'end',labels:{boxWidth:10,usePointStyle:true,pointStyle:'circle',font:{size:10},color:'#6d766f'}},tooltip:{backgroundColor:'#173d2a',padding:10,cornerRadius:8,titleFont:{size:11},bodyFont:{size:11},callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatTip(ctx.parsed.y)}`}}},
   }});
 }
+// Mapa do Brasil (choropleth) pra "por região": dbo.Clientes.Zona é
+// granular demais pra um mapa (525 valores, tipo "ZONA SUL 2"), mas
+// dbo.Clientes.UF já dá o estado de verdade — usa a mesma comparação
+// (período atual x anterior) e só muda de granularidade geográfica.
+function regionMapData(y){
+  const rows=y.uf?.rows||[];
+  const byUf=new Map();
+  for(const r of rows){const code=String(r.chave||'').trim().toLowerCase();if(code.length===2)byUf.set(code,r)}
+  const maxAbs=Math.max(1,...rows.filter(r=>r.prev>0).map(r=>Math.abs(r.delta)||0));
+  return {byUf,maxAbs};
+}
+function ufFillColor(row,maxAbs){
+  if(!row||(row.cur<=0&&row.prev<=0))return '#e3e7e1';
+  if(row.delta==null)return '#b58a35';
+  const intensity=0.22+Math.min(1,Math.abs(row.delta)/maxAbs)*0.78;
+  const base=row.delta>=0?[45,122,79]:[168,68,63];
+  const mix=base.map(c=>Math.round(255+(c-255)*intensity));
+  return `rgb(${mix.join(',')})`;
+}
+let brazilSvgPromise=null;
+function loadBrazilSvg(){
+  if(!brazilSvgPromise)brazilSvgPromise=fetch('/assets/brasil-mapa.svg').then(r=>r.text());
+  return brazilSvgPromise;
+}
+async function paintSlideMap(mapCfg,root){
+  const wrap=root.querySelector('.slide-map .map-svg-wrap');
+  if(!wrap||!mapCfg)return;
+  let svgText;
+  try{svgText=await loadBrazilSvg()}catch{return}
+  wrap.innerHTML=svgText;
+  const svg=wrap.querySelector('svg');if(!svg)return;
+  svg.setAttribute('preserveAspectRatio','xMidYMid meet');
+  svg.querySelectorAll('path[id]').forEach(path=>{
+    const row=mapCfg.byUf.get(path.id.toLowerCase());
+    const name=path.getAttribute('aria-label')||path.id.toUpperCase();
+    path.setAttribute('fill',ufFillColor(row,mapCfg.maxAbs));
+    path.setAttribute('stroke','#fbfbf8');path.setAttribute('stroke-width','1.1');
+    const label=!row||(row.cur<=0&&row.prev<=0)?`${name}: sem base comparável`:row.delta==null?`${name}: novo no período (${money(row.cur)})`:`${name}: ${deltaText(row.delta)} · ${moneyCompact(row.cur)}`;
+    path.innerHTML=`<title>${esc(label)}</title>`;
+  });
+}
 let presentSlideChart=null;
 function goToSlide(index,{initial=false}={}){
   const previous=state.presentationIndex;const clamped=Math.max(0,Math.min(index,state.slides.length-1));
@@ -846,6 +885,7 @@ function goToSlide(index,{initial=false}={}){
   const el=$('presentationStage');el.innerHTML=slideHtml(state.slides[clamped]);icons();
   presentSlideChart?.destroy();presentSlideChart=null;
   if(state.slides[clamped].chart)presentSlideChart=paintSlideChart(state.slides[clamped].chart,el);
+  if(state.slides[clamped].map)paintSlideMap(state.slides[clamped].map,el).catch(()=>{});
   if(!initial){const slideEl=el.querySelector('.slide');if(slideEl)slideEl.classList.toggle('slide-back',back)}
   $('presentCounter').textContent=`${clamped+1} / ${state.slides.length}`;
   $('presentPrev').disabled=clamped===0;$('presentNext').disabled=clamped===state.slides.length-1;
@@ -874,6 +914,7 @@ async function captureSlideImage(slideData,container){
   try{window.lucide?.createIcons({attrs:{'stroke-width':1.9}})}catch{}
   let exportChart=null;
   if(slideData.chart)exportChart=paintSlideChart(slideData.chart,container,{animate:false});
+  if(slideData.map)await paintSlideMap(slideData.map,container).catch(()=>{});
   const logo=slideEl.querySelector('.slide-brand img');
   if(logo&&!logo.complete)await new Promise(resolve=>{logo.addEventListener('load',resolve,{once:true});logo.addEventListener('error',resolve,{once:true})});
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
