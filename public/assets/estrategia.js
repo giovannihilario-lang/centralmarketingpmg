@@ -334,28 +334,24 @@ function sideBySideLists(bucket,formatTotal){
 function shareLeadersMetrics(bucket,formatTotal,limit=5){
   return (bucket?.leaders||[]).slice(0,limit).map(r=>[r.chave,`${r.share.toFixed(1)}% da base · ${formatTotal(r.cur)}`,'pie-chart']);
 }
-// Ponte de faturamento (waterfall/bridge chart): técnica padrão de mercado
-// (popularizada pela McKinsey nos anos 90) pra explicar variação de
-// faturamento pra board/diretoria sem enterrar a história numa planilha —
-// mostra o quanto cada categoria empurrou o total pra cima ou pra baixo,
-// em vez de só listar percentuais soltos. As barras reconciliam por
-// construção: os dois pontos-âncora são a SOMA das categorias (não o KPI
-// geral), então "anterior + todas as contribuições = atual" sempre fecha.
-// Um waterfall/ponte "de verdade" (barras flutuantes, sem tocar o eixo)
-// é a técnica de mercado pra isso, mas é uma convenção que só quem já viu
-// antes reconhece de cara — pra quem não conhece, barra que não encosta no
-// chão parece gráfico quebrado. Prioriza clareza: mostra a mesma pergunta
-// (o que puxou o faturamento pra cima ou pra baixo) como barras normais,
-// partindo de zero como todas as outras barras da apresentação.
-function revenueBridgeChart(y){
-  const rows=(y.categoria?.rows||[]).filter(r=>r.cur>0||r.prev>0);
+// Ponte de faturamento: quanto cada categoria somou ou tirou do faturamento
+// total, em reais — não em percentual (uma categoria pequena que dobrou de
+// tamanho pesa menos no total do que uma categoria grande que caiu 5%, e é
+// isso que decide a prioridade de quem investigar primeiro). Um gráfico de
+// barras com 7+ categorias e nomes longos no eixo X (testado antes) ficava
+// ilegível — nomes cortados/rotacionados e usuário reportou como "confuso".
+// Reaproveita o layout de lista lado a lado (cresceu/caiu) que já funciona
+// bem no resto da apresentação, só que ordenado por impacto em R$, não por
+// variação percentual.
+function revenueBridgeLists(y,limit=5){
+  const rows=(y.categoria?.rows||[]).filter(r=>r.cur>0||r.prev>0).map(r=>({...r,deltaAbs:r.cur-r.prev}));
   if(!rows.length)return null;
-  const sorted=[...rows].sort((a,b)=>Math.abs(b.cur-b.prev)-Math.abs(a.cur-a.prev));
-  const top=sorted.slice(0,7);
-  const rest=sorted.slice(7);
-  const segs=top.map(r=>({label:r.chave,delta:r.cur-r.prev}));
-  if(rest.length)segs.push({label:'Demais categorias',delta:rest.reduce((s,r)=>s+(r.cur-r.prev),0)});
-  return {waterfall:true,format:'money',labels:segs.map(s=>s.label),datasets:[{data:segs.map(s=>s.delta),pointColors:segs.map(s=>s.delta>=0?'green':'red'),deltas:segs.map(s=>s.delta)}]};
+  const growingAll=rows.filter(r=>r.deltaAbs>0).sort((a,b)=>b.deltaAbs-a.deltaAbs).slice(0,limit);
+  const fallingAll=rows.filter(r=>r.deltaAbs<0).sort((a,b)=>a.deltaAbs-b.deltaAbs).slice(0,limit);
+  if(!growingAll.length&&!fallingAll.length)return null;
+  const maxAbs=Math.max(1,...[...growingAll,...fallingAll].map(r=>Math.abs(r.deltaAbs)));
+  const row=r=>[r.chave,`${r.deltaAbs>=0?'▲ +':'▼ -'}${moneyCompact(Math.abs(r.deltaAbs))} · antes ${moneyCompact(r.prev)} → agora ${moneyCompact(r.cur)}`,Math.max(6,Math.round(Math.abs(r.deltaAbs)/maxAbs*100)),r.deltaAbs<0];
+  return {growing:growingAll.map(row),falling:fallingAll.map(row)};
 }
 function topBottomHeadline(bucket,noun){
   const top=bucket?.growing?.[0],bottom=bucket?.falling?.find(r=>r.chave!==top?.chave)||bucket?.falling?.[0];
@@ -764,10 +760,10 @@ function placeholderSectorSlide(kicker,area,indicadores,icon='layout-grid'){
 function buildOverviewSlides(){
   const d=presentationData();const y=d.yoy;
   const opsPreview=state.generatedOpportunities.slice(0,6);
-  const bridge=revenueBridgeChart(y);
+  const bridge=revenueBridgeLists(y);
   const body=[
-    ...(bridge?[{icon:'git-commit-horizontal',kicker:'O que puxou o faturamento',title:`De ${y.previous.label} a ${y.current.label}: o que puxou o faturamento pra cima ou pra baixo`,chart:bridge,
-      subtitle:'Quanto cada categoria somou (verde) ou tirou (vermelho) do faturamento total, comparando com o período anterior.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
+    ...(bridge?[{icon:'git-commit-horizontal',kicker:'O que puxou o faturamento',title:`De ${y.previous.label} a ${y.current.label}: o que puxou o faturamento pra cima ou pra baixo`,sideLists:bridge,
+      subtitle:'As categorias que mais somaram e as que mais tiraram do faturamento total, em reais — ordenado pelo tamanho do impacto, não pelo percentual.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
     {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),sideLists:sideBySideLists(y.regiao,moneyCompact),
       subtitle:`As 5 regiões que mais cresceram e as 5 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
     {icon:'map',kicker:'Região no mapa',title:'O mesmo comparativo, agora por estado',map:regionMapData(y),sideLists:mapSideLists(y.uf,moneyCompact),
@@ -864,18 +860,6 @@ function paintSlideChart(chartCfg,root,{animate=true}={}){
   const formatAxis=chartCfg.format==='money'?v=>moneyCompact(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
   const formatTip=chartCfg.format==='money'?v=>money(v):chartCfg.format==='kg'?v=>kg(v):v=>num(v);
   const single=chartCfg.datasets.length===1;
-  if(chartCfg.waterfall){
-    const ds=chartCfg.datasets[0];
-    return new Chart(canvas,{type:'bar',data:{labels:chartCfg.labels,datasets:[{
-      data:ds.data,
-      backgroundColor:ds.pointColors.map(c=>SLIDE_CHART_PALETTE[c]||SLIDE_CHART_PALETTE.green),
-      borderRadius:6,borderSkipped:false,maxBarThickness:56,
-    }]},options:{
-      responsive:true,maintainAspectRatio:false,animation:animate?{duration:900,easing:'easeOutCubic'}:false,
-      scales:{x:{grid:{display:false},ticks:{font:{size:10,weight:'bold'},color:'#6d766f',maxRotation:0,autoSkip:false}},y:{grid:{color:'#e9ece7'},ticks:{font:{size:10},color:'#6d766f',callback:formatAxis}}},
-      plugins:{legend:{display:false},tooltip:{backgroundColor:'#173d2a',padding:10,cornerRadius:8,titleFont:{size:11},bodyFont:{size:11},callbacks:{label:ctx=>formatTip(ds.deltas[ctx.dataIndex])}}},
-    }});
-  }
   const datasets=chartCfg.datasets.map(ds=>{
     const color=SLIDE_CHART_PALETTE[ds.color]||SLIDE_CHART_PALETTE.green;
     const light=SLIDE_CHART_PALETTE_LIGHT[ds.color]||SLIDE_CHART_PALETTE_LIGHT.green;
