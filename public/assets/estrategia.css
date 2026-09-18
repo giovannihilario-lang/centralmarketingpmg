@@ -485,6 +485,16 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 .slide-metric span{font-size:.82cqw;color:#6a756d;text-transform:uppercase;font-weight:800;letter-spacing:.04em}
 .slide-metric strong{display:block;font-size:2.2cqw;margin-top:.6cqw;color:var(--green-dark);font-weight:800}
 .slide-list{display:grid;gap:.9cqw;margin-top:2cqw;flex:1;align-content:center}
+.slide-side-lists{display:grid;grid-template-columns:1fr 1fr;gap:1.6cqw;flex:1;align-content:center;margin-top:1.4cqw}
+.slide-side-list-col{display:flex;flex-direction:column;min-height:0}
+.slide-side-list-col .slide-list{margin-top:0}
+.slide-side-list-head{display:flex;align-items:center;gap:.5cqw;font-size:.95cqw;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.8cqw}
+.slide-side-list-head svg{width:1.1cqw;height:1.1cqw;stroke-width:2.4}
+.slide-side-list-head.is-up{color:var(--green-mid)}
+.slide-side-list-head.is-up svg{stroke:var(--green-mid)}
+.slide-side-list-head.is-down{color:var(--red)}
+.slide-side-list-head.is-down svg{stroke:var(--red)}
+.slide-side-empty{font-size:.92cqw;color:#8a978f;font-style:italic}
 .slide-list-row{background:#fff;border:1px solid #e3e7e1;border-radius:.8cqw;padding:1.1cqw 1.4cqw;display:flex;flex-direction:column;justify-content:center;gap:.6cqw;min-height:3.6cqw;box-shadow:0 4px 14px rgba(20,50,32,.05)}
 .slide-list-head{display:flex;align-items:center;gap:.6cqw;font-size:1.05cqw}
 .slide-list-head strong{flex:1}

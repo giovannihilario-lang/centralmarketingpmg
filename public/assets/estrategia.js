@@ -290,7 +290,7 @@ async function dimension(dimension,period,metrica='Valor',extra={}){return regio
 
 // Rótulo de um intervalo {de,ate} genérico (mês único ou vários meses).
 function rangeLabel(range){if(!range?.de)return '—';return range.de===range.ate?monthLabel(range.de):`${monthLabel(range.de)}–${monthLabel(range.ate)}`}
-function yoyDimensionDelta(currentRows,previousRows,limit=3){
+function yoyDimensionDelta(currentRows,previousRows,limit=5){
   const curMap=new Map((currentRows||[]).map(r=>[r.chave,number(r.total)]));
   const prevMap=new Map((previousRows||[]).map(r=>[r.chave,number(r.total)]));
   const curTotalGeral=number(currentRows?.[0]?.total_geral)||[...curMap.values()].reduce((s,v)=>s+v,0)||1;
@@ -323,7 +323,15 @@ function yoyRankingList(bucket,formatTotal){
   const maxAbs=Math.max(1,...rows.map(r=>Math.abs(r.delta)||0));
   return rows.map(r=>[r.chave,`${deltaText(r.delta)} · antes ${formatTotal(r.prev)} → agora ${formatTotal(r.cur)}`,Math.max(6,Math.round((Math.abs(r.delta)||0)/maxAbs*100)),r.delta<0]);
 }
-function shareLeadersMetrics(bucket,formatTotal,limit=4){
+// Crescimentos e quedas lado a lado (duas colunas), em vez de uma lista só
+// empilhada — mais fácil de comparar os dois lados de uma vez.
+function sideBySideLists(bucket,formatTotal){
+  const all=[...(bucket?.growing||[]),...(bucket?.falling||[])];
+  const maxAbs=Math.max(1,...all.map(r=>Math.abs(r.delta)||0));
+  const row=r=>[r.chave,`${deltaText(r.delta)} · antes ${formatTotal(r.prev)} → agora ${formatTotal(r.cur)}`,Math.max(6,Math.round((Math.abs(r.delta)||0)/maxAbs*100)),r.delta<0];
+  return {growing:(bucket?.growing||[]).map(row),falling:(bucket?.falling||[]).map(row)};
+}
+function shareLeadersMetrics(bucket,formatTotal,limit=5){
   return (bucket?.leaders||[]).slice(0,limit).map(r=>[r.chave,`${r.share.toFixed(1)}% da base · ${formatTotal(r.cur)}`,'pie-chart']);
 }
 // Ponte de faturamento (waterfall/bridge chart): técnica padrão de mercado
@@ -576,6 +584,18 @@ function renderEvolution(){
 }
 
 function opportunityTypeLabel(op){return ({regional:'Região',categoria:'Categoria',produto:'Produto',fornecedor:'Fornecedor',cliente:'Cliente',manual:'Manual'})[op.kind||op.tipo]||'Oportunidade'}
+// "Score" sozinho não diz nada pra quem não construiu o algoritmo — troca
+// por antes→agora sempre que a oportunidade já vem com evidência real
+// (a maioria vem, de detectRegionalOpportunities/detectDimensionOpportunities).
+function opportunityRowValue(op){
+  const ev=Array.isArray(op.evidence)?op.evidence[0]:null;
+  if(ev&&ev.previous!=null&&ev.previous>0){
+    const delta=pct(ev.current,ev.previous);
+    return `${opportunityTypeLabel(op)} · ${deltaText(delta)} · antes ${moneyCompact(ev.previous)} → agora ${moneyCompact(ev.current)}`;
+  }
+  if(ev&&ev.current!=null)return `${opportunityTypeLabel(op)} · ${moneyCompact(ev.current)}`;
+  return `${opportunityTypeLabel(op)} · Score ${(op.score||0).toFixed(0)}`;
+}
 function evidenceHtml(op){
   const ev=op.evidence||safeJson(op.evidencias,[]); if(!Array.isArray(ev))return '';
   return `<div class="evidence">${ev.map(item=>`<div class="evidence-row"><span>${esc(item.label||'Indicador')}</span><strong>${/kg/i.test(item.label||'')?kg(item.current):money(item.current)}${item.previous!=null?` · antes ${/kg/i.test(item.label||'')?kg(item.previous):money(item.previous)}`:''}</strong></div>`).join('')}</div>`;
@@ -723,18 +743,18 @@ function buildOverviewSlides(){
   const body=[
     ...(bridge?[{icon:'git-commit-horizontal',kicker:'O que puxou o faturamento',title:`De ${y.previous.label} a ${y.current.label}: o que puxou o faturamento pra cima ou pra baixo`,chart:bridge,
       subtitle:'Quanto cada categoria somou (verde) ou tirou (vermelho) do faturamento total, comparando com o período anterior.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'}]:[]),
-    {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),list:yoyRankingList(y.regiao,moneyCompact),
-      subtitle:`As 3 regiões que mais cresceram e as 3 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
+    {icon:'map-pin',kicker:'Por região',title:topBottomHeadline(y.regiao,'região'),sideLists:sideBySideLists(y.regiao,moneyCompact),
+      subtitle:`As 5 regiões que mais cresceram e as 5 que mais caíram em faturamento, ${y.current.label} contra ${y.previous.label}.`,source:'Fonte: SQL Server · dbo.Clientes.Zona'},
     {icon:'map',kicker:'Região no mapa',title:'O mesmo comparativo, agora por estado',map:regionMapData(y),
       subtitle:'Verde é crescimento, vermelho é queda — quanto mais forte a cor, maior a variação. Cinza é estado sem base comparável no período. Passe o mouse num estado pra ver o número.',source:'Fonte: SQL Server · dbo.Clientes.UF'},
-    {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),list:yoyRankingList(y.segmento,moneyCompact),
-      subtitle:'Mesmo recorte, agora por segmento de cliente — onde o segmento cresceu ou caiu mais forte.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
+    {icon:'users',kicker:'Por segmento',title:topBottomHeadline(y.segmento,'segmento'),sideLists:sideBySideLists(y.segmento,moneyCompact),
+      subtitle:'Mesmo recorte, agora por segmento de cliente — as 5 que mais cresceram e as 5 que mais caíram, lado a lado.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
     {icon:'pie-chart',kicker:'Segmentos líderes',title:'Quem concentra a base de faturamento da PMG',metrics:shareLeadersMetrics(y.segmento,moneyCompact),
-      subtitle:'Quanto cada segmento representa do faturamento total no período — quanto maior o share, maior a dependência dele.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
-    {icon:'package',kicker:'Por categoria',title:topBottomHeadline(y.categoria,'categoria'),list:yoyRankingList(y.categoria,moneyCompact),
-      subtitle:'As categorias de produto que mais cresceram e mais caíram — mesma lógica de região e segmento, aqui é onde reforçar ou corrigir o mix.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
-    ...(opsPreview.length?[{icon:'radar',kicker:'Sinais de oportunidade',title:`${num(opsPreview.length)} sinal(is) de região e categoria fora do padrão`,list:opsPreview.map(op=>[op.title,`Score ${op.score.toFixed(0)} · ${opportunityTypeLabel(op)}`,Math.max(6,Math.round(op.score))]),
-      subtitle:'Sinais automáticos de queda ou aceleração fora do padrão histórico. Cada um vira projeto priorizado, com dono e prazo, na Apresentação 2.'}]:[]),
+      subtitle:'Os 5 segmentos que representam a maior fatia do faturamento total no período — quanto maior o share, maior a dependência dele.',source:'Fonte: SQL Server · dbo.Clientes.Segmento'},
+    {icon:'package',kicker:'Por categoria',title:topBottomHeadline(y.categoria,'categoria'),sideLists:sideBySideLists(y.categoria,moneyCompact),
+      subtitle:'As categorias de produto que mais cresceram e mais caíram, lado a lado — mesma lógica de região e segmento, aqui é onde reforçar ou corrigir o mix.',source:'Fonte: SQL Server · dbo.Produtos.Grupo'},
+    ...(opsPreview.length?[{icon:'radar',kicker:'Sinais de oportunidade',title:`${num(opsPreview.length)} sinal(is) de região e categoria fora do padrão`,list:opsPreview.map(op=>[op.title,opportunityRowValue(op),Math.max(6,Math.round(op.score))]),
+      subtitle:'Sinais automáticos de queda ou aceleração fora do padrão histórico, com o número real por trás de cada um. Cada sinal vira projeto priorizado, com dono e prazo, na Apresentação 2.'}]:[]),
     placeholderSectorSlide('Próximas estratégias','Estratégia',['Onde dobrar a aposta','Onde corrigir rota','Onde reduzir investimento','Prioridade dos próximos 90 dias'],'compass'),
   ];
   const numbered=body.map((s,i)=>({...s,kicker:`${String(i+1).padStart(2,'0')} · ${s.kicker}`}));
@@ -774,6 +794,7 @@ function stageLabel(stage){return stage==='oportunidades'?'Etapa 2 de 2 · Oport
 function stageFileTag(stage){return stage==='oportunidades'?'Oportunidades_PlanoAcao':'Comparativo_Periodo'}
 function metricColumns(count){
   if(count<=3)return Math.max(1,count);
+  if(count===5)return 5;
   if(count%4===0)return 4;
   if(count%3===0)return 3;
   if(count%2===0)return count<=6?count/2:4;
@@ -791,7 +812,7 @@ function slideHtml(slide){
   const source=slide.source?`<div class="slide-source">${esc(slide.source)}</div>`:'';
   const kickerIcon=slide.icon?`<i data-lucide="${esc(slide.icon)}"></i>`:'<i></i>';
   if(slide.kind==='cover')return `<section class="slide slide-cover"><span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2><p class="slide-sub">${esc(slide.subtitle||'')}</p>${brand}</section>`;
-  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}${slide.map?`<div class="slide-map"><div class="map-svg-wrap"></div><div class="map-legend"><span class="map-legend-item"><i class="map-legend-swatch is-up"></i>Cresceu</span><span class="map-legend-item"><i class="map-legend-swatch is-down"></i>Caiu</span><span class="map-legend-item"><i class="map-legend-swatch is-flat"></i>Sem base comparável</span></div></div>`:''}</section>`}
+  return `<section class="slide">${brand}${source}<span class="slide-kicker">${kickerIcon}${esc(slide.kicker)}</span><h2>${esc(slide.title)}</h2>${slide.subtitle?`<p class="slide-sub">${esc(slide.subtitle)}</p>`:''}${slide.metrics?`<div class="slide-metrics" style="grid-template-columns:repeat(${metricColumns(slide.metrics.length)},1fr)">${slide.metrics.map(([l,v,icon])=>`<div class="slide-metric">${icon?`<span class="slide-metric-icon">${slideIconHtml(icon,'')}</span>`:''}<span>${esc(l)}</span><strong>${esc(v)}</strong></div>`).join('')}</div>`:''}${slide.list?`<div class="slide-list">${slide.list.map(slideListRowHtml).join('')}</div>`:''}${slide.sideLists?`<div class="slide-side-lists"><div class="slide-side-list-col"><div class="slide-side-list-head is-up"><i data-lucide="trending-up"></i>Cresceram</div><div class="slide-list">${slide.sideLists.growing.length?slide.sideLists.growing.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem crescimento comparável no período.</p>'}</div></div><div class="slide-side-list-col"><div class="slide-side-list-head is-down"><i data-lucide="trending-down"></i>Caíram</div><div class="slide-list">${slide.sideLists.falling.length?slide.sideLists.falling.map(slideListRowHtml).join(''):'<p class="slide-side-empty">Sem queda comparável no período.</p>'}</div></div></div>`:''}${slide.columns?`<div class="slide-columns">${slide.columns.map(([l,v,icon])=>`<div class="slide-card">${icon?`<span class="slide-card-icon">${slideIconHtml(icon,'')}</span>`:''}<h3>${esc(l)}</h3><p>${esc(v)}</p></div>`).join('')}</div>`:''}${slide.actions?`<div class="slide-action-table">${slide.actions.length?slide.actions.map(a=>`<div class="slide-action-row"><strong>${esc(a.departamento)}</strong><span>${esc(a.titulo)}</span><span>${esc(collaboratorName(a.responsavel_id))}</span></div>`).join(''):'<p class="slide-sub">As ações serão definidas na reunião para cada departamento envolvido.</p>'}</div>`:''}${slide.chart?`<div class="slide-chart"><canvas></canvas></div>`:''}${slide.map?`<div class="slide-map"><div class="map-svg-wrap"></div><div class="map-legend"><span class="map-legend-item"><i class="map-legend-swatch is-up"></i>Cresceu</span><span class="map-legend-item"><i class="map-legend-swatch is-down"></i>Caiu</span><span class="map-legend-item"><i class="map-legend-swatch is-flat"></i>Sem base comparável</span></div></div>`:''}</section>`}
 const SLIDE_CHART_PALETTE={green:'#2d7a4f',gold:'#b58a35',blue:'#3b82f6',red:'#a8443f'};
 const SLIDE_CHART_PALETTE_LIGHT={green:'#7bd39a',gold:'#e9dcb0',blue:'#a6cbfd',red:'#e0a19c'};
 function verticalGradient(ctx,chartArea,stops){
