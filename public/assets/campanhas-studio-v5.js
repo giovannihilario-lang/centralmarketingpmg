@@ -829,6 +829,7 @@
       id:uid('campaign'), name:'', description:'', start:inputDate(start), end:inputDate(end),
       periodMode:'six_mondays',
       suppliers:[], participantMode:'all', representatives:[], rankingMetrics:['points','positivity'], rankingMode:'TOP_N_ELIGIBLE', topN:5,
+      pointsAreCurrency:false,
       salesScopeMode:'supplier_all',
       goalMode:'both', collectiveGoals:[defaultGoal('collective')], individualGoals:[defaultGoal('individual')],
       rules:[], pointRules:[], categories:[],
@@ -1059,6 +1060,7 @@
       <div class="subsection"><div class="subsection-head"><div><h4>Como o ranking principal será definido?</h4><p>Clique nas métricas na ordem de prioridade. A segunda e as próximas também funcionam como desempate inicial.</p></div></div>
         <div class="choice-grid">${RANKING_METRICS.map((metric) => { const index = campaign.rankingMetrics.indexOf(metric.id); return choiceCard('toggle-ranking',metric.id,metric.icon,metric.label,metric.description,index >= 0,index >= 0 ? index + 1 : null); }).join('')}</div>
         <div class="form-grid" style="margin-top:12px"><div class="field"><label>Modelo de classificação</label><select id="rankingMode"><option value="TOP_N_ELIGIBLE" ${campaign.rankingMode === 'TOP_N_ELIGIBLE' ? 'selected' : ''}>Top N entre os elegíveis</option><option value="TOP_N" ${campaign.rankingMode === 'TOP_N' ? 'selected' : ''}>Top N geral</option><option value="ALL_ELIGIBLE" ${campaign.rankingMode === 'ALL_ELIGIBLE' ? 'selected' : ''}>Todos que atingirem</option></select></div><div class="field"><label>Quantidade de classificados</label><input id="topN" type="number" min="1" value="${number(campaign.topN)}"></div></div>
+        <label class="checkbox-field" style="margin-top:10px"><input type="checkbox" id="pointsAreCurrency" ${campaign.pointsAreCurrency ? 'checked' : ''}><span>Pontos representam reais (1 ponto = R$ 1,00) — exibe "Pontos" como R$ em vez de "pts" nos resultados. Use quando a campanha paga um valor fixo em dinheiro por ação (ex.: R$ por positivação/caixa), não uma pontuação abstrata.</span></label>
       </div>
 
       <div class="subsection"><div class="subsection-head"><div><h4>Quais metas a campanha utiliza?</h4><p>É possível usar meta coletiva, individual, ambas ou nenhuma.</p></div></div><div class="choice-grid">
@@ -1538,6 +1540,7 @@
     if (app.wizard.step === 1) {
       campaign.rankingMode = $('#rankingMode')?.value || campaign.rankingMode;
       campaign.topN = Math.max(1, Number($('#topN')?.value) || 1);
+      campaign.pointsAreCurrency = $('#pointsAreCurrency')?.checked === true;
       syncGoals(); syncPointRules(); syncEligibilityRules();
     }
     if (app.wizard.step === 2) syncCategories();
@@ -2073,7 +2076,7 @@
     return source.find(([id]) => id === metric)?.[1] || metric;
   }
 
-  function metricDisplay(metric, value) {
+  function metricDisplay(metric, value, pointsAreCurrency = false) {
     if (metric === 'revenue') return money(value);
     if (metric === 'kg') return `${number(value, 1)} KG`;
     if (metric === 'pieces') return `${number(value, 0)} un.`;
@@ -2082,7 +2085,10 @@
     if (metric === 'positivity') return `${Number(value || 0) >= 0 ? '+' : ''}${number(value, 0)} clientes`;
     if (metric === 'recompra') return `${number(value, 0)} clientes`;
     if (metric === 'mix') return `${number(value, 1)}%`;
-    if (metric === 'points') return `${number(value, 1)} pts`;
+    // Campanha por valor direto (ex.: R$ por positivação/caixa, não ranking
+    // por pontuação abstrata): pointsAreCurrency faz "pontos" aparecer como
+    // R$ em vez de "pts", já que aqui 1 ponto = R$ 1,00 de verdade.
+    if (metric === 'points') return pointsAreCurrency ? money(value) : `${number(value, 1)} pts`;
     if (metric === 'activationClients') return `${number(value, 0)} ativações`;
     if (metric === 'activationOrders') return `${number(value, 0)} pedidos`;
     if (metric === 'activationRate') return `${number(value, 1)}%`;
@@ -3551,14 +3557,15 @@
     const metrics = campaign.rankingMetrics || [];
     const primary = metrics[0] || 'points';
     const secondary = metrics[1] || null;
+    const currency = campaign.pointsAreCurrency === true;
 
     return {
       primary,
-      primaryLabel:metricLabel(primary),
-      primaryValue:metricDisplay(primary, rankMetric(item, primary)),
+      primaryLabel:primary === 'points' && currency ? 'R$' : metricLabel(primary),
+      primaryValue:metricDisplay(primary, rankMetric(item, primary), currency),
       secondary,
-      secondaryLabel:secondary ? metricLabel(secondary) : '',
-      secondaryValue:secondary ? metricDisplay(secondary, rankMetric(item, secondary)) : '',
+      secondaryLabel:secondary ? (secondary === 'points' && currency ? 'R$' : metricLabel(secondary)) : '',
+      secondaryValue:secondary ? metricDisplay(secondary, rankMetric(item, secondary), currency) : '',
     };
   }
 
@@ -3742,7 +3749,7 @@
       ${performanceMeta('Volume', `${number(summary.kg,1)} KG`, `Anterior ${number(summary.previousKg,1)} KG · ${pct(growth(summary.kg, summary.previousKg))}`)}
       ${performanceMeta('Clientes', number(summary.customers), `Anterior ${number(summary.previousCustomers)} · ${pct(growth(summary.customers, summary.previousCustomers))}`)}
       ${performanceMeta('Positivação', `${summary.positivity >= 0 ? '+' : ''}${number(summary.positivity)}`, `${number(summary.customers)} atuais − ${number(summary.previousCustomers)} anteriores`)}
-      ${performanceMeta('Pontos', number(summary.points,1), 'total da campanha')}
+      ${performanceMeta(campaign.pointsAreCurrency ? 'R$ (pontos)' : 'Pontos', campaign.pointsAreCurrency ? money(summary.points) : number(summary.points,1), 'total da campanha')}
       ${performanceMeta('Elegíveis', number(summary.eligible), `${summary.classified} classificado(s)`)}
     </div>
 
