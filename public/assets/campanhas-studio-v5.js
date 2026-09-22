@@ -1519,7 +1519,7 @@
       <div class="subsection"><div class="subsection-head"><div><h4>Premiação</h4><p>Registre valores, produtos, vouchers ou descrições livres.</p></div><button class="secondary-btn" type="button" data-action="add-prize"><i data-lucide="plus"></i>Adicionar prêmio</button></div>
         <div class="prize-list">${campaign.prizes.map((prize, index) => `<div class="prize-row"><input data-prize-field="position" data-index="${index}" type="number" min="1" value="${Number(prize.position) || index + 1}"><select data-prize-field="type" data-index="${index}"><option value="money" ${prize.type === 'money' ? 'selected' : ''}>Dinheiro</option><option value="voucher" ${prize.type === 'voucher' ? 'selected' : ''}>Vale/Voucher</option><option value="product" ${prize.type === 'product' ? 'selected' : ''}>Produto</option><option value="other" ${prize.type === 'other' ? 'selected' : ''}>Descrição livre</option></select><input data-prize-field="description" data-index="${index}" value="${esc(prize.description || '')}" placeholder="Ex.: R$ 1.000 ou Smart TV"><button class="icon-btn" type="button" data-action="remove-prize" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhuma premiação registrada.</div>'}</div>
       </div>
-      <div class="subsection"><div class="subsection-head"><div><h4>Bônus por meta individual</h4><p>Paga um valor fixo pra quem bater a meta. Deixe "Limitar aos N maiores" em branco/0 pra pagar todo mundo que bater; preencha pra pagar só os N com maior valor na métrica do bônus (ex.: só os 3 maiores volumes).</p></div><button class="secondary-btn" type="button" data-action="add-bonus"><i data-lucide="plus"></i>Adicionar bônus</button></div>
+      <div class="subsection"><div class="subsection-head"><div><h4>Bônus por meta individual</h4><p>Paga um valor fixo pra quem bater a meta. Deixe "Limitar aos N maiores" em branco/0 pra pagar todo mundo que bater; preencha pra pagar só os N com maior valor na métrica do bônus (ex.: só os 3 maiores volumes) — a disputa pelas N posições vale só entre representantes já elegíveis (que bateram a meta mínima da campanha), nunca entre quem não é elegível.</p></div><button class="secondary-btn" type="button" data-action="add-bonus"><i data-lucide="plus"></i>Adicionar bônus</button></div>
         <div class="bonus-list">${(campaign.bonusRules || []).map((bonus, index) => `<div class="bonus-row"><select data-bonus-field="metric" data-index="${index}">${BASE_METRICS.map(([id,label]) => `<option value="${id}" ${bonus.metric === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select><span class="bonus-op">≥</span><input data-bonus-field="value" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.value) || 0}" placeholder="Meta"><input data-bonus-field="amount" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.amount) || 0}" placeholder="Valor do bônus (R$)"><input data-bonus-field="rankLimit" data-index="${index}" type="number" min="0" step="1" value="${Number(bonus.rankLimit) || ''}" placeholder="Limitar aos N maiores" title="Deixe em branco pra pagar todo mundo que bater a meta; preencha pra pagar só os N com maior valor nessa métrica."><input data-bonus-field="label" data-index="${index}" value="${esc(bonus.label || '')}" placeholder="Ex.: Bônus por recompra"><button class="icon-btn" type="button" data-action="remove-bonus" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhum bônus registrado.</div>'}</div>
       </div>
       <div class="meta-block"><div class="meta-block-head"><div><h5>Resumo da campanha</h5><span class="hint">Revise antes de salvar.</span></div></div><div class="campaign-meta" style="margin-top:10px"><div><span>Fornecedores</span><strong>${number(campaign.suppliers.length)}</strong></div><div><span>Categorias</span><strong>${number(campaign.categories.length)}</strong></div><div><span>Métricas de ranking</span><strong>${number(campaign.rankingMetrics.length)}</strong></div></div></div>`;
@@ -2405,14 +2405,17 @@
       item.bonusTotal = item.bonusesEarned.reduce((sum, bonus) => sum + (Number(bonus.amount) || 0), 0);
     }
     // Bônus com rankLimit só paga os N representantes de maior valor na
-    // métrica do bônus, entre quem já bateu a meta mínima (ex.: "R$500 pros
-    // 3 maiores volumes acima de 20 caixas") — por padrão (rankLimit 0/vazio)
-    // continua pagando todo mundo que bate a meta, sem limite de posição.
+    // métrica do bônus, ENTRE OS JÁ ELEGÍVEIS (bateram a meta mínima da
+    // campanha) — ex.: "R$500 pros 3 maiores volumes acima de 20 caixas"
+    // só disputa entre quem já bateu as 6 positivações + 5 caixas, não
+    // entre qualquer vendedor com volume alto. Por padrão (rankLimit
+    // 0/vazio) continua pagando todo mundo elegível que bate a meta do
+    // bônus, sem limite de posição.
     for (const bonus of campaign.bonusRules || []) {
       const rankLimit = Number(bonus.rankLimit) || 0;
       if (rankLimit <= 0) continue;
       const qualifying = results
-        .filter((item) => item.bonusesEarned.some((b) => b.id === bonus.id))
+        .filter((item) => item.eligible && item.bonusesEarned.some((b) => b.id === bonus.id))
         .sort((a, b) => rankMetric(b, bonus.metric) - rankMetric(a, bonus.metric));
       const keepIds = new Set(qualifying.slice(0, rankLimit).map((item) => item.id));
       for (const item of results) {
