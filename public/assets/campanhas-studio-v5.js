@@ -1517,8 +1517,8 @@
       <div class="subsection"><div class="subsection-head"><div><h4>Premiação</h4><p>Registre valores, produtos, vouchers ou descrições livres.</p></div><button class="secondary-btn" type="button" data-action="add-prize"><i data-lucide="plus"></i>Adicionar prêmio</button></div>
         <div class="prize-list">${campaign.prizes.map((prize, index) => `<div class="prize-row"><input data-prize-field="position" data-index="${index}" type="number" min="1" value="${Number(prize.position) || index + 1}"><select data-prize-field="type" data-index="${index}"><option value="money" ${prize.type === 'money' ? 'selected' : ''}>Dinheiro</option><option value="voucher" ${prize.type === 'voucher' ? 'selected' : ''}>Vale/Voucher</option><option value="product" ${prize.type === 'product' ? 'selected' : ''}>Produto</option><option value="other" ${prize.type === 'other' ? 'selected' : ''}>Descrição livre</option></select><input data-prize-field="description" data-index="${index}" value="${esc(prize.description || '')}" placeholder="Ex.: R$ 1.000 ou Smart TV"><button class="icon-btn" type="button" data-action="remove-prize" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhuma premiação registrada.</div>'}</div>
       </div>
-      <div class="subsection"><div class="subsection-head"><div><h4>Bônus por meta individual</h4><p>Paga um valor fixo pra qualquer representante que bater a meta, independente da posição no ranking.</p></div><button class="secondary-btn" type="button" data-action="add-bonus"><i data-lucide="plus"></i>Adicionar bônus</button></div>
-        <div class="bonus-list">${(campaign.bonusRules || []).map((bonus, index) => `<div class="bonus-row"><select data-bonus-field="metric" data-index="${index}">${BASE_METRICS.map(([id,label]) => `<option value="${id}" ${bonus.metric === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select><span class="bonus-op">≥</span><input data-bonus-field="value" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.value) || 0}" placeholder="Meta"><input data-bonus-field="amount" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.amount) || 0}" placeholder="Valor do bônus (R$)"><input data-bonus-field="label" data-index="${index}" value="${esc(bonus.label || '')}" placeholder="Ex.: Bônus por recompra"><button class="icon-btn" type="button" data-action="remove-bonus" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhum bônus registrado.</div>'}</div>
+      <div class="subsection"><div class="subsection-head"><div><h4>Bônus por meta individual</h4><p>Paga um valor fixo pra quem bater a meta. Deixe "Limitar aos N maiores" em branco/0 pra pagar todo mundo que bater; preencha pra pagar só os N com maior valor na métrica do bônus (ex.: só os 3 maiores volumes).</p></div><button class="secondary-btn" type="button" data-action="add-bonus"><i data-lucide="plus"></i>Adicionar bônus</button></div>
+        <div class="bonus-list">${(campaign.bonusRules || []).map((bonus, index) => `<div class="bonus-row"><select data-bonus-field="metric" data-index="${index}">${BASE_METRICS.map(([id,label]) => `<option value="${id}" ${bonus.metric === id ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select><span class="bonus-op">≥</span><input data-bonus-field="value" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.value) || 0}" placeholder="Meta"><input data-bonus-field="amount" data-index="${index}" type="number" min="0" step="any" value="${Number(bonus.amount) || 0}" placeholder="Valor do bônus (R$)"><input data-bonus-field="rankLimit" data-index="${index}" type="number" min="0" step="1" value="${Number(bonus.rankLimit) || ''}" placeholder="Limitar aos N maiores" title="Deixe em branco pra pagar todo mundo que bater a meta; preencha pra pagar só os N com maior valor nessa métrica."><input data-bonus-field="label" data-index="${index}" value="${esc(bonus.label || '')}" placeholder="Ex.: Bônus por recompra"><button class="icon-btn" type="button" data-action="remove-bonus" data-index="${index}"><i data-lucide="trash-2"></i></button></div>`).join('') || '<div class="hint">Nenhum bônus registrado.</div>'}</div>
       </div>
       <div class="meta-block"><div class="meta-block-head"><div><h5>Resumo da campanha</h5><span class="hint">Revise antes de salvar.</span></div></div><div class="campaign-meta" style="margin-top:10px"><div><span>Fornecedores</span><strong>${number(campaign.suppliers.length)}</strong></div><div><span>Categorias</span><strong>${number(campaign.categories.length)}</strong></div><div><span>Métricas de ranking</span><strong>${number(campaign.rankingMetrics.length)}</strong></div></div></div>`;
   }
@@ -1606,7 +1606,7 @@
       const item = (app.wizard.campaign.bonusRules || [])[Number(field.dataset.index)];
       if (!item) continue;
       const name = field.dataset.bonusField;
-      item[name] = ['value','amount'].includes(name) ? Number(field.value) || 0 : field.value;
+      item[name] = ['value','amount','rankLimit'].includes(name) ? Number(field.value) || 0 : field.value;
     }
   }
 
@@ -2397,6 +2397,26 @@
         .filter((bonus) => compareOp(rankMetric(item, bonus.metric), '>=', Number(bonus.value) || 0))
         .map((bonus) => ({ ...bonus, achievedValue:rankMetric(item, bonus.metric) }));
       item.bonusTotal = item.bonusesEarned.reduce((sum, bonus) => sum + (Number(bonus.amount) || 0), 0);
+    }
+    // Bônus com rankLimit só paga os N representantes de maior valor na
+    // métrica do bônus, entre quem já bateu a meta mínima (ex.: "R$500 pros
+    // 3 maiores volumes acima de 20 caixas") — por padrão (rankLimit 0/vazio)
+    // continua pagando todo mundo que bate a meta, sem limite de posição.
+    for (const bonus of campaign.bonusRules || []) {
+      const rankLimit = Number(bonus.rankLimit) || 0;
+      if (rankLimit <= 0) continue;
+      const qualifying = results
+        .filter((item) => item.bonusesEarned.some((b) => b.id === bonus.id))
+        .sort((a, b) => rankMetric(b, bonus.metric) - rankMetric(a, bonus.metric));
+      const keepIds = new Set(qualifying.slice(0, rankLimit).map((item) => item.id));
+      for (const item of results) {
+        if (keepIds.has(item.id)) continue;
+        const before = item.bonusesEarned.length;
+        item.bonusesEarned = item.bonusesEarned.filter((b) => b.id !== bonus.id);
+        if (item.bonusesEarned.length !== before) {
+          item.bonusTotal = item.bonusesEarned.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+        }
+      }
     }
 
     const collectiveCurrent = teamMetrics(campaign, sellers, results, 'current');
@@ -4179,7 +4199,7 @@
     if (action === 'move-tie-up') { const index = Number(node.dataset.index); if (index > 0) { const list = app.wizard.campaign.tieBreaks; [list[index - 1], list[index]] = [list[index], list[index - 1]]; } renderWizard(); return; }
     if (action === 'add-prize') { app.wizard.campaign.prizes.push({ position:app.wizard.campaign.prizes.length + 1, type:'money', description:'' }); renderWizard(); return; }
     if (action === 'remove-prize') { app.wizard.campaign.prizes.splice(Number(node.dataset.index), 1); renderWizard(); return; }
-    if (action === 'add-bonus') { app.wizard.campaign.bonusRules = app.wizard.campaign.bonusRules || []; app.wizard.campaign.bonusRules.push({ id:uid('bonus'), metric:'recompra', value:0, amount:0, label:'' }); renderWizard(); return; }
+    if (action === 'add-bonus') { app.wizard.campaign.bonusRules = app.wizard.campaign.bonusRules || []; app.wizard.campaign.bonusRules.push({ id:uid('bonus'), metric:'recompra', value:0, amount:0, label:'', rankLimit:0 }); renderWizard(); return; }
     if (action === 'remove-bonus') { app.wizard.campaign.bonusRules.splice(Number(node.dataset.index), 1); renderWizard(); return; }
     if (action === 'performance-tab') { switchPerformanceTab(node.dataset.performanceTab, node.dataset.id); return; }
     if (action === 'refresh-benefit-inline') return loadBenefitReportInline(node.dataset.id || app.benefitReport?.campaignId, { force:true });
