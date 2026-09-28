@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Convenção de Fornecedores PMG 2026</title>
-<meta name="description" content="Convenção de Fornecedores PMG 2026 · 13/11/2026, 18h · Casa Bisutti, São Paulo. Confirme sua presença.">
+<meta name="description" content="Convenção de Fornecedores PMG 2026. Sexta-feira, 13 de novembro, às 18h, na Casa Bisutti, em São Paulo. Confirme sua presença.">
 <meta property="og:title" content="Convenção de Fornecedores PMG 2026">
-<meta property="og:description" content="As mudanças e o comportamento do novo food service. 13/11/2026 · 18h · Casa Bisutti, São Paulo.">
+<meta property="og:description" content="As mudanças e o comportamento do novo food service. 13 de novembro, 18h, Casa Bisutti · São Paulo. Você é nosso convidado.">
 <meta property="og:image" content="https://i.ytimg.com/vi/UlRS5bSvhEs/maxresdefault.jpg">
 <meta name="theme-color" content="#2B0714">
 <link rel="icon" type="image/png" href="/convencao-2026/logo.png">
@@ -58,7 +58,7 @@ a{color:inherit}
   animation:grain 1s steps(5) infinite}
 @keyframes grain{0%,100%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,3%)}}
 .progress{position:fixed;top:0;left:0;right:0;height:2px;z-index:120;background:var(--grad);transform-origin:left;transform:scaleX(0)}
-.cursor,.cursor-ring{position:fixed;left:0;top:0;pointer-events:none;z-index:150;border-radius:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s}
+.cursor,.cursor-ring{position:fixed;left:0;top:0;pointer-events:none;z-index:195;border-radius:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s}
 .cursor{width:6px;height:6px;background:var(--amber)}
 .cursor-ring{width:38px;height:38px;border:1px solid rgba(246,223,196,.45);transition:opacity .3s,width .35s var(--ease),height .35s var(--ease),background .35s,border-color .35s}
 .cursor-ring.hover{width:74px;height:74px;background:rgba(255,122,47,.12);border-color:transparent}
@@ -77,14 +77,14 @@ a{color:inherit}
 .lockup img{width:42px;height:42px;border-radius:8px;box-shadow:0 0 0 2px #fff}
 .lockup .t{font-size:10px;letter-spacing:.32em;line-height:1.35;text-transform:uppercase}
 .lockup .t b{display:block;font-weight:700;letter-spacing:.14em;font-size:15px}
-.nav{display:flex;align-items:center;gap:clamp(14px,2.4vw,34px)}
-.nav a.lnk{font-size:11px;letter-spacing:.26em;text-transform:uppercase;text-decoration:none;color:var(--dim);position:relative;padding:6px 0;transition:color .3s}
+.nav{display:flex;align-items:center;gap:clamp(10px,2.4vw,34px)}
+.nav a.lnk{white-space:nowrap;font-size:11px;letter-spacing:.26em;text-transform:uppercase;text-decoration:none;color:var(--dim);position:relative;padding:6px 0;transition:color .3s}
 .nav a.lnk::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--amber);transform:scaleX(0);transform-origin:right;transition:transform .45s var(--ease)}
 .nav a.lnk:hover{color:var(--cream)}
 .nav a.lnk:hover::after{transform:scaleX(1);transform-origin:left}
 
 /* ---------- buttons ---------- */
-.btn{--bx:0px;--by:0px;display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:999px;font:600 12px/1 var(--sans);letter-spacing:.18em;text-transform:uppercase;text-decoration:none;cursor:pointer;
+.btn{--bx:0px;--by:0px;white-space:nowrap;display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:999px;font:600 12px/1 var(--sans);letter-spacing:.18em;text-transform:uppercase;text-decoration:none;cursor:pointer;
   border:1px solid var(--line-2);background:transparent;color:var(--cream);position:relative;overflow:hidden;isolation:isolate;transform:translate(var(--bx),var(--by));transition:border-color .35s,color .35s,transform .5s var(--ease)}
 .btn::before{content:"";position:absolute;inset:-1px;background:var(--grad);border-radius:inherit;transform:translateY(102%);transition:transform .5s var(--ease);z-index:-1}
 .btn:hover{border-color:transparent;color:var(--bg)}
@@ -288,11 +288,10 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 
 /* ---------- video stripes ---------- */
 .stripes{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;pointer-events:none}
-.stripes i{flex:1;background:var(--bg);transform-origin:right;will-change:transform}
-.stripes i:nth-child(3n+1){background:linear-gradient(90deg,var(--bg) 60%,rgba(255,79,56,.9))}
+.stripes i{flex:1;margin-bottom:-1px;background:linear-gradient(90deg,#FFB22E 0,#FF4F38 3px,var(--bg) 3px);will-change:transform}
 
 /* ---------- sound ---------- */
-.sound{position:fixed;left:var(--gutter);bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:110;display:flex;align-items:center;gap:12px;
+.sound{position:relative;white-space:nowrap;display:flex;align-items:center;gap:12px;
   background:rgba(43,7,20,.72);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:999px;padding:10px 16px 10px 12px;
   color:var(--cream);font:600 10.5px/1 var(--sans);letter-spacing:.24em;text-transform:uppercase;cursor:pointer;transition:border-color .3s,transform .5s var(--ease)}
 .sound:hover{border-color:var(--line-2)}
@@ -314,7 +313,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .t-top img{width:38px;height:38px;border-radius:8px;box-shadow:0 0 0 2px #fff}
 .t-top span{font-size:9.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--dim);line-height:1.4}
 .t-top span b{display:block;color:var(--cream);font-size:12px;letter-spacing:.16em}
-.t-name{font:800 clamp(34px,4vw,54px)/.9 var(--display);text-transform:uppercase;overflow-wrap:anywhere}
+.t-name{font:800 clamp(34px,4vw,54px)/.9 var(--display);text-transform:uppercase;overflow-wrap:break-word;hyphens:auto}
 .t-co{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-top:-8px}
 .t-info{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;border-top:1px dashed var(--line-2);padding-top:14px}
 .t-info small{display:block;font-size:9px;letter-spacing:.3em;text-transform:uppercase;color:var(--faint)}
@@ -344,14 +343,18 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   .share canvas{height:min(58svh,560px)}
 }
 @media (max-width:600px){
+  .actions .btn,.ticket-actions .btn,.share .btn{white-space:normal;text-align:left;line-height:1.3}
   .ticket{grid-template-columns:minmax(0,1fr) 92px}
-  .t-main{padding:20px}
+  .t-main{padding:20px 16px}
+  .t-name{font-size:clamp(26px,8.4vw,40px)}
+  .t-co{letter-spacing:.1em;font-size:11px}
+  .t-info b{font-size:15px;white-space:nowrap}
+  .done{padding:24px 18px}
   .t-info{grid-template-columns:1fr 1fr}
   .t-info div:last-child{grid-column:1/-1}
   .t-stub{padding:18px 8px}
   .sound .lbl{display:none}
-  .sound{padding:0;width:42px;height:42px;justify-content:center;left:auto;right:calc(var(--gutter) + 52px);top:calc(16px + env(safe-area-inset-top,0px));bottom:auto}
-  .bar.away ~ .sound{transform:none}
+  .sound{padding:0;width:42px;height:42px;justify-content:center}
 }
 @media (prefers-reduced-motion:reduce){
   .story{height:auto}
@@ -359,14 +362,19 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   .stripes{display:none}
 }
 
-@media (max-width:980px){
+@media (max-width:1240px){
   .nav a.lnk{display:none}
+  .sound .lbl{display:none}
+  .sound{padding:0;width:42px;height:42px;justify-content:center}
+}
+@media (max-width:980px){
   #whisk{right:-34vw;width:120vw;opacity:.42}
   .manifesto .wrap,.rsvp .wrap{grid-template-columns:1fr}
   .manifesto .side{position:static}
   .pillars{grid-template-columns:1fr}
   .pillar{min-height:0}
-  .card,.card.wide{grid-column:span 12}
+  .card,.card.wide{grid-column:span 12;min-height:0}
+  .card .v,.card .venue{margin-top:18px}
   .hero-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
   .hero-meta > div:nth-child(3){padding-left:0;border-left:0}
   .hero-meta > div:nth-child(n+3){border-top:1px solid var(--line)}
@@ -406,7 +414,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 <div class="progress" id="progress" aria-hidden="true"></div>
 <div class="cursor" id="cursor" aria-hidden="true"></div>
 <div class="cursor-ring" id="ring" aria-hidden="true"><span>Play</span></div>
-<button class="sound" type="button" id="soundBtn" aria-pressed="false" data-cursor="hover"><span class="eq" aria-hidden="true"><b></b><b></b><b></b><b></b></span><span class="lbl" id="soundLbl">Ligar som</span></button>
+
 
 <header class="bar" id="bar">
   <a class="lockup" href="#topo" data-cursor="hover" aria-label="Convenção de Fornecedores PMG 2026, voltar ao topo">
@@ -414,9 +422,10 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     <span class="t">Convenção de fornecedores<b>2026</b></span>
   </a>
   <nav class="nav" aria-label="Seções">
-    <a class="lnk" href="#convite">O convite</a>
-    <a class="lnk" href="#video">2025</a>
-    <a class="lnk" href="#detalhes">Local</a>
+    <a class="lnk" href="#convite">O encontro</a>
+    <a class="lnk" href="#video">Edição 2025</a>
+    <a class="lnk" href="#detalhes">Onde e quando</a>
+    <button class="sound" type="button" id="soundBtn" aria-pressed="false" data-cursor="hover" aria-label="Ligar som ambiente"><span class="eq" aria-hidden="true"><b></b><b></b><b></b><b></b></span><span class="lbl" id="soundLbl">Ligar som</span></button>
     <a class="btn solid magnetic" href="#confirmar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
       <span class="lbl-wrap"><span data-t="Confirmar presença">Confirmar presença</span></span>
@@ -431,7 +440,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     <canvas id="whisk" aria-hidden="true"></canvas>
     <div id="whisk3d" aria-hidden="true"></div>
     <div class="hero-inner">
-      <p class="eyebrow" data-hero><i class="dot"></i>PMG Atacadista apresenta</p>
+      <p class="eyebrow" data-hero><i class="dot"></i>A PMG Atacadista convida</p>
       <h1 aria-label="As mudanças e o comportamento do novo food service">
         <span class="ln l1 gs" data-split>As mudanças</span>
         <span class="ln l2 gs" data-split>e o comportamento</span>
@@ -445,14 +454,14 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <span class="lbl-wrap"><span data-t="Confirmar presença">Confirmar presença</span></span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
-        <a class="scroll-hint" href="#convite"><i></i>Role para descobrir</a>
+        <a class="scroll-hint" href="#convite"><i></i>Conheça a noite</a>
       </div>
     </div>
     <div class="hero-meta" data-hero>
       <div><small>Data</small><b>13 · 11 · 2026</b></div>
       <div><small>Horário</small><b>18h</b></div>
       <div><small>Local</small><b>Casa Bisutti</b></div>
-      <div><small>Cidade</small><b>São Paulo · SP</b></div>
+      <div><small>Endereço</small><b>Vila Olímpia · SP</b></div>
     </div>
   </section>
 
@@ -462,29 +471,29 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   <section class="block manifesto" id="convite">
     <div class="wrap">
       <div class="side" data-reveal>
-        <p class="label">O convite</p>
-        <p>Uma noite com os parceiros que fazem a PMG acontecer.</p>
+        <p class="label">O encontro</p>
+        <p>Uma noite para quem constrói o food service ao lado da PMG.</p>
       </div>
       <div>
-        <p class="big-text" id="bigText">A PMG Atacadista convida você para uma noite de conteúdo e conexão sobre as mudanças e o comportamento do novo <span class="hl">food service</span>. Vamos olhar juntos para o que o cliente procura hoje, como a operação está se transformando e o que vamos construir no próximo ano.</p>
+        <p class="big-text" id="bigText">O jeito de comer fora de casa mudou, e o cliente do food service mudou junto. Na Convenção de Fornecedores 2026, a PMG Atacadista reúne seus parceiros para entender esse <span class="hl">novo comportamento</span> e desenhar, lado a lado, as oportunidades do próximo ano.</p>
         <div class="pillars">
-          <div class="pillar" data-reveal><span class="n">01</span><h3>Conteúdo</h3><p>Tendências e dados sobre o novo comportamento do cliente de food service.</p></div>
-          <div class="pillar" data-reveal><span class="n">02</span><h3>Conexão</h3><p>Uma noite para aproximar fornecedores, time comercial e liderança da PMG.</p></div>
-          <div class="pillar" data-reveal><span class="n">03</span><h3>Próximos passos</h3><p>O que vamos construir juntos no próximo ano.</p></div>
+          <div class="pillar" data-reveal><span class="n">01</span><h3>Tendências</h3><p>Dados e leituras de mercado sobre como o cliente do food service compra, consome e decide.</p></div>
+          <div class="pillar" data-reveal><span class="n">02</span><h3>Conexões</h3><p>Fornecedores, time comercial e liderança da PMG reunidos numa noite feita para aproximar.</p></div>
+          <div class="pillar" data-reveal><span class="n">03</span><h3>O próximo ano</h3><p>As prioridades, os projetos e as oportunidades que vamos construir juntos.</p></div>
         </div>
       </div>
     </div>
   </section>
 
   <!-- STORY -->
-  <section class="story" id="historia" aria-label="Os ingredientes se misturam e formam o novo food service">
+  <section class="story" id="historia" aria-label="O cliente mudou, o mercado se transformou e nasce o novo food service">
     <div class="story-sticky">
       <canvas id="storyCanvas" aria-hidden="true"></canvas>
       <div class="story-ui">
         <div class="story-steps">
-          <div class="step" data-step="0"><small>01 · Ingredientes</small><p>Cada parceiro traz o seu</p></div>
-          <div class="step" data-step="1"><small>02 · Mistura</small><p>Juntos, tudo se transforma</p></div>
-          <div class="step" data-step="2"><small>03 · Resultado</small><p>Nasce o novo food service</p></div>
+          <div class="step" data-step="0"><small>01 · Novos hábitos</small><p>O cliente mudou o que coloca na mesa</p></div>
+          <div class="step" data-step="1"><small>02 · Transformação</small><p>E o mercado inteiro entrou na mistura</p></div>
+          <div class="step" data-step="2"><small>03 · Novo food service</small><p>Quem entende essa receita sai na frente</p></div>
         </div>
         <div class="story-foot">
           <div class="story-bar"><i id="storyBar"></i></div>
@@ -507,17 +516,17 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
       </div>
       <div class="video-copy" id="vcopy">
         <div class="top">
-          <p class="label" style="margin:0">Como foi em <b>2025</b></p>
+          <p class="label" style="margin:0">Edição <b>2025</b></p>
           <span class="year" aria-hidden="true">2025</span>
         </div>
         <div class="bottom">
           <div>
             <h2>10ª Convenção de Fornecedores</h2>
-            <p style="margin-top:16px">Relembre a última edição e veja o que vem por aí em 2026.</p>
+            <p style="margin-top:16px">Reveja os melhores momentos da última edição e entre no clima de 2026.</p>
           </div>
           <button class="play" type="button" id="playBtn" data-cursor="play" aria-haspopup="dialog">
             <span class="disc"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l13-7.5z"/></svg></span>
-            Assistir o vídeo
+            Assistir ao vídeo
           </button>
         </div>
       </div>
@@ -530,8 +539,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   <section class="block count">
     <div class="wrap">
       <div class="head" data-reveal>
-        <div><p class="label">Contagem regressiva</p><h2>Falta pouco</h2></div>
-        <p>Sexta-feira · 13 de novembro · 18h</p>
+        <div><p class="label">Contagem regressiva</p><h2>A noite está chegando</h2></div>
+        <p>Sexta-feira, 13 de novembro, às 18h</p>
       </div>
       <div class="clock" role="timer" aria-live="off" id="clock">
         <div class="unit" data-reveal><div class="digits" data-k="d"></div><span class="u">Dias</span></div>
@@ -545,7 +554,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   <!-- DETAILS -->
   <section class="block details" id="detalhes">
     <div class="wrap">
-      <p class="label" data-reveal>Informações</p>
+      <p class="label" data-reveal>Onde e quando</p>
       <div class="grid">
         <div class="card tilt" data-reveal>
           <p class="k">Data</p>
@@ -559,10 +568,10 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
         </div>
         <div class="card tilt" data-reveal>
           <p class="k">Agenda</p>
-          <p class="v gs" style="font-size:clamp(40px,4.4vw,72px)">Salve a data</p>
+          <p class="v gs" style="font-size:clamp(40px,4.4vw,72px)">Reserve a data</p>
           <div class="actions" style="margin-top:22px">
             <a class="btn magnetic" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Conven%C3%A7%C3%A3o%20de%20Fornecedores%20PMG%202026&amp;dates=20261113T210000Z/20261114T010000Z&amp;location=Casa%20Bisutti%2C%20R.%20Alvorada%2C%201035%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004550-000&amp;details=As%20mudan%C3%A7as%20e%20o%20comportamento%20do%20novo%20food%20service">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Google Agenda</a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Adicionar à agenda</a>
           </div>
         </div>
         <div class="card wide tilt" data-reveal>
@@ -571,18 +580,18 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <address class="addr" id="addr">R. Alvorada, 1035 - Vila Olímpia<br>São Paulo - SP, 04550-000</address>
           <div class="actions">
             <a class="btn magnetic" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&amp;query=Casa%20Bisutti%2C%20R.%20Alvorada%2C%201035%2C%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Google Maps</a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Abrir no Maps</a>
             <a class="btn magnetic" target="_blank" rel="noopener" href="https://waze.com/ul?q=R.%20Alvorada%2C%201035%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo&amp;navigate=yes">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Waze</a>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Abrir no Waze</a>
             <button class="btn magnetic" type="button" id="copy">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copiar endereço</button>
           </div>
           <p class="toast" id="toast" aria-live="polite"></p>
         </div>
         <div class="card tilt" data-reveal style="justify-content:space-between">
-          <p class="k">Convidado</p>
-          <p class="v gs" style="font-size:clamp(40px,4.4vw,72px);white-space:normal">Confirme sua presença</p>
-          <div class="actions" style="margin-top:22px"><a class="btn solid magnetic" href="#confirmar"><span class="lbl-wrap"><span data-t="Inscrever-se">Inscrever-se</span></span></a></div>
+          <p class="k">Presença</p>
+          <p class="v gs" style="font-size:clamp(40px,4.4vw,72px);white-space:normal">Garanta sua vaga</p>
+          <div class="actions" style="margin-top:22px"><a class="btn solid magnetic" href="#confirmar"><span class="lbl-wrap"><span data-t="Confirmar agora">Confirmar agora</span></span></a></div>
         </div>
       </div>
     </div>
@@ -592,10 +601,10 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   <section class="block rsvp" id="confirmar">
     <div class="wrap">
       <div data-reveal>
-        <p class="label">Inscrição</p>
+        <p class="label">Confirmação</p>
         <h2><span class="gs">Confirme sua</span><br><span class="gt">presença</span></h2>
         <button class="btn" type="button" id="myTicket" hidden style="margin-bottom:22px">Ver meu ingresso</button>
-        <p class="intro">Preencha seus dados para garantir seu lugar na Convenção de Fornecedores PMG 2026. Se precisar corrigir alguma informação, envie de novo com o mesmo e-mail.</p>
+        <p class="intro">Leva menos de um minuto. Assim que você confirmar, seu ingresso digital aparece na tela, junto com um convite personalizado para compartilhar. Precisa corrigir algum dado? Envie de novo usando o mesmo e-mail.</p>
       </div>
       <div data-reveal>
         <form class="form" id="rsvp-form" novalidate>
@@ -606,7 +615,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <div class="field"><input id="f-cargo" name="cargo" autocomplete="organization-title" maxlength="120" placeholder=" "><label for="f-cargo">Cargo</label><span class="fx"></span><p class="err"></p></div>
           <p class="status" id="f-status" role="status" aria-live="polite"></p>
           <div class="form-foot">
-            <small>Seus dados serão usados apenas pela PMG Atacadista para a organização do evento.</small>
+            <small>Usamos seus dados apenas para organizar o evento.</small>
             <button class="btn solid magnetic" type="submit" id="f-submit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
               <span class="lbl-wrap"><span data-t="Confirmar presença">Confirmar presença</span></span>
@@ -617,7 +626,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <canvas id="burst" aria-hidden="true"></canvas>
           <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
           <h3 id="done-title">Presença confirmada</h3>
-          <p id="done-text">Obrigado! Esperamos você no dia 13/11, às 18h, na Casa Bisutti.</p>
+          <p id="done-text">Tudo certo! Nos vemos em 13 de novembro, às 18h, na Casa Bisutti.</p>
           <div class="ticket-wrap"><div class="ticket" id="ticket">
             <div class="t-main">
               <div class="t-top"><img src="/convencao-2026/logo.png" alt=""><span>Convenção de Fornecedores<b>PMG 2026</b></span></div>
@@ -633,7 +642,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           </div></div>
           <div class="ticket-actions">
             <button class="btn solid magnetic" type="button" id="saveTicket"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12M6 11l6 6 6-6M4 21h16"/></svg>Salvar ingresso</button>
-            <button class="btn magnetic" type="button" id="openShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>Convite para o story</button>
+            <button class="btn magnetic" type="button" id="openShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>Criar convite para o story</button>
             <button class="btn" type="button" id="f-again">Inscrever outra pessoa</button>
           </div>
         </div>
@@ -644,7 +653,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 
 <footer>
   <div class="wordmark" id="wordmark" aria-hidden="true"><span class="gt">Food</span><span>Service</span><span class="gt">2026</span><span>PMG</span></div>
-  <div class="foot-row"><span>PMG Atacadista</span><span>Convenção de Fornecedores 2026</span><span>13 · 11 · 2026 · Casa Bisutti</span></div>
+  <div class="foot-row"><span>PMG Atacadista</span><span>Convenção de Fornecedores 2026</span><span>13 · 11 · 2026 · Casa Bisutti · São Paulo</span></div>
 </footer>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Vídeo da 10ª Convenção de Fornecedores PMG 2025">
@@ -657,10 +666,10 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   <div class="share-in">
     <canvas id="storyCard" width="1080" height="1920" aria-label="Prévia do convite personalizado"></canvas>
     <div class="col">
-      <h3 class="gt">Seu convite para o story</h3>
-      <p>Um convite animado com o seu nome, no tamanho certo para o story do Instagram.</p>
+      <h3 class="gt">Conte que você vai</h3>
+      <p>Seu convite animado, com o seu nome, no formato do story do Instagram. É só baixar e postar.</p>
       <button class="btn solid" type="button" id="shareBtn" hidden>Compartilhar</button>
-      <button class="btn" type="button" id="dlVideo">Baixar vídeo animado</button>
+      <button class="btn" type="button" id="dlVideo">Baixar vídeo</button>
       <button class="btn" type="button" id="dlImage">Baixar imagem</button>
       <p class="note" id="shareNote" aria-live="polite"></p>
     </div>
@@ -716,7 +725,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   var splits=$$('[data-split]');
   splits.forEach(function(el){
     var txt=el.textContent; el.textContent='';
-    var mask=document.createElement('span'); mask.className='mask';
+    var mask=document.createElement('span'); mask.className='mask'; mask.setAttribute('aria-hidden','true');
     txt.split('').forEach(function(c){
       var s=document.createElement('span'); s.className='ch'; s.textContent=c===' '?' ':c; mask.appendChild(s);
     });
@@ -797,7 +806,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     // video expand
     var vt=G.timeline({scrollTrigger:{trigger:'#video',start:'top top',end:'bottom bottom',scrub:.6}});
     var startClip=innerWidth<600?'inset(10% 6% 10% 6% round 20px)':'inset(14% 16% 14% 16% round 28px)';
-    vt.fromTo('#stripes i',{scaleX:1},{scaleX:0,stagger:.025,duration:.35,ease:'power3.inOut'},0)
+    vt.fromTo('#stripes i',{xPercent:0},{xPercent:101,stagger:.02,duration:.32,ease:'power3.inOut'},0)
       .fromTo('#vframe',{clipPath:startClip},{clipPath:'inset(0% 0% 0% 0% round 0px)',ease:'power2.inOut',duration:1},0)
       .fromTo('#vmedia',{scale:1.18},{scale:1,ease:'power2.inOut',duration:1},0)
       .fromTo('#vcopy .year',{yPercent:60,opacity:0},{yPercent:0,opacity:1,duration:.6},.25)
@@ -810,8 +819,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   /* ---------- marquees (velocity driven) ---------- */
   var icon='<svg viewBox="0 0 24 24" fill="none" stroke="url(#mg)" stroke-width="1.6"><defs><linearGradient id="mg" x1="0" x2="1"><stop offset="0" stop-color="#FF4F38"/><stop offset="1" stop-color="#FFB22E"/></linearGradient></defs><path d="M20 4l-6.5 6.5"/><path d="M13.5 10.5c-2-2-6.5-1.5-8.5 1.5s-1 7 1 7 5 0 7.5-2 2-4.5 0-6.5z"/><path d="M13.5 10.5c-1 3-4 6.5-7.5 8"/><path d="M13.5 10.5c-3 1-6.5 4-8 7.5"/></svg>';
   function fill(el,items){var c=items.map(function(t,i){return '<span'+(i%2?' class="o"':'')+'>'+t+'</span>'+'<span>'+icon+'</span>';}).join('');el.innerHTML=c+c+c+c;}
-  fill($('#m1'),['Convenção de Fornecedores','Food Service','13 · 11 · 2026','Casa Bisutti','18h','PMG 2026']);
-  fill($('#m2'),['Conteúdo','Conexão','Parceria','Food Service','Novo comportamento','Próximos passos']);
+  fill($('#m1'),['Convenção de Fornecedores 2026','Food Service','13 · 11 · 2026','Casa Bisutti','18h','PMG Atacadista']);
+  fill($('#m2'),['Tendências','Parcerias','Novo consumidor','Negócios','Conexões','O próximo ano']);
   var mq=[{el:$('#m1'),x:0,dir:-1},{el:$('#m2'),x:0,dir:1}];
   function marquee(dt){
     var v=Math.max(-40,Math.min(40,velocity));
@@ -895,7 +904,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   $('#copy').addEventListener('click',function(){
     var txt='Casa Bisutti - R. Alvorada, 1035 - Vila Olímpia, São Paulo - SP, 04550-000';
     function done(){toast.textContent='Endereço copiado';setTimeout(function(){toast.textContent='';},2400);}
-    function fb(){var r=document.createRange();r.selectNodeContents($('#addr'));var s=getSelection();s.removeAllRanges();s.addRange(r);toast.textContent='Endereço selecionado. Use Ctrl+C para copiar';}
+    function fb(){var r=document.createRange();r.selectNodeContents($('#addr'));var s=getSelection();s.removeAllRanges();s.addRange(r);toast.textContent='Endereço selecionado. Use Ctrl+C para copiar.';}
     try{navigator.clipboard.writeText(txt).then(done,fb);}catch(e){fb();}
   });
 
@@ -913,26 +922,26 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     e.preventDefault();
     var v={nome:form.nome.value.trim(),email:form.email.value.trim(),empresa:form.empresa.value.trim(),cargo:form.cargo.value.trim(),telefone:form.telefone.value.trim()};
     var ok=true;
-    setErr('f-nome', v.nome.length<2 ? (ok=false,'Informe seu nome.') : '');
-    setErr('f-email', !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email) ? (ok=false,'Informe um e-mail válido.') : '');
-    setErr('f-empresa', v.empresa.length<2 ? (ok=false,'Informe a empresa.') : '');
-    setErr('f-tel', v.telefone && v.telefone.replace(/\D/g,'').length<10 ? (ok=false,'Informe o telefone com DDD.') : '');
-    if(!ok){statusEl.className='status error';statusEl.textContent='Confira os campos destacados.';if(hasG) G.fromTo(form,{x:-8},{x:0,duration:.6,ease:'elastic.out(1,.3)'});return;}
-    submitBtn.disabled=true; statusEl.className='status'; statusEl.textContent='Enviando…';
+    setErr('f-nome', v.nome.length<2 ? (ok=false,'Digite seu nome completo.') : '');
+    setErr('f-email', !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email) ? (ok=false,'Digite um e-mail válido.') : '');
+    setErr('f-empresa', v.empresa.length<2 ? (ok=false,'Digite o nome da empresa.') : '');
+    setErr('f-tel', v.telefone && v.telefone.replace(/\D/g,'').length<10 ? (ok=false,'Inclua o DDD no telefone.') : '');
+    if(!ok){statusEl.className='status error';statusEl.textContent='Revise os campos destacados.';if(hasG) G.fromTo(form,{x:-8},{x:0,duration:.6,ease:'elastic.out(1,.3)'});return;}
+    submitBtn.disabled=true; statusEl.className='status'; statusEl.textContent='Confirmando…';
     fetch(SB_URL+'/rest/v1/rpc/convencao2026_inscrever',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
       body:JSON.stringify({p_nome:v.nome,p_email:v.email,p_empresa:v.empresa,p_cargo:v.cargo,p_telefone:v.telefone})})
     .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
     .then(function(res){
       var first=v.nome.split(' ')[0];
-      $('#done-title').textContent = res==='atualizado' ? 'Dados atualizados' : 'Presença confirmada';
-      $('#done-text').textContent = (res==='atualizado' ? 'Pronto, '+first+'! Atualizamos sua inscrição.' : 'Obrigado, '+first+'!')+' Esperamos você no dia 13/11, às 18h, na Casa Bisutti.';
+      $('#done-title').textContent = res==='atualizado' ? 'Inscrição atualizada' : 'Presença confirmada';
+      $('#done-text').textContent = res==='atualizado' ? 'Pronto, '+first+'! Seus dados foram atualizados. Nos vemos em 13 de novembro, às 18h, na Casa Bisutti.' : 'Tudo certo, '+first+'! Nos vemos em 13 de novembro, às 18h, na Casa Bisutti.';
       statusEl.textContent=''; showTicket({nome:v.nome,empresa:v.empresa,cargo:v.cargo,email:v.email},true);
       if(hasG) G.from(done,{y:30,opacity:0,duration:.9,ease:'expo.out'});
     })
-    .catch(function(){ statusEl.className='status error'; statusEl.textContent='Não foi possível enviar agora. Verifique sua conexão e tente de novo.'; })
+    .catch(function(){ statusEl.className='status error'; statusEl.textContent='Não conseguimos confirmar agora. Confira sua conexão e tente novamente.'; })
     .then(function(){ submitBtn.disabled=false; });
   });
-  $('#f-again').addEventListener('click',function(){form.reset();done.hidden=true;form.hidden=false;form.nome.focus();});
+  $('#f-again').addEventListener('click',function(){form.reset();$$('.field').forEach(function(f){f.classList.remove('invalid');f.querySelector('.err').textContent='';});done.hidden=true;form.hidden=false;try{if(localStorage.getItem('pmg26-ticket'))$('#myTicket').hidden=false;}catch(e){}form.nome.focus();});
 
   function burst(){
     if(reduce) return;
@@ -1101,7 +1110,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     var pm=new THREE.PointsMaterial({size:small?.075:.06,map:sprite(),vertexColors:true,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.9,sizeAttenuation:true});
     var cream=new THREE.Points(pg,pm); group.add(cream);
 
-    group.rotation.z=-.52; group.position.set(.4,.15,0);
+    group.rotation.z=-.52; group.position.set(small?.2:1.25,.15,0);
     var W=0,H=0, visible=true, running=false, t0=0, spin=0, boost=0, lastNow=0, intro=0;
     function size(){var r=el.getBoundingClientRect();W=r.width;H=r.height;if(!W||!H)return;renderer.setSize(W,H,false);cam.aspect=W/H;cam.updateProjectionMatrix();}
     size(); addEventListener('resize',size);
@@ -1117,7 +1126,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
       group.rotation.x+=((ny*.35)-group.rotation.x)*.05;
       group.rotation.y+=((nx*.6)-group.rotation.y)*.05;
       group.rotation.z=-.52+Math.sin(t*.5)*.04;
-      var sc=.72+.28*ie; group.scale.setScalar(sc); group.position.y=.15+(1-ie)*-1.2;
+      var sc=(small?.7:.62)+(small?.22:.2)*ie; group.scale.setScalar(sc); group.position.y=.15+(1-ie)*-1.2;
       // cream swirl around the balloon's lower half
       for(var n=0;n<N;n++){
         var s=seed[n], ang=s.a+t*s.sp*(1.2+boost*4)/(.4+s.r*.6);
@@ -1169,8 +1178,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
       }
       buildTargets();
     }
-    function size(){dpr=Math.min(devicePixelRatio||1,2);var r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;build();}
-    size(); addEventListener('resize',function(){size();});
+    function size(force){var r=cv.getBoundingClientRect();if(!force&&Math.abs(r.width-W)<2&&Math.abs(r.height-H)<140)return;dpr=Math.min(devicePixelRatio||1,2);W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;build();}
+    size(true); addEventListener('resize',function(){size(false);});
     if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){if(W)buildTargets();});
 
     function ingPos(ing,p){
@@ -1280,7 +1289,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
         g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol/(i+1),t+.005);g.gain.exponentialRampToValueAtTime(.0001,t+1.4/(i+1));o.connect(g);g.connect(master);g.connect(conv);o.start(t);o.stop(t+1.6);});
     }
     function set(v){
-      on=v; btn.classList.toggle('on',on); btn.setAttribute('aria-pressed',on?'true':'false'); lbl.textContent=on?'Som ligado':'Ligar som';
+      on=v; btn.classList.toggle('on',on); btn.setAttribute('aria-pressed',on?'true':'false'); lbl.textContent=on?'Desligar som':'Ligar som'; btn.setAttribute('aria-label',on?'Desligar som ambiente':'Ligar som ambiente');
       if(on){ if(!ctx) build(); ctx.resume(); master.gain.setTargetAtTime(ducked?0:.9,ctx.currentTime,.8); bell(1760,.04); }
       else if(ctx){ master.gain.setTargetAtTime(0,ctx.currentTime,.25); }
       try{localStorage.setItem('pmg26-sound',on?'1':'0');}catch(e){}
@@ -1316,14 +1325,17 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     try{localStorage.setItem('pmg26-ticket',JSON.stringify(d));}catch(e){}
     var first=d.nome.split(' ')[0];
     form.hidden=true; done.hidden=false; $('#myTicket').hidden=true;
-    if(fresh===false){ $('#done-title').textContent='Seu ingresso'; $('#done-text').textContent='Olá, '+first+'! Sua presença está confirmada para 13/11, às 18h, na Casa Bisutti.'; }
+    if(fresh===false){ $('#done-title').textContent='Seu ingresso'; $('#done-text').textContent='Que bom te ver de novo, '+first+'! Sua presença está confirmada para 13 de novembro, às 18h, na Casa Bisutti.'; }
     if(fresh!==false) burst();
     if(hasG){ G.fromTo(tk,{rotateX:65,y:80,opacity:0},{rotateX:0,y:0,opacity:1,duration:1.6,ease:'expo.out',delay:.2,clearProps:'transform,opacity'}); }
   }
-  try{var saved=JSON.parse(localStorage.getItem('pmg26-ticket')||'null'); if(saved&&saved.nome){ $('#myTicket').hidden=false; $('#myTicket').addEventListener('click',function(){showTicket(saved,false);}); }}catch(e){}
+  function storedTicket(){try{var t=JSON.parse(localStorage.getItem('pmg26-ticket')||'null');return t&&t.nome?t:null;}catch(e){return null;}}
+  if(storedTicket()) $('#myTicket').hidden=false;
+  $('#myTicket').addEventListener('click',function(){var t=storedTicket(); if(t) showTicket(t,false);});
 
   function fontsReady(){ if(!document.fonts||!document.fonts.load) return Promise.resolve(); return Promise.all([document.fonts.load('800 100px "Barlow Condensed"'),document.fonts.load('600 40px "Barlow Condensed"'),document.fonts.load('500 30px Montserrat'),document.fonts.load('700 30px Montserrat')]).catch(function(){}); }
   function fitText(c,txt,font,max){ var size=parseInt(font.match(/(\d+)px/)[1],10); c.font=font; while(c.measureText(txt).width>max && size>20){ size-=4; c.font=font.replace(/\d+px/,size+'px'); } return size; }
+  function spacedFit(c,txt,x,y,sp,font,max){ var size=parseInt(font.match(/(\d+)px/)[1],10); c.font=font; var w=function(){return c.measureText(txt).width+sp*(txt.length-1);}; while(w()>max&&size>14){size-=2;c.font=font.replace(/\d+px/,size+'px');} return spaced(c,txt,x,y,sp); }
   function spaced(c,txt,x,y,sp){ var cx=x; for(var i=0;i<txt.length;i++){ c.fillText(txt[i],cx,y); cx+=c.measureText(txt[i]).width+sp; } return cx; }
   function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
@@ -1349,7 +1361,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     // name
     var a3=e(.7,.9); c.globalAlpha=a3; var ny=(1-a3)*50;
     c.fillStyle=warmGrad(c,90,0,900,0); var nm=d.nome.toUpperCase(); fitText(c,nm,'800 130px "Barlow Condensed", Arial Narrow, sans-serif',900); c.fillText(nm,90,820+ny);
-    c.fillStyle='rgba(246,223,196,.75)'; c.font='600 32px Montserrat, Arial, sans-serif'; var co=[d.empresa,d.cargo].filter(Boolean).join(' · ').toUpperCase(); fitText(c,co,'600 32px Montserrat, Arial, sans-serif',900); spaced(c,co,92,885+ny,3);
+    c.fillStyle='rgba(246,223,196,.75)'; var co=[d.empresa,d.cargo].filter(Boolean).join(' · ').toUpperCase(); spacedFit(c,co,92,885+ny,3,'600 32px Montserrat, Arial, sans-serif',900);
     // theme
     var a4=e(1,.9); c.globalAlpha=a4; var ty=(1-a4)*40;
     c.fillStyle='#F6DFC4';
@@ -1362,7 +1374,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
       c.fillStyle='#F6DFC4'; fitText(c,p[1],'700 52px "Barlow Condensed", Arial Narrow, sans-serif',285); c.fillText(p[1],x,1672+iy);
     });
     c.fillStyle='rgba(246,223,196,.55)'; c.font='500 24px Montserrat, Arial, sans-serif'; spaced(c,'SÃO PAULO · SP',90,1740+iy,5);
-    c.fillStyle='#FFB22E'; c.font='600 24px Montserrat, Arial, sans-serif'; var url=(location.host||'')+'/convencao-2026'; c.fillText(url,90,1810+iy);
+    c.fillStyle='#FFB22E'; c.font='600 24px Montserrat, Arial, sans-serif'; var url='Confirme a sua: '+(location.host||'pmg')+'/convencao-2026'; fitText(c,url,'600 24px Montserrat, Arial, sans-serif',900); c.fillText(url,90,1810+iy);
     c.globalAlpha=1;
   }
   function drawTicketPNG(d){
@@ -1375,13 +1387,13 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     c.fillStyle='rgba(246,223,196,.65)'; c.font='500 22px Montserrat, Arial, sans-serif'; spaced(c,'CONVENÇÃO DE FORNECEDORES',228,148,6);
     c.fillStyle='#F6DFC4'; c.font='800 38px "Barlow Condensed", Arial Narrow, sans-serif'; spaced(c,'PMG 2026',228,192,5);
     c.fillStyle=warmGrad(c,110,0,1100,0); var nm=d.nome.toUpperCase(); fitText(c,nm,'800 150px "Barlow Condensed", Arial Narrow, sans-serif',1060); c.fillText(nm,106,390);
-    c.fillStyle='rgba(246,223,196,.7)'; c.font='600 28px Montserrat, Arial, sans-serif'; spaced(c,[d.empresa,d.cargo].filter(Boolean).join(' · ').toUpperCase(),110,450,3);
+    c.fillStyle='rgba(246,223,196,.7)'; spacedFit(c,[d.empresa,d.cargo].filter(Boolean).join(' · ').toUpperCase(),110,450,3,'600 28px Montserrat, Arial, sans-serif',1070);
     c.setLineDash([10,10]); c.strokeStyle='rgba(246,223,196,.35)'; c.beginPath(); c.moveTo(110,510); c.lineTo(1180,510); c.stroke();
     c.beginPath(); c.moveTo(1240,60); c.lineTo(1240,H-60); c.stroke(); c.setLineDash([]);
     [['DATA','13 · 11 · 2026'],['HORÁRIO','18H'],['LOCAL','CASA BISUTTI']].forEach(function(p,i){var x=110+i*360;c.fillStyle='rgba(246,223,196,.5)';c.font='500 20px Montserrat, Arial, sans-serif';spaced(c,p[0],x,570,6);c.fillStyle='#F6DFC4';fitText(c,p[1],'700 54px "Barlow Condensed", Arial Narrow, sans-serif',330);c.fillText(p[1],x,635);});
     c.fillStyle='#2B0714'; c.beginPath(); c.arc(1240,40,26,0,6.283); c.arc(1240,H-40,26,0,6.283); c.fill();
     c.save(); c.translate(1330,H/2); c.rotate(-Math.PI/2); c.fillStyle='#F6DFC4'; c.font='700 40px "Barlow Condensed", Arial Narrow, sans-serif'; c.textAlign='center'; spaced(c,d.code,-150,14,8); c.restore();
-    var x=1400; barsFor(d.code).forEach(function(w,i){c.fillStyle=i%4===3?'rgba(246,223,196,.35)':'rgba(246,223,196,.9)';c.fillRect(x,180,w*3,400);x+=w*3+4;});
+    var bs=barsFor(d.code), tot=bs.reduce(function(a,w){return a+w*2+3;},0), k=150/tot, x=1385; bs.forEach(function(w,i){c.fillStyle=i%4===3?'rgba(246,223,196,.35)':'rgba(246,223,196,.9)';c.fillRect(x,180,w*2*k,400);x+=(w*2+3)*k;});
     return cv;
   }
   function download(blob,name){ var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},4000); }
@@ -1406,14 +1418,14 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   $('#shareBtn').addEventListener('click',function(){ cardBlob().then(function(b){ var f=new File([b],'convite-pmg-2026.png',{type:'image/png'}); navigator.share({files:[f],title:'Convenção de Fornecedores PMG 2026'}).catch(function(){}); }); });
   $('#dlVideo').addEventListener('click',function(){
     var note=$('#shareNote'), btn=this;
-    if(!sc.captureStream||!window.MediaRecorder){ note.textContent='Seu navegador não grava vídeo. Use a imagem.'; return; }
+    if(!sc.captureStream||!window.MediaRecorder){ note.textContent='Este navegador não gera vídeo. Baixe a imagem.'; return; }
     var types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'], type=types.filter(function(t){return MediaRecorder.isTypeSupported(t);})[0];
-    if(!type){ note.textContent='Seu navegador não grava vídeo. Use a imagem.'; return; }
+    if(!type){ note.textContent='Este navegador não gera vídeo. Baixe a imagem.'; return; }
     var stream=sc.captureStream(30), rec=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:8e6}), chunks=[];
     rec.ondataavailable=function(e){if(e.data.size)chunks.push(e.data);};
     rec.onstop=function(){ recording=false; btn.disabled=false; var ext=type.indexOf('mp4')>=0?'mp4':'webm'; download(new Blob(chunks,{type:type}),'convite-story-pmg-2026-'+slug(ticketData.nome)+'.'+ext);
-      note.textContent= ext==='webm' ? 'Vídeo salvo em WebM. Se o Instagram não aceitar, use a imagem.' : 'Vídeo salvo.'; };
-    recording=true; btn.disabled=true; note.textContent='Gravando o vídeo… (7s)'; var start=performance.now();
+      note.textContent= ext==='webm' ? 'Vídeo salvo em WebM. Se o Instagram não aceitar, poste a imagem.' : 'Vídeo salvo. Agora é só postar!'; };
+    recording=true; btn.disabled=true; note.textContent='Gerando seu vídeo… leva 7 segundos.'; var start=performance.now();
     rec.start(200);
     (function rloop(now){ var t=(now-start)/1000; drawStoryCard(sctx,Math.min(t,7),ticketData); if(t<7.2) requestAnimationFrame(rloop); else rec.stop(); })(start);
   });
