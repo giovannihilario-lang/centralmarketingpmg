@@ -45,7 +45,8 @@
     .tools{display:flex;gap:8px;flex-wrap:wrap}
     .search{min-height:38px;border:1px solid #cbdcd2;border-radius:10px;padding:0 12px;background:#fbfdfc;min-width:min(280px,100%)}
     .tbl{overflow-x:auto}
-    table{width:100%;border-collapse:collapse;min-width:820px}
+    table{width:100%;border-collapse:collapse;min-width:900px}
+    .sw{position:relative;display:inline-block;width:40px;height:22px}.sw input{opacity:0;width:0;height:0}.sw span{position:absolute;inset:0;border-radius:999px;background:#dce9e1;transition:.2s;cursor:pointer}.sw span::after{content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}.sw input:checked+span{background:var(--g700)}.sw input:checked+span::after{transform:translateX(18px)}.sw input:focus-visible+span{outline:3px solid rgba(61,148,99,.35)}.sw input:disabled+span{opacity:.5;cursor:wait}
     th,td{text-align:left;padding:11px 16px;border-bottom:1px solid #eff3f0;font-size:12.5px;vertical-align:top}
     th{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--ghost);background:#f8fbf9}
     tr:last-child td{border-bottom:0}
@@ -91,7 +92,7 @@
       </div>
       <div class="tbl">
         <table>
-          <thead><tr><th>Nome</th><th>Empresa</th><th>Cargo</th><th>E-mail</th><th>Telefone</th><th>Inscrito em</th></tr></thead>
+          <thead><tr><th>Nome</th><th>Empresa</th><th>Cargo</th><th>E-mail</th><th>Telefone</th><th>Inscrito em</th><th title="Aparece no mural público de empresas confirmadas">Mural</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
@@ -115,6 +116,11 @@
         if(i===0)td.className='name'; if(i===5)td.className='num';
         tr.appendChild(td);
       });
+      var tdm=document.createElement('td'), lab=document.createElement('label'), cb=document.createElement('input'), sp=document.createElement('span');
+      lab.className='sw'; cb.type='checkbox'; cb.checked=r.mostrar_empresa!==false; cb.setAttribute('aria-label','Mostrar '+r.empresa+' no mural');
+      cb.addEventListener('change',function(){ var want=cb.checked; cb.disabled=true;
+        window.PMGConnect.client.rpc('convencao2026_set_mural',{p_id:r.id,p_mostrar:want}).then(function(res){ cb.disabled=false; if(res.error){ cb.checked=!want; alert('Não foi possível alterar agora.'); } else r.mostrar_empresa=want; }); });
+      lab.appendChild(cb); lab.appendChild(sp); tdm.appendChild(lab); tr.appendChild(tdm);
       tb.appendChild(tr);
     });
     var st=$('state'); st.className='state';
@@ -142,9 +148,9 @@
   $('q').addEventListener('input',render);
   $('reload').addEventListener('click',load);
   $('csv').addEventListener('click',function(){
-    var head=['Nome','Empresa','Cargo','E-mail','Telefone','Inscrito em'];
+    var head=['Nome','Empresa','Cargo','E-mail','Telefone','Inscrito em','No mural'];
     var esc=function(v){v=String(v==null?'':v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
-    var lines=[head.join(';')].concat(data.map(function(r){return [r.nome,r.empresa,r.cargo,r.email,r.telefone,fmt(r.criado_em)].map(esc).join(';');}));
+    var lines=[head.join(';')].concat(data.map(function(r){return [r.nome,r.empresa,r.cargo,r.email,r.telefone,fmt(r.criado_em),r.mostrar_empresa===false?'Não':'Sim'].map(esc).join(';');}));
     var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
     var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='inscritos-convencao-pmg-2026.csv';document.body.appendChild(a);a.click();a.remove();
   });
