@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-pmg-auth>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Convenção 2026 · Inscritos · PMG Connect</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/connect-auth.js?v=1.2.0"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    :root{--g900:#0d2b1a;--g800:#1a4d2e;--g700:#1f6235;--g600:#2d7a4f;--g300:#7ecf98;--g50:#f2faf5;--ink:#0f1f14;--text:#1c3327;--muted:#60776b;--ghost:#8ba095;--line:#dce9e1;--bg:#f2f6f3;--red:#dc2626;--wine:#2B0714;--coral:#FF4F38;--amber:#FFB22E}
+    html{background:var(--bg)}
+    body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif}
+    button,input{font:inherit} a{color:inherit} h1,h2{font-family:'Sora',sans-serif}
+    button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid rgba(61,148,99,.35);outline-offset:2px}
+    .pmg-auth-pending body{visibility:hidden}
+    .header{position:sticky;top:0;z-index:10;height:64px;padding:0 clamp(16px,3vw,34px);background:rgba(242,246,243,.94);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+    .brand img{width:34px;height:34px;border-radius:8px;background:#fff;object-fit:contain}
+    .brand strong{font-family:'Sora';font-size:14px;color:var(--ink)}
+    .brand span{display:block;font-size:10px;color:var(--muted)}
+    .hbtn{min-height:38px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--g800);padding:0 12px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+    .hbtn:hover{border-color:#bcd4c5}
+    .hbtn.primary{background:var(--g800);border-color:var(--g800);color:#fff}
+    .hbtn[disabled]{opacity:.6;cursor:wait}
+    .content{max-width:1400px;margin:0 auto;padding:26px clamp(14px,3vw,36px) 50px}
+    .hero{border-radius:20px;padding:26px 30px;background:linear-gradient(115deg,#2B0714,#4a1224);color:#F6DFC4;display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px;align-items:flex-end;position:relative;overflow:hidden}
+    .hero::after{content:'';position:absolute;width:360px;height:360px;right:-120px;top:-200px;border-radius:50%;background:radial-gradient(circle,rgba(255,122,47,.35),transparent 65%)}
+    .hero small{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber)}
+    .hero h1{margin:6px 0 6px;font-size:28px;color:#fff}
+    .hero p{margin:0;font-size:13px;color:rgba(246,223,196,.75)}
+    .hero-links{display:flex;gap:8px;flex-wrap:wrap;position:relative;z-index:1}
+    .hero-links a{min-height:40px;padding:0 14px;border-radius:10px;font-weight:700;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;border:1px solid rgba(246,223,196,.3);color:#fff}
+    .hero-links a.solid{background:linear-gradient(95deg,var(--coral),var(--amber));border:0;color:var(--wine)}
+    .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+    .metric{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+    .metric span{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--ghost)}
+    .metric strong{display:block;font-family:'Sora';font-size:28px;line-height:1;margin-top:10px;color:var(--ink);font-variant-numeric:tabular-nums}
+    .panel{background:#fff;border:1px solid var(--line);border-radius:16px;margin-top:14px;overflow:hidden}
+    .panel-head{padding:16px 18px;border-bottom:1px solid #edf2ef;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+    .panel-head h2{margin:0;font-size:15px;color:var(--ink)}
+    .tools{display:flex;gap:8px;flex-wrap:wrap}
+    .search{min-height:38px;border:1px solid #cbdcd2;border-radius:10px;padding:0 12px;background:#fbfdfc;min-width:min(280px,100%)}
+    .tbl{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:820px}
+    th,td{text-align:left;padding:11px 16px;border-bottom:1px solid #eff3f0;font-size:12.5px;vertical-align:top}
+    th{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--ghost);background:#f8fbf9}
+    tr:last-child td{border-bottom:0}
+    td.name{font-weight:700;color:var(--ink)}
+    td.num{font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+    .state{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px}
+    .state.error{color:var(--red)}
+    @media(max-width:620px){.metrics{grid-template-columns:1fr 1fr}.hero h1{font-size:22px}.hbtn .lbl{display:none}}
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="/central.html"><img src="/imagenssite/pmglogo.png" alt="PMG"><div><strong>PMG Connect</strong><span>Convenção de Fornecedores 2026</span></div></a>
+    <a class="hbtn" href="/central.html">← <span class="lbl">Voltar ao Connect</span></a>
+  </header>
+  <main class="content">
+    <section class="hero">
+      <div style="position:relative;z-index:1">
+        <small>Convenção de Fornecedores 2026</small>
+        <h1>Inscritos</h1>
+        <p>13/11/2026 · 18h · Casa Bisutti, São Paulo</p>
+      </div>
+      <div class="hero-links">
+        <a href="/convencao-2026/" target="_blank" rel="noopener">Abrir convite</a>
+        <a class="solid" href="#" id="copyLink">Copiar link do convite</a>
+      </div>
+    </section>
+
+    <section class="metrics">
+      <div class="metric"><span>Inscritos</span><strong id="mTotal">–</strong></div>
+      <div class="metric"><span>Empresas</span><strong id="mEmp">–</strong></div>
+      <div class="metric"><span>Últimas 24h</span><strong id="mDay">–</strong></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Lista de inscrições</h2>
+        <div class="tools">
+          <input class="search" id="q" type="search" placeholder="Buscar nome, empresa ou e-mail" aria-label="Buscar inscritos">
+          <button class="hbtn" type="button" id="reload">Atualizar</button>
+          <button class="hbtn primary" type="button" id="csv">Baixar planilha</button>
+        </div>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Nome</th><th>Empresa</th><th>Cargo</th><th>E-mail</th><th>Telefone</th><th>Inscrito em</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="state" id="state">Carregando inscrições…</div>
+    </section>
+  </main>
+
+<script>
+(function(){
+  var data=[];
+  var $=function(id){return document.getElementById(id);};
+  function fmt(d){var x=new Date(d);return x.toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'})+' '+x.toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});}
+  function render(){
+    var q=$('q').value.trim().toLowerCase();
+    var list=data.filter(function(r){return !q||[r.nome,r.empresa,r.email,r.cargo].join(' ').toLowerCase().indexOf(q)>=0;});
+    var tb=$('rows'); tb.textContent='';
+    list.forEach(function(r){
+      var tr=document.createElement('tr');
+      [r.nome,r.empresa,r.cargo||'—',r.email,r.telefone||'—',fmt(r.criado_em)].forEach(function(v,i){
+        var td=document.createElement('td');td.textContent=v;
+        if(i===0)td.className='name'; if(i===5)td.className='num';
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    var st=$('state'); st.className='state';
+    st.hidden=list.length>0;
+    st.textContent = data.length ? 'Nenhum inscrito encontrado para essa busca.' : 'Nenhuma inscrição ainda. Assim que os fornecedores confirmarem pelo convite, eles aparecem aqui.';
+    $('mTotal').textContent=data.length;
+    var emp={};data.forEach(function(r){emp[String(r.empresa||'').trim().toLowerCase()]=1;});
+    $('mEmp').textContent=Object.keys(emp).length;
+    var dayAgo=Date.now()-864e5;
+    $('mDay').textContent=data.filter(function(r){return new Date(r.criado_em).getTime()>=dayAgo;}).length;
+  }
+  async function load(){
+    var btn=$('reload'); btn.disabled=true;
+    try{
+      await window.PMGConnect.ready;
+      var client=window.PMGConnect.client;
+      var res=await client.rpc('convencao2026_listar_colaborador');
+      if(res.error) throw res.error;
+      data=res.data||[]; render();
+    }catch(e){
+      var st=$('state'); st.hidden=false; st.className='state error';
+      st.textContent = (e && /acesso_negado/.test(e.message||'')) ? 'Seu usuário não tem acesso a esta lista.' : 'Não foi possível carregar as inscrições. Tente atualizar a página.';
+    }finally{ btn.disabled=false; }
+  }
+  $('q').addEventListener('input',render);
+  $('reload').addEventListener('click',load);
+  $('csv').addEventListener('click',function(){
+    var head=['Nome','Empresa','Cargo','E-mail','Telefone','Inscrito em'];
+    var esc=function(v){v=String(v==null?'':v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+    var lines=[head.join(';')].concat(data.map(function(r){return [r.nome,r.empresa,r.cargo,r.email,r.telefone,fmt(r.criado_em)].map(esc).join(';');}));
+    var blob=new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='inscritos-convencao-pmg-2026.csv';document.body.appendChild(a);a.click();a.remove();
+  });
+  $('copyLink').addEventListener('click',function(e){
+    e.preventDefault();
+    var url=location.origin+'/convencao-2026/', el=this;
+    function ok(){el.textContent='Link copiado';setTimeout(function(){el.textContent='Copiar link do convite';},2200);}
+    if(navigator.clipboard) navigator.clipboard.writeText(url).then(ok,function(){prompt('Copie o link:',url);}); else prompt('Copie o link:',url);
+  });
+  load();
+})();
+</script>
+</body>
+</html>
