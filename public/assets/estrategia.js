@@ -1100,6 +1100,42 @@ render();
   toast('Arquivo HTML gerado — pode ser aberto em qualquer computador, sem precisar da rede da PMG.');
 }
 
+// Exporta em JSON a evolução mensal (histórico completo, todo mês que
+// existe no snapshot) e a análise de mercado do período atual selecionado
+// no filtro (mesmo comparativo região/segmento/categoria/estado/cidade da
+// Apresentação 1) — pra quem quiser cruzar esses dados fora do Connect,
+// numa planilha ou outra ferramenta de análise.
+async function exportMarketAnalysisJson(){
+  if(!state.yoy){toast('Carregando análise de mercado…');await loadYoyBreakdown().catch(error=>{throw new Error(`Não foi possível carregar a análise de mercado: ${error.message||error}`)})}
+  const y=state.yoy;
+  const dimensionPayload=(bucket)=>({
+    linhas:(bucket?.rows||[]).map(r=>({chave:r.chave,atual:r.cur,anterior:r.prev,variacaoPercentual:r.delta,shareAtualPercent:r.share})),
+    maioresCrescimentos:(bucket?.growing||[]).map(r=>({chave:r.chave,atual:r.cur,anterior:r.prev,variacaoPercentual:r.delta})),
+    maioresQuedas:(bucket?.falling||[]).map(r=>({chave:r.chave,atual:r.cur,anterior:r.prev,variacaoPercentual:r.delta})),
+  });
+  const payload={
+    geradoEm:new Date().toISOString(),
+    periodoAtual:{de:y.current.de,ate:y.current.ate,label:y.current.label},
+    periodoAnterior:{de:y.previous.de,ate:y.previous.ate,label:y.previous.label},
+    periodoParcial:y.partialExcludedMonth?`${y.partialExcludedMonth} ainda estava em andamento e ficou fora da comparação`:null,
+    kpis:{atual:y.kpisCur,anterior:y.kpisPrev},
+    evolucaoMensal:(state.commercial?.evolution||[]).map(r=>({ano:r.ano,mes:r.mes,faturamento:r.valor,volumeKg:r.volume,pedidos:r.pedidos,clientes:r.clientes})),
+    analiseMercado:{
+      regiao:dimensionPayload(y.regiao),
+      segmento:dimensionPayload(y.segmento),
+      categoria:dimensionPayload(y.categoria),
+      estado:dimensionPayload(y.uf),
+      cidade:dimensionPayload(y.cidade),
+    },
+  };
+  const json=JSON.stringify(payload,null,2);
+  const blob=new Blob([json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`PMG_Planejamento_Evolucao_Mercado_${nowKey()}.json`;document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(url);
+  toast('JSON exportado com a evolução mensal e a análise de mercado do período atual.');
+}
+
 function bindEvents(){
   document.addEventListener('click',async event=>{const el=event.target.closest('button,[data-project-id],a');if(!el)return;try{
     if(el.matches('.nav-item'))return switchView(el.dataset.view);if(el.dataset.go)return switchView(el.dataset.go);if('newProject' in el.dataset)return openProjectDialog();if(el.dataset.projectId){state.selectedProjectId=el.dataset.projectId;renderProjectList();return}
@@ -1129,7 +1165,7 @@ function bindEvents(){
     applyPeriodChange({period:target}).catch(e=>toast(e.message,'error'));
   });
   $('compareModeSelect').addEventListener('change',()=>applyCompareModeChange($('compareModeSelect').value).catch(e=>toast(e.message,'error')));
-  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('fornecedores').catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
+  $('compareCustomSelect').addEventListener('change',async()=>{state.customComparePeriod=$('compareCustomSelect').value;await loadCommercial();await loadYoyBreakdown().catch(error=>{state.sourceErrors['Comparativo do período']=error.message||String(error)})});$('manualOpportunityBtn').addEventListener('click',openManualOpportunity);$('newProjectBtn').addEventListener('click',()=>openProjectDialog());$('presentStage1Btn').addEventListener('click',()=>openPresentation('visao').catch(e=>toast(e.message,'error')));$('presentStage2Btn').addEventListener('click',()=>openPresentation('oportunidades').catch(e=>toast(e.message,'error')));$('presentStage3Btn').addEventListener('click',()=>openPresentation('fornecedores').catch(e=>toast(e.message,'error')));$('exportMarketJsonBtn').addEventListener('click',()=>exportMarketAnalysisJson().catch(e=>toast(e.message,'error')));$('presentExportBtn').addEventListener('click',()=>exportPptx(state.presentationStage).catch(e=>toast(e.message,'error')));$('presentExportHtmlBtn').addEventListener('click',()=>exportStandaloneHtml(state.presentationStage).catch(e=>toast(e.message,'error')));
   $('presentPeriodTrigger').addEventListener('click',event=>{event.stopPropagation();const hidden=$('presentPeriodPanel').hidden;$('presentPeriodPanel').hidden=!hidden;$('presentPeriodTrigger').setAttribute('aria-expanded',String(hidden))});
   $('presentPeriodPanel').addEventListener('click',event=>event.stopPropagation());
   document.addEventListener('click',()=>{if(!$('presentPeriodPanel').hidden){$('presentPeriodPanel').hidden=true;$('presentPeriodTrigger').setAttribute('aria-expanded','false')}});
