@@ -84,7 +84,8 @@ h1 .ch{padding-bottom:.12em;margin-bottom:-.12em}
 .lockup img{width:42px;height:42px;border-radius:8px;box-shadow:0 0 0 2px #fff}
 .lockup .t{font-size:10px;letter-spacing:.32em;line-height:1.35;text-transform:uppercase}
 .lockup .t b{display:block;font-weight:700;letter-spacing:.14em;font-size:15px}
-.nav{display:flex;align-items:center;gap:clamp(10px,2.4vw,34px)}
+.nav{display:flex;align-items:center;gap:clamp(10px,1.8vw,30px)}
+@media (max-width:1380px){.nav a.lnk{letter-spacing:.16em;font-size:10.5px}.nav a.lnk[href="#video"]{display:none}}
 .nav a.lnk{white-space:nowrap;font-size:11px;letter-spacing:.26em;text-transform:uppercase;text-decoration:none;color:var(--dim);position:relative;padding:6px 0;transition:color .3s}
 .nav a.lnk::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--amber);transform:scaleX(0);transform-origin:right;transition:transform .45s var(--ease)}
 .nav a.lnk:hover{color:var(--cream)}
@@ -124,7 +125,7 @@ h1 .l4,h1 .l5{font-weight:800;font-size:clamp(84px,19.5vw,300px);line-height:.8;
 h1 .l5{padding-left:.06em}
 .hero-cta{margin-top:clamp(30px,4.5vw,56px);display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px}
 .hero-cta .inv{margin:0;font:600 clamp(24px,3vw,40px)/1 var(--display);text-transform:uppercase}
-.hero-meta{position:relative;z-index:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);margin-top:clamp(40px,6vh,70px)}
+.hero-meta{position:relative;z-index:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.3fr);border-top:1px solid var(--line);margin-top:clamp(40px,6vh,70px)}
 .hero-meta > div{padding:18px 0 24px;display:flex;flex-direction:column;gap:6px}
 .hero-meta > div + div{padding-left:20px;border-left:1px solid var(--line)}
 .hero-meta small{font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:var(--faint)}
@@ -481,6 +482,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   .hero-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
   .hero-meta > div:nth-child(3){padding-left:0;border-left:0}
   .hero-meta > div:nth-child(n+3){border-top:1px solid var(--line)}
+  .hero-meta > .hm-apoio{grid-column:1/-1;padding-left:0;border-left:0;flex-direction:row;align-items:center;gap:18px}
   .clock{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:600px){
@@ -517,19 +519,26 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .sec-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:clamp(30px,4vw,56px)}
 .sec-top h2{margin:0;font:700 clamp(36px,4.6vw,72px)/.95 var(--display);text-transform:uppercase}
 .sec-top p{margin:0;color:var(--dim);max-width:42ch}
-.people{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));max-width:calc(var(--n,4) * 340px);margin-inline:auto;gap:clamp(14px,2vw,26px)}
-.person{position:relative;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--bg-2);display:flex;flex-direction:column}
-.person .ph{aspect-ratio:4/5;background:radial-gradient(70% 60% at 50% 45%,rgba(255,122,47,.32),transparent 72%),linear-gradient(180deg,var(--bg-3),#2B0714);display:grid;place-items:center;overflow:hidden;position:relative}
-.person .ph img{transition:transform .8s var(--ease)}
-.person:hover .ph img{transform:scale(1.04)}
-.person .ph::after{content:"";position:absolute;inset:auto 0 0;height:30%;background:linear-gradient(transparent,rgba(43,7,20,.85))}
-.person .ph img{width:100%;height:100%;object-fit:contain;object-position:bottom;display:block}
-.person .ph svg{width:42%;opacity:.35}
-.person .info{padding:18px 20px 22px}
-.person .role{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--amber);margin:0 0 8px}
-.person .nm{font:700 clamp(22px,2vw,28px)/1 var(--display);text-transform:uppercase;margin:0}
-.person .co{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin:8px 0 0}
-.person.tba .nm{color:var(--faint)}
+.people{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));column-gap:clamp(18px,2.6vw,40px);max-width:calc(var(--n,4) * 340px);margin-inline:auto;gap:clamp(14px,2vw,26px)}
+.spk{position:relative;isolation:isolate}
+.spk .panel{position:absolute;inset:22% 0 0;border-radius:24px;overflow:hidden;border:1px solid var(--line);background:linear-gradient(170deg,#4A1426 0%,#2B0714 70%);z-index:-1}
+.spk .panel::before{content:"";position:absolute;left:50%;top:22%;width:120%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,122,47,.55) 0%,rgba(255,79,56,.18) 38%,transparent 66%);transition:opacity .6s,transform .8s var(--ease)}
+.spk .panel::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(246,223,196,.035) 0 1px,transparent 1px 14px)}
+.spk .big{position:absolute;left:0;right:0;top:25%;text-align:center;font:800 clamp(80px,9vw,140px)/.8 var(--display);text-transform:uppercase;color:transparent;-webkit-text-stroke:1.2px rgba(246,223,196,.16);white-space:nowrap;overflow:hidden;z-index:-1;pointer-events:none}
+.spk .num{position:absolute;top:calc(22% + 18px);left:20px;font:600 11px/1 var(--sans);letter-spacing:.3em;color:var(--amber)}
+.spk .tag{position:absolute;top:calc(22% + 14px);right:16px;padding:6px 12px;border-radius:999px;background:var(--grad);color:#2B0714;font:700 10px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase}
+.spk .ph{position:relative;aspect-ratio:4/5;margin:0 auto;width:100%;-webkit-mask-image:linear-gradient(#000 74%,transparent 98%);mask-image:linear-gradient(#000 74%,transparent 98%)}
+.spk .ph img{width:100%;height:100%;object-fit:contain;object-position:bottom;display:block;filter:saturate(1.04) contrast(1.03);transition:transform .9s var(--ease)}
+.spk .ph svg{position:absolute;left:50%;bottom:10%;width:46%;transform:translateX(-50%);opacity:.3}
+.spk .info{position:relative;margin-top:-14%;padding:0 22px 24px;text-align:center}
+.spk .nm{margin:0;font:800 clamp(26px,2.4vw,36px)/.95 var(--display);text-transform:uppercase}
+.spk .line{display:block;width:34px;height:2px;margin:12px auto;background:var(--grad);border-radius:2px;transition:width .6s var(--ease)}
+.spk .co{margin:0;font-size:11.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--dim)}
+.spk .co b{color:var(--cream);font-weight:600}
+.spk:hover .ph img{transform:translateY(-10px) scale(1.03)}
+.spk:hover .panel::before{transform:translate(-50%,-50%) scale(1.12)}
+.spk:hover .line{width:70px}
+.spk.tba .nm{color:var(--faint)}
 .logos{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:clamp(10px,1.4vw,18px)}
 .logo-slot{aspect-ratio:3/2;border:1px solid var(--line);border-radius:16px;background:var(--bg-2);display:grid;place-items:center;padding:18px;text-align:center}
 .logo-slot img{max-width:80%;max-height:70%;object-fit:contain;filter:grayscale(1) brightness(1.6);opacity:.85;transition:filter .4s,opacity .4s}
@@ -543,7 +552,15 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .apoio a:hover{border-color:var(--amber);background:rgba(255,178,46,.06)}
 .apoio a img{max-height:44px;max-width:170px}
 @media (max-width:980px){.people{grid-template-columns:repeat(min(var(--n,4),2),minmax(0,1fr))}.logos{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:600px){.people{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;margin-inline:calc(var(--gutter)*-1);padding:0 var(--gutter) 6px;max-width:none;scrollbar-width:none}.people::-webkit-scrollbar{display:none}.person{flex:0 0 74%;scroll-snap-align:center}.logos{grid-template-columns:repeat(3,minmax(0,1fr))}.logo-slot{padding:10px}.person .info{padding:14px 14px 18px}}
+@media (max-width:600px){.people{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:14px;margin-inline:calc(var(--gutter)*-1);padding:0 var(--gutter) 6px;max-width:none;scrollbar-width:none}.people::-webkit-scrollbar{display:none}.spk{flex:0 0 78vw;scroll-snap-align:center}.logos{grid-template-columns:repeat(3,minmax(0,1fr))}.logo-slot{padding:10px}}
+
+.ap-logo{display:inline-flex;align-items:center}
+.ap-logo img{display:block;height:1.6em;width:auto;max-width:150px;object-fit:contain;filter:brightness(0) invert(.92)}
+.ap-logo img + em{display:none}
+.ap-logo em{font-style:normal}
+.hm-apoio b{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.hm-apoio .ap-logo img{height:26px}
+.apoio a .ap-logo img{height:42px}
 .marquee.alt{display:none}
 </style>
 </head>
@@ -571,8 +588,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   </a>
   <nav class="nav" aria-label="Seções">
     <a class="lnk" href="#convite">O encontro</a>
-    <a class="lnk" href="#video">Edição 2025</a>
     <a class="lnk" href="#participantes">Participantes</a>
+    <a class="lnk" href="#video">Edição 2025</a>
     <a class="lnk" href="#parceiros">Parceiros</a>
     <a class="lnk" href="#detalhes">Onde e quando</a>
     <button class="sound" type="button" id="soundBtn" aria-pressed="false" data-cursor="hover" aria-label="Ligar som ambiente"><span class="eq" aria-hidden="true"><b></b><b></b><b></b><b></b></span><span class="lbl" id="soundLbl">Ligar som</span></button>
@@ -613,6 +630,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
       <div><small>Horário</small><b>18h</b></div>
       <div><small>Local</small><b>Bisutti Tenerife</b></div>
       <div><small>Endereço</small><b>Vila Olímpia · SP</b></div>
+      <div class="hm-apoio"><small>Apoio</small><b><span class="ap-logo"><img src="logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span><span class="ap-logo"><img src="logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></b></div>
     </div>
   </section>
 
@@ -636,6 +654,17 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <div class="pillar" data-reveal><span class="n">03</span><h3>O próximo ano</h3><p>As prioridades, os projetos e as oportunidades que vamos construir juntos.</p></div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- PARTICIPANTES -->
+  <section class="block participantes" id="participantes" data-serve>
+    <div class="wrap">
+      <div class="sec-top" data-reveal>
+        <div><p class="label">Participantes</p><h2>Quem sobe <span class="gt">ao palco</span></h2></div>
+        <p>Quem vai debater no painel "Como se adaptar ao novo food service".</p>
+      </div>
+      <div class="people" id="people"></div>
     </div>
   </section>
 
@@ -689,6 +718,17 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 
   <div class="marquee alt" aria-hidden="true"><div class="m-track" id="m2"></div></div>
 
+  <!-- PARCEIROS -->
+  <section class="block parceiros" id="parceiros" data-serve>
+    <div class="wrap">
+      <div class="sec-top" data-reveal>
+        <div><p class="label">Parceiros</p><h2>Fornecedores <span class="gt">e parceiros</span></h2></div>
+        <p>As marcas que constroem esta noite junto com a PMG.</p>
+      </div>
+      <div class="logos" id="logos"></div>
+    </div>
+  </section>
+
   <!-- COUNTDOWN -->
   <section class="block count" data-serve>
     <div class="wrap">
@@ -735,7 +775,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <p class="k">Agenda</p>
           <p class="v gs" style="font-size:clamp(40px,4.4vw,72px);white-space:normal">Reserve a data</p>
           <div class="actions" style="margin-top:22px">
-            <a class="btn magnetic" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Conven%C3%A7%C3%A3o%20de%20Fornecedores%20PMG%202026&amp;dates=20261113T210000Z/20261114T010000Z&amp;location=Villa%20Bisutti%20Tenerife%2C%20Rua%20Tenerife%2C%20170%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004548-040&amp;details=As%20mudan%C3%A7as%20e%20o%20comportamento%20do%20novo%20food%20service">
+            <a class="btn magnetic" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Conven%C3%A7%C3%A3o%20de%20Fornecedores%20PMG%202026&amp;dates=20261113T210000Z/20261114T020000Z&amp;location=Villa%20Bisutti%20Tenerife%2C%20Rua%20Tenerife%2C%20170%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004548-040&amp;details=As%20mudan%C3%A7as%20e%20o%20comportamento%20do%20novo%20food%20service">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Adicionar à agenda</a>
           </div>
         </div>
@@ -781,28 +821,6 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
           <div class="actions" style="margin-top:22px"><a class="btn solid magnetic" href="#confirmar"><span class="lbl-wrap"><span data-t="Confirmar agora">Confirmar agora</span></span></a></div>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- PARTICIPANTES -->
-  <section class="block participantes" id="participantes" data-serve>
-    <div class="wrap">
-      <div class="sec-top" data-reveal>
-        <div><p class="label">Participantes</p><h2>Quem sobe <span class="gt">ao palco</span></h2></div>
-        <p>Quem vai debater no painel "Como se adaptar ao novo food service".</p>
-      </div>
-      <div class="people" id="people"></div>
-    </div>
-  </section>
-
-  <!-- PARCEIROS -->
-  <section class="block parceiros" id="parceiros" data-serve>
-    <div class="wrap">
-      <div class="sec-top" data-reveal>
-        <div><p class="label">Parceiros</p><h2>Fornecedores <span class="gt">e parceiros</span></h2></div>
-        <p>As marcas que constroem esta noite junto com a PMG.</p>
-      </div>
-      <div class="logos" id="logos"></div>
     </div>
   </section>
 
@@ -875,8 +893,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   <section class="apoio" id="apoio" aria-label="Apoio">
     <div class="wrap">
       <p class="label">Apoio</p>
-      <a href="https://www.institutofoodservicebrasil.org.br/" target="_blank" rel="noopener" aria-label="IFB, Instituto Foodservice Brasil">IFB</a>
-      <a href="https://www.galunion.com.br/" target="_blank" rel="noopener" aria-label="Galunion">Galunion</a>
+      <a href="https://www.institutofoodservicebrasil.org.br/" target="_blank" rel="noopener" aria-label="IFB, Instituto Foodservice Brasil"><span class="ap-logo"><img src="logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span></a>
+      <a href="https://www.galunion.com.br/" target="_blank" rel="noopener" aria-label="Galunion"><span class="ap-logo"><img src="logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></a>
     </div>
   </section>
 </main>
@@ -1055,7 +1073,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
   /* ---------- marquees (velocity driven) ---------- */
   var icon='<svg viewBox="0 0 24 24" fill="none" stroke="url(#mg)" stroke-width="1.6"><defs><linearGradient id="mg" x1="0" x2="1"><stop offset="0" stop-color="#FF4F38"/><stop offset="1" stop-color="#FFB22E"/></linearGradient></defs><path d="M20 4l-6.5 6.5"/><path d="M13.5 10.5c-2-2-6.5-1.5-8.5 1.5s-1 7 1 7 5 0 7.5-2 2-4.5 0-6.5z"/><path d="M13.5 10.5c-1 3-4 6.5-7.5 8"/><path d="M13.5 10.5c-3 1-6.5 4-8 7.5"/></svg>';
   function fill(el,items){var c=items.map(function(t,i){return '<span'+(i%2?' class="o"':'')+'>'+t+'</span>'+'<span>'+icon+'</span>';}).join('');el.innerHTML=c+c+c+c;}
-  fill($('#m1'),['Convenção de Fornecedores 2026','Food Service','13 · 11 · 2026','Bisutti Tenerife','18h','PMG Atacadista']);
+  fill($('#m1'),['Convenção de Fornecedores 2026','Food Service','13 · 11 · 2026','Bisutti Tenerife','Painel com IFB, Galunion e Bom Beef','Apoio IFB · Galunion','PMG Atacadista']);
   fill($('#m2'),['Tendências','Parcerias','Novo consumidor','Negócios','Conexões','O próximo ano']);
   var mq=[{el:$('#m1'),x:0,dir:-1,vis:true},{el:$('#m2'),x:0,dir:1,vis:false}];
   if('IntersectionObserver' in window) mq.forEach(function(m){ new IntersectionObserver(function(es){m.vis=es[0].isIntersecting;}).observe(m.el.parentNode); });
@@ -1908,9 +1926,9 @@ var PARCEIROS = [];
   if(pe){
     var list=PARTICIPANTES.length?PARTICIPANTES:[{},{},{},{}];
     pe.style.setProperty('--n',list.length);
-    pe.innerHTML=list.map(function(p){
-      var tba=!p.nome;
-      return '<article class="person'+(tba?' tba':'')+'"><div class="ph">'+(p.foto?'<img src="'+esc(p.foto)+'" alt="'+esc(p.nome)+'" loading="lazy">':sil)+'</div><div class="info"><p class="role">'+esc(p.papel||'Palestrante')+'</p><p class="nm">'+(tba?'Em breve':esc(p.nome))+'</p><p class="co">'+(tba?'A anunciar':esc(p.empresa))+'</p></div></article>';
+    pe.innerHTML=list.map(function(p,i){
+      var tba=!p.nome, first=tba?'':String(p.nome).split(' ')[0];
+      return '<article class="spk'+(tba?' tba':'')+'"><div class="panel"></div><span class="big" aria-hidden="true">'+esc(first)+'</span><span class="num">'+('0'+(i+1)).slice(-2)+'</span>'+(p.papel?'<span class="tag">'+esc(p.papel)+'</span>':'')+'<div class="ph">'+(p.foto?'<img src="'+esc(p.foto)+'" alt="'+esc(p.nome)+'" loading="lazy">':sil)+'</div><div class="info"><p class="nm">'+(tba?'Em breve':esc(p.nome))+'</p><span class="line"></span><p class="co">'+(tba?'A anunciar':'<b>'+esc(p.papel||'')+'</b> · '+esc(p.empresa))+'</p></div></article>';
     }).join('');
   }
   var lg=document.getElementById('logos');
