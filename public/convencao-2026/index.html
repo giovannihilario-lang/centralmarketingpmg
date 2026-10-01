@@ -577,7 +577,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .spk.tba .ph svg{bottom:22%;width:40%}
 .spk.tba .panel::before{opacity:.45}
 .spk .tag{z-index:2}
-@media (min-width:601px){.people .spk:nth-child(n+5){margin-top:-3%}}
+@media (min-width:601px){.people .spk:nth-child(n+5){margin-top:18px}}
 @media (max-width:980px){.people .spk{flex-basis:calc((100% - clamp(16px,2vw,28px))/2)}}
 @media (max-width:600px){.people{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scroll-snap-type:x mandatory}.people .spk{flex:0 0 72vw;scroll-snap-align:center}}
 .marquee{display:none}
@@ -677,7 +677,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
     <div class="wrap">
       <div class="sec-top" data-reveal>
         <div><p class="label">Participantes</p><h2>Quem sobe <span class="gt">ao palco</span></h2></div>
-        <p>Painel "Como se adaptar ao novo food service" e fornecedores convidados.</p>
+        <p>Quem conduz a noite e o painel "Como se adaptar ao novo food service".</p>
       </div>
       <div class="people" id="people"></div>
     </div>
@@ -1897,7 +1897,9 @@ var PARTICIPANTES = [
   {nome:'Ingrid Devisate', empresa:'IFB', papel:'VP', foto:'fotos/ingrid.webp'},
   {nome:'Simone Galante', empresa:'Galunion', papel:'CEO', foto:'fotos/simone.webp'},
   {nome:'Netão', empresa:'Bom Beef', papel:'CEO', foto:'fotos/netao.webp'},
-  {papel:'Fornecedor'}, {papel:'Fornecedor'}, {papel:'Fornecedor'}
+  {nome:'Eduardo Pereira', empresa:'PMG', papel:'Gerente Comercial', foto:'fotos/eduardo.webp'},
+  {nome:'Edilson Neves', empresa:'PMG', papel:'Diretor de Marketing', foto:'fotos/edilson.webp'},
+  {papel:'Fornecedor'}
 ];
 var PARCEIROS = [];
 (function(){
@@ -1908,7 +1910,7 @@ var PARCEIROS = [];
     var list=PARTICIPANTES.length?PARTICIPANTES:[{},{},{},{}];
     pe.innerHTML=list.map(function(p,i){
       var tba=!p.nome, first=tba?'':String(p.nome).split(' ')[0];
-      return '<article class="spk'+(tba?' tba':'')+'"><div class="panel"></div><span class="big" aria-hidden="true">'+esc(first)+'</span>'+(p.papel?'<span class="tag">'+esc(p.papel)+'</span>':'')+'<div class="ph">'+(p.foto?'<img src="'+esc(p.foto)+'" alt="'+esc(p.nome)+'" loading="lazy">':sil)+'</div><div class="info"><p class="nm">'+(tba?'Em breve':esc(p.nome))+'</p><span class="line"></span><p class="co">'+(tba?'A anunciar':'<b>'+esc(p.papel||'')+'</b> · '+esc(p.empresa))+'</p></div></article>';
+      return '<article class="spk'+(tba?' tba':'')+'"><div class="panel"></div><span class="big" aria-hidden="true">'+esc(first)+'</span>'+(!p.nome&&p.papel?'<span class="tag">'+esc(p.papel)+'</span>':'')+'<div class="ph">'+(p.foto?'<img src="'+esc(p.foto)+'" alt="'+esc(p.nome)+'" loading="lazy">':sil)+'</div><div class="info"><p class="nm">'+(tba?'Em breve':esc(p.nome))+'</p><span class="line"></span><p class="co">'+(tba?'A anunciar':'<b>'+esc(p.papel||'')+'</b> · '+esc(p.empresa))+'</p></div></article>';
     }).join('');
   }
   var lg=document.getElementById('logos');
