@@ -81,9 +81,9 @@ h1 .ch{padding-bottom:.12em;margin-bottom:-.12em}
 .bar.away{transform:translateY(-110%)}
 .bar:focus-within{transform:none}
 .lockup{display:flex;align-items:center;gap:14px;text-decoration:none}
-.lockup img{width:42px;height:42px;border-radius:8px;box-shadow:0 0 0 2px #fff}
-.lockup .t{font-size:10px;letter-spacing:.32em;line-height:1.35;text-transform:uppercase}
-.lockup .t b{display:block;font-weight:700;letter-spacing:.14em;font-size:15px}
+.lockup img{width:56px;height:56px;border-radius:8px;box-shadow:0 0 0 2px #fff}
+.lockup .t{font-size:12px;letter-spacing:.3em;line-height:1.35;text-transform:uppercase}
+.lockup .t b{display:block;font-weight:700;letter-spacing:.14em;font-size:20px}
 .nav{display:flex;align-items:center;gap:clamp(10px,1.8vw,30px)}
 @media (max-width:1380px){.nav a.lnk{letter-spacing:.16em;font-size:10.5px}.nav a.lnk[href="#video"]{display:none}}
 .nav a.lnk{white-space:nowrap;font-size:11px;letter-spacing:.26em;text-transform:uppercase;text-decoration:none;color:var(--dim);position:relative;padding:6px 0;transition:color .3s}
@@ -490,8 +490,9 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 @media (max-width:600px){
   .bar .btn .lbl-wrap{display:none}
   .bar .btn{padding:12px}
-  .lockup .t{font-size:8.5px;letter-spacing:.22em}
-  .lockup .t b{font-size:13px}
+  .lockup img{width:46px;height:46px}
+  .lockup .t{font-size:9.5px;letter-spacing:.2em}
+  .lockup .t b{font-size:16px}
   .form{grid-template-columns:1fr}
   h1 .l3{letter-spacing:.42em}
   .video-frame{clip-path:inset(10% 6% 10% 6% round 20px)}
@@ -557,11 +558,13 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 @media (max-width:600px){.people{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:14px;margin-inline:calc(var(--gutter)*-1);padding:0 var(--gutter) 6px;max-width:none;scrollbar-width:none}.people::-webkit-scrollbar{display:none}.spk{flex:0 0 78vw;scroll-snap-align:center}.logos{grid-template-columns:repeat(3,minmax(0,1fr))}.logo-slot{padding:10px}}
 
 .ap-logo{display:inline-flex;align-items:center}
-.ap-logo img{display:block;height:1.6em;width:auto;max-width:150px;object-fit:contain;filter:brightness(0) invert(.92)}
+.ap-logo img{display:block;height:1.6em;width:auto;max-width:170px;object-fit:contain}
 .ap-logo img + em{display:none}
 .ap-logo em{font-style:normal}
 .hm-apoio b{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.hm-apoio .ap-logo img{height:26px}
+.hm-apoio .ap-logo img{height:34px}
+.hm-apoio .ap-logo img[src*="galunion"]{height:44px}
+.hm-apoio b{gap:26px!important}
 .apoio a .ap-logo img{height:42px}
 .people-more{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(12px,1.6vw,20px);max-width:1020px;margin:clamp(18px,2.4vw,30px) auto 0}
 .spk-mini{display:flex;align-items:center;gap:16px;padding:16px 20px;border:1px dashed var(--line-2);border-radius:18px;background:rgba(65,16,31,.4)}
@@ -571,7 +574,9 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .spk-mini small{display:block;margin-top:6px;font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:var(--amber)}
 @media (max-width:760px){.people-more{grid-template-columns:1fr}}
 .count .clock{display:none}
-.wordmark{font-size:clamp(60px,11vw,180px)!important}
+.wordmark{font:800 clamp(52px,10vw,170px)/.9 var(--display)!important;display:flex!important;flex-direction:column;align-items:center;text-align:center;padding:0 var(--gutter)!important;white-space:normal!important;gap:14px!important;transform:none!important}
+.wordmark span{-webkit-text-stroke:0!important;padding-bottom:.08em}
+.wordmark small{font:600 clamp(10px,1vw,13px)/1.4 var(--sans);letter-spacing:.34em;text-transform:uppercase;color:var(--dim)}
 .people{display:flex!important;flex-wrap:wrap;justify-content:center;gap:0 clamp(16px,2vw,28px);max-width:1400px!important}
 .people .spk{flex:0 0 calc((100% - 3*clamp(16px,2vw,28px))/4)}
 .spk.tba .ph svg{bottom:22%;width:40%}
@@ -582,7 +587,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 @media (max-width:600px){.people{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scroll-snap-type:x mandatory}.people .spk{flex:0 0 72vw;scroll-snap-align:center}}
 .marquee{display:none}
 .foot-apoio{display:inline-flex;align-items:center;gap:14px}
-.foot-apoio .ap-logo img{height:20px}
+.foot-apoio .ap-logo img{height:22px}
+.foot-apoio .ap-logo img[src*="galunion"]{height:30px}
 .foot-apoio .ap-logo em{color:var(--cream);letter-spacing:.2em}
 </style>
 </head>
@@ -880,7 +886,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 </main>
 
 <footer>
-  <div class="wordmark" id="wordmark" aria-hidden="true"><span class="gt">Food</span><span>Service</span><span class="gt">2026</span><span>PMG</span></div>
+  <div class="wordmark" id="wordmark" aria-hidden="true"><span class="gt">Food Service</span><small>Convenção de Fornecedores PMG · 2026</small></div>
   <div class="foot-row"><span>PMG Atacadista</span><span class="foot-apoio" id="apoio">Apoio <span class="ap-logo"><img src="logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span> <span class="ap-logo"><img src="logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></span><span>13 · 11 · 2026 · Bisutti Tenerife · São Paulo</span></div>
 </footer>
 
@@ -1047,7 +1053,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
       .fromTo('#vcopy h2, #vcopy .bottom p, #playBtn',{y:60,opacity:0},{y:0,opacity:1,stagger:.08,duration:.5},.4)
       .to({}, {duration:.4});
     // footer wordmark
-    G.fromTo('#wordmark',{xPercent:0},{xPercent:-35,ease:'none',scrollTrigger:{trigger:'footer',start:'top bottom',end:'bottom bottom',scrub:true}});
+    
   }
 
   /* ---------- marquees (velocity driven) ---------- */
