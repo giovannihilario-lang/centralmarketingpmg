@@ -572,6 +572,14 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 @media (max-width:760px){.people-more{grid-template-columns:1fr}}
 .count .clock{display:none}
 .wordmark{font-size:clamp(60px,11vw,180px)!important}
+.people{display:flex!important;flex-wrap:wrap;justify-content:center;gap:0 clamp(16px,2vw,28px);max-width:1400px!important}
+.people .spk{flex:0 0 calc((100% - 3*clamp(16px,2vw,28px))/4)}
+.spk.tba .ph svg{bottom:22%;width:40%}
+.spk.tba .panel::before{opacity:.45}
+.spk .tag{z-index:2}
+@media (min-width:601px){.people .spk:nth-child(n+5){margin-top:-3%}}
+@media (max-width:980px){.people .spk{flex-basis:calc((100% - clamp(16px,2vw,28px))/2)}}
+@media (max-width:600px){.people{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scroll-snap-type:x mandatory}.people .spk{flex:0 0 72vw;scroll-snap-align:center}}
 .marquee{display:none}
 .foot-apoio{display:inline-flex;align-items:center;gap:14px}
 .foot-apoio .ap-logo img{height:20px}
@@ -1897,12 +1905,7 @@ var PARCEIROS = [];
   var sil='<svg viewBox="0 0 24 24" fill="#F6DFC4" aria-hidden="true"><circle cx="12" cy="8" r="4.2"/><path d="M3.5 21c.8-4.6 4.3-7 8.5-7s7.7 2.4 8.5 7z"/></svg>';
   var pe=document.getElementById('people');
   if(pe){
-    var full=PARTICIPANTES.filter(function(p){return p.nome;}), soon=PARTICIPANTES.filter(function(p){return !p.nome;});
-    var list=full.length?full:[{},{},{}];
-    pe.style.setProperty('--n',Math.min(list.length,3));
-    if(soon.length){var more=document.createElement('div');more.className='people-more';
-      more.innerHTML=soon.map(function(p){return '<div class="spk-mini"><span class="av">'+sil+'</span><span><b>Em breve</b><small>'+esc(p.papel||'Convidado')+' convidado</small></span></div>';}).join('');
-      pe.parentNode.insertBefore(more,pe.nextSibling);}
+    var list=PARTICIPANTES.length?PARTICIPANTES:[{},{},{},{}];
     pe.innerHTML=list.map(function(p,i){
       var tba=!p.nome, first=tba?'':String(p.nome).split(' ')[0];
       return '<article class="spk'+(tba?' tba':'')+'"><div class="panel"></div><span class="big" aria-hidden="true">'+esc(first)+'</span>'+(p.papel?'<span class="tag">'+esc(p.papel)+'</span>':'')+'<div class="ph">'+(p.foto?'<img src="'+esc(p.foto)+'" alt="'+esc(p.nome)+'" loading="lazy">':sil)+'</div><div class="info"><p class="nm">'+(tba?'Em breve':esc(p.nome))+'</p><span class="line"></span><p class="co">'+(tba?'A anunciar':'<b>'+esc(p.papel||'')+'</b> · '+esc(p.empresa))+'</p></div></article>';
