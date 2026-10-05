@@ -154,14 +154,11 @@ textarea.in{min-height:96px;resize:vertical}
     <div class="sec-h" style="margin-top:22px"><p class="n">Etapa 1 de 7</p><h2>Seu estabelecimento</h2></div>
     <div class="q" data-req="id">
       <div class="grid2">
-        <div class="field"><label for="nome">Seu nome</label><input class="in" id="nome" name="nome" autocomplete="name" maxlength="120" required></div>
-        <div class="field"><label for="estabelecimento">Nome do estabelecimento</label><input class="in" id="estabelecimento" name="estabelecimento" autocomplete="organization" maxlength="160" required></div>
-        <div class="field"><label for="documento">CNPJ ou código de cliente PMG</label><input class="in" id="documento" name="documento" inputmode="numeric" maxlength="30" required></div>
-        <div class="field"><label for="telefone">WhatsApp</label><input class="in" id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 90000-0000" maxlength="20" required></div>
+        <div class="field" style="grid-column:1/-1"><label for="estabelecimento">Nome do estabelecimento</label><input class="in" id="estabelecimento" name="estabelecimento" autocomplete="organization" maxlength="160" required></div>
         <div class="field"><label for="cidade">Cidade</label><input class="in" id="cidade" name="cidade" autocomplete="address-level2" maxlength="100" required></div>
-        <div class="field"><label for="email">E-mail <i>(opcional)</i></label><input class="in" id="email" name="email" type="email" autocomplete="email" maxlength="160"></div>
+        <div class="field"><label for="telefone">Telefone <i>(opcional)</i></label><input class="in" id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 90000-0000" maxlength="20"></div>
       </div>
-      <p class="msg">Preencha nome, estabelecimento, CNPJ ou código, WhatsApp e cidade.</p>
+      <p class="msg" id="idMsg">Preencha o nome do estabelecimento e a cidade.</p>
     </div>
     <div class="q" data-q="tipo">
       <p class="lbl"><b><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 10l1.5-5h13L20 10M4 10v9h16v-9M4 10c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3"/></svg></b>Qual é o tipo do seu estabelecimento?</p>
@@ -273,7 +270,7 @@ textarea.in{min-height:96px;resize:vertical}
       <div class="field"><textarea class="in" id="q13" name="q13" maxlength="2000" placeholder="Escreva com as suas palavras"></textarea></div>
     </div>
     <div class="q" data-q="consent">
-      <label class="consent"><input type="checkbox" id="consentimento" name="consentimento"><span>Autorizo a PMG Atacadista a usar minhas respostas nesta pesquisa. Os resultados são apresentados apenas de forma agregada, sem identificar o meu estabelecimento, e meus dados de contato não são compartilhados.</span></label>
+      <label class="consent"><input type="checkbox" id="consentimento" name="consentimento"><span>Autorizo a PMG Atacadista a usar minhas respostas nesta pesquisa. Os resultados são apresentados apenas de forma agregada, sem identificar o meu estabelecimento, e meu telefone não é compartilhado.</span></label>
       <p class="msg">Para enviar, é preciso marcar a autorização.</p>
     </div>
     <div class="alert" id="alert"></div>
@@ -368,7 +365,7 @@ function vals(n){return Array.prototype.map.call(f.querySelectorAll('input[name=
 function txt(id){var el=document.getElementById(id); return el?el.value.trim():'';}
 function collect(){
   var q8={}; CRIT.forEach(function(c,i){ var v=val('q8_'+i); if(v) q8[c]=+v; });
-  return {nome:txt('nome'),estabelecimento:txt('estabelecimento'),documento:txt('documento'),telefone:txt('telefone'),email:txt('email'),cidade:txt('cidade'),
+  return {estabelecimento:txt('estabelecimento'),telefone:txt('telefone'),cidade:txt('cidade'),
     tipo:val('tipo'),tipo_outro:val('tipo')==='Outro'?txt('tipo_outro'):'',
     q1:val('q1'),q1_obs:txt('q1_obs'),q2:val('q2'),q3:val('q3'),q4:val('q4'),q5:val('q5'),q6:val('q6'),q7:vals('q7'),q8:q8,
     q9:val('q9'),q9_outro:val('q9')==='Outra'?txt('q9_outro'):'',q10:vals('q10'),q10_outro:vals('q10').indexOf('Outras')>-1?txt('q10_outro'):'',
@@ -378,7 +375,7 @@ function save(){ try{ var d=collect(); d._step=cur; localStorage.setItem(KEY,JSO
 function restore(){
   var d; try{ d=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){ d=null; }
   if(!d) return 0;
-  ['nome','estabelecimento','documento','telefone','email','cidade','tipo_outro','q1_obs','q9_outro','q10_outro','q12_outro','q13'].forEach(function(k){ if(d[k]) document.getElementById(k).value=d[k]; });
+  ['estabelecimento','telefone','cidade','tipo_outro','q1_obs','q9_outro','q10_outro','q12_outro','q13'].forEach(function(k){ if(d[k]) document.getElementById(k).value=d[k]; });
   function setR(n,v){ if(!v) return; var el=f.querySelector('input[name="'+n+'"][value="'+String(v).replace(/"/g,'\\"')+'"]'); if(el){el.checked=true; el.dispatchEvent(new Event('change',{bubbles:true}));} }
   ['tipo','q1','q2','q3','q4','q5','q6','q9','q11','q12'].forEach(function(k){ setR(k,d[k]); });
   (d.q7||[]).forEach(function(v){setR('q7',v);}); (d.q10||[]).forEach(function(v){setR('q10',v);});
@@ -393,8 +390,9 @@ function check(step){
   step.querySelectorAll('.q').forEach(function(q){
     var k=q.dataset.q;
     if(q.dataset.req==='id'){
-      var digits=d.telefone.replace(/\D/g,'');
-      if(d.nome.length<2||d.estabelecimento.length<2||d.documento.replace(/[^0-9a-z]/gi,'').length<3||digits.length<10||d.cidade.length<2) bad(q);
+      var digits=d.telefone.replace(/\D/g,''), telBad=digits.length>0&&digits.length<10;
+      document.getElementById('idMsg').textContent=telBad?'Confira o telefone com DDD, ou deixe o campo em branco.':'Preencha o nome do estabelecimento e a cidade.';
+      if(d.estabelecimento.length<2||d.cidade.length<2||telBad) bad(q);
       return;
     }
     if(!k||k==='q13') return;
@@ -436,7 +434,7 @@ function send(){
     clearTimeout(tm);
     if(!res.ok) throw new Error((res.j&&res.j.message)||'erro');
     try{ localStorage.removeItem(KEY); }catch(e){}
-    if(res.j==='atualizado') document.getElementById('doneMsg').textContent='Suas respostas foram atualizadas. Como esse CNPJ ou código já tinha respondido, guardamos a versão mais recente.';
+    if(res.j==='atualizado') document.getElementById('doneMsg').textContent='Suas respostas foram atualizadas. Como esse telefone já tinha respondido, guardamos a versão mais recente.';
     show(LAST+1);
   })
   .catch(function(err){
