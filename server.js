@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { createClient } from '@supabase/supabase-js';
 import { WAVE2_ROUTES } from './src/lib/wave2.js';
 import { resolveSupabaseUrl, resolveAnonKey } from './src/lib/env.js';
+import { startDailySnapshot } from './src/lib/daily-commercial-snapshot.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -237,4 +238,16 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`- Campanhas: http://localhost:${PORT}/campanhas.html`);
   console.log(`- Na rede local: http://<IP-DESTE-PC>:${PORT}`);
   console.log('Mantenha este terminal aberto enquanto usar os relatórios conectados ao SQL Server.\n');
+
+  // Antes, o snapshot diário só começava a sincronizar quando a primeira
+  // página que precisa dele (Campanhas, Planejamento Estratégico etc.)
+  // disparava a primeira requisição — ou seja, com `npm start` sozinho,
+  // nada sincronizava até alguém abrir o site. Na prática isso significava
+  // que a primeira pessoa a abrir o site de manhã pagava o custo inteiro
+  // da sincronização (minutos, com o volume atual de linhas) bem na cara,
+  // com várias chamadas em paralelo todas estourando o timeout de 130s ao
+  // mesmo tempo. Disparar aqui, assim que o servidor sobe, não bloqueia o
+  // listen (startDailySnapshot é fire-and-forget) e dá à sincronização a
+  // folga de minutos que ela realmente precisa antes do primeiro acesso.
+  startDailySnapshot();
 });

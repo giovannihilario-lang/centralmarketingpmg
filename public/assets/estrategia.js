@@ -93,6 +93,29 @@ function renderSnapshotStatus(status){
     pill.querySelector('span:last-child').textContent='Preparando dados';
   }
 }
+// Antes, loadCommercial() disparava 9 chamadas pesadas em paralelo direto,
+// cada uma com seu próprio timeout de 130s — se o snapshot do dia ainda
+// estivesse sincronizando (comum logo depois de ligar o servidor, ou numa
+// base grande), as 9 travavam juntas no mesmo ensureDailySnapshot() do
+// servidor e todas abortavam quase ao mesmo tempo ("signal is aborted
+// without reason"), parecendo um site quebrado em vez de "ainda
+// carregando". Esperar aqui, igual ao Campanhas já faz (pollContext),
+// evita a enxurrada de abort e mostra uma mensagem de verdade enquanto
+// espera. Teto de 12 minutos (mesmo da Campanhas) — depois disso, segue
+// mesmo assim e deixa os erros normais de timeout aparecerem.
+const SNAPSHOT_WAIT_MAX_MS=12*60*1000;
+async function waitForSnapshotReady(){
+  const deadline=Date.now()+SNAPSHOT_WAIT_MAX_MS;
+  while(Date.now()<deadline){
+    let status=null;
+    try{status=await regionalApi('/dados-diarios',{acao:'status'})}catch{/* status é best-effort aqui; segue tentando */}
+    if(status)renderSnapshotStatus(status);
+    if(!status||!status.syncing)return status;
+    setSourceStatus(null,`Sincronizando dados de hoje… ${Number(status.progress)||0}%`);
+    await new Promise(resolve=>setTimeout(resolve,4000));
+  }
+  return null;
+}
 async function pollSnapshotStatus(){
   clearTimeout(snapshotStatusTimer);
   try{
@@ -382,6 +405,7 @@ function trimIncompleteMonths(range){
 // vez de um recorte fixo de ano civil. Assim o botão de período muda de
 // verdade o que a Apresentação 1 mostra, em qualquer granularidade.
 async function loadYoyBreakdown(){
+  await waitForSnapshotReady();
   const rawCurrent=periodRange(state.period);
   const trimmedCurrent=trimIncompleteMonths(rawCurrent);
   const partial=trimmedCurrent.ate!==rawCurrent.ate;
@@ -437,6 +461,7 @@ async function runWithConcurrency(tasks,limit){
 async function loadCommercial(){
   const period=state.period||currentQuarter(); const range=periodRange(period); const comparison=resolveComparison(range); state.compare=comparison;
   setSourceStatus(null,'Atualizando dados');
+  await waitForSnapshotReady();
   for(const key of ['KPIs atuais','KPIs anteriores','Cidades atuais','Cidades anteriores','Grupos atuais','Grupos anteriores','Evolução','Clientes']) delete state.sourceErrors[key];
   const currentFilters=filtersForPeriod(period); const previousFilters=comparison?{p_de:comparison.de,p_ate:comparison.ate}:currentFilters;
   const tasks=[

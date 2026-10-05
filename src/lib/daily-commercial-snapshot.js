@@ -332,7 +332,14 @@ async function writeSnapshot(snapshot, day, updatedAt) {
   const tmp = `${SNAPSHOT_PATH}.tmp`;
   await fs.rm(tmp, { force: true });
 
-  const gzipStream = createGzip({ level: 6 });
+  // level 6 (padrão do zlib) é o equilíbrio certo pra um arquivo que viaja
+  // pela rede, mas aqui o gzip só serve pra caber no disco local — ninguém
+  // baixa esse arquivo, e descompactar é barato em qualquer nível. Com ~10M
+  // linhas de item de venda, o nível 6 prendia a fase de compressão (CPU a
+  // 100% de um núcleo, sem dar pra saber se travou ou só estava lento) por
+  // vários minutos. Nível 1 (Z_BEST_SPEED) troca tamanho de arquivo (maior)
+  // por velocidade de CPU (bem mais rápido), o lado certo da troca aqui.
+  const gzipStream = createGzip({ level: 1 });
   const output = createWriteStream(tmp);
   const pipeDone = pipeline(gzipStream, output);
 
