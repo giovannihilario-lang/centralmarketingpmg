@@ -27,6 +27,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/demandas-v2.css?v=3.8.12">
+  <link rel="stylesheet" href="/assets/fechamento.css?v=1.0.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -80,6 +81,7 @@
         <button class="nav-item" data-view="agenda"><i data-lucide="calendar-days"></i><span>Agenda</span></button>
         <button class="nav-item" data-view="academia"><i data-lucide="presentation"></i><span>Academia PMG</span><b id="navAcademyPending" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="demandas"><i data-lucide="layout-dashboard"></i><span>Demandas</span><b id="navTaskCount" class="nav-badge">0</b></button>
+        <button class="nav-item" data-view="fechamento"><i data-lucide="file-spreadsheet"></i><span>Fechamento</span></button>
         <button class="nav-item" data-view="projetos"><i data-lucide="folder-kanban"></i><span>Projetos</span><b id="navProjectCount" class="nav-badge hidden">0</b></button>
         <button class="nav-item manager-only" data-view="automacoes"><i data-lucide="workflow"></i><span>Automações</span><b id="navAutomationCount" class="nav-badge hidden">0</b></button>
         <button class="nav-item" data-view="equipe"><i data-lucide="users-round"></i><span>Equipe</span></button>
@@ -422,6 +424,29 @@
             <div class="task-table-head"><span>Demanda</span><span>Responsáveis</span><span>Prazo</span><span>Status</span><span>Prioridade</span></div>
             <div id="taskRows" class="task-rows"></div>
           </section>
+        </section>
+
+        <section id="viewFechamento" class="view" data-page="fechamento">
+          <div class="page-toolbar">
+            <div class="toolbar-title"><span class="eyebrow">Fornecedores parceiros</span><h2>Fechamento</h2><p>Suba os relatórios do CRM, lance os débitos e copie o e-mail pronto de cada fornecedor.</p></div>
+            <div class="toolbar-actions">
+              <label class="fech-competencia">Competência<input id="fechCompetencia" type="month"></label>
+              <button id="fechNovoFornBtn" class="btn secondary" type="button"><i data-lucide="building-2"></i><span>Novo fornecedor</span></button>
+              <button id="fechUploadBtn" class="btn primary" type="button"><i data-lucide="upload-cloud"></i><span>Subir relatórios</span></button>
+              <input id="fechFileInput" type="file" accept=".xlsx,.xls" multiple hidden>
+            </div>
+          </div>
+          <div id="fechResumo" class="fech-resumo"></div>
+          <div id="fechDrop" class="fech-drop" role="button" tabindex="0">
+            <i data-lucide="file-up"></i>
+            <div><strong>Arraste os relatórios do CRM aqui</strong><small>Pode soltar vários de uma vez. Aceita "Vendas por Produto", "Pedidos de Vendas por Vendedor e Produto" e as planilhas antigas do fechamento (pra carregar o histórico). Cada mês do arquivo substitui o mesmo mês no dashboard do fornecedor.</small></div>
+          </div>
+          <div id="fechFila" class="fech-fila hidden"></div>
+          <div class="fech-toolbar">
+            <div class="search-input"><i data-lucide="search"></i><input id="fechBusca" placeholder="Buscar fornecedor ou e-mail"></div>
+            <select id="fechFiltro" aria-label="Filtrar fornecedores"><option value="todos">Todos os ativos</option><option value="pendentes">Pendentes no mês</option><option value="sem-email">Sem e-mail</option><option value="inativos">Inativos</option></select>
+          </div>
+          <div id="fechLista" class="fech-lista"></div>
         </section>
 
         <section id="viewProjetos" class="view" data-page="projetos">
@@ -1394,7 +1419,23 @@
 
   <div id="toastStack" class="toast-stack"></div>
 
+  <div id="fechModal" class="fech-modal hidden" role="dialog" aria-modal="true" aria-labelledby="fechModalTitulo">
+    <div class="fech-modal-box">
+      <div class="fech-modal-head"><h3 id="fechModalTitulo">E-mail</h3><button type="button" class="icon-btn subtle" data-fech-fechar="fechModal" aria-label="Fechar"><i data-lucide="x"></i></button></div>
+      <div id="fechModalCorpo" class="fech-modal-body"></div>
+    </div>
+  </div>
+  <div id="fechEditor" class="fech-modal hidden" role="dialog" aria-modal="true" aria-labelledby="fechEditorTitulo">
+    <div class="fech-modal-box">
+      <div class="fech-modal-head"><h3 id="fechEditorTitulo">Fornecedor</h3><button type="button" class="icon-btn subtle" data-fech-fechar="fechEditor" aria-label="Fechar"><i data-lucide="x"></i></button></div>
+      <div id="fechEditorCorpo" class="fech-modal-body"></div>
+      <div class="fech-modal-foot"><button type="button" class="btn secondary" data-fech-fechar="fechEditor">Cancelar</button><button id="fechEditorSalvar" type="button" class="btn primary"><i data-lucide="check"></i><span>Salvar</span></button></div>
+    </div>
+  </div>
+
   <script src="/assets/demandas-v2.js?v=3.8.19"></script>
+  <script src="/assets/fechamento-core.js?v=1.0.0"></script>
+  <script src="/assets/fechamento.js?v=1.0.0"></script>
   <script type="module" src="/assets/academia-wave2.js?v=2.0.0"></script>
 </body>
 </html>

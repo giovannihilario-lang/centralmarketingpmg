@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — PMG Atacadista</title>
   <link rel="icon" type="image/png" href="/favicon.png">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta name="robots" content="noindex, nofollow">
+  <script src="/assets/fechamento-core.js?v=1.0.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 
@@ -246,7 +247,7 @@
     }
     .map-legend-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--ghost); font-weight: 600; }
     .map-stats {
-      position: absolute; top: 12px; left: 12px; z-index: 500;
+      position: absolute; top: 12px; right: 12px; z-index: 500;
       background: rgba(255,255,255,.94); backdrop-filter: blur(6px);
       border-radius: 8px; padding: 10px 14px;
       border: 1px solid var(--line); box-shadow: var(--shadow);
@@ -254,7 +255,7 @@
     }
     .map-stat-row { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
     .map-stat-row:last-child { margin-bottom: 0; }
-    .map-stat-val { font-size: 16px; font-weight: 900; color: var(--ink); letter-spacing: -0.5px; }
+    .map-stat-val { font-size: 16px; font-weight: 900; color: var(--ink); letter-spacing: -0.5px; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .map-stat-label { font-size: 9px; color: var(--ghost); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
     /* Leaflet popup customization */
     .leaflet-popup-content-wrapper {
@@ -510,12 +511,6 @@
 <!-- CONTENT -->
 <main class="content" id="mainContent" style="display:none">
 
-    <!-- ABAS -->
-  <div class="tab-bar">
-    <button class="tab-btn active" onclick="mudarAba('sellout',this)">📈 Sell-Out</button>
-    <button class="tab-btn" onclick="mudarAba('sellin',this)">🧾 Sell-In / Débito</button>
-  </div>
-
   <!-- PAINEL SELL-OUT -->
   <div class="tab-panel active" id="panel-sellout">
 
@@ -567,12 +562,12 @@
   </div>
 
   <!-- MAPA REAL SP -->
-  <div class="section-title">Distribuição Geográfica</div>
-  <div class="card charts-wide">
+  <div class="section-title" id="secMapaTitulo">Distribuição Geográfica</div>
+  <div class="card charts-wide" id="secMapa">
     <div class="card-hdr">
       <div>
         <div class="card-title">Mapa de Calor — São Paulo e Região</div>
-        <div class="card-sub">Concentração de vendas R$ por bairro/região · Clique nos marcadores para detalhes</div>
+        <div class="card-sub">Vendas R$ por bairro (capital) e por cidade (demais regiões) · Clique nos marcadores para detalhes</div>
       </div>
       <span class="card-badge">Sell-out territorial</span>
     </div>
@@ -590,11 +585,15 @@
       <div class="map-stats" id="mapStats">
         <div class="map-stat-row">
           <span class="map-stat-val" id="mapNBairros">—</span>
-          <span class="map-stat-label">Bairros</span>
+          <span class="map-stat-label">Bairros e cidades</span>
         </div>
         <div class="map-stat-row">
           <span class="map-stat-val" id="mapTopBairro">—</span>
           <span class="map-stat-label">Maior venda</span>
+        </div>
+        <div class="map-stat-row">
+          <span class="map-stat-val" id="mapCobertura">—</span>
+          <span class="map-stat-label">das vendas no mapa</span>
         </div>
       </div>
       <!-- Legend -->
@@ -638,12 +637,12 @@
   </div>
 
   <!-- Grupos de produto -->
-  <div class="section-title">Grupos de Produto</div>
+  <div class="section-title">Mix & Positivação</div>
   <div class="charts-main" style="margin-bottom:16px">
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">Vendas por Grupo</div>
+          <div class="card-title" id="grupoTitulo">Vendas por Sub-grupo</div>
           <div class="card-sub">R$ no período</div>
         </div>
       </div>
@@ -652,20 +651,20 @@
     <div class="card">
       <div class="card-hdr">
         <div>
-          <div class="card-title">Margem Média por Grupo</div>
-          <div class="card-sub">% margem sobre venda</div>
+          <div class="card-title">Positivação Mensal</div>
+          <div class="card-sub">Clientes únicos que compraram no mês</div>
         </div>
       </div>
-      <div class="chart-h200"><canvas id="chartMargem"></canvas></div>
+      <div class="chart-h200"><canvas id="chartPositivacao"></canvas></div>
     </div>
   </div>
 
   <!-- SAZONALIDADE POR CATEGORIA -->
-  <div class="section-title">Sazonalidade por Categoria</div>
+  <div class="section-title">Sazonalidade</div>
   <div class="card charts-wide">
     <div class="card-hdr">
       <div>
-        <div class="card-title">Giro Mensal por Grupo de Produto</div>
+        <div class="card-title" id="sazonTitulo">Giro Mensal por Sub-grupo</div>
         <div class="card-sub">Identifica picos de demanda e risco de ruptura por categoria</div>
       </div>
       <span class="card-badge">Previsão de estoque</span>
@@ -688,11 +687,11 @@
   </div>
 
   <!-- Tabela de sub-grupos -->
-  <div class="section-title">Detalhamento por Sub-grupo</div>
+  <div class="section-title">Detalhamento</div>
   <div class="card">
     <div class="card-hdr">
       <div>
-        <div class="card-title">Performance por Sub-grupo</div>
+        <div class="card-title" id="subgrupoTitulo">Performance por Sub-grupo</div>
         <div class="card-sub">Ranking por faturamento no período</div>
       </div>
     </div>
@@ -701,12 +700,11 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>Sub-grupo</th>
-            <th>Grupo</th>
+            <th id="subgrupoCol">Sub-grupo</th>
+            <th id="subgrupoCol2">Produtos</th>
             <th style="text-align:right">Pedidos</th>
             <th style="text-align:right">Volume kg</th>
             <th style="text-align:right">Vendas R$</th>
-            <th style="text-align:right">Margem %</th>
             <th>Participação</th>
           </tr>
         </thead>
@@ -717,86 +715,7 @@
 
 </div><!-- /panel-sellout -->
 
-  <!-- PAINEL SELL-IN -->
-  <div class="tab-panel" id="panel-sellin">
-
-    <div class="si-kpi-row">
-      <div class="si-kpi">
-        <div class="si-kpi-label">Total Faturado (NFe)</div>
-        <div class="si-kpi-val" id="siTotalFaturado">—</div>
-        <div class="si-kpi-sub">notas autorizadas de venda</div>
-      </div>
-      <div class="si-kpi">
-        <div class="si-kpi-label">Débito Acumulado</div>
-        <div class="si-kpi-val" id="siDebito">—</div>
-        <div class="si-kpi-sub"><span class="si-pct-badge" id="siPctBadge">0%</span>do faturado</div>
-      </div>
-      <div class="si-kpi">
-        <div class="si-kpi-label">Notas Autorizadas</div>
-        <div class="si-kpi-val" id="siQtdNotas">—</div>
-        <div class="si-kpi-sub" id="siPeriodo">—</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-hdr">
-        <div>
-          <div class="card-title">Notas Fiscais — Sell-In</div>
-          <div class="card-sub" id="siTagPeriodo">—</div>
-        </div>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="notas-table">
-          <thead>
-            <tr>
-              <th>Número</th><th>Emissão</th><th>Emitente</th>
-              <th>Natureza</th><th>Situação</th>
-              <th style="text-align:right">Valor</th>
-            </tr>
-          </thead>
-          <tbody id="siTbody">
-            <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ghost)">Clique na aba para carregar.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-  </div><!-- /panel-sellin -->
-
 </main>
-
-<!-- MODAL DÉBITO -->
-<div id="modalDebito" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center">
-  <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2);position:relative">
-    <button onclick="document.getElementById('modalDebito').style.display='none'"
-      style="position:absolute;top:14px;right:14px;border:none;background:var(--g50);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:16px;color:var(--muted)">×</button>
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--ghost);margin-bottom:6px">Extrato de Débito — Sell-In</div>
-    <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:20px" id="debitoModalForn">—</div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
-      <div style="background:var(--g50);border-radius:10px;padding:14px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--ghost);margin-bottom:6px">Total Faturado</div>
-        <div style="font-size:22px;font-weight:900;color:var(--ink)" id="debitoModalFaturado">—</div>
-      </div>
-      <div style="background:#fef3c7;border-radius:10px;padding:14px;border:1px solid #fde68a">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#92400e;margin-bottom:6px">Débito Acumulado</div>
-        <div style="font-size:22px;font-weight:900;color:#b45309" id="debitoModalValor">—</div>
-        <div style="font-size:10px;color:#d97706;margin-top:2px" id="debitoModalPct">0% sobre faturado</div>
-      </div>
-    </div>
-
-    <div style="padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:11px;color:#c2410c;line-height:1.5">
-      ⚠️ Este valor representa o <strong>sell-in</strong> cobrado sobre as notas fiscais de venda autorizadas no período selecionado.
-    </div>
-
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button onclick="document.getElementById('modalDebito').style.display='none'"
-        style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted);font-family:inherit">
-        Fechar
-      </button>
-    </div>
-  </div>
-</div>
 
 <!-- ERROR -->
 <div id="errorScreen" style="display:none">
@@ -809,203 +728,44 @@
 
 <!-- FOOTER -->
 <footer class="dash-footer" id="dashFooter" style="display:none">
-  PMG Atacadista · Dashboard gerado em <span id="footerDate">—</span> · Dados de uso exclusivo do fornecedor
+  PMG Atacadista · Dados atualizados em <span id="footerDate">—</span> · Uso exclusivo do fornecedor
 </footer>
 
 <script>
-    
 /* ══════════════════════════════════════════════
-   CONFIG
+   DASHBOARD DO FORNECEDOR — versão leve
+   Lê 1 arquivo JSON publicado pela aba Fechamento (PMG Connect):
+   storage/fornecedor-dashboards/<slug>.json
+   O slug tem sufixo aleatório (ex.: tirolez-k8f3x9q2), então não dá pra chutar
+   o link de outro fornecedor. Sem login, sem consulta ao banco, sem margem.
 ══════════════════════════════════════════════ */
-const SUPABASE_URL      = 'https://scokolfzvtzohrzdgisz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjb2tvbGZ6dnR6b2hyemRnaXN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwODk3OTQsImV4cCI6MjA5ODY2NTc5NH0.43X3j64Ds6lcVonDAsONyueveOMaovHb1pqE9ofa3FI';
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPABASE_URL = 'https://scokolfzvtzohrzdgisz.supabase.co';
+const BUCKET = 'fornecedor-dashboards';
 
 const MONTH_NAMES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const PALETTE = ['#1a4d2e','#2d7a4f','#3d9463','#4caf70','#7ecf98','#b8e8c7','#f59e0b','#3b82f6','#8b5cf6','#ef4444'];
 const SAZON_PALETTE = ['#1a4d2e','#2d7a4f','#3d9463','#4caf70','#7ecf98','#f59e0b','#3b82f6','#8b5cf6','#ef4444','#f97316'];
 
-/* ══════════════════════════════════════════════
-   BAIRROS SP — coordenadas aproximadas
-   Usado como fallback quando os dados não têm lat/lon
-══════════════════════════════════════════════ */
-const BAIRRO_COORDS = {
-  'vila mariana':       [-23.5892, -46.6352],
-  'moema':              [-23.6031, -46.6683],
-  'itaim bibi':         [-23.5844, -46.6734],
-  'pinheiros':          [-23.5651, -46.6944],
-  'jardins':            [-23.5698, -46.6513],
-  'brooklin':           [-23.6166, -46.6957],
-  'vila olimpia':       [-23.5953, -46.6855],
-  'perdizes':           [-23.5391, -46.6667],
-  'lapa':               [-23.5263, -46.7058],
-  'barra funda':        [-23.5266, -46.6624],
-  'santana':            [-23.4996, -46.6259],
-  'tatuape':            [-23.5357, -46.5710],
-  'mooca':              [-23.5564, -46.5968],
-  'ipiranga':           [-23.5908, -46.6088],
-  'saude':              [-23.6020, -46.6296],
-  'jabaquara':          [-23.6485, -46.6528],
-  'santo andre':        [-23.6629, -46.5273],
-  'sao bernardo':       [-23.6940, -46.5648],
-  'sao caetano':        [-23.6163, -46.5582],
-  'guarulhos':          [-23.4628, -46.5330],
-  'osasco':             [-23.5323, -46.7919],
-  'santo amaro':        [-23.6516, -46.7118],
-  'campo limpo':        [-23.6372, -46.7603],
-  'itaquera':           [-23.5417, -46.4556],
-  'penha':              [-23.5257, -46.5338],
-  'belem':              [-23.5376, -46.5567],
-  'liberdade':          [-23.5622, -46.6369],
-  'bela vista':         [-23.5591, -46.6464],
-  'consolacao':         [-23.5524, -46.6579],
-  'republica':          [-23.5440, -46.6413],
-  'se':                 [-23.5505, -46.6333],
-  'centro':             [-23.5505, -46.6333],
-  'cambuci':            [-23.5711, -46.6232],
-  'bom retiro':         [-23.5348, -46.6409],
-  'santa cecilia':      [-23.5445, -46.6556],
-  'higienopolis':       [-23.5479, -46.6619],
-  'pompeia':            [-23.5387, -46.6905],
-  'agua branca':        [-23.5173, -46.6985],
-  'butanta':            [-23.5724, -46.7212],
-  'morumbi':            [-23.6083, -46.7215],
-  'campo belo':         [-23.6242, -46.6839],
-  'santo antonio':      [-23.6353, -46.6742],
-  'cursino':            [-23.6148, -46.6117],
-  'sacomã':             [-23.6033, -46.5893],
-  'vila prudente':      [-23.5865, -46.5694],
-  'aricanduva':         [-23.5621, -46.5168],
-  'sao miguel':         [-23.4975, -46.4408],
-  'ermelino matarazzo': [-23.5043, -46.4637],
-  'vila matilde':       [-23.5394, -46.5017],
-  'agua rasa':          [-23.5508, -46.5586],
-  'carrao':             [-23.5499, -46.5380],
-  'vila formosa':       [-23.5613, -46.5258],
-  'bras':               [-23.5442, -46.6132],
-  'pari':               [-23.5326, -46.6201],
-  'bom jesus':          [-23.5231, -46.6083],
-  'tucuruvi':           [-23.4748, -46.5987],
-  'mandaqui':           [-23.4888, -46.6259],
-  'casa verde':         [-23.5091, -46.6610],
-  'limao':              [-23.5048, -46.6771],
-  'pirituba':           [-23.4934, -46.7200],
-  'jaragua':            [-23.4601, -46.7436],
-  'perus':              [-23.4219, -46.7461],
-  'vila guilherme':     [-23.5108, -46.5999],
-  'vila medeiros':      [-23.5001, -46.5721],
-  'tremembé':           [-23.4720, -46.6262],
-  'lajeado':            [-23.5359, -46.4368],
-  'guaianazes':         [-23.5451, -46.4005],
-  'itaim paulista':     [-23.5102, -46.4236],
-  'sao mateus':         [-23.5780, -46.4564],
-  'sapopemba':          [-23.5884, -46.4897],
-  'cidade ademar':      [-23.6605, -46.6329],
-  'pedreira':           [-23.6855, -46.6309],
-  'parelheiros':        [-23.8107, -46.7229],
-  'marsilac':           [-23.9631, -46.6561],
-  'grajaú':             [-23.7027, -46.6638],
-  'cidade dutra':       [-23.6902, -46.6633],
-  'vila andrade':       [-23.6387, -46.7252],
-  'capão redondo':      [-23.6678, -46.7580],
-  'campo grande':       [-23.6597, -46.7785],
-  'raposo tavares':     [-23.6258, -46.8012],
-  'vila sonia':         [-23.5975, -46.7453],
-  'socorro':            [-23.6565, -46.6999],
-  'jabaquara':          [-23.6485, -46.6528],
-  'diadema':            [-23.6862, -46.6228],
-  'maua':               [-23.6678, -46.4609],
-  'ribeirão pires':     [-23.7108, -46.4127],
-  'rio grande da serra':[-23.7432, -46.3979],
-  'carapicuiba':        [-23.5230, -46.8357],
-  'barueri':            [-23.5050, -46.8758],
-  'jandira':            [-23.5295, -46.9016],
-  'itapevi':            [-23.5487, -47.0001],
-  'cotia':              [-23.6031, -46.9194],
-  'embu das artes':     [-23.6493, -46.8506],
-  'embu guaçu':         [-23.8310, -46.8123],
-  'taboao da serra':    [-23.6096, -46.7603],
-  'ferraz de vasconcelos':[-23.5424, -46.3686],
-  'poá':                [-23.5297, -46.3428],
-  'suzano':             [-23.5418, -46.3116],
-  'mogi das cruzes':    [-23.5229, -46.1877],
-  'itaquaquecetuba':    [-23.4876, -46.3492],
-  'aruja':              [-23.3968, -46.3233],
-  'santa isabel':       [-23.3166, -46.2214],
-  'mairiporã':          [-23.3175, -46.5872],
-  'franco da rocha':    [-23.3297, -46.7276],
-  'cajamar':            [-23.3572, -46.8774],
-  'pirapora do bom jesus':[-23.3972, -47.0186],
-  'santana de parnaiba': [-23.4430, -46.9175],
-  'alphaville':         [-23.4930, -46.8597],
-  'caieiras':           [-23.3621, -46.7388],
-  'francisco morato':   [-23.2816, -46.7430],
-  'campo limpo paulista':[-23.2116, -46.7883],
-  'jundiai':            [-23.1856, -46.8977],
-  'itupeva':            [-23.1541, -47.0577],
-  'indaiatuba':         [-23.0901, -47.2186],
-  'campinas':           [-22.9099, -47.0626],
-};
-
-/* ══════════════════════════════════════════════
-   STATE
-══════════════════════════════════════════════ */
-let allData   = [];
-let filtered  = [];
+/* ── STATE ── */
+let dash = null;          // JSON publicado
+let meses = {};           // decodificado: { 'AAAA-MM': {t,p,s,c,g,b,w,ps} }
+let chavesMes = [];       // meses em ordem
+let selecionados = [];    // meses do filtro atual
 let monthsFilter = 12;
-let charts    = {};
-let fornecedor = null;
-let map       = null;
-let heatLayer = null;
-let circleLayer = null;
-let clusterGroup = null;
-let mapMode   = 'heat';
-let bairroData = []; // computed per filter
+let charts = {};
+let geoPorRotulo = {};    // 'BAIRRO|Cidade' → [lat, lon]
+let map = null, heatLayer = null, circleLayer = null, clusterGroup = null;
+let mapMode = 'heat';
+let bairroData = [];
 
-/* ──────────────────────────────────────────────
-   2️⃣  STREAMING BATCH FETCH (cursor‑style)
-   ────────────────────────────────────────────── */
-async function* fetchBatches(slug, batch = 1000) {
-  const { data: f, error: ferr } = await db
-    .from('fornecedores')
-    .select('id')
-    .eq('slug', slug)
-    .single();
-  if (ferr || !f) throw new Error('fornecedor not found');
-
-  // Lê via RPC (não mais direto na tabela): a função resolve o slug pra
-  // fornecedor_id internamente, então este link só enxerga os pedidos do
-  // próprio fornecedor, nunca de outro.
-  let from = 0;
-  while (true) {
-    const { data, error } = await db
-      .rpc('portal_pedidos_fornecedor_v1', { p_slug: slug, p_limit: batch, p_offset: from });
-    if (error) throw error;
-    if (!data?.length) break;
-    yield data;
-    if (data.length < batch) break;
-    from += batch;
-  }
-}
-
-/* ══════════════════════════════════════════════
-   SLUG from URL
-══════════════════════════════════════════════ */
+/* ── SLUG ── */
 function getSlug() {
-  const path = window.location.pathname;
-  const m = path.match(/\/fornecedor\/([^/]+)/);
-  if (m) return m[1];
-  const sp = new URLSearchParams(window.location.search);
-  if (sp.get('slug')) return sp.get('slug');
-  if (window.location.hash) return window.location.hash.slice(1);
-  const segs = path.split('/').filter(Boolean);
-  return segs[segs.length - 1] || null;
+  const m = window.location.pathname.match(/\/fornecedor\/([^/?#]+)/);
+  const s = m ? m[1] : (new URLSearchParams(window.location.search).get('slug') || '');
+  return decodeURIComponent(s).replace(/\.html$/, '').toLowerCase();
 }
 
-/* ══════════════════════════════════════════════
-   UTILS
-══════════════════════════════════════════════ */
+/* ── UTILS ── */
 function fmtBRL(v, compact=false) {
   const n = Number(v) || 0;
   if (compact) {
@@ -1016,53 +776,42 @@ function fmtBRL(v, compact=false) {
 }
 function fmtKG(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' kg'; }
 function fmtPct(v) { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + '%'; }
-function show(id) { document.getElementById(id).style.display = ''; }
-function hide(id) { document.getElementById(id).style.display = 'none'; }
-function roundMoney(value) {
-  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-}
+function show(id) { const el = document.getElementById(id); if (el) el.style.display = ''; }
+function hide(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function rotuloMes(m) { const [y,mm] = m.split('-'); return MONTH_NAMES[+mm-1] + '/' + y.slice(2); }
 
-/* ══════════════════════════════════════════════
-   INIT – STREAMING LOAD
-══════════════════════════════════════════════ */
+/* ── INIT ── */
 async function init() {
   const slug = getSlug();
-  if (!slug || slug === 'fornecedor.html') {
-    showError('Slug não encontrado', 'Acesse via /fornecedor/[slug]');
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) || slug.length < 6) {
+    showError('Link incompleto', 'Confira o link que você recebeu da PMG Atacadista.');
     return;
   }
-
-  // 1️⃣  resolve fornecedor
-  const { data: fList, error: fErr } = await db
-    .from('fornecedores')
-    .select('*')
-    .eq('slug', slug)
-    .limit(1);
-  if (fErr || !fList?.length) {
-    showError('Fornecedor não encontrado', `Nenhum fornecedor com o slug "${slug}".`);
+  // ?v= troca a cada minuto: pega a versão nova logo depois de publicada, sem matar o cache do CDN
+  const url = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(slug)}.json?v=${Math.floor(Date.now()/60000)}`;
+  let res;
+  try { res = await fetch(url, { cache: 'no-cache' }); }
+  catch (e) { showError('Sem conexão', 'Não foi possível carregar o dashboard agora. Tente de novo em instantes.'); return; }
+  if (!res.ok) {
+    showError('Dashboard não encontrado', 'O link pode estar incorreto ou o dashboard ainda não foi publicado.');
     return;
   }
-  fornecedor = fList[0];
+  dash = await res.json();
+  meses = FechamentoCore.decodificar(dash);
+  chavesMes = Object.keys(meses).sort();
+  if (!chavesMes.length) {
+    showError('Sem dados ainda', 'O dashboard será publicado após o primeiro fechamento.');
+    return;
+  }
+  for (const [i, c] of Object.entries(dash.geo || {})) geoPorRotulo[dash.d.b[i]] = c;
 
-  document.title = fornecedor.nome + ' — PMG Atacadista';
-  document.getElementById('heroTitle').textContent = fornecedor.nome;
+  document.title = dash.fornecedor + ' — PMG Atacadista';
+  document.getElementById('heroTitle').textContent = dash.fornecedor;
   document.getElementById('heroSub').textContent =
-    (fornecedor.categoria || '') + (fornecedor.cnpj ? ' · CNPJ ' + fornecedor.cnpj : '');
-
-  // 2️⃣  stream batches into allData
-  try {
-    for await (const batch of fetchBatches(slug, 1000)){
-      allData.push(...batch);
-    }
-  } catch (e) {
-    showError('Erro ao carregar pedidos', e.message);
-    return;
-  }
-
-  if (!allData.length) {
-    showError('Sem dados ainda', 'O dashboard será publicado após o primeiro upload de dados.');
-    return;
-  }
+    'Sell-out PMG Atacadista · ' + (chavesMes.length === 1 ? rotuloMes(chavesMes[0]) : `${rotuloMes(chavesMes[0])} a ${rotuloMes(chavesMes[chavesMes.length-1])}`);
+  document.getElementById('footerDate').textContent =
+    new Date(dash.atualizado_em).toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'});
 
   applyFilter(monthsFilter);
   hideLoader();
@@ -1078,38 +827,45 @@ function showError(title, sub) {
 
 function hideLoader() {
   hide('loaderScreen');
-  show('heroSection');
-  show('filterBar');
-  show('mainContent');
-  show('dashFooter');
-  document.getElementById('footerDate').textContent = new Date().toLocaleDateString('pt-BR', {day:'2-digit',month:'long',year:'numeric'});
+  show('heroSection'); show('filterBar'); show('mainContent'); show('dashFooter');
 }
 
-/* ══════════════════════════════════════════════
-   FILTER
-══════════════════════════════════════════════ */
+/* ── FILTRO: últimos N meses COM DADO (não do relógio) ── */
 function setFilter(months) {
   monthsFilter = months;
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.months) === months);
-  });
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.months) === months));
   applyFilter(months);
   renderAll();
 }
-
 function applyFilter(months) {
-  if (!months) { filtered = allData; return; }
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - months);
-  filtered = allData.filter(r => {
-    if (!r.data) return false;
-    return new Date(r.data) >= cutoff;
-  });
+  selecionados = months ? chavesMes.slice(-months) : chavesMes.slice();
 }
 
-/* ══════════════════════════════════════════════
-   RENDER ALL
-══════════════════════════════════════════════ */
+/* ── SOMAS DO PERÍODO ── */
+function somar(campo) {
+  const out = {};
+  for (const m of selecionados) {
+    const bloco = meses[m][campo] || {};
+    for (const [k, v] of Object.entries(bloco)) {
+      const o = out[k] || (out[k] = {});
+      for (const [kk, vv] of Object.entries(v)) o[kk] = (o[kk] || 0) + vv;
+    }
+  }
+  return out;
+}
+function totais() {
+  const t = { venda: 0, kg: 0, qtde: 0, pedidos: 0 };
+  for (const m of selecionados) { const x = meses[m].t; t.venda += x.venda; t.kg += x.kg; t.qtde += x.qtde; t.pedidos += x.pedidos; }
+  return t;
+}
+function grupoDoProduto() {
+  const out = {};
+  for (const m of chavesMes) Object.assign(out, meses[m].ps || {});
+  return out;
+}
+const temSubgrupo = () => selecionados.some(m => Object.keys(meses[m].g || {}).length);
+
+/* ── RENDER ALL ── */
 function renderAll() {
   updateKPIs();
   updateFilterInfo();
@@ -1120,78 +876,49 @@ function renderAll() {
   renderABC();
   renderRecompra();
   renderGrupo();
-  renderMargem();
+  renderPositivacao();
   renderSazonalidade();
   renderHeatmap();
   renderSubgrupo();
 }
 
-/* ── KPIs ── */
 function updateKPIs() {
-  const pedidos = new Set(filtered.map(r => r.id_pedido_venda).filter(Boolean)).size;
-  const vendas  = filtered.reduce((a,r) => a + (r.valor||0), 0);
-  const kg      = filtered.reduce((a,r) => a + (r.qtde_kg||0), 0);
-  const ticket  = pedidos ? vendas / pedidos : 0;
-
-  document.getElementById('kpiVendas').textContent  = fmtBRL(vendas, true);
-  document.getElementById('kpiPedidos').textContent = pedidos.toLocaleString('pt-BR');
-  document.getElementById('kpiKg').textContent      = fmtKG(kg);
-  document.getElementById('kpiTicket').textContent  = fmtBRL(ticket, true);
+  const t = totais();
+  document.getElementById('kpiVendas').textContent  = fmtBRL(t.venda, true);
+  document.getElementById('kpiPedidos').textContent = t.pedidos.toLocaleString('pt-BR');
+  document.getElementById('kpiKg').textContent      = fmtKG(t.kg);
+  document.getElementById('kpiTicket').textContent  = fmtBRL(t.pedidos ? t.venda / t.pedidos : 0, true);
 }
 
 function updateFilterInfo() {
-  const datas = filtered.map(r => r.data).filter(Boolean).sort();
-  if (!datas.length) { document.getElementById('filterInfo').textContent = '—'; return; }
-  const ini = new Date(datas[0]).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
-  const fim = new Date(datas[datas.length-1]).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
-  document.getElementById('filterInfo').innerHTML = `<strong>${filtered.length.toLocaleString('pt-BR')}</strong> registros · ${ini} → ${fim}`;
+  const clientes = new Set();
+  for (const m of selecionados) for (const k of Object.keys(meses[m].c)) clientes.add(k);
+  const ini = rotuloMes(selecionados[0]), fim = rotuloMes(selecionados[selecionados.length-1]);
+  document.getElementById('filterInfo').innerHTML =
+    `<strong>${clientes.size.toLocaleString('pt-BR')}</strong> clientes positivados · ${ini} → ${fim}`;
 }
 
 /* ── CHART HELPERS ── */
-const CHART_DEFAULTS = {
-  responsive: true, maintainAspectRatio: false,
-  animation: { duration: 400 },
-  plugins: { legend: { display: false } }
-};
+const CHART_DEFAULTS = { responsive: true, maintainAspectRatio: false, animation: { duration: 400 }, plugins: { legend: { display: false } } };
 const TICK = { font: { size: 9, family: 'Inter' }, color: '#8fa89d' };
 const GRID = { color: '#f0f5f2', lineWidth: 1 };
-
 function destroyChart(key) { if (charts[key]) { charts[key].destroy(); charts[key] = null; } }
 
 /* ── VENDAS POR MÊS ── */
 function renderMes() {
   destroyChart('mes');
-  const mesSerie = {};
-  filtered.forEach(r => {
-    const m = r.data ? String(r.data).slice(0,7) : null;
-    if (!m || m.length < 7) return;
-    if (!mesSerie[m]) mesSerie[m] = { venda: 0, kg: 0 };
-    mesSerie[m].venda += r.valor||0;
-    mesSerie[m].kg    += r.qtde_kg||0;
-  });
-  const meses = Object.keys(mesSerie).sort();
-  document.getElementById('badgeMeses').textContent = meses.length + ' meses';
-
+  document.getElementById('badgeMeses').textContent = selecionados.length + (selecionados.length === 1 ? ' mês' : ' meses');
   const ctx = document.getElementById('chartMes').getContext('2d');
   charts.mes = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); }),
+      labels: selecionados.map(rotuloMes),
       datasets: [
-        {
-          type: 'bar', label: 'Vendas R$',
-          data: meses.map(m => mesSerie[m].venda),
-          backgroundColor: 'rgba(45,122,79,0.7)',
-          borderRadius: 5, borderSkipped: 'bottom', yAxisID: 'y',
-        },
-        {
-          type: 'line', label: 'Volume kg',
-          data: meses.map(m => mesSerie[m].kg),
-          borderColor: 'rgba(245,158,11,0.8)',
-          backgroundColor: 'rgba(245,158,11,0.08)',
-          borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#f59e0b',
-          fill: true, tension: 0.3, yAxisID: 'y2',
-        }
+        { type: 'bar', label: 'Vendas R$', data: selecionados.map(m => meses[m].t.venda),
+          backgroundColor: 'rgba(45,122,79,0.7)', borderRadius: 5, borderSkipped: 'bottom', yAxisID: 'y' },
+        { type: 'line', label: 'Volume kg', data: selecionados.map(m => meses[m].t.kg),
+          borderColor: 'rgba(245,158,11,0.8)', backgroundColor: 'rgba(245,158,11,0.08)', borderWidth: 2, pointRadius: 3,
+          pointBackgroundColor: '#f59e0b', fill: true, tension: 0.3, yAxisID: 'y2' }
       ]
     },
     options: {
@@ -1201,7 +928,7 @@ function renderMes() {
         tooltip: { callbacks: { label: c => c.dataset.yAxisID === 'y' ? fmtBRL(c.raw) : fmtKG(c.raw) } }
       },
       scales: {
-        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true, maxTicksLimit: 10 } },
+        x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 } },
         y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v>=1000?(v/1000).toFixed(0)+'k':v) } },
         y2: { position: 'right', grid: { display: false }, border: { display: false }, ticks: { ...TICK, callback: v => (v/1000).toFixed(0)+'t' } }
       }
@@ -1212,20 +939,13 @@ function renderMes() {
 /* ── SEGMENTO ── */
 function renderSeg() {
   destroyChart('seg');
-  const segMap = {};
-  filtered.forEach(r => { segMap[r.segmento||'Outros'] = (segMap[r.segmento||'Outros']||0) + (r.valor||0); });
-  const entries = Object.entries(segMap).sort((a,b) => b[1]-a[1]).slice(0,8);
-
+  const entries = Object.entries(somar('s')).map(([k,v]) => [k, v.venda]).sort((a,b) => b[1]-a[1]).slice(0,8);
   const ctx = document.getElementById('chartSeg').getContext('2d');
   charts.seg = new Chart(ctx, {
     type: 'doughnut',
-    data: {
-      labels: entries.map(e => e[0]),
-      datasets: [{ data: entries.map(e => e[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
-    },
+    data: { labels: entries.map(e => e[0]), datasets: [{ data: entries.map(e => e[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
     options: {
-      ...CHART_DEFAULTS,
-      cutout: '58%',
+      ...CHART_DEFAULTS, cutout: '58%',
       plugins: {
         legend: { display: true, position: 'bottom', labels: { font: { size: 9, family: 'Inter' }, color: '#1c3327', boxWidth: 8, padding: 6 } },
         tooltip: { callbacks: { label: c => c.label + ': ' + fmtBRL(c.raw, true) } }
@@ -1234,20 +954,13 @@ function renderSeg() {
   });
 }
 
-/* ── TOP LISTS — usa id_cliente em vez de nome ── */
+/* ── TOP LISTS (cliente só pelo ID) ── */
 function renderTopLists() {
-  const prodMap = {}, clienteMap = {};
-  filtered.forEach(r => {
-    const p = r.produto || '—';
-    // ID do cliente: usa id_cliente se existir, senão cliente como fallback identificador
-    const c = r.id_cliente ? String(r.id_cliente) : (r.cliente ? 'CLI-' + String(r.cliente).slice(0,8) : '—');
-    prodMap[p]    = (prodMap[p]||0)    + (r.valor||0);
-    clienteMap[c] = (clienteMap[c]||0) + (r.valor||0);
-  });
-  renderTopList('listProdutos',  prodMap,    8);
-  renderTopList('listClientes',  clienteMap, 8);
+  const prod = Object.fromEntries(Object.entries(somar('p')).map(([k,v]) => [k, v.venda]));
+  const cli  = Object.fromEntries(Object.entries(somar('c')).map(([k,v]) => ['Cliente ' + k, v.venda]));
+  renderTopList('listProdutos', prod, 8);
+  renderTopList('listClientes', cli, 8);
 }
-
 function renderTopList(elId, map, n) {
   const entries = Object.entries(map).sort((a,b) => b[1]-a[1]).slice(0, n);
   const max = entries[0]?.[1] || 1;
@@ -1255,94 +968,56 @@ function renderTopList(elId, map, n) {
     <div class="top-item">
       <div class="top-rank">${i+1}</div>
       <div class="top-bar-wrap">
-        <div class="top-name" title="${e[0]}">${e[0]}</div>
-        <div class="top-bar-bg">
-          <div class="top-bar-fill" style="width:${Math.round(e[1]/max*100)}%"></div>
-        </div>
+        <div class="top-name" title="${esc(e[0])}">${esc(e[0])}</div>
+        <div class="top-bar-bg"><div class="top-bar-fill" style="width:${Math.round(e[1]/max*100)}%"></div></div>
       </div>
       <div class="top-val">${fmtBRL(e[1],true)}</div>
-    </div>
-  `).join('');
+    </div>`).join('');
 }
 
-/* ══════════════════════════════════════════════
-   MAPA REAL SP (Leaflet)
-══════════════════════════════════════════════ */
-function getBairroCoords(bairro) {
-  if (!bairro) return null;
-  const key = bairro.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-
-  // Busca exata
-  for (const [k, v] of Object.entries(BAIRRO_COORDS)) {
-    const kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if (kn === key) return v;
-  }
-
-  // Busca por palavra inteira (evita "se" bater em qualquer string que contenha "se")
-  const keyWords = key.split(/[^a-z0-9]+/).filter(Boolean);
-  for (const [k, v] of Object.entries(BAIRRO_COORDS)) {
-    const kn = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if (kn.length < 4) continue; // ignora chaves curtas demais para busca parcial (ex: "se")
-    const knWords = kn.split(/[^a-z0-9]+/).filter(Boolean);
-    // só considera match se TODAS as palavras da chave do dicionário aparecerem nas palavras do bairro buscado
-    if (knWords.every(w => keyWords.includes(w))) return v;
-  }
-
-  return null; // não encontrou — melhor não plotar do que plotar errado
-}
-
+/* ── MAPA (bairro na capital, cidade no resto) ── */
 function buildBairroData() {
-  const bMap = {};
-  filtered.forEach(r => {
-    const b = r.bairro || r.bairro_entrega || null;
-    if (!b) return;
-
-    // Pega coordenadas: preferência para lat/lon nos dados, fallback para dicionário
-    let lat = r.latitude  || r.lat || null;
-    let lon = r.longitude || r.lon || r.lng || null;
-    if (!lat || !lon) {
-      const coords = getBairroCoords(b);
-      if (!coords) return;
-      [lat, lon] = coords;
-    }
-
-    if (!bMap[b]) bMap[b] = { lat: +lat, lon: +lon, valor: 0, pedidos: new Set(), kg: 0, bairro: b };
-    bMap[b].valor += r.valor || 0;
-    bMap[b].kg    += r.qtde_kg || 0;
-    if (r.id_pedido_venda) bMap[b].pedidos.add(r.id_pedido_venda);
-  });
-  return Object.values(bMap).filter(d => d.valor > 0);
+  return Object.entries(somar('b'))
+    .filter(([rot, v]) => v.venda > 0 && geoPorRotulo[rot])
+    .map(([rot, v]) => {
+      const [bairro, cidade] = rot.split('|');
+      const [lat, lon] = geoPorRotulo[rot];
+      return { lat, lon, valor: v.venda, kg: v.kg, pedidos: v.pedidos, bairro: bairro || cidade, regiao: bairro ? cidade : 'Cidade' };
+    });
 }
-
 function initMap() {
-  if (map) return; // já inicializado
-  map = L.map('spMap', {
-    center: [-23.5505, -46.6333],
-    zoom: 11,
-    zoomControl: true,
-  });
-
-  // Tile layer escuro e limpo (CartoDB Positron — ideal para overlay de dados)
+  if (map) return;
+  map = L.map('spMap', { center: [-23.5505, -46.6333], zoom: 9, zoomControl: true });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19
+    subdomains: 'abcd', maxZoom: 19
   }).addTo(map);
 }
-
 function clearMapLayers() {
   if (heatLayer)    { map.removeLayer(heatLayer);    heatLayer = null; }
   if (circleLayer)  { map.removeLayer(circleLayer);  circleLayer = null; }
   if (clusterGroup) { map.removeLayer(clusterGroup); clusterGroup = null; }
 }
-
 function renderSpMap() {
+  const temGeo = Object.keys(geoPorRotulo).length > 0;
+  document.getElementById('secMapaTitulo').style.display = temGeo ? '' : 'none';
+  document.getElementById('secMapa').style.display = temGeo ? '' : 'none';
+  if (!temGeo) return;
   initMap();
+  clearMapLayers();
   bairroData = buildBairroData();
   drawMapMode(mapMode);
   updateMapStats();
+  if (bairroData.length) {
+    const bounds = L.latLngBounds(bairroData.map(d => [d.lat, d.lon]));
+    setTimeout(() => { map.invalidateSize(); map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 }); }, 60);
+  }
+  // cobertura: quanto das vendas com endereço conseguiu ponto no mapa
+  const b = somar('b');
+  const total = Object.values(b).reduce((a,v) => a + v.venda, 0);
+  const noMapa = bairroData.reduce((a,d) => a + d.valor, 0);
+  document.getElementById('mapCobertura').textContent = total ? fmtPct(noMapa/total*100) : '—';
 }
-
 function setMapMode(mode) {
   mapMode = mode;
   document.querySelectorAll('.map-toggle-btn').forEach(b => b.classList.remove('active'));
@@ -1350,226 +1025,121 @@ function setMapMode(mode) {
   clearMapLayers();
   drawMapMode(mode);
 }
-
+function corPorIntensidade(t) { return t > 0.7 ? '#1a4d2e' : t > 0.4 ? '#2d7a4f' : t > 0.15 ? '#3d9463' : '#7ecf98'; }
 function drawMapMode(mode) {
   if (!map || !bairroData.length) return;
-
   const maxVal = Math.max(...bairroData.map(d => d.valor));
-
   if (mode === 'heat') {
-    // Leaflet.heat: [lat, lon, intensity 0-1]
-    const pts = bairroData.map(d => [d.lat, d.lon, d.valor / maxVal]);
-    heatLayer = L.heatLayer(pts, {
-      radius: 35,
-      blur: 25,
-      maxZoom: 14,
-      max: 1.0,
+    heatLayer = L.heatLayer(bairroData.map(d => [d.lat, d.lon, Math.sqrt(d.valor / maxVal)]), {
+      radius: 35, blur: 25, maxZoom: 14, max: 1.0,
       gradient: { 0.1: '#e4f5eb', 0.3: '#7ecf98', 0.55: '#2d7a4f', 0.8: '#1a4d2e', 1.0: '#0d2b1a' }
     }).addTo(map);
-
   } else if (mode === 'circle') {
     const group = L.featureGroup();
     bairroData.forEach(d => {
-      const r = Math.max(10, Math.sqrt(d.valor / maxVal) * 55);
       const t = d.valor / maxVal;
-      const color = t > 0.7 ? '#1a4d2e' : t > 0.4 ? '#2d7a4f' : t > 0.15 ? '#3d9463' : '#7ecf98';
-      const circle = L.circleMarker([d.lat, d.lon], {
-        radius: r,
-        fillColor: color,
-        fillOpacity: 0.65,
-        color: 'white',
-        weight: 1.5,
-        opacity: 0.8,
-      });
-      circle.bindPopup(buildPopup(d, maxVal), { maxWidth: 240 });
-      group.addLayer(circle);
+      L.circleMarker([d.lat, d.lon], { radius: Math.max(6, Math.sqrt(t) * 45), fillColor: corPorIntensidade(t), fillOpacity: 0.65, color: 'white', weight: 1.5, opacity: 0.8 })
+        .bindPopup(buildPopup(d, maxVal), { maxWidth: 240 }).addTo(group);
     });
-    circleLayer = group;
-    group.addTo(map);
-
-  } else if (mode === 'cluster') {
-    // Marcadores por bairro com popup detalhado
+    circleLayer = group.addTo(map);
+  } else {
     const group = L.featureGroup();
-    const sorted = [...bairroData].sort((a,b) => b.valor - a.valor);
-    sorted.forEach((d, i) => {
+    [...bairroData].sort((a,b) => b.valor - a.valor).slice(0, 150).forEach((d, i) => {
       const t = d.valor / maxVal;
       const size = Math.max(28, Math.min(52, 28 + t * 40));
-      const color = t > 0.7 ? '#1a4d2e' : t > 0.4 ? '#2d7a4f' : t > 0.15 ? '#3d9463' : '#7ecf98';
       const rank = i < 3 ? `#${i+1}` : fmtBRL(d.valor, true).replace('R$ ','');
-
-      const icon = L.divIcon({
-        className: '',
-        html: `<div class="cluster-marker" style="
-          width:${size}px;height:${size}px;
-          background:${color};
-          font-size:${size > 38 ? 10 : 9}px;
-        ">${rank}</div>`,
-        iconSize: [size, size],
-        iconAnchor: [size/2, size/2],
-      });
-
-      const marker = L.marker([d.lat, d.lon], { icon });
-      marker.bindPopup(buildPopup(d, maxVal), { maxWidth: 240 });
-      group.addLayer(marker);
+      const icon = L.divIcon({ className: '', html: `<div class="cluster-marker" style="width:${size}px;height:${size}px;background:${corPorIntensidade(t)};font-size:${size > 38 ? 10 : 9}px;">${rank}</div>`, iconSize: [size, size], iconAnchor: [size/2, size/2] });
+      L.marker([d.lat, d.lon], { icon }).bindPopup(buildPopup(d, maxVal), { maxWidth: 240 }).addTo(group);
     });
-    clusterGroup = group;
-    group.addTo(map);
+    clusterGroup = group.addTo(map);
   }
 }
-
 function buildPopup(d, maxVal) {
   const pct = Math.round(d.valor / maxVal * 100);
   return `<div class="map-popup">
-    <div class="map-popup-bairro">${d.bairro}</div>
-    <div class="map-popup-sub">Região</div>
+    <div class="map-popup-bairro">${esc(d.bairro)}</div>
+    <div class="map-popup-sub">${esc(d.regiao)}</div>
     <div class="map-popup-stats">
-      <div class="map-popup-row">
-        <span class="map-popup-key">Vendas</span>
-        <span class="map-popup-val">${fmtBRL(d.valor, true)}</span>
-      </div>
+      <div class="map-popup-row"><span class="map-popup-key">Vendas</span><span class="map-popup-val">${fmtBRL(d.valor, true)}</span></div>
       <div class="map-popup-bar"><div class="map-popup-fill" style="width:${pct}%"></div></div>
-      <div class="map-popup-row" style="margin-top:4px">
-        <span class="map-popup-key">Pedidos</span>
-        <span class="map-popup-val">${d.pedidos.size}</span>
-      </div>
-      <div class="map-popup-row">
-        <span class="map-popup-key">Volume</span>
-        <span class="map-popup-val">${fmtKG(d.kg)}</span>
-      </div>
-      <div class="map-popup-row">
-        <span class="map-popup-key">Ticket médio</span>
-        <span class="map-popup-val">${d.pedidos.size ? fmtBRL(d.valor / d.pedidos.size, true) : '—'}</span>
-      </div>
+      <div class="map-popup-row" style="margin-top:4px"><span class="map-popup-key">Pedidos</span><span class="map-popup-val">${d.pedidos.toLocaleString('pt-BR')}</span></div>
+      <div class="map-popup-row"><span class="map-popup-key">Volume</span><span class="map-popup-val">${fmtKG(d.kg)}</span></div>
+      <div class="map-popup-row"><span class="map-popup-key">Ticket médio</span><span class="map-popup-val">${d.pedidos ? fmtBRL(d.valor / d.pedidos, true) : '—'}</span></div>
     </div>
   </div>`;
 }
-
 function updateMapStats() {
-  document.getElementById('mapNBairros').textContent = bairroData.length;
-  const top = bairroData.sort((a,b) => b.valor - a.valor)[0];
+  document.getElementById('mapNBairros').textContent = bairroData.length.toLocaleString('pt-BR');
+  const top = [...bairroData].sort((a,b) => b.valor - a.valor)[0];
   document.getElementById('mapTopBairro').textContent = top ? top.bairro : '—';
 }
 
-/* ── CURVA ABC — usa id_cliente ── */
+/* ── CURVA ABC ── */
 function renderABC() {
-  const clienteMap = {};
-  filtered.forEach(r => {
-    const c = r.id_cliente ? String(r.id_cliente) : (r.cliente ? 'CLI-'+String(r.cliente).slice(0,8) : '—');
-    clienteMap[c] = (clienteMap[c] || 0) + (r.valor || 0);
-  });
-
-  const entries = Object.entries(clienteMap).sort((a,b) => b[1]-a[1]);
-  const totalValor = entries.reduce((a,e) => a+e[1], 0);
-  let cumul = 0;
-  let countA = 0, countB = 0, countC = 0;
-  let valorA = 0, valorB = 0, valorC = 0;
-
+  const entries = Object.entries(somar('c')).map(([k,v]) => ['Cliente ' + k, v.venda]).sort((a,b) => b[1]-a[1]);
+  const totalValor = entries.reduce((a,e) => a+e[1], 0) || 1;
+  let cumul = 0, countA = 0, countB = 0, countC = 0, valorA = 0, valorB = 0, valorC = 0;
   const classified = entries.map(([name, val]) => {
     cumul += val;
     const pct = cumul / totalValor;
-    let cls;
-    if (pct <= 0.80) cls = 'A';
-    else if (pct <= 0.95) cls = 'B';
-    else cls = 'C';
-    if (cls === 'A') { countA++; valorA += val; }
-    else if (cls === 'B') { countB++; valorB += val; }
-    else { countC++; valorC += val; }
+    const cls = pct <= 0.80 ? 'A' : pct <= 0.95 ? 'B' : 'C';
+    if (cls === 'A') { countA++; valorA += val; } else if (cls === 'B') { countB++; valorB += val; } else { countC++; valorC += val; }
     return { name, val, cls };
   });
-
-  document.getElementById('badgeABC').textContent = entries.length + ' clientes';
-
+  document.getElementById('badgeABC').textContent = entries.length.toLocaleString('pt-BR') + ' clientes';
   document.getElementById('abcLegend').innerHTML = `
     <div class="abc-badge"><div class="abc-dot" style="background:#1f6235"></div>A · ${countA} clientes · ${fmtPct(valorA/totalValor*100)}</div>
     <div class="abc-badge"><div class="abc-dot" style="background:#f59e0b"></div>B · ${countB} clientes · ${fmtPct(valorB/totalValor*100)}</div>
-    <div class="abc-badge"><div class="abc-dot" style="background:#d1d5db"></div>C · ${countC} clientes · ${fmtPct(valorC/totalValor*100)}</div>
-  `;
-
-  const preview = classified.slice(0, 12);
-  document.getElementById('abcList').innerHTML = preview.map(e => `
+    <div class="abc-badge"><div class="abc-dot" style="background:#d1d5db"></div>C · ${countC} clientes · ${fmtPct(valorC/totalValor*100)}</div>`;
+  document.getElementById('abcList').innerHTML = classified.slice(0, 12).map(e => `
     <div class="abc-item">
       <div class="abc-class ${e.cls}">${e.cls}</div>
-      <div class="abc-name" title="${e.name}">${e.name}</div>
+      <div class="abc-name" title="${esc(e.name)}">${esc(e.name)}</div>
       <div class="abc-pct">${fmtPct(e.val/totalValor*100)}</div>
       <div class="abc-val">${fmtBRL(e.val,true)}</div>
-    </div>
-  `).join('');
+    </div>`).join('');
 }
 
-/* ── FREQUÊNCIA DE RECOMPRA — usa id_cliente ── */
+/* ── RECOMPRA (pedidos por cliente no período) ── */
 function renderRecompra() {
-  const clientePedidos = {};
-  filtered.forEach(r => {
-    const c = r.id_cliente ? String(r.id_cliente) : (r.cliente ? 'CLI-'+String(r.cliente).slice(0,8) : '—');
-    const d = r.data ? String(r.data).slice(0,10) : null;
-    const pid = r.id_pedido_venda || r.data;
-    if (!clientePedidos[c]) clientePedidos[c] = { datas: new Set(), valor: 0 };
-    if (d) clientePedidos[c].datas.add(pid || d);
-    clientePedidos[c].valor += r.valor || 0;
-  });
-
-  const stats = Object.entries(clientePedidos).map(([name, v]) => {
-    const nPedidos = v.datas.size;
-    const periodo = monthsFilter ? monthsFilter * 30 : 365;
-    const intervalo = nPedidos > 1 ? Math.round(periodo / (nPedidos - 1)) : null;
-    return { name, nPedidos, intervalo, valor: v.valor };
-  }).filter(s => s.nPedidos > 1).sort((a,b) => b.nPedidos - a.nPedidos);
-
-  const totalClientes = Object.keys(clientePedidos).length;
-  const clientesRecorrentes = stats.length;
-  const taxaRecompra = totalClientes ? Math.round(clientesRecorrentes / totalClientes * 100) : 0;
-  const intervaloMedio = stats.length ? Math.round(stats.reduce((a,s) => a + (s.intervalo||0), 0) / stats.length) : 0;
-
+  const clientes = somar('c');
+  const periodo = selecionados.length * 30;
+  const stats = Object.entries(clientes).map(([k, v]) => ({
+    name: 'Cliente ' + k, nPedidos: v.pedidos, valor: v.venda,
+    intervalo: v.pedidos > 1 ? Math.round(periodo / (v.pedidos - 1)) : null,
+  })).filter(s => s.nPedidos > 1).sort((a,b) => b.nPedidos - a.nPedidos);
+  const totalClientes = Object.keys(clientes).length;
+  const taxa = totalClientes ? Math.round(stats.length / totalClientes * 100) : 0;
+  const intervaloMedio = stats.length ? Math.round(stats.reduce((a,s) => a + s.intervalo, 0) / stats.length) : 0;
   document.getElementById('recompraStats').innerHTML = `
-    <div class="recompra-stat">
-      <div class="recompra-stat-label">Taxa de Recompra</div>
-      <div class="recompra-stat-val">${taxaRecompra}%</div>
-      <div class="recompra-stat-sub">clientes com 2+ pedidos</div>
-    </div>
-    <div class="recompra-stat">
-      <div class="recompra-stat-label">Clientes Recorrentes</div>
-      <div class="recompra-stat-val">${clientesRecorrentes.toLocaleString('pt-BR')}</div>
-      <div class="recompra-stat-sub">de ${totalClientes} no período</div>
-    </div>
-    <div class="recompra-stat">
-      <div class="recompra-stat-label">Intervalo Médio</div>
-      <div class="recompra-stat-val">${intervaloMedio || '—'}<span style="font-size:14px;font-weight:500"> dias</span></div>
-      <div class="recompra-stat-sub">entre pedidos</div>
-    </div>
-  `;
-
-  const top = stats.slice(0, 8);
-  document.getElementById('recompraList').innerHTML = top.map(s => {
-    let cls = 'ok', label = s.intervalo + 'd';
-    if (s.intervalo === null) { cls = 'ok'; label = '—'; }
-    else if (s.intervalo > 60) cls = 'danger';
-    else if (s.intervalo > 30) cls = 'warn';
-
+    <div class="recompra-stat"><div class="recompra-stat-label">Taxa de Recompra</div><div class="recompra-stat-val">${taxa}%</div><div class="recompra-stat-sub">clientes com 2+ pedidos</div></div>
+    <div class="recompra-stat"><div class="recompra-stat-label">Clientes Recorrentes</div><div class="recompra-stat-val">${stats.length.toLocaleString('pt-BR')}</div><div class="recompra-stat-sub">de ${totalClientes.toLocaleString('pt-BR')} no período</div></div>
+    <div class="recompra-stat"><div class="recompra-stat-label">Intervalo Médio</div><div class="recompra-stat-val">${intervaloMedio || '—'}<span style="font-size:14px;font-weight:500"> dias</span></div><div class="recompra-stat-sub">entre pedidos</div></div>`;
+  document.getElementById('recompraList').innerHTML = stats.slice(0, 8).map(s => {
+    let cls = 'ok';
+    if (s.intervalo > 60) cls = 'danger'; else if (s.intervalo > 30) cls = 'warn';
     return `<div class="recompra-item">
-      <div class="ri-name" title="${s.name}">${s.name}</div>
+      <div class="ri-name" title="${esc(s.name)}">${esc(s.name)}</div>
       <div class="ri-freq">${s.nPedidos}× pedidos</div>
-      <div class="ri-interval ${cls}">a cada ${label}</div>
+      <div class="ri-interval ${cls}">a cada ${s.intervalo}d</div>
     </div>`;
   }).join('');
 }
 
-/* ── GRUPO ── */
+/* ── SUB-GRUPO (ou produto, se o arquivo não trouxe sub-grupo) ── */
 function renderGrupo() {
   destroyChart('grupo');
-  const grupoMap = {};
-  filtered.forEach(r => { grupoMap[r.grupo||'—'] = (grupoMap[r.grupo||'—']||0) + (r.valor||0); });
-  const entries = Object.entries(grupoMap).sort((a,b) => b[1]-a[1]).slice(0,10);
-
+  const porSub = temSubgrupo();
+  document.getElementById('grupoTitulo').textContent = porSub ? 'Vendas por Sub-grupo' : 'Vendas por Produto';
+  const fonte = porSub ? somar('g') : somar('p');
+  const entries = Object.entries(fonte).map(([k,v]) => [k, v.venda]).sort((a,b) => b[1]-a[1]).slice(0,10);
   const ctx = document.getElementById('chartGrupo').getContext('2d');
   charts.grupo = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels: entries.map(e => e[0]),
-      datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((_,i) => `rgba(26,77,46,${1-i*0.08})`), borderRadius: 4, borderSkipped: 'bottom' }]
-    },
+    data: { labels: entries.map(e => e[0].length > 28 ? e[0].slice(0,27)+'…' : e[0]), datasets: [{ data: entries.map(e => e[1]), backgroundColor: entries.map((_,i) => `rgba(26,77,46,${1-i*0.08})`), borderRadius: 4, borderSkipped: 'bottom' }] },
     options: {
       ...CHART_DEFAULTS,
-      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtBRL(c.raw, true) } } },
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { title: c => entries[c[0].dataIndex][0], label: c => fmtBRL(c.raw, true) } } },
       scales: {
         x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
         y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => 'R$'+(v/1000).toFixed(0)+'k' } }
@@ -1578,86 +1148,49 @@ function renderGrupo() {
   });
 }
 
-/* ── MARGEM ── */
-function renderMargem() {
-  if (!document.getElementById('chartMargem')) return;
-  destroyChart('margem');
-  const grupoMargem = {};
-  filtered.forEach(r => {
-    const g = r.grupo || '—';
-    if (!grupoMargem[g]) grupoMargem[g] = { total: 0, n: 0 };
-    if (r.margem) { grupoMargem[g].total += r.margem; grupoMargem[g].n++; }
-  });
-  const entries = Object.entries(grupoMargem)
-    .filter(([,v]) => v.n > 0)
-    .map(([k,v]) => [k, v.total/v.n])
-    .sort((a,b) => b[1]-a[1])
-    .slice(0,10);
-
-if (!entries.length) {
-    const wrap = document.getElementById('chartMargem')?.parentElement;
-    if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:48px;color:var(--ghost);font-size:12px">Margem não disponível nos dados.</div>';
-    return;
-  }
-
-  const ctx = document.getElementById('chartMargem').getContext('2d');
-  charts.margem = new Chart(ctx, {
-    type: 'bar',
+/* ── POSITIVAÇÃO MENSAL (clientes únicos por mês) ── */
+function renderPositivacao() {
+  destroyChart('positivacao');
+  const ctx = document.getElementById('chartPositivacao').getContext('2d');
+  charts.positivacao = new Chart(ctx, {
+    type: 'line',
     data: {
-      labels: entries.map(e => e[0]),
-      datasets: [{
-        data: entries.map(e => e[1]*100),
-        backgroundColor: entries.map(e => e[1] > 0.15 ? 'rgba(76,175,112,0.7)' : e[1] > 0.08 ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)'),
-        borderRadius: 4, borderSkipped: 'bottom'
-      }]
+      labels: selecionados.map(rotuloMes),
+      datasets: [{ data: selecionados.map(m => meses[m].t.clientes), borderColor: '#2d7a4f', backgroundColor: 'rgba(45,122,79,0.12)', borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#2d7a4f', fill: true, tension: 0.3 }]
     },
     options: {
       ...CHART_DEFAULTS,
-      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => fmtPct(c.raw) } } },
+      plugins: { ...CHART_DEFAULTS.plugins, tooltip: { callbacks: { label: c => c.raw.toLocaleString('pt-BR') + ' clientes' } } },
       scales: {
         x: { grid: { display: false }, ticks: { ...TICK, maxRotation: 45, autoSkip: true } },
-        y: { grid: GRID, border: { display: false }, ticks: { ...TICK, callback: v => v.toFixed(0)+'%' } }
+        y: { grid: GRID, border: { display: false }, beginAtZero: true, ticks: { ...TICK, precision: 0 } }
       }
     }
   });
 }
 
-/* ── SAZONALIDADE POR CATEGORIA ── */
+/* ── SAZONALIDADE ── */
 function renderSazonalidade() {
   destroyChart('sazon');
-
-  const grupoMes = {};
-  const mesesSet = new Set();
-
-  filtered.forEach(r => {
-    const g = r.grupo || '—';
-    const m = r.data ? String(r.data).slice(0,7) : null;
-    if (!m) return;
-    mesesSet.add(m);
-    if (!grupoMes[g]) grupoMes[g] = {};
-    grupoMes[g][m] = (grupoMes[g][m] || 0) + (r.valor || 0);
-  });
-
-  const meses = [...mesesSet].sort().slice(-12);
-  if (!meses.length) return;
-
-  const grupoTotals = Object.entries(grupoMes).map(([g, mv]) => [g, Object.values(mv).reduce((a,v)=>a+v,0)]);
-  const topGrupos = grupoTotals.sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
-
-  const labels = meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); });
-
-  const datasets = topGrupos.map((g, i) => ({
-    label: g,
-    data: meses.map(m => grupoMes[g]?.[m] || 0),
-    borderColor: SAZON_PALETTE[i % SAZON_PALETTE.length],
-    backgroundColor: SAZON_PALETTE[i % SAZON_PALETTE.length] + '18',
-    borderWidth: 2, pointRadius: 3, fill: false, tension: 0.3,
-  }));
-
+  const porSub = temSubgrupo();
+  document.getElementById('sazonTitulo').textContent = porSub ? 'Giro Mensal por Sub-grupo' : 'Giro Mensal por Produto';
+  const campo = porSub ? 'g' : 'p';
+  const ultimos = selecionados.slice(-12);
+  const tot = {};
+  for (const m of ultimos) for (const [k, v] of Object.entries(meses[m][campo] || {})) tot[k] = (tot[k] || 0) + v.venda;
+  const top = Object.entries(tot).sort((a,b) => b[1]-a[1]).slice(0,6).map(e => e[0]);
   const ctx = document.getElementById('chartSazon').getContext('2d');
   charts.sazon = new Chart(ctx, {
     type: 'line',
-    data: { labels, datasets },
+    data: {
+      labels: ultimos.map(rotuloMes),
+      datasets: top.map((k, i) => ({
+        label: k.length > 32 ? k.slice(0,31)+'…' : k,
+        data: ultimos.map(m => meses[m][campo]?.[k]?.venda || 0),
+        borderColor: SAZON_PALETTE[i % SAZON_PALETTE.length], backgroundColor: SAZON_PALETTE[i % SAZON_PALETTE.length] + '18',
+        borderWidth: 2, pointRadius: 3, fill: false, tension: 0.3,
+      }))
+    },
     options: {
       ...CHART_DEFAULTS,
       plugins: {
@@ -1672,207 +1205,64 @@ function renderSazonalidade() {
   });
 }
 
-/* ── HEATMAP DIA × MÊS ── */
+/* ── HEATMAP DIA DA SEMANA × MÊS ── */
 function renderHeatmap() {
-  const cell = {};
-  const mesesSet = new Set();
-
-  filtered.forEach(r => {
-    const m = r.data ? String(r.data).slice(0,7) : null;
-    if (!m) return;
-    mesesSet.add(m);
-    let dia = null;
-    if (r.dia_semana !== null && r.dia_semana !== undefined && r.dia_semana !== '') {
-      const n = parseInt(r.dia_semana, 10);
-      if (!isNaN(n) && n >= 1 && n <= 7) dia = DIAS[n - 1];
-      else dia = String(r.dia_semana); // já é um nome (ex: "Seg")
-    } else if (r.data) {
-      dia = DIAS[new Date(r.data).getDay()];
-    }
-    if (!dia) return;
-    const key = `${dia}||${m}`;
-    cell[key] = (cell[key]||0) + (r.valor||0);
-  });
-
-  const meses = [...mesesSet].sort().slice(-12);
-  const diasOrdem = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
-
-  let maxVal = 0;
-  diasOrdem.forEach(d => meses.forEach(m => { maxVal = Math.max(maxVal, cell[`${d}||${m}`]||0); }));
-  if (!maxVal) maxVal = 1;
-
-  function heatColor(v) {
+  const ultimos = selecionados.slice(-12);
+  const ordem = [['Seg',1],['Ter',2],['Qua',3],['Qui',4],['Sex',5],['Sáb',6],['Dom',0]];
+  let maxVal = 1;
+  ordem.forEach(([,i]) => ultimos.forEach(m => { maxVal = Math.max(maxVal, meses[m].w?.[i] || 0); }));
+  const heatColor = v => {
     const t = Math.min(v / maxVal, 1);
-    const r = Math.round(228 - t*(228-26));
-    const g = Math.round(245 - t*(245-77));
-    const b = Math.round(235 - t*(235-46));
-    return `rgb(${r},${g},${b})`;
-  }
-
-  const mesesLabels = meses.map(m => { const[y,mm]=m.split('-'); return MONTH_NAMES[+mm-1]+'/'+y.slice(2); });
-
-  const table = document.getElementById('heatmapTable');
-  table.innerHTML = `
-    <tr>
-      <th></th>
-      ${mesesLabels.map(l => `<th>${l}</th>`).join('')}
-    </tr>
-    ${diasOrdem.map(d => `
-      <tr>
-        <td class="hm-row-label">${d}</td>
-        ${meses.map(m => {
-          const v = cell[`${d}||${m}`]||0;
-          const bg = heatColor(v);
-          const textColor = v/maxVal > 0.5 ? 'white' : '#1a4d2e';
-          const label = v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : v > 0 ? 'R$'+v.toFixed(0) : '';
-          return `<td><div class="hm-cell" style="background:${bg};color:${textColor}" title="${d} · ${m}: ${fmtBRL(v)}">${label}</div></td>`;
-        }).join('')}
-      </tr>
-    `).join('')}
-  `;
+    return `rgb(${Math.round(228 - t*(228-26))},${Math.round(245 - t*(245-77))},${Math.round(235 - t*(235-46))})`;
+  };
+  document.getElementById('heatmapTable').innerHTML = `
+    <tr><th></th>${ultimos.map(m => `<th>${rotuloMes(m)}</th>`).join('')}</tr>
+    ${ordem.map(([d, i]) => `<tr><td class="hm-row-label">${d}</td>${ultimos.map(m => {
+      const v = meses[m].w?.[i] || 0;
+      const label = v >= 1000 ? 'R$'+(v/1000).toFixed(0)+'k' : v > 0 ? 'R$'+v.toFixed(0) : '';
+      return `<td><div class="hm-cell" style="background:${heatColor(v)};color:${v/maxVal > 0.5 ? 'white' : '#1a4d2e'}" title="${d} · ${rotuloMes(m)}: ${fmtBRL(v)}">${label}</div></td>`;
+    }).join('')}</tr>`).join('')}`;
 }
 
-/* ── SUBGRUPO TABLE ── */
+/* ── TABELA SUB-GRUPO / PRODUTO ── */
 function renderSubgrupo() {
-  const sgMap = {};
-  filtered.forEach(r => {
-    const sg = r.sub_grupo || '—';
-    if (!sgMap[sg]) sgMap[sg] = { grupo: r.grupo||'—', pedidos: new Set(), kg: 0, valor: 0, margem: 0, mn: 0 };
-    if (r.id_pedido_venda) sgMap[sg].pedidos.add(r.id_pedido_venda);
-    sgMap[sg].kg    += r.qtde_kg||0;
-    sgMap[sg].valor += r.valor||0;
-    if (r.margem) { sgMap[sg].margem += r.margem; sgMap[sg].mn++; }
-  });
-
-  const entries = Object.entries(sgMap).sort((a,b) => b[1].valor - a[1].valor).slice(0, 20);
-  const totalValor = entries.reduce((a,e) => a + e[1].valor, 0) || 1;
-  const maxValor   = entries[0]?.[1].valor || 1;
-
-  document.getElementById('subgrupoBody').innerHTML = entries.map(([sg, v], i) => {
-    const pct = (v.valor / totalValor * 100);
-    const margem = v.mn ? (v.margem / v.mn * 100) : null;
-    const margemColor = margem === null ? '' : margem > 15 ? 'color:#166534' : margem > 8 ? 'color:#92400e' : 'color:#991b1b';
+  const porSub = temSubgrupo();
+  document.getElementById('subgrupoTitulo').textContent = porSub ? 'Performance por Sub-grupo' : 'Performance por Produto';
+  document.getElementById('subgrupoCol').textContent = porSub ? 'Sub-grupo' : 'Produto';
+  document.getElementById('subgrupoCol2').textContent = porSub ? 'Produtos' : 'Sub-grupo';
+  const prods = somar('p');
+  const mapa = grupoDoProduto();
+  let linhas;
+  if (porSub) {
+    const nProd = {};
+    for (const p of Object.keys(prods)) { const g = mapa[p]; if (g) nProd[g] = (nProd[g] || 0) + 1; }
+    linhas = Object.entries(somar('g')).map(([k, v]) => ({ nome: k, extra: (nProd[k] || 0).toLocaleString('pt-BR'), ...v }));
+  } else {
+    linhas = Object.entries(prods).map(([k, v]) => ({ nome: k, extra: mapa[k] || '—', ...v }));
+  }
+  linhas.sort((a,b) => b.venda - a.venda);
+  const top = linhas.slice(0, 20);
+  const total = linhas.reduce((a,l) => a + l.venda, 0) || 1;
+  const max = top[0]?.venda || 1;
+  document.getElementById('subgrupoBody').innerHTML = top.map((l, i) => {
+    const pct = l.venda / total * 100;
     return `<tr>
       <td style="font-size:10px;color:var(--ghost);font-weight:700">${i+1}</td>
-      <td class="td-bold">${sg}</td>
-      <td style="font-size:11px;color:var(--muted)">${v.grupo}</td>
-      <td class="td-num">${v.pedidos.size.toLocaleString('pt-BR')}</td>
-      <td class="td-num">${fmtKG(v.kg)}</td>
-      <td class="td-num">${fmtBRL(v.valor,true)}</td>
-      <td class="td-num" style="${margemColor}">${margem !== null ? fmtPct(margem) : '—'}</td>
+      <td class="td-bold">${esc(l.nome)}</td>
+      <td style="font-size:11px;color:var(--muted)">${esc(l.extra)}</td>
+      <td class="td-num">${l.pedidos.toLocaleString('pt-BR')}</td>
+      <td class="td-num">${fmtKG(l.kg)}</td>
+      <td class="td-num">${fmtBRL(l.venda,true)}</td>
       <td class="td-bar-cell">
         <div style="font-size:9px;color:var(--ghost);margin-bottom:2px">${pct.toFixed(1)}%</div>
-        <div class="td-mini-bar"><div class="td-mini-fill" style="width:${Math.round(v.valor/maxValor*100)}%"></div></div>
+        <div class="td-mini-bar"><div class="td-mini-fill" style="width:${Math.round(l.venda/max*100)}%"></div></div>
       </td>
     </tr>`;
   }).join('');
 }
 
-/* ══════════════════════════════════════════════
-   BOOT
-══════════════════════════════════════════════ */
+/* ── BOOT ── */
 init().catch(e => showError('Erro ao carregar', e.message || String(e)));
-/* ════ ABAS ════ */
-function mudarAba(aba, btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('panel-' + aba).classList.add('active');
-  if (aba === 'sellin') carregarSellIn();
-}
-
-/* ════ SELL-IN ════ */
-let siCarregado = false;
-
-async function carregarSellIn() {
-  if (siCarregado) return;
-
-  document.getElementById('siTbody').innerHTML =
-    '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ghost)">Carregando…</td></tr>';
-
-  try {
-    const pct = fornecedor.pct_sellin ?? 0;
-
-    let notas = [], from = 0;
-    while (true) {
-      // Lê via RPC (não mais direto na tabela): a função resolve o slug pra
-      // fornecedor_id internamente, então este link só enxerga as notas do
-      // próprio fornecedor, nunca de outro.
-      const { data, error } = await db
-        .rpc('portal_notas_fiscais_v1', { p_slug: fornecedor.slug, p_limit: 1000, p_offset: from });
-      if (error) throw error;
-      if (!data?.length) break;
-      notas = notas.concat(data);
-      if (data.length < 1000) break;
-      from += 1000;
-    }
-
-    // Filtra pelo mesmo período do sell-out
-    const cutoff = monthsFilter ? new Date(new Date().setMonth(new Date().getMonth() - monthsFilter)) : null;
-    const visiveis = notas.filter(n => {
-      if (!cutoff || !n.emissao) return true;
-      return new Date(n.emissao) >= cutoff;
-    });
-
-    // ✅ DEPOIS — aceita qualquer nota com situação "autorizada" (ou variações)
-const autorizadas = visiveis.filter(n => {
-  const sit = (n.situacao || '').toLowerCase().trim();
-  return sit === 'autorizada' || sit === 'autorizado';
-});
-
-    const totalFaturado = roundMoney(
-  autorizadas.reduce((a, n) => a + roundMoney(n.valor || 0), 0)
-);
-    const debito = totalFaturado * (pct / 100);
-
-    document.getElementById('siTotalFaturado').textContent = fmtBRL(totalFaturado, true);
-document.getElementById('siDebito').textContent = fmtBRL(debito, true);
-document.getElementById('siDebito').style.cursor = 'pointer';
-document.getElementById('siDebito').style.textDecoration = 'underline dotted';
-document.getElementById('siDebito').onclick = () => abrirModalDebito(totalFaturado, debito, pct);    document.getElementById('siPctBadge').textContent = pct + '%';
-    document.getElementById('siQtdNotas').textContent = autorizadas.length;
-    document.getElementById('siPeriodo').textContent = monthsFilter ? `últimos ${monthsFilter} meses` : 'todo o período';
-    document.getElementById('siTagPeriodo').textContent = visiveis.length + ' notas no período';
-
-    if (!visiveis.length) {
-      document.getElementById('siTbody').innerHTML =
-        '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ghost)">Nenhuma nota no período.</td></tr>';
-      siCarregado = true;
-      return;
-    }
-
-    const fmtD = iso => iso ? iso.slice(0,10).split('-').reverse().join('/') : '—';
-    const isAuth = s => s?.toLowerCase() === 'autorizada';
-
-    document.getElementById('siTbody').innerHTML = visiveis
-      .sort((a, b) => (b.emissao || '').localeCompare(a.emissao || ''))
-      .map(n => `<tr>
-        <td><strong>${n.numero || '—'}</strong></td>
-        <td>${fmtD(n.emissao)}</td>
-        <td>${n.emitente || n.cnpj_emitente || '—'}</td>
-        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.natureza_operacao||''}">${n.natureza_operacao || '—'}</td>
-        <td><span class="${isAuth(n.situacao) ? 'badge-auth' : 'badge-canc'}">${n.situacao || '—'}</span></td>
-        <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums">${fmtBRL(roundMoney(n.valor || 0))}</td>
-      </tr>`).join('');
-
-    siCarregado = true;
-  } catch (err) {
-    document.getElementById('siTbody').innerHTML =
-      `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--red)">Erro: ${err.message}</td></tr>`;
-  }
-  function abrirModalDebito(faturado, debito, pct) {
-  document.getElementById('debitoModalForn').textContent = fornecedor.nome;
-  document.getElementById('debitoModalFaturado').textContent = fmtBRL(faturado, true);
-  document.getElementById('debitoModalValor').textContent = fmtBRL(debito, true);
-  document.getElementById('debitoModalPct').textContent = pct + '% sobre o faturado';
-  const el = document.getElementById('modalDebito');
-  el.style.display = 'flex';
-}
-// fechar clicando fora
-document.getElementById('modalDebito').addEventListener('click', function(e) {
-  if (e.target === this) this.style.display = 'none';
-});
-}
 </script>
 </body>
 </html>
