@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pesquisa Food Service 2026 · PMG Atacadista</title>
+<meta name="description" content="Pesquisa PMG Atacadista sobre o comportamento de compra do food service. Leva cerca de 4 minutos.">
+<meta name="theme-color" content="#E3141B">
+<meta property="og:title" content="Pesquisa Food Service 2026 · PMG Atacadista">
+<meta property="og:description" content="Conte pra gente como o seu negócio está mudando. Leva cerca de 4 minutos.">
+<meta property="og:image" content="/pesquisa-food-service/logo.png">
+<link rel="icon" type="image/png" href="/pesquisa-food-service/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://scokolfzvtzohrzdgisz.supabase.co" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#E3141B; --red-d:#B80F15; --green:#017C30; --green-l:#E7F3EB;
+  --ink:#1B1B1F; --ink-2:#4A4A52; --ink-3:#7B7B85; --line:#E6E3DE; --line-2:#D5D1CA;
+  --bg:#F7F5F1; --card:#FFFFFF; --soft:#FBEDEE;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif; --sans:"Montserrat",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --r:16px;
+}
+*{box-sizing:border-box;margin:0}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);min-height:100vh;-webkit-font-smoothing:antialiased}
+button,input,textarea,select{font:inherit;color:inherit}
+.top{position:sticky;top:0;z-index:10;background:rgba(247,245,241,.94);border-bottom:1px solid var(--line)}
+.top-in{max-width:720px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px}
+.top img{width:40px;height:40px;border-radius:8px}
+.top .t{font:700 13px/1.15 var(--sans);letter-spacing:.02em}
+.top .t small{display:block;font-weight:500;color:var(--ink-3);font-size:11.5px;letter-spacing:.04em}
+.top .step{margin-left:auto;font:600 12px var(--sans);color:var(--ink-3);white-space:nowrap}
+.top .step em{font-style:normal}
+.bar{height:4px;background:var(--line)}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red),#FF5A3C);transition:width .5s cubic-bezier(.2,.7,.2,1)}
+main{max-width:720px;margin:0 auto;padding:22px 16px 120px}
+.hero{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:28px 22px;position:relative;overflow:hidden}
+.hero:before{content:"";position:absolute;right:-60px;top:-60px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,rgba(227,20,27,.12),transparent 70%)}
+.hero:after{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:linear-gradient(var(--red) 0 50%,var(--green) 50% 100%)}
+.kicker{font:700 11.5px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--red)}
+h1{font:800 clamp(34px,8vw,52px)/.95 var(--display);text-transform:uppercase;margin:12px 0 14px;letter-spacing:.005em}
+h1 span{color:var(--red)}
+.lead{color:var(--ink-2);max-width:56ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font:600 12.5px var(--sans);color:var(--ink-2)}
+.chip svg{width:15px;height:15px}
+section.step{display:none;animation:in .45s cubic-bezier(.2,.7,.2,1)}
+section.step.on{display:block}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.sec-h{margin:6px 2px 16px}
+.sec-h .n{font:700 12px var(--sans);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3)}
+.sec-h h2{font:800 30px/1 var(--display);text-transform:uppercase;margin-top:6px}
+.q{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px 18px;margin-bottom:14px;transition:border-color .25s,box-shadow .25s}
+.q.err{border-color:var(--red);box-shadow:0 0 0 3px rgba(227,20,27,.1)}
+.q .lbl{font:600 15.5px/1.4 var(--sans);display:flex;gap:10px}
+.q .lbl b{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--soft);color:var(--red);font:700 13px var(--sans)}
+.q .hint{color:var(--ink-3);font-size:13px;margin:6px 0 0 36px}
+.q .msg{display:none;color:var(--red);font:600 12.5px var(--sans);margin-top:10px}
+.q.err .msg{display:block}
+.opts{display:grid;gap:8px;margin-top:14px}
+.opts.two{grid-template-columns:1fr 1fr}
+.opt{position:relative;display:flex;align-items:center;gap:12px;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:#fff;transition:border-color .2s,background .2s;min-height:50px;user-select:none;-webkit-tap-highlight-color:transparent}
+.opt:hover{border-color:var(--line-2)}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt .dot{flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line-2);display:grid;place-items:center;transition:all .2s}
+.opt.ck .dot{border-radius:6px}
+.opt .dot:after{content:"";width:10px;height:10px;border-radius:50%;background:var(--red);transform:scale(0);transition:transform .2s}
+.opt.ck .dot:after{border-radius:2px}
+.opt:has(input:checked){border-color:var(--red);background:var(--soft)}
+.opt:has(input:checked) .dot{border-color:var(--red)}
+.opt:has(input:checked) .dot:after{transform:scale(1)}
+.opt input:focus-visible ~ .dot{outline:3px solid rgba(227,20,27,.35);outline-offset:2px}
+.opt span.t{font-weight:500;line-height:1.35}
+.field{display:grid;gap:6px;margin-top:14px}
+.field label{font:600 13px var(--sans);color:var(--ink-2)}
+.field label i{font-style:normal;color:var(--ink-3);font-weight:500}
+.in{width:100%;border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;background:#fff;outline:none;transition:border-color .2s,box-shadow .2s;font-size:16px}
+.in:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(227,20,27,.12)}
+textarea.in{min-height:96px;resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.more{display:none}
+.more.on{display:grid}
+.rate{display:grid;gap:10px;margin-top:14px}
+.rrow{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.rrow:first-child{border-top:0}
+.rrow .rn{font-weight:600;font-size:14px}
+.rrow.err .rn{color:var(--red)}
+.scale{display:flex;gap:6px}
+.scale label{position:relative}
+.scale input{position:absolute;opacity:0}
+.scale span{display:grid;place-items:center;width:40px;height:40px;border-radius:10px;border:1.5px solid var(--line);font:700 14px var(--sans);cursor:pointer;transition:all .15s;background:#fff}
+.scale input:checked + span{background:var(--red);border-color:var(--red);color:#fff}
+.scale input:focus-visible + span{outline:3px solid rgba(227,20,27,.35);outline-offset:2px}
+.legend{display:flex;justify-content:space-between;font:600 11.5px var(--sans);color:var(--ink-3);margin-top:12px;padding:0 2px}
+.consent{display:flex;gap:12px;align-items:flex-start;cursor:pointer}
+.consent input{width:22px;height:22px;accent-color:var(--red);flex:none;margin-top:1px}
+.consent span{font-size:13.5px;color:var(--ink-2)}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(255,255,255,.96);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.nav-in{max-width:720px;margin:0 auto;display:flex;gap:10px}
+.btn{appearance:none;border:0;border-radius:12px;padding:15px 20px;font:700 15px var(--sans);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .15s,background .2s,opacity .2s}
+.btn:active{transform:scale(.98)}
+.btn.pri{background:var(--red);color:#fff;flex:1}
+.btn.pri:hover{background:var(--red-d)}
+.btn.sec{background:var(--bg);border:1px solid var(--line);color:var(--ink-2)}
+.btn[disabled]{opacity:.55;pointer-events:none}
+.btn svg{width:18px;height:18px}
+.done{text-align:center;padding:40px 22px}
+.done .ok{width:84px;height:84px;margin:0 auto 18px;border-radius:50%;background:var(--green-l);display:grid;place-items:center}
+.done .ok svg{width:42px;height:42px;color:var(--green)}
+.done h2{font:800 40px/1 var(--display);text-transform:uppercase}
+.done p{color:var(--ink-2);margin-top:12px;max-width:44ch;margin-inline:auto}
+.alert{display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--soft);color:var(--red-d);font:600 13.5px var(--sans)}
+.alert.on{display:block}
+.foot{text-align:center;color:var(--ink-3);font-size:12px;margin-top:26px}
+@media (max-width:520px){
+  .top .t small{display:none}
+  .top .step em{display:none}
+  .grid2{grid-template-columns:1fr}
+  .opts.two{grid-template-columns:1fr}
+  .rrow{grid-template-columns:1fr}
+  .scale{justify-content:space-between}
+  .scale span{width:calc((100vw - 32px - 36px - 24px)/5);max-width:56px;height:44px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <img src="/pesquisa-food-service/logo.png" alt="PMG Atacadista">
+    <div class="t">Pesquisa Food Service 2026<small>PMG ATACADISTA</small></div>
+    <div class="step" id="stepLbl">Início</div>
+  </div>
+  <div class="bar"><i id="barFill"></i></div>
+</header>
+
+<main>
+  <form id="f" novalidate autocomplete="on">
+
+  <!-- 0 · INTRO + IDENTIFICAÇÃO -->
+  <section class="step on" data-title="Seu estabelecimento">
+    <div class="hero">
+      <p class="kicker">Pesquisa PMG 2026</p>
+      <h1>Como o seu negócio <span>está mudando?</span></h1>
+      <p class="lead">Queremos entender como os estabelecimentos estão adaptando cardápio, preços, escolha de insumos e estratégias diante do novo comportamento do consumidor. Com as suas respostas, a PMG consegue trazer soluções mais certeiras pra sua operação.</p>
+      <div class="meta">
+        <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Cerca de 4 minutos</span>
+        <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg>Resultados divulgados só de forma agregada</span>
+      </div>
+    </div>
+    <div class="sec-h" style="margin-top:22px"><p class="n">Etapa 1 de 7</p><h2>Seu estabelecimento</h2></div>
+    <div class="q" data-req="id">
+      <div class="grid2">
+        <div class="field"><label for="nome">Seu nome</label><input class="in" id="nome" name="nome" autocomplete="name" maxlength="120" required></div>
+        <div class="field"><label for="estabelecimento">Nome do estabelecimento</label><input class="in" id="estabelecimento" name="estabelecimento" autocomplete="organization" maxlength="160" required></div>
+        <div class="field"><label for="documento">CNPJ ou código de cliente PMG</label><input class="in" id="documento" name="documento" inputmode="numeric" maxlength="30" required></div>
+        <div class="field"><label for="telefone">WhatsApp</label><input class="in" id="telefone" name="telefone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 90000-0000" maxlength="20" required></div>
+        <div class="field"><label for="cidade">Cidade</label><input class="in" id="cidade" name="cidade" autocomplete="address-level2" maxlength="100" required></div>
+        <div class="field"><label for="email">E-mail <i>(opcional)</i></label><input class="in" id="email" name="email" type="email" autocomplete="email" maxlength="160"></div>
+      </div>
+      <p class="msg">Preencha nome, estabelecimento, CNPJ ou código, WhatsApp e cidade.</p>
+    </div>
+    <div class="q" data-q="tipo">
+      <p class="lbl"><b><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 10l1.5-5h13L20 10M4 10v9h16v-9M4 10c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3"/></svg></b>Qual é o tipo do seu estabelecimento?</p>
+      <div class="opts two" data-opts="tipo"></div>
+      <div class="field more" id="tipoOutroWrap"><label for="tipo_outro">Qual?</label><input class="in" id="tipo_outro" name="tipo_outro" maxlength="120"></div>
+      <p class="msg">Escolha o tipo do estabelecimento.</p>
+    </div>
+  </section>
+
+  <!-- 1 · CONSUMO -->
+  <section class="step" data-title="Consumo e ticket">
+    <div class="sec-h"><p class="n">Etapa 2 de 7</p><h2>Consumo e ticket</h2></div>
+    <div class="q" data-q="q1">
+      <p class="lbl"><b>1</b>Na sua percepção, a mudança na renda disponível do consumidor está afetando o consumo no seu estabelecimento?</p>
+      <div class="opts" data-opts="q1"></div>
+      <div class="field more" id="q1ObsWrap"><label for="q1_obs">De que forma? <i>(opcional)</i></label><textarea class="in" id="q1_obs" name="q1_obs" maxlength="1000" placeholder="Ex.: menos pedidos no fim do mês, clientes trocando por pratos mais baratos…"></textarea></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+    <div class="q" data-q="q2">
+      <p class="lbl"><b>2</b>Nos últimos 12 meses, o ticket médio dos seus clientes…</p>
+      <div class="opts" data-opts="q2"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+    <div class="q" data-q="q3">
+      <p class="lbl"><b>3</b>O cliente tem trocado produtos ou pratos de maior valor por opções mais econômicas?</p>
+      <div class="opts" data-opts="q3"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+  </section>
+
+  <!-- 2 · MIX -->
+  <section class="step" data-title="Perfil de compra">
+    <div class="sec-h"><p class="n">Etapa 3 de 7</p><h2>Perfil de compra</h2></div>
+    <div class="q" data-q="q4">
+      <p class="lbl"><b>4</b>Hoje, como você classifica o perfil de compra de insumos do seu estabelecimento?</p>
+      <p class="hint">Premium são as linhas e marcas de maior valor. Entrada são as opções mais econômicas.</p>
+      <div class="opts" data-opts="q4"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+    <div class="q" data-q="q5">
+      <p class="lbl"><b>5</b>Comparando com 12 meses atrás, como ficou a participação dos produtos de Entrada nas suas compras?</p>
+      <div class="opts" data-opts="q5"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+  </section>
+
+  <!-- 3 · CARDÁPIO -->
+  <section class="step" data-title="Cardápio">
+    <div class="sec-h"><p class="n">Etapa 4 de 7</p><h2>Cardápio</h2></div>
+    <div class="q" data-q="q6">
+      <p class="lbl"><b>6</b>O consumidor está procurando mais opções saudáveis ou com menos calorias?</p>
+      <div class="opts" data-opts="q6"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+    <div class="q" data-q="q7">
+      <p class="lbl"><b>7</b>Essa mudança de comportamento tem influenciado o seu cardápio?</p>
+      <p class="hint">Pode marcar mais de uma.</p>
+      <div class="opts" data-opts="q7" data-multi="1"></div>
+      <p class="msg">Marque pelo menos uma opção.</p>
+    </div>
+  </section>
+
+  <!-- 4 · DECISÃO DE COMPRA -->
+  <section class="step" data-title="Decisão de compra">
+    <div class="sec-h"><p class="n">Etapa 5 de 7</p><h2>Decisão de compra</h2></div>
+    <div class="q" data-q="q8">
+      <p class="lbl"><b>8</b>O que mais pesa hoje na hora de comprar seus insumos?</p>
+      <p class="hint">Dê uma nota de 1 a 5 para cada item. 1 = pouco importante e 5 = muito importante.</p>
+      <div class="rate" id="rate"></div>
+      <div class="legend"><span>1 · pouco importante</span><span>5 · muito importante</span></div>
+      <p class="msg">Dê uma nota para todos os itens.</p>
+    </div>
+    <div class="q" data-q="q9">
+      <p class="lbl"><b>9</b>Quando precisa reduzir o custo de um prato ou produto, qual é a primeira estratégia que você usa?</p>
+      <div class="opts" data-opts="q9"></div>
+      <div class="field more" id="q9OutroWrap"><label for="q9_outro">Qual?</label><input class="in" id="q9_outro" name="q9_outro" maxlength="300"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+  </section>
+
+  <!-- 5 · ESTRATÉGIA -->
+  <section class="step" data-title="Estratégia">
+    <div class="sec-h"><p class="n">Etapa 6 de 7</p><h2>Estratégia</h2></div>
+    <div class="q" data-q="q10">
+      <p class="lbl"><b>10</b>Em quais categorias você mais trocou produtos Premium por opções Intermediárias ou de Entrada?</p>
+      <p class="hint">Pode marcar mais de uma.</p>
+      <div class="opts two" data-opts="q10" data-multi="1"></div>
+      <div class="field more" id="q10OutroWrap"><label for="q10_outro">Quais?</label><input class="in" id="q10_outro" name="q10_outro" maxlength="300"></div>
+      <p class="msg">Marque pelo menos uma opção.</p>
+    </div>
+    <div class="q" data-q="q11">
+      <p class="lbl"><b>11</b>Se pudesse escolher só uma estratégia para melhorar o resultado do seu estabelecimento hoje, qual seria?</p>
+      <div class="opts" data-opts="q11"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+    <div class="q" data-q="q12">
+      <p class="lbl"><b>12</b>Se a PMG pudesse oferecer uma solução para ajudar seu estabelecimento agora, qual seria a mais importante?</p>
+      <div class="opts" data-opts="q12"></div>
+      <div class="field more" id="q12OutroWrap"><label for="q12_outro">Qual?</label><input class="in" id="q12_outro" name="q12_outro" maxlength="300"></div>
+      <p class="msg">Escolha uma opção.</p>
+    </div>
+  </section>
+
+  <!-- 6 · FINAL -->
+  <section class="step" data-title="Para finalizar">
+    <div class="sec-h"><p class="n">Etapa 7 de 7</p><h2>Para finalizar</h2></div>
+    <div class="q" data-q="q13">
+      <p class="lbl"><b>13</b>Na sua visão, qual é a principal mudança no comportamento do consumidor que mais está impactando o seu negócio hoje?</p>
+      <div class="field"><textarea class="in" id="q13" name="q13" maxlength="2000" placeholder="Escreva com as suas palavras"></textarea></div>
+    </div>
+    <div class="q" data-q="consent">
+      <label class="consent"><input type="checkbox" id="consentimento" name="consentimento"><span>Autorizo a PMG Atacadista a usar minhas respostas nesta pesquisa. Os resultados são apresentados apenas de forma agregada, sem identificar o meu estabelecimento, e meus dados de contato não são compartilhados.</span></label>
+      <p class="msg">Para enviar, é preciso marcar a autorização.</p>
+    </div>
+    <div class="alert" id="alert"></div>
+  </section>
+
+  <!-- DONE -->
+  <section class="step" id="done" data-title="Enviado">
+    <div class="hero done">
+      <div class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h2>Muito obrigado!</h2>
+      <p id="doneMsg">Suas respostas foram enviadas. Elas vão ajudar a PMG a trazer soluções cada vez mais alinhadas ao momento do seu negócio.</p>
+    </div>
+  </section>
+  </form>
+  <p class="foot">PMG Atacadista · Pesquisa Food Service 2026</p>
+</main>
+
+<nav class="nav" id="nav">
+  <div class="nav-in">
+    <button type="button" class="btn sec" id="prev" aria-label="Voltar" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button type="button" class="btn pri" id="next">Começar <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg></button>
+  </div>
+</nav>
+
+<script>
+(function(){
+var SB_URL='https://scokolfzvtzohrzdgisz.supabase.co', SB_KEY='sb_publishable_inJrO1hMCTys3g7FAyjV3w_4TVfLOok';
+/* As opções abaixo precisam bater com as listas da função pesquisa_fs2026_enviar no Supabase */
+var OPTS={
+  tipo:['Pizzaria','Restaurante','Lanchonete / Hamburgueria','Padaria / Confeitaria','Bar / Choperia','Cozinha industrial / Refeição coletiva','Hotel / Pousada','Hospital / Clínica','Mercado / Empório','Delivery / Dark kitchen','Buffet / Eventos','Outro'],
+  q1:['Sim, significativamente','Sim, moderadamente','Pouco','Não'],
+  q2:['Aumentou','Ficou estável','Diminuiu','Não acompanho esse indicador'],
+  q3:['Frequentemente','Às vezes','Raramente','Não percebemos essa mudança'],
+  q4:['Predominantemente Premium','Predominantemente Intermediários','Predominantemente de Entrada','Equilíbrio entre os três níveis'],
+  q5:['Aumentou muito','Aumentou','Ficou estável','Diminuiu','Não trabalhamos com essa linha'],
+  q6:['Sim, aumentou muito','Sim, aumentou','Ficou igual','Diminuiu','Não percebemos essa demanda'],
+  q7:['Estamos criando novos produtos','Estamos alterando receitas','Estamos reduzindo alguns produtos','Ainda estamos avaliando','Não influenciou'],
+  q9:['Troco o insumo por uma opção mais econômica','Reduzo a quantidade / gramatura','Reformulo a receita','Reduzo minha margem','Crio uma opção mais simples no cardápio','Faço promoções','Outra'],
+  q10:['Queijos e laticínios','Carnes','Embutidos','Massas','Molhos','Óleos e gorduras','Congelados','Bebidas','Chocolates e confeitaria','Outras','Não percebi migração'],
+  q11:['Reduzir custo dos insumos','Aumentar preço de venda','Aumentar fluxo de clientes','Aumentar ticket médio','Melhorar margem','Criar novos produtos','Vender mais produtos Premium','Vender mais produtos de Entrada'],
+  q12:['Produtos de Entrada com preço competitivo','Intermediários com melhor custo-benefício','Premium para diferenciar o cardápio','Produtos com maior rendimento','Embalagens menores','Produtos que reduzem desperdício','Produtos alinhados às novas tendências','Equipamentos e soluções para reduzir custos','Condições comerciais / pagamento','Outro']
+};
+var EXCL={q7:['Não influenciou'],q10:['Não percebi migração']};
+var CRIT=['Preço','Qualidade','Rendimento','Marca','Padronização','Disponibilidade','Prazo de validade','Condição de pagamento','Prazo de entrega','Custo por porção'];
+var LABELS={q12:{'Intermediários com melhor custo-benefício':'Produtos Intermediários com melhor custo-benefício','Premium para diferenciar o cardápio':'Produtos Premium para diferenciar o cardápio','Embalagens menores':'Produtos em embalagens menores','Produtos alinhados às novas tendências':'Produtos alinhados às novas tendências de consumo','Equipamentos e soluções para reduzir custos':'Equipamentos e soluções para reduzir custos operacionais','Condições comerciais / pagamento':'Condições comerciais e de pagamento'}};
+
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+var f=document.getElementById('f');
+document.querySelectorAll('[data-opts]').forEach(function(box){
+  var k=box.getAttribute('data-opts'), multi=box.hasAttribute('data-multi');
+  box.innerHTML=OPTS[k].map(function(v,i){
+    var lab=(LABELS[k]&&LABELS[k][v])||v;
+    return '<label class="opt'+(multi?' ck':'')+'"><input type="'+(multi?'checkbox':'radio')+'" name="'+k+'" value="'+esc(v)+'"><span class="dot"></span><span class="t">'+esc(lab)+'</span></label>';
+  }).join('');
+});
+document.getElementById('rate').innerHTML=CRIT.map(function(c,i){
+  var s=''; for(var n=1;n<=5;n++) s+='<label><input type="radio" name="q8_'+i+'" value="'+n+'" aria-label="'+esc(c)+' nota '+n+'"><span>'+n+'</span></label>';
+  return '<div class="rrow" data-crit="'+i+'"><span class="rn">'+esc(c)+'</span><div class="scale">'+s+'</div></div>';
+}).join('');
+
+/* campos condicionais e exclusivos */
+function toggle(id,on){var el=document.getElementById(id); if(el) el.classList.toggle('on',!!on);}
+f.addEventListener('change',function(e){
+  var t=e.target, n=t.name;
+  if(n==='tipo') toggle('tipoOutroWrap',t.value==='Outro');
+  if(n==='q1') toggle('q1ObsWrap',t.value.indexOf('Sim')===0||t.value==='Pouco');
+  if(n==='q9') toggle('q9OutroWrap',t.value==='Outra');
+  if(n==='q12') toggle('q12OutroWrap',t.value==='Outro');
+  if(EXCL[n]&&t.checked){
+    var ex=EXCL[n].indexOf(t.value)>-1;
+    f.querySelectorAll('input[name="'+n+'"]').forEach(function(o){ if(o!==t && (ex || EXCL[n].indexOf(o.value)>-1)) o.checked=false; });
+  }
+  if(n==='q10') toggle('q10OutroWrap',!!f.querySelector('input[name="q10"][value="Outras"]:checked'));
+  var q=t.closest('.q'); if(q) q.classList.remove('err');
+  var r=t.closest('.rrow'); if(r) r.classList.remove('err');
+  save();
+});
+f.addEventListener('input',function(e){ var q=e.target.closest('.q'); if(q&&q.dataset.req) q.classList.remove('err'); save(); });
+
+/* máscara de telefone */
+var tel=document.getElementById('telefone');
+tel.addEventListener('input',function(){
+  var d=tel.value.replace(/\D/g,'').slice(0,11), o='';
+  if(d.length>0) o='('+d.slice(0,2); if(d.length>2) o+=') '; if(d.length>2) o+=d.slice(2,d.length>10?7:6); if(d.length>6) o+='-'+d.slice(d.length>10?7:6);
+  tel.value=o;
+});
+
+/* rascunho local */
+var KEY='pmg_pesquisa_fs2026';
+function val(n){var el=f.querySelector('input[name="'+n+'"]:checked'); return el?el.value:'';}
+function vals(n){return Array.prototype.map.call(f.querySelectorAll('input[name="'+n+'"]:checked'),function(e){return e.value;});}
+function txt(id){var el=document.getElementById(id); return el?el.value.trim():'';}
+function collect(){
+  var q8={}; CRIT.forEach(function(c,i){ var v=val('q8_'+i); if(v) q8[c]=+v; });
+  return {nome:txt('nome'),estabelecimento:txt('estabelecimento'),documento:txt('documento'),telefone:txt('telefone'),email:txt('email'),cidade:txt('cidade'),
+    tipo:val('tipo'),tipo_outro:val('tipo')==='Outro'?txt('tipo_outro'):'',
+    q1:val('q1'),q1_obs:txt('q1_obs'),q2:val('q2'),q3:val('q3'),q4:val('q4'),q5:val('q5'),q6:val('q6'),q7:vals('q7'),q8:q8,
+    q9:val('q9'),q9_outro:val('q9')==='Outra'?txt('q9_outro'):'',q10:vals('q10'),q10_outro:vals('q10').indexOf('Outras')>-1?txt('q10_outro'):'',
+    q11:val('q11'),q12:val('q12'),q12_outro:val('q12')==='Outro'?txt('q12_outro'):'',q13:txt('q13'),consentimento:document.getElementById('consentimento').checked};
+}
+function save(){ try{ var d=collect(); d._step=cur; localStorage.setItem(KEY,JSON.stringify(d)); }catch(e){} }
+function restore(){
+  var d; try{ d=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){ d=null; }
+  if(!d) return 0;
+  ['nome','estabelecimento','documento','telefone','email','cidade','tipo_outro','q1_obs','q9_outro','q10_outro','q12_outro','q13'].forEach(function(k){ if(d[k]) document.getElementById(k).value=d[k]; });
+  function setR(n,v){ if(!v) return; var el=f.querySelector('input[name="'+n+'"][value="'+String(v).replace(/"/g,'\\"')+'"]'); if(el){el.checked=true; el.dispatchEvent(new Event('change',{bubbles:true}));} }
+  ['tipo','q1','q2','q3','q4','q5','q6','q9','q11','q12'].forEach(function(k){ setR(k,d[k]); });
+  (d.q7||[]).forEach(function(v){setR('q7',v);}); (d.q10||[]).forEach(function(v){setR('q10',v);});
+  CRIT.forEach(function(c,i){ if(d.q8&&d.q8[c]) setR('q8_'+i,d.q8[c]); });
+  return Math.min(+d._step||0,6);
+}
+
+/* validação por etapa */
+function check(step){
+  var ok=true, first=null, d=collect();
+  function bad(el){ el.classList.add('err'); ok=false; if(!first) first=el; }
+  step.querySelectorAll('.q').forEach(function(q){
+    var k=q.dataset.q;
+    if(q.dataset.req==='id'){
+      var digits=d.telefone.replace(/\D/g,'');
+      if(d.nome.length<2||d.estabelecimento.length<2||d.documento.replace(/[^0-9a-z]/gi,'').length<3||digits.length<10||d.cidade.length<2) bad(q);
+      return;
+    }
+    if(!k||k==='q13') return;
+    if(k==='consent'){ if(!d.consentimento) bad(q); return; }
+    if(k==='q8'){ var miss=false; step.querySelectorAll('.rrow').forEach(function(r){ var i=r.dataset.crit; if(!val('q8_'+i)){ r.classList.add('err'); miss=true; } }); if(miss) bad(q); return; }
+    var v=d[k]; if(!v||(Array.isArray(v)&&!v.length)) bad(q);
+  });
+  if(first) first.scrollIntoView({behavior:'smooth',block:'center'});
+  return ok;
+}
+
+var steps=Array.prototype.slice.call(document.querySelectorAll('section.step')), LAST=6, cur=0;
+var next=document.getElementById('next'), prev=document.getElementById('prev'), lbl=document.getElementById('stepLbl'), bar=document.getElementById('barFill');
+var arrow='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 5l7 7-7 7"/></svg>';
+function show(i,scroll){
+  cur=i; steps.forEach(function(s,j){ s.classList.toggle('on',j===i); });
+  prev.hidden=(i===0||i>LAST);
+  next.innerHTML=i===0?'Começar '+arrow:(i===LAST?'Enviar respostas':'Continuar '+arrow);
+  lbl.innerHTML=i>LAST?'Concluído':(i+1)+' de 7<em> · '+steps[i].dataset.title+'</em>';
+  bar.style.width=(i>LAST?100:Math.round(i/(LAST+1)*100))+'%';
+  if(i>LAST) document.getElementById('nav').style.display='none';
+  if(scroll!==false) window.scrollTo({top:0,behavior:'smooth'});
+}
+next.addEventListener('click',function(){
+  if(!check(steps[cur])) return;
+  if(cur<LAST){ show(cur+1); save(); return; }
+  send();
+});
+prev.addEventListener('click',function(){ if(cur>0) show(cur-1); });
+
+function send(){
+  var alertEl=document.getElementById('alert'); alertEl.classList.remove('on');
+  next.disabled=true; next.textContent='Enviando…';
+  var payload=collect();
+  var ac=window.AbortController?new AbortController():null, tm=setTimeout(function(){ if(ac) ac.abort(); },15000);
+  fetch(SB_URL+'/rest/v1/rpc/pesquisa_fs2026_enviar',{method:'POST',signal:ac?ac.signal:undefined,headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({p:payload})})
+  .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+  .then(function(res){
+    clearTimeout(tm);
+    if(!res.ok) throw new Error((res.j&&res.j.message)||'erro');
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    if(res.j==='atualizado') document.getElementById('doneMsg').textContent='Suas respostas foram atualizadas. Como esse CNPJ ou código já tinha respondido, guardamos a versão mais recente.';
+    show(LAST+1);
+  })
+  .catch(function(err){
+    clearTimeout(tm);
+    var m=String(err&&err.message||'');
+    alertEl.textContent=m.indexOf('consentimento')>-1?'Marque a autorização para enviar.':'Não conseguimos enviar agora. Confira sua conexão e toque em "Enviar respostas" de novo, suas respostas continuam salvas aqui.';
+    alertEl.classList.add('on'); next.disabled=false; next.textContent='Enviar respostas';
+  });
+}
+
+var start=restore(); show(start,false);
+})();
+</script>
+</body>
+</html>

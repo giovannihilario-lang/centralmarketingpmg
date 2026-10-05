@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Resultados · Pesquisa Food Service 2026 · PMG</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="/pesquisa-food-service/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#2B0714; --bg-2:#360A1B; --bg-3:#41101F; --cream:#F6DFC4; --dim:rgba(246,223,196,.62); --faint:rgba(246,223,196,.32);
+  --line:rgba(246,223,196,.14); --coral:#FF4F38; --tang:#FF7A2F; --amber:#FFB22E;
+  --grad:linear-gradient(95deg,#FF4F38 0%,#FF7A2F 45%,#FFB22E 100%);
+  --display:"Barlow Condensed","Oswald","Arial Narrow",sans-serif; --sans:"Montserrat",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:#14030A;color:var(--cream);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+.viewport{position:fixed;inset:0;display:grid;place-items:center}
+.stage{position:relative;width:1920px;height:1080px;flex:none;transform-origin:center center;background:var(--bg);overflow:hidden}
+.stage:before{content:"";position:absolute;inset:0;background:radial-gradient(60% 70% at 85% 30%,rgba(255,79,56,.16),transparent 70%),radial-gradient(45% 50% at 5% 100%,rgba(255,178,46,.08),transparent 70%);pointer-events:none}
+.slide{position:absolute;inset:0;padding:96px 120px 120px;display:flex;flex-direction:column;opacity:0;visibility:hidden;transition:opacity .7s ease,visibility 0s linear .7s}
+.slide.on{opacity:1;visibility:visible;transition:opacity .7s ease}
+.gt{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kick{font:600 22px/1 var(--sans);letter-spacing:.32em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:18px}
+.kick:before{content:"";width:56px;height:2px;background:var(--grad)}
+.qtext{font:500 30px/1.35 var(--sans);color:var(--dim);max-width:1500px;margin-top:22px}
+.body{flex:1;display:grid;grid-template-columns:620px 1fr;gap:90px;align-items:center;margin-top:30px}
+.big{font:800 300px/.82 var(--display);letter-spacing:-.01em}
+.big small{font-size:.42em}
+.hl{font:700 54px/1.05 var(--display);text-transform:uppercase;margin-top:22px;max-width:600px}
+.bars{display:grid;gap:22px}
+.bar{display:grid;grid-template-columns:1fr 130px;align-items:center;gap:26px}
+.bar .lab{font:600 26px/1.2 var(--sans);margin-bottom:10px;color:var(--cream)}
+.bar .track{height:30px;border-radius:999px;background:rgba(246,223,196,.08);overflow:hidden}
+.bar .fill{height:100%;width:0;border-radius:999px;background:rgba(246,223,196,.34);transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.bar.top .fill{background:var(--grad)}
+.bar .v{font:700 52px/1 var(--display);text-align:right}
+.bar.top .v{color:var(--amber)}
+.bar.dim .lab{color:var(--dim)}
+.bars.compact{gap:14px}
+.bars.compact .bar .lab{font-size:22px;margin-bottom:7px}
+.bars.compact .bar .track{height:22px}
+.bars.compact .bar .v{font-size:42px}
+.foot{position:absolute;left:120px;right:120px;bottom:48px;display:flex;align-items:center;gap:22px;font:500 19px var(--sans);color:var(--faint)}
+.foot img{width:44px;height:44px;border-radius:8px}
+.foot .sp{margin-left:auto}
+.foot b{color:var(--dim);font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:10px;padding:8px 16px;border:1px solid var(--line);border-radius:999px;font:600 17px var(--sans);color:var(--dim)}
+.pill.warn{border-color:rgba(255,178,46,.5);color:var(--amber)}
+.pill.demo{border-color:rgba(255,79,56,.7);color:#fff;background:rgba(255,79,56,.25)}
+/* capa */
+.cover{justify-content:center}
+.cover .t1{font:800 150px/.86 var(--display);text-transform:uppercase;max-width:1500px;margin-top:34px}
+.cover .meta{display:flex;align-items:flex-end;gap:60px;margin-top:70px}
+.cover .num{font:800 210px/.8 var(--display)}
+.cover .numl{font:600 30px/1.3 var(--sans);color:var(--dim);max-width:420px;padding-bottom:16px}
+.cover .badge{position:absolute;right:120px;top:96px;display:flex;align-items:center;gap:18px;font:600 22px var(--sans);color:var(--dim)}
+.cover .badge img{width:84px;height:84px;border-radius:14px}
+/* tipos */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:20px 90px;margin-top:56px}
+/* q8 */
+.rank .bar{grid-template-columns:330px 1fr 120px}
+.rank .bar .lab{margin:0;font-size:25px}
+/* nuvem */
+.cloud{flex:1;display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:12px 40px;padding:10px 80px 40px}
+.cloud span{font-family:var(--display);font-weight:700;text-transform:uppercase;line-height:1;color:var(--cream);opacity:0;transform:translateY(12px);transition:opacity .8s,transform .8s}
+.slide.on .cloud span{opacity:1;transform:none}
+.cloud span.h{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.empty{flex:1;display:grid;place-items:center;font:600 34px var(--sans);color:var(--faint);text-align:center}
+.end{justify-content:center;align-items:flex-start}
+.end .t1{font:800 170px/.86 var(--display);text-transform:uppercase}
+.end p{font:500 34px/1.4 var(--sans);color:var(--dim);margin-top:34px;max-width:1200px}
+/* controles */
+.ctl{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;padding:8px;border-radius:14px;background:rgba(20,3,10,.88);border:1px solid var(--line);z-index:5;transition:opacity .4s;font:600 13px var(--sans)}
+.ctl.hide{opacity:0;pointer-events:none}
+.ctl button,.ctl select{background:rgba(246,223,196,.08);color:var(--cream);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit;cursor:pointer}
+.ctl select option{color:#111}
+.ctl .cnt{color:var(--dim);padding:0 6px;min-width:70px;text-align:center}
+.ctl button.on{background:var(--grad);color:#2B0714;border-color:transparent}
+.prog{position:fixed;left:0;top:0;height:4px;background:var(--grad);z-index:6;transition:width .5s}
+@media print{
+  @page{size:1920px 1080px;margin:0}
+  html,body{overflow:visible;height:auto;background:var(--bg)}
+  .viewport{position:static;display:block}
+  .stage{transform:none!important;width:auto;height:auto;background:none;overflow:visible}
+  .stage:before{display:none}
+  .slide{position:relative;width:1920px;height:1080px;opacity:1!important;visibility:visible!important;page-break-after:always;break-after:page;background:var(--bg)}
+  .slide:before{content:"";position:absolute;inset:0;background:radial-gradient(60% 70% at 85% 30%,rgba(255,79,56,.16),transparent 70%);pointer-events:none}
+  .cloud span{opacity:1!important;transform:none!important}
+  .bar .fill{transition:none!important}
+  .ctl,.prog{display:none!important}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="prog" id="prog"></div>
+<div class="viewport"><div class="stage" id="stage"></div></div>
+<div class="ctl" id="ctl">
+  <button id="bPrev" title="Anterior (←)">‹</button>
+  <span class="cnt" id="cnt">1 / 1</span>
+  <button id="bNext" title="Próximo (→)">›</button>
+  <select id="fTipo" title="Filtrar por tipo de estabelecimento"><option value="">Todos os estabelecimentos</option></select>
+  <button id="bAuto" title="Avançar sozinho (A)">▶ Auto</button>
+  <button id="bFull" title="Tela cheia (F)">⛶</button>
+  <button id="bPrint" title="Salvar todos os slides em PDF">PDF</button>
+</div>
+<script>
+(function(){
+var SB_URL='https://scokolfzvtzohrzdgisz.supabase.co', SB_KEY='sb_publishable_inJrO1hMCTys3g7FAyjV3w_4TVfLOok';
+var qs=new URLSearchParams(location.search);
+var DEMO=qs.get('demo')==='1', ATE=qs.get('ate')||null, AUTO_S=+(qs.get('auto')||9);
+var tipoSel=qs.get('tipo')||'';
+var LOGO='/pesquisa-food-service/logo.png';
+
+var OPTS={
+  tipo:['Pizzaria','Restaurante','Lanchonete / Hamburgueria','Padaria / Confeitaria','Bar / Choperia','Cozinha industrial / Refeição coletiva','Hotel / Pousada','Hospital / Clínica','Mercado / Empório','Delivery / Dark kitchen','Buffet / Eventos','Outro'],
+  q1:['Sim, significativamente','Sim, moderadamente','Pouco','Não'],
+  q2:['Aumentou','Ficou estável','Diminuiu','Não acompanho esse indicador'],
+  q3:['Frequentemente','Às vezes','Raramente','Não percebemos essa mudança'],
+  q4:['Predominantemente Premium','Predominantemente Intermediários','Predominantemente de Entrada','Equilíbrio entre os três níveis'],
+  q5:['Aumentou muito','Aumentou','Ficou estável','Diminuiu','Não trabalhamos com essa linha'],
+  q6:['Sim, aumentou muito','Sim, aumentou','Ficou igual','Diminuiu','Não percebemos essa demanda'],
+  q7:['Estamos criando novos produtos','Estamos alterando receitas','Estamos reduzindo alguns produtos','Ainda estamos avaliando','Não influenciou'],
+  q9:['Troco o insumo por uma opção mais econômica','Reduzo a quantidade / gramatura','Reformulo a receita','Reduzo minha margem','Crio uma opção mais simples no cardápio','Faço promoções','Outra'],
+  q10:['Queijos e laticínios','Carnes','Embutidos','Massas','Molhos','Óleos e gorduras','Congelados','Bebidas','Chocolates e confeitaria','Outras','Não percebi migração'],
+  q11:['Reduzir custo dos insumos','Aumentar preço de venda','Aumentar fluxo de clientes','Aumentar ticket médio','Melhorar margem','Criar novos produtos','Vender mais produtos Premium','Vender mais produtos de Entrada'],
+  q12:['Produtos de Entrada com preço competitivo','Intermediários com melhor custo-benefício','Premium para diferenciar o cardápio','Produtos com maior rendimento','Embalagens menores','Produtos que reduzem desperdício','Produtos alinhados às novas tendências','Equipamentos e soluções para reduzir custos','Condições comerciais / pagamento','Outro']
+};
+var CRIT=['Preço','Qualidade','Rendimento','Marca','Padronização','Disponibilidade','Prazo de validade','Condição de pagamento','Prazo de entrega','Custo por porção'];
+
+/* ===== EDITE AQUI: textos de cada slide =====
+   sum   = opções somadas no número grande (se vazio, usa a opção mais votada)
+   hl    = frase abaixo do número grande ({opt} vira o nome da opção mais votada) */
+var SLIDES=[
+  {k:'q1', kick:'Consumo', q:'A mudança na renda do consumidor está afetando o consumo no estabelecimento?', sum:['Sim, significativamente','Sim, moderadamente'], hl:'sentem a renda do consumidor pesando no consumo'},
+  {k:'q2', kick:'Ticket médio', q:'Nos últimos 12 meses, o ticket médio dos clientes…', sum:['Aumentou'], hl:'viram o ticket médio subir em 12 meses'},
+  {k:'q3', kick:'Troca de pratos', q:'O cliente tem trocado produtos ou pratos de maior valor por opções mais econômicas?', sum:['Frequentemente','Às vezes'], hl:'veem o cliente trocando por opções mais econômicas'},
+  {k:'q4', kick:'Perfil de compra', q:'Como o estabelecimento classifica hoje o seu perfil de compra de insumos?', sum:[], hl:'{opt}'},
+  {k:'q5', kick:'Linha de Entrada', q:'Comparando com 12 meses atrás, como ficou a participação dos produtos de Entrada nas compras?', sum:['Aumentou muito','Aumentou'], hl:'aumentaram a participação dos produtos de Entrada'},
+  {k:'q6', kick:'Saudabilidade', q:'O consumidor está procurando mais opções saudáveis ou com menos calorias?', sum:['Sim, aumentou muito','Sim, aumentou'], hl:'percebem o cliente buscando opções mais saudáveis'},
+  {k:'q7', kick:'Cardápio', q:'Essa mudança de comportamento tem influenciado o cardápio? (mais de uma resposta)', multi:true, anyBut:['Não influenciou'], hl:'já estão mexendo no cardápio por causa disso'},
+  {k:'q8', kick:'Decisão de compra', q:'O que mais pesa na hora de comprar insumos? Nota média de 1 a 5.', type:'rank'},
+  {k:'q9', kick:'Redução de custo', q:'Quando precisa reduzir o custo de um prato, qual é a primeira estratégia?', sum:[], hl:'começam por: {opt}'},
+  {k:'q10', kick:'Migração de categorias', q:'Em quais categorias houve mais troca de Premium por Intermediário ou Entrada? (mais de uma resposta)', multi:true, sum:[], hl:'apontam {opt}'},
+  {k:'q11', kick:'Prioridade', q:'Se pudesse escolher só uma estratégia para melhorar o resultado hoje, qual seria?', sum:[], hl:'escolhem {opt}'},
+  {k:'q12', kick:'O que esperam da PMG', q:'Qual solução da PMG seria mais importante para o estabelecimento agora?', sum:[], hl:'pedem {opt}'}
+];
+var SHORT={'Predominantemente Premium':'compram principalmente Premium','Predominantemente Intermediários':'compram principalmente Intermediários','Predominantemente de Entrada':'compram principalmente linha de Entrada','Equilíbrio entre os três níveis':'equilibram Premium, Intermediário e Entrada'};
+
+var LAST_SIG='', stage=document.getElementById('stage'), DATA=null, cur=+(qs.get('slide')||0), slidesEl=[], autoT=null;
+function esc(t){return String(t==null?'':t).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pct(n,t){return t?Math.round(n/t*100):0;}
+function fmtTime(d){try{return new Date(d).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+
+/* dados de exemplo (só com ?demo=1) */
+function demo(tipo){
+  var seed=7+(tipo?tipo.length:0); function r(){ seed=(seed*9301+49297)%233280; return seed/233280; }
+  var total=tipo?18+Math.round(r()*20):142, c={}, tipos={};
+  OPTS.tipo.forEach(function(t,i){ tipos[t]=Math.max(1,Math.round((12-i)*r()*3)); });
+  function dist(k,w){ var o={},left=total; OPTS[k].forEach(function(v,i){ var n=i===OPTS[k].length-1?left:Math.min(left,Math.round(total*w[i]*(0.8+r()*0.4))); o[v]=Math.max(0,n); left-=o[v]; }); return o; }
+  c.q1=dist('q1',[.38,.36,.18,.08]); c.q2=dist('q2',[.46,.31,.17,.06]); c.q3=dist('q3',[.29,.41,.2,.1]); c.q4=dist('q4',[.12,.44,.2,.24]);
+  c.q5=dist('q5',[.18,.39,.3,.08,.05]); c.q6=dist('q6',[.21,.44,.25,.03,.07]); c.q9=dist('q9',[.31,.14,.22,.11,.1,.1,.02]);
+  c.q11=dist('q11',[.27,.06,.24,.13,.18,.06,.03,.03]); c.q12=dist('q12',[.2,.16,.06,.19,.07,.09,.08,.05,.09,.01]);
+  function multi(k,w){ var o={}; OPTS[k].forEach(function(v,i){ o[v]=Math.round(total*w[i]*(0.8+r()*0.4)); }); return o; }
+  c.q7=multi('q7',[.34,.41,.22,.19,.15]); c.q10=multi('q10',[.48,.37,.29,.12,.14,.22,.18,.16,.11,.03,.12]);
+  var q8={}; [4.7,4.6,4.3,3.1,3.9,4.2,3.6,4.0,3.8,4.4].forEach(function(m,i){ q8[CRIT[i]]={media:m,n:total}; });
+  var words=['porção','menor','preço','delivery','proteína','economia','saudável','aplicativo','qualidade','renda','custo','ticket','promoção','fitness','marmita','combo','sabor','rapidez','experiência','frequência'];
+  return {total:total,tipos:tipo?(function(){var o={};o[tipo]=total;return o;})():tipos,tipos_todos:tipos,contagens:c,q8:q8,q13_respostas:Math.round(total*.6),
+    q13_palavras:words.map(function(w,i){return {w:w,n:Math.max(1,Math.round((22-i)*(0.7+r()*0.6)))};}),atualizado_em:new Date().toISOString()};
+}
+
+function load(){
+  if(DEMO){ DATA=demo(tipoSel); render(); return Promise.resolve(); }
+  var body={p_tipo:tipoSel||null,p_ate:ATE?new Date(ATE+(ATE.length<=10?'T23:59:59-03:00':'')).toISOString():null};
+  return fetch(SB_URL+'/rest/v1/rpc/pesquisa_fs2026_resultados',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+    .then(function(d){ var sig=JSON.stringify(Object.assign({},d,{atualizado_em:0})); if(sig===LAST_SIG) return; LAST_SIG=sig; DATA=d; render(); })
+    .catch(function(){ if(!DATA){ DATA={total:0,tipos:{},tipos_todos:{},contagens:{},q8:{},q13_palavras:[],q13_respostas:0}; render(); } });
+}
+
+function foot(extra){
+  var t=DATA.total, chips='';
+  if(DEMO) chips+='<span class="pill demo">DADOS DE EXEMPLO</span>';
+  if(tipoSel) chips+='<span class="pill">'+esc(tipoSel)+'</span>';
+  if(ATE) chips+='<span class="pill">Respostas até '+esc(ATE.split('-').reverse().join('/'))+'</span>';
+  if(t>0&&t<20) chips+='<span class="pill warn">Amostra pequena</span>';
+  return '<div class="foot"><img src="'+LOGO+'" alt="PMG">Pesquisa Food Service 2026 · <b>Base: '+t+' estabelecimento'+(t===1?'':'s')+'</b>'+(extra||'')+'<span class="sp"></span>'+chips+'</div>';
+}
+function barsHTML(rows,base,opts){
+  opts=opts||{}; var max=0; rows.forEach(function(r){ if(r.n>max) max=r.n; });
+  return '<div class="bars'+(rows.length>6?' compact':'')+'">'+rows.map(function(r,i){
+    var p=pct(r.n,base), w=max?Math.max(r.n?3:0,Math.round(r.n/max*100)):0;
+    return '<div class="bar'+(r.n===max&&max>0?' top':'')+(r.n===0?' dim':'')+'"><div><p class="lab">'+esc(r.label||r.k)+'</p><div class="track"><div class="fill" data-w="'+w+'"></div></div></div><span class="v">'+p+'%</span></div>';
+  }).join('')+'</div>';
+}
+
+function render(){
+  var d=DATA, t=d.total, html='';
+  /* filtro */
+  var sel=document.getElementById('fTipo'), all=d.tipos_todos||{};
+  sel.innerHTML='<option value="">Todos os estabelecimentos</option>'+OPTS.tipo.filter(function(x){return all[x]||x===tipoSel;}).map(function(x){return '<option'+(x===tipoSel?' selected':'')+' value="'+esc(x)+'">'+esc(x)+' ('+(all[x]||0)+')</option>';}).join('');
+  /* capa */
+  html+='<section class="slide cover"><div class="badge"><img src="'+LOGO+'" alt="PMG">PMG Atacadista</div><p class="kick">Pesquisa Food Service 2026</p>'+
+    '<h1 class="t1">O que o food service <span class="gt">está dizendo</span></h1>'+
+    '<div class="meta"><span class="num gt">'+t+'</span><span class="numl">estabelecimentos clientes da PMG responderam'+(tipoSel?' ('+esc(tipoSel)+')':'')+'</span></div>'+foot()+'</section>';
+  /* quem respondeu */
+  var tip=d.tipos||{}, trows=OPTS.tipo.map(function(k){return {k:k,n:tip[k]||0};}).filter(function(r){return r.n>0;}).sort(function(a,b){return b.n-a.n;});
+  html+='<section class="slide"><p class="kick">Quem respondeu</p><p class="qtext">Tipo de estabelecimento</p>'+
+    (t?'<div class="cols">'+(function(){ var h=Math.ceil(trows.length/2); return barsHTML(trows.slice(0,h),t)+barsHTML(trows.slice(h),t); })()+'</div>':'<div class="empty">Aguardando as primeiras respostas</div>')+foot()+'</section>';
+  /* perguntas */
+  SLIDES.forEach(function(s){
+    if(s.type==='rank'){
+      var q8=d.q8||{}, rows=CRIT.map(function(c){return {k:c,m:q8[c]?+q8[c].media:0};}).sort(function(a,b){return b.m-a.m;});
+      var top=rows[0]||{k:'',m:0};
+      html+='<section class="slide"><p class="kick">'+esc(s.kick)+'</p><p class="qtext">'+esc(s.q)+'</p>'+(t?'<div class="body" style="grid-template-columns:560px 1fr"><div><div class="big gt">'+top.m.toFixed(1).replace('.',',')+'<small>/5</small></div><p class="hl">'+esc(top.k)+' é o que mais pesa na compra</p></div>'+
+        '<div class="bars rank">'+rows.map(function(r,i){ return '<div class="bar'+(i<3?' top':'')+'"><p class="lab">'+esc(r.k)+'</p><div class="track"><div class="fill" data-w="'+Math.round(r.m/5*100)+'"></div></div><span class="v">'+r.m.toFixed(1).replace('.',',')+'</span></div>'; }).join('')+'</div></div>':'<div class="empty">Aguardando as primeiras respostas</div>')+foot()+'</section>';
+      return;
+    }
+    var cnt=(d.contagens||{})[s.k]||{}, rows=OPTS[s.k].map(function(o){return {k:o,n:cnt[o]||0};});
+    if(s.multi) rows.sort(function(a,b){return b.n-a.n;});
+    var big=0, opt='';
+    var topRow=rows.slice().sort(function(a,b){return b.n-a.n;})[0];
+    if(s.anyBut){ var none=cnt[s.anyBut[0]]||0; big=pct(Math.max(0,t-none),t); }
+    else if(s.sum&&s.sum.length){ big=pct(s.sum.reduce(function(a,o){return a+(cnt[o]||0);},0),t); }
+    else { big=pct(topRow.n,t); opt=topRow.k; }
+    var hl=s.hl.replace('{opt}',(SHORT[opt]||opt).replace(/^Produtos /,'produtos ').replace(/^Reduzir /,'reduzir ').replace(/^Aumentar /,'aumentar ').replace(/^Melhorar /,'melhorar ').replace(/^Criar /,'criar ').replace(/^Vender /,'vender '));
+    html+='<section class="slide"><p class="kick">'+esc(s.kick)+'</p><p class="qtext">'+esc(s.q)+'</p>'+(t?'<div class="body"><div><div class="big gt">'+big+'<small>%</small></div><p class="hl">'+esc(hl)+'</p></div>'+barsHTML(rows,t)+'</div>':'<div class="empty">Aguardando as primeiras respostas</div>')+foot()+'</section>';
+  });
+  /* nuvem */
+  var ws=d.q13_palavras||[], mx=ws.length?ws[0].n:1;
+  html+='<section class="slide"><p class="kick">Na voz do cliente</p><p class="qtext">Qual é a principal mudança no comportamento do consumidor que mais impacta o negócio? Palavras mais citadas em '+(d.q13_respostas||0)+' respostas abertas.</p>'+
+    (ws.length?'<div class="cloud">'+ws.slice(0,26).map(function(w,i){ var s=Math.round(32+Math.pow(w.n/mx,.8)*78); return '<span class="'+(i<5?'h':'')+'" style="font-size:'+s+'px;transition-delay:'+(i*40)+'ms">'+esc(w.w)+'</span>'; }).join('')+'</div>':'<div class="empty">Aguardando as primeiras respostas abertas</div>')+foot()+'</section>';
+  /* encerramento */
+  html+='<section class="slide end"><p class="kick">Convenção de Fornecedores PMG 2026</p><h2 class="t1">O novo food service <span class="gt">já está na mesa</span></h2><p>Obrigado aos '+t+' estabelecimentos que dividiram com a PMG como o seu negócio está mudando.</p>'+foot()+'</section>';
+
+  stage.innerHTML=html; slidesEl=Array.prototype.slice.call(stage.querySelectorAll('.slide'));
+  if(cur>=slidesEl.length) cur=slidesEl.length-1;
+  go(cur,true);
+}
+
+function animateBars(sl){ sl.querySelectorAll('.fill').forEach(function(f){ f.style.width='0'; }); requestAnimationFrame(function(){ requestAnimationFrame(function(){ sl.querySelectorAll('.fill').forEach(function(f){ f.style.width=f.dataset.w+'%'; }); }); }); }
+function go(i,instant){
+  if(!slidesEl.length) return;
+  cur=(i+slidesEl.length)%slidesEl.length;
+  slidesEl.forEach(function(s,j){ s.classList.toggle('on',j===cur); });
+  animateBars(slidesEl[cur]);
+  document.getElementById('cnt').textContent=(cur+1)+' / '+slidesEl.length;
+  document.getElementById('prog').style.width=((cur+1)/slidesEl.length*100)+'%';
+  try{ var u=new URL(location.href); u.searchParams.set('slide',cur); history.replaceState(null,'',u); }catch(e){}
+}
+function fit(){ var s=Math.min(innerWidth/1920,innerHeight/1080); stage.style.transform='scale('+s+')'; }
+addEventListener('resize',fit); fit();
+
+/* controles */
+var ctl=document.getElementById('ctl'), hideT;
+function wake(){ ctl.classList.remove('hide'); clearTimeout(hideT); hideT=setTimeout(function(){ ctl.classList.add('hide'); },3000); }
+addEventListener('mousemove',wake); wake();
+document.getElementById('bPrev').onclick=function(){ go(cur-1); };
+document.getElementById('bNext').onclick=function(){ go(cur+1); };
+document.getElementById('bFull').onclick=full;
+document.getElementById('bPrint').onclick=function(){ stopAuto(); slidesEl.forEach(function(s){ s.querySelectorAll('.fill').forEach(function(f){ f.style.width=f.dataset.w+'%'; }); }); setTimeout(function(){ print(); },300); };
+document.getElementById('bAuto').onclick=function(){ autoT?stopAuto():startAuto(); };
+document.getElementById('fTipo').onchange=function(e){ tipoSel=e.target.value; try{ var u=new URL(location.href); if(tipoSel) u.searchParams.set('tipo',tipoSel); else u.searchParams.delete('tipo'); history.replaceState(null,'',u); }catch(er){} load(); };
+function full(){ if(!document.fullscreenElement) document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+function startAuto(){ autoT=setInterval(function(){ go(cur+1); },AUTO_S*1000); document.getElementById('bAuto').classList.add('on'); }
+function stopAuto(){ clearInterval(autoT); autoT=null; document.getElementById('bAuto').classList.remove('on'); }
+addEventListener('keydown',function(e){
+  if(e.target.tagName==='SELECT') return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){ e.preventDefault(); go(cur+1); }
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); go(cur-1); }
+  else if(e.key==='f'||e.key==='F') full();
+  else if(e.key==='a'||e.key==='A') autoT?stopAuto():startAuto();
+  else if(e.key==='Home') go(0);
+});
+stage.addEventListener('click',function(e){ var x=e.clientX/innerWidth; go(x<.3?cur-1:cur+1); });
+if(qs.get('auto')) startAuto();
+
+load();
+if(!DEMO&&!ATE) setInterval(load,30000); /* ao vivo: atualiza a cada 30s */
+})();
+</script>
+</body>
+</html>
