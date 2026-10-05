@@ -209,12 +209,12 @@ textarea.in{min-height:96px;resize:vertical}
   <section class="step" data-title="Cardápio">
     <div class="sec-h"><p class="n">Etapa 4 de 7</p><h2>Cardápio</h2></div>
     <div class="q" data-q="q6">
-      <p class="lbl"><b>6</b>O consumidor está procurando mais opções saudáveis ou com menos calorias?</p>
+      <p class="lbl"><b>6</b>Como mudou a procura do consumidor por produtos mais saudáveis ou com menos calorias?</p>
       <div class="opts" data-opts="q6"></div>
       <p class="msg">Escolha uma opção.</p>
     </div>
     <div class="q" data-q="q7">
-      <p class="lbl"><b>7</b>Essa mudança de comportamento tem influenciado o seu cardápio?</p>
+      <p class="lbl"><b>7</b>Essa procura por produtos mais saudáveis tem influenciado o seu cardápio?</p>
       <p class="hint">Pode marcar mais de uma.</p>
       <div class="opts" data-opts="q7" data-multi="1"></div>
       <p class="msg">Marque pelo menos uma opção.</p>
@@ -306,14 +306,14 @@ var OPTS={
   q3:['Frequentemente','Às vezes','Raramente','Não percebemos essa mudança'],
   q4:['Predominantemente Premium','Predominantemente Intermediários','Predominantemente de Entrada','Equilíbrio entre os três níveis'],
   q5:['Aumentou muito','Aumentou','Ficou estável','Diminuiu','Não trabalhamos com essa linha'],
-  q6:['Sim, aumentou muito','Sim, aumentou','Ficou igual','Diminuiu','Não percebemos essa demanda'],
-  q7:['Estamos criando novos produtos','Estamos alterando receitas','Estamos reduzindo alguns produtos','Ainda estamos avaliando','Não influenciou'],
+  q6:['Aumentou muito','Aumentou','Permaneceu igual','Diminuiu','Não percebemos essa demanda'],
+  q7:['Sim, estamos criando novos produtos','Sim, estamos alterando receitas existentes','Sim, estamos reduzindo determinados produtos','Ainda estamos avaliando','Não'],
   q9:['Troco o insumo por uma opção mais econômica','Reduzo a quantidade / gramatura','Reformulo a receita','Reduzo minha margem','Crio uma opção mais simples no cardápio','Faço promoções','Outra'],
   q10:['Queijos e laticínios','Carnes','Embutidos','Massas','Molhos','Óleos e gorduras','Congelados','Bebidas','Chocolates e confeitaria','Outras','Não percebi migração'],
   q11:['Reduzir custo dos insumos','Aumentar preço de venda','Aumentar fluxo de clientes','Aumentar ticket médio','Melhorar margem','Criar novos produtos','Vender mais produtos Premium','Vender mais produtos de Entrada'],
   q12:['Produtos de Entrada com preço competitivo','Intermediários com melhor custo-benefício','Premium para diferenciar o cardápio','Produtos com maior rendimento','Embalagens menores','Produtos que reduzem desperdício','Produtos alinhados às novas tendências','Equipamentos e soluções para reduzir custos','Condições comerciais / pagamento','Outro']
 };
-var EXCL={q7:['Não influenciou'],q10:['Não percebi migração']};
+var EXCL={q7:['Ainda estamos avaliando','Não'],q10:['Não percebi migração']};
 var CRIT=['Preço','Qualidade','Rendimento','Marca','Padronização','Disponibilidade','Prazo de validade','Condição de pagamento','Prazo de entrega','Custo por porção'];
 var LABELS={q12:{'Intermediários com melhor custo-benefício':'Produtos Intermediários com melhor custo-benefício','Premium para diferenciar o cardápio':'Produtos Premium para diferenciar o cardápio','Embalagens menores':'Produtos em embalagens menores','Produtos alinhados às novas tendências':'Produtos alinhados às novas tendências de consumo','Equipamentos e soluções para reduzir custos':'Equipamentos e soluções para reduzir custos operacionais','Condições comerciais / pagamento':'Condições comerciais e de pagamento'}};
 

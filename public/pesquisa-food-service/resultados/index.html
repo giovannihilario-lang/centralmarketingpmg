@@ -123,8 +123,8 @@ var OPTS={
   q3:['Frequentemente','Às vezes','Raramente','Não percebemos essa mudança'],
   q4:['Predominantemente Premium','Predominantemente Intermediários','Predominantemente de Entrada','Equilíbrio entre os três níveis'],
   q5:['Aumentou muito','Aumentou','Ficou estável','Diminuiu','Não trabalhamos com essa linha'],
-  q6:['Sim, aumentou muito','Sim, aumentou','Ficou igual','Diminuiu','Não percebemos essa demanda'],
-  q7:['Estamos criando novos produtos','Estamos alterando receitas','Estamos reduzindo alguns produtos','Ainda estamos avaliando','Não influenciou'],
+  q6:['Aumentou muito','Aumentou','Permaneceu igual','Diminuiu','Não percebemos essa demanda'],
+  q7:['Sim, estamos criando novos produtos','Sim, estamos alterando receitas existentes','Sim, estamos reduzindo determinados produtos','Ainda estamos avaliando','Não'],
   q9:['Troco o insumo por uma opção mais econômica','Reduzo a quantidade / gramatura','Reformulo a receita','Reduzo minha margem','Crio uma opção mais simples no cardápio','Faço promoções','Outra'],
   q10:['Queijos e laticínios','Carnes','Embutidos','Massas','Molhos','Óleos e gorduras','Congelados','Bebidas','Chocolates e confeitaria','Outras','Não percebi migração'],
   q11:['Reduzir custo dos insumos','Aumentar preço de venda','Aumentar fluxo de clientes','Aumentar ticket médio','Melhorar margem','Criar novos produtos','Vender mais produtos Premium','Vender mais produtos de Entrada'],
@@ -141,8 +141,8 @@ var SLIDES=[
   {k:'q3', kick:'Troca de pratos', q:'O cliente tem trocado produtos ou pratos de maior valor por opções mais econômicas?', sum:['Frequentemente','Às vezes'], hl:'veem o cliente trocando por opções mais econômicas'},
   {k:'q4', kick:'Perfil de compra', q:'Como o estabelecimento classifica hoje o seu perfil de compra de insumos?', sum:[], hl:'{opt}'},
   {k:'q5', kick:'Linha de Entrada', q:'Comparando com 12 meses atrás, como ficou a participação dos produtos de Entrada nas compras?', sum:['Aumentou muito','Aumentou'], hl:'aumentaram a participação dos produtos de Entrada'},
-  {k:'q6', kick:'Saudabilidade', q:'O consumidor está procurando mais opções saudáveis ou com menos calorias?', sum:['Sim, aumentou muito','Sim, aumentou'], hl:'percebem o cliente buscando opções mais saudáveis'},
-  {k:'q7', kick:'Cardápio', q:'Essa mudança de comportamento tem influenciado o cardápio? (mais de uma resposta)', multi:true, anyBut:['Não influenciou'], hl:'já estão mexendo no cardápio por causa disso'},
+  {k:'q6', kick:'Saudabilidade', q:'Como mudou a procura do consumidor por produtos mais saudáveis ou com menos calorias?', sum:['Aumentou muito','Aumentou'], hl:'percebem o cliente buscando opções mais saudáveis'},
+  {k:'q7', kick:'Cardápio', q:'Essa procura por produtos mais saudáveis tem influenciado o cardápio? (mais de uma resposta)', multi:true, anyBut:['Ainda estamos avaliando','Não'], hl:'já estão mexendo no cardápio por causa disso'},
   {k:'q8', kick:'Decisão de compra', q:'O que mais pesa na hora de comprar insumos? Nota média de 1 a 5.', type:'rank'},
   {k:'q9', kick:'Redução de custo', q:'Quando precisa reduzir o custo de um prato, qual é a primeira estratégia?', sum:[], hl:'começam por: {opt}'},
   {k:'q10', kick:'Migração de categorias', q:'Em quais categorias houve mais troca de Premium por Intermediário ou Entrada? (mais de uma resposta)', multi:true, sum:[], hl:'apontam {opt}'},
@@ -224,7 +224,7 @@ function render(){
     if(s.multi) rows.sort(function(a,b){return b.n-a.n;});
     var big=0, opt='';
     var topRow=rows.slice().sort(function(a,b){return b.n-a.n;})[0];
-    if(s.anyBut){ var none=cnt[s.anyBut[0]]||0; big=pct(Math.max(0,t-none),t); }
+    if(s.anyBut){ var none=s.anyBut.reduce(function(a,o){return a+(cnt[o]||0);},0); big=pct(Math.max(0,t-none),t); }
     else if(s.sum&&s.sum.length){ big=pct(s.sum.reduce(function(a,o){return a+(cnt[o]||0);},0),t); }
     else { big=pct(topRow.n,t); opt=topRow.k; }
     var hl=s.hl.replace('{opt}',(SHORT[opt]||opt).replace(/^Produtos /,'produtos ').replace(/^Reduzir /,'reduzir ').replace(/^Aumentar /,'aumentar ').replace(/^Melhorar /,'melhorar ').replace(/^Criar /,'criar ').replace(/^Vender /,'vender '));
