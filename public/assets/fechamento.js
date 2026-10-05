@@ -190,19 +190,23 @@
     if (F.processando) return;
     F.processando = true;
     try {
-      // 1) lê tudo que está pendente de leitura
-      for (const item of F.fila.filter((i) => i.status === 'lendo')) {
-        try {
-          await lerItem(item);
-        } catch (e) {
-          item.status = 'erro'; item.msg = e.message || String(e);
+      // Um arquivo por vez, do começo ao fim: lê, resume e (se der) já publica.
+      // Assim só um arquivo grande fica na memória por vez, e dois arquivos do
+      // mesmo fornecedor nunca se atropelam.
+      let item;
+      while ((item = F.fila.find((i) => i.status === 'lendo' || i.status === 'publicar'))) {
+        if (item.status === 'lendo') {
+          try {
+            await lerItem(item);
+          } catch (e) {
+            item.status = 'erro'; item.msg = e.message || String(e);
+          }
+          renderFila();
         }
-        renderFila();
-      }
-      // 2) publica, um por vez (dois arquivos do mesmo fornecedor não podem se atropelar)
-      for (const item of F.fila.filter((i) => i.status === 'publicar')) {
-        await publicarItem(item);
-        renderFila();
+        if (item.status === 'publicar') {
+          await publicarItem(item);
+          renderFila();
+        }
       }
     } finally {
       F.processando = false;
@@ -220,6 +224,10 @@
     const wb = XLSX.read(buf, opts);
     const lido = C().lerWorkbook(wb, XLSX, item.file.name);
     const id = C().identificarFornecedor(lido, F.fornecedores);
+    // guarda só o resumo mensal: as linhas brutas (até ~450 mil) saem da memória aqui
+    item.resumo = C().resumir(lido.rows, lido.formato);
+    lido.nLinhas = lido.rows.length;
+    lido.rows = null;
     item.lido = lido;
     item.fornecedorId = id.fornecedor?.id || null;
     item.certeza = id.certeza;
@@ -248,12 +256,15 @@
     return F.geoPromise;
   }
 
-  async function lerPublicado(slug) {
+  async function lerPublicado(slug, deveExistir = false) {
     const { data, error } = await db.storage.from(BUCKET).download(caminhoJson(slug));
     if (error) {
       const msg = String(error.message || error);
-      if (/not.?found|404|does not exist/i.test(msg) || error.statusCode === '404' || error.status === 400 || error.status === 404) return null;
-      throw new Error('Não deu pra ler o dashboard publicado: ' + msg);
+      const naoAchou = /not.?found|404|does not exist/i.test(msg) || error.statusCode === '404' || error.status === 400 || error.status === 404;
+      // Se o cadastro diz que já existe dashboard, "não achei" é problema de acesso/rede:
+      // seguir em frente apagaria o histórico publicado.
+      if (naoAchou && !deveExistir) return null;
+      throw new Error('Não deu pra ler o dashboard publicado (' + msg + '). Nada foi alterado.');
     }
     try { return JSON.parse(await data.text()); } catch { throw new Error('O dashboard publicado está corrompido. Fale com quem cuida do Connect antes de publicar por cima.'); }
   }
@@ -264,8 +275,31 @@
     item.status = 'publicando'; item.msg = 'Publicando…'; renderFila();
     try {
       const lido = item.lido;
-      const [publicado, geoBR] = await Promise.all([lerPublicado(f.slug_publico), carregarGeo()]);
-      const meses = C().mesclar(C().decodificar(publicado), C().resumir(lido.rows, lido.formato));
+      const [publicado, geoBR] = await Promise.all([lerPublicado(f.slug_publico, !!f.dashboard_mes_final), carregarGeo()]);
+      const anteriores = C().decodificar(publicado);
+
+      // Trava de segurança: o arquivo novo traz bem menos do que já está publicado
+      // no mesmo mês (ex.: relatório filtrado por poucos produtos). Só segue se
+      // a pessoa confirmar.
+      if (!item.forcar) {
+        const quedas = [];
+        for (const [m, novo] of Object.entries(item.resumo)) {
+          const velho = anteriores[m];
+          if (!velho || !velho.t.venda) continue;
+          const nProdVelho = Object.keys(velho.p).length, nProdNovo = Object.keys(novo.p).length;
+          if (novo.t.venda < velho.t.venda * 0.95 || nProdNovo < nProdVelho * 0.8) {
+            quedas.push(`${C().nomeMes(m, true)}: publicado ${brl(velho.t.venda)} (${nProdVelho} produtos) → arquivo ${brl(novo.t.venda)} (${nProdNovo} produtos)`);
+          }
+        }
+        if (quedas.length) {
+          item.status = 'confirmar';
+          item.msg = 'Esse arquivo tem MENOS do que já está publicado. Confira se o relatório saiu completo.';
+          item.avisos = [...(item.avisos || []).filter((a) => !a.startsWith('Diferença:')), ...quedas.map((q) => 'Diferença: ' + q)];
+          item.forcarPendente = true;
+          return;
+        }
+      }
+      const meses = C().mesclar(anteriores, item.resumo);
       const json = C().codificar(meses, { fornecedor: f.nome }, { geo: C().criarGeo(geoBR) });
       const corpo = JSON.stringify(json);
       if (corpo.length > 5 * 1024 * 1024) throw new Error(`O resumo ficou com ${(corpo.length / 1048576).toFixed(1)} MB (limite 5 MB). Fale com quem cuida do Connect.`);
@@ -296,7 +330,7 @@
         fornecedor_id: f.id, tipo: lido.formato === 'template' ? 'template' : 'crm', arquivo_nome: item.file.name,
         nome_crm: lido.fornecedorCrm || lido.codigoArquivo || null,
         mes_inicial: lido.meses[0] + '-01', mes_final: lido.meses.at(-1) + '-01',
-        linhas: lido.rows.length, total_venda: lido.totalVenda, total_relatorio: lido.totalRelatorio ?? null,
+        linhas: lido.nLinhas, total_venda: lido.totalVenda, total_relatorio: lido.totalRelatorio ?? null,
       });
       if (log.error) console.warn('[fechamento] log de upload não gravou', log.error);
 
@@ -318,13 +352,14 @@
     box.classList.remove('hidden');
     const ativos = F.fornecedores.filter((f) => f.ativo);
     const icone = { lendo: 'loader-circle', publicar: 'loader-circle', publicando: 'loader-circle', confirmar: 'circle-alert', ok: 'circle-check-big', erro: 'circle-x' };
-    box.innerHTML = `<div class="fech-fila-head"><strong>Relatórios</strong><button type="button" class="btn secondary" data-fech-acao="limpar-fila"><i data-lucide="eraser"></i><span>Limpar concluídos</span></button></div>` +
+    const conferidos = F.fila.filter((i) => i.status === 'confirmar' && i.fornecedorId && !i.forcarPendente).length;
+    box.innerHTML = `<div class="fech-fila-head"><strong>Relatórios</strong><div class="fech-fila-botoes">${conferidos > 1 ? `<button type="button" class="btn primary" data-fech-acao="publicar-todos"><i data-lucide="upload-cloud"></i><span>Publicar ${conferidos} conferidos</span></button>` : ''}<button type="button" class="btn secondary" data-fech-acao="limpar-fila"><i data-lucide="eraser"></i><span>Limpar concluídos</span></button></div></div>` +
       F.fila.map((i) => {
         const L = i.lido;
-        const detalhes = L ? `${L.rows.length.toLocaleString('pt-BR')} linhas · ${L.dataMin.toLocaleDateString('pt-BR')} a ${L.dataMax.toLocaleDateString('pt-BR')} · ${brl(L.totalVenda)}${L.totalConfere ? ' · confere com o Total do relatório ✓' : ''}` : '';
+        const detalhes = L ? `${L.nLinhas.toLocaleString('pt-BR')} linhas · ${L.dataMin.toLocaleDateString('pt-BR')} a ${L.dataMax.toLocaleDateString('pt-BR')} · ${brl(L.totalVenda)}${L.totalConfere ? ' · confere com o Total do relatório ✓' : ''}` : '';
         const select = i.status === 'confirmar'
           ? `<select data-fech-forn="${i.id}"><option value="">Qual fornecedor?</option>${ativos.map((f) => `<option value="${f.id}" ${f.id === i.fornecedorId ? 'selected' : ''}>${esc(f.nome)}</option>`).join('')}</select>
-             <button type="button" class="btn primary" data-fech-acao="publicar" data-item="${i.id}" ${i.fornecedorId ? '' : 'disabled'}><i data-lucide="upload-cloud"></i><span>Publicar</span></button>`
+             <button type="button" class="btn primary" data-fech-acao="publicar" data-item="${i.id}" ${i.fornecedorId ? '' : 'disabled'}><i data-lucide="upload-cloud"></i><span>${i.forcarPendente ? 'Publicar mesmo assim' : 'Publicar'}</span></button>`
           : '';
         return `<div class="fech-item ${i.status}">
           <i data-lucide="${icone[i.status]}" class="${['lendo', 'publicar', 'publicando'].includes(i.status) ? 'spin' : ''}"></i>
@@ -612,14 +647,24 @@ ${tabela}
       if (acao === 'limpar-fila') { F.fila = F.fila.filter((i) => !['ok'].includes(i.status)); renderFila(); }
       if (acao === 'publicar') {
         const item = F.fila.find((i) => i.id === b.dataset.item);
-        if (item && item.fornecedorId) { item.status = 'publicar'; processarFila(); }
+        if (item && item.fornecedorId) {
+          if (item.forcarPendente) item.forcar = true;
+          item.status = 'publicar'; processarFila();
+        }
+      }
+      if (acao === 'publicar-todos') {
+        const prontos = F.fila.filter((i) => i.status === 'confirmar' && i.fornecedorId && !i.forcarPendente);
+        if (!prontos.length) return;
+        if (!confirm(`Publicar ${prontos.length} arquivo(s) conferido(s)? Cada mês dos arquivos substitui o mesmo mês no dashboard.`)) return;
+        prontos.forEach((i) => { i.status = 'publicar'; });
+        processarFila();
       }
     });
     el('viewFechamento').addEventListener('change', (e) => {
       const s = e.target.closest('[data-fech-forn]');
       if (!s) return;
       const item = F.fila.find((i) => i.id === s.dataset.fechForn);
-      if (item) { item.fornecedorId = Number(s.value) || null; renderFila(); }
+      if (item) { item.fornecedorId = Number(s.value) || null; item.forcar = false; item.forcarPendente = false; renderFila(); }
     });
 
     // modais
