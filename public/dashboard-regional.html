@@ -2005,8 +2005,12 @@ function initMapObserver() {
 
 function initMap() {
   leafletMap = L.map('mapaLeaflet', { scrollWheelZoom: true }).setView([-14.5, -51.9], 4);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap, © CARTO', maxZoom: 18
+  // CARTO passou a exigir API key nos basemaps — trocado pelo Esri Light Gray (sem chave)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap', maxZoom: 16
+  }).addTo(leafletMap);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16
   }).addTo(leafletMap);
   markerLayer = L.layerGroup().addTo(leafletMap);
   flowLayer = L.layerGroup().addTo(leafletMap);
@@ -2025,6 +2029,7 @@ function setMapMode(mode) {
   renderMapa();
 }
 
+let ultimoEnquadramento = null;
 function renderMapa({ silencioso = false } = {}) {
   if (!leafletMap) return; // mapa ainda não entrou em vista / Leaflet ainda não carregou
   if (!silencioso) document.getElementById('mapLoading').classList.add('show');
@@ -2043,6 +2048,7 @@ function renderMapa({ silencioso = false } = {}) {
   let plotadas = 0;
   const semMatch = [];
   const fluxoCidades = [];
+  const boundsCidades = [];
 
   cidades.forEach(c => {
     const coords = lookupGeo(c.cidade, c.uf);
@@ -2056,7 +2062,8 @@ function renderMapa({ silencioso = false } = {}) {
     }
     plotadas++;
     const intensidade = c[mapMode] / maxVal;
-    const radius = 6 + intensidade * 34;
+    // raiz quadrada: área da bolha proporcional ao valor, assim a maior cidade não engole as outras
+    const radius = 4 + Math.sqrt(intensidade) * 26;
     const marker = L.circleMarker(coords, {
       radius, fillColor: '#4caf70', color: '#1a4d2e', weight: 1.5,
       fillOpacity: 0.35 + intensidade * 0.4
@@ -2066,6 +2073,7 @@ function renderMapa({ silencioso = false } = {}) {
       { direction: 'top', offset: [0,-radius] }
     );
     marker.addTo(markerLayer);
+    boundsCidades.push(coords);
     const el = marker.getElement && marker.getElement();
     if (el && !silencioso) {
       el.style.animationDelay = `${Math.min(plotadas * 0.012, 0.4)}s`;
@@ -2075,6 +2083,14 @@ function renderMapa({ silencioso = false } = {}) {
   });
 
   if (mostrarFluxo) renderFluxo(fluxoCidades);
+
+  // Enquadra o mapa nas cidades plotadas sempre que chega dado novo (filtro aplicado).
+  // Não reenquadra no replay nem ao trocar Valor/Kg, pra não roubar o zoom de quem tá navegando.
+  if (!replayAtivo && boundsCidades.length && ultimoEnquadramento !== cidadesCache) {
+    ultimoEnquadramento = cidadesCache;
+    leafletMap.invalidateSize();
+    leafletMap.fitBounds(L.latLngBounds(boundsCidades), { padding: [30, 30], maxZoom: 9 });
+  }
 
   document.getElementById('mapCidadesCount').textContent =
     semMatch.length ? `${plotadas} cidades (${semMatch.length} sem match)` : `${plotadas} cidades`;
