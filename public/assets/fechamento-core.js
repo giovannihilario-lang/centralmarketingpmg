@@ -10,6 +10,9 @@
  *   relvvp    → "Pedidos de Vendas por Vendedor e Produto": bloco de filtros no topo
  *               (Fornecedor:, Período:) + linha "Total:" no fim
  *   template  → planilha antiga do fechamento (aba Base / Tabela1), usada pra carga do histórico
+ *   sellin    → NFs que o fornecedor emitiu pra PMG (aba "Sell-In" ou arquivo próprio), com
+ *               TOTAL, PARTICIPAÇÃO e VERBA no fim. Não vai pro dashboard: vira linha em
+ *               fechamento_sellin e tabela SELL-IN no e-mail.
  *
  * Regra de substituição: cada mês presente no arquivo SUBSTITUI aquele mês inteiro no
  * dashboard. Meses que não estão no arquivo ficam intactos.
@@ -235,6 +238,171 @@
       res.totalConfere = null;
     }
     return res;
+  }
+
+  /* ───────────── sell-in (NFs do fornecedor pra PMG) ───────────── */
+  /*
+   * Planilha do sell-in (aba "Sell-In", "Sell-In 2026" ou arquivo próprio, ex. "Aurora (Sell In).xlsx"):
+   *   Sell In - Mirella - Setembro            ← título (fornecedor e mês)
+   *   Número | Emissão | CNPJ Destinatário | Valor
+   *   000058195 | 03/09/2026 | 11.660.951/0002-94 | 71.956,00
+   *   ...
+   *   TOTAL         | | | 290.272,00
+   *   PARTICIPAÇÃO  | | | 0,015   (1,5%)
+   *   VERBA         | | | 4.354,08  (TOTAL × PARTICIPAÇÃO)
+   */
+  const MESES_CHAVE = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+  const ehAbaSellin = (nome) => /\bsell\s*-?\s*in\b/i.test(semAcento(nome));
+
+  function cabecalhoSellin(linhas, limite = 30) {
+    for (let i = 0; i < Math.min(linhas.length, limite); i++) {
+      const cols = (linhas[i] || []).map((c) => norm(c));
+      const temNumero = cols.some((c) => ['numero', 'nf', 'nota', 'nota fiscal', 'numero nf', 'numero da nf'].includes(c));
+      const temValor = cols.some((c) => ['valor', 'valor total', 'valor nf', 'valor da nf'].includes(c));
+      const temData = cols.some((c) => ['emissao', 'data de emissao', 'data emissao', 'data'].includes(c));
+      if (temNumero && temValor && temData) return i;
+    }
+    return -1;
+  }
+
+  function percentual(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return v > 1 ? v / 100 : v;
+    const s = String(v).trim();
+    const n = numero(s.replace('%', ''));
+    if (!n && !/\d/.test(s)) return null;
+    return s.includes('%') || n > 1 ? n / 100 : n;
+  }
+
+  const isoDia = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  /** Lê a tabela de sell-in de uma aba (matriz de linhas). Devolve null se a aba não for de sell-in. */
+  function lerSellin(linhas, nomeArquivo = '', nomeAba = '') {
+    const h = cabecalhoSellin(linhas);
+    if (h < 0) return null;
+    const col = indicePor(linhas[h]);
+    const primeiro = (...nomes) => { for (const n of nomes) { const i = col(n); if (i !== undefined) return i; } return undefined; };
+    const c = {
+      numero: primeiro('Número', 'NF', 'Nota', 'Nota Fiscal', 'Número NF', 'Número da NF'),
+      emissao: primeiro('Emissão', 'Data de Emissão', 'Data Emissão', 'Data'),
+      cnpj: primeiro('CNPJ Destinatário', 'CNPJ', 'CNPJ Destinatario'),
+      valor: primeiro('Valor', 'Valor Total', 'Valor NF', 'Valor da NF'),
+    };
+    let titulo = '';
+    for (let i = 0; i < h && !titulo; i++) for (const v of linhas[i] || []) if (texto(v)) { titulo = texto(v); break; }
+
+    const notas = [];
+    const avisos = [];
+    let totalPlanilha = null, participacao = null, verbaPlanilha = null, semData = 0;
+    const valorDaLinha = (l) => {
+      if (c.valor !== undefined && l[c.valor] !== null && l[c.valor] !== '') return l[c.valor];
+      for (let k = l.length - 1; k > 0; k--) if (l[k] !== null && l[k] !== '' && !Number.isNaN(Number(String(l[k]).replace(/[R$\s.%]/g, '').replace(',', '.')))) return l[k];
+      return null;
+    };
+    for (let i = h + 1; i < linhas.length; i++) {
+      const l = linhas[i];
+      if (!l || !l.some((v) => texto(v))) continue;
+      const rotulo = norm((l.slice(0, 3).find((v) => texto(v) && Number.isNaN(Number(v))) ?? ''));
+      if (/^total\b/.test(rotulo)) { totalPlanilha = numero(valorDaLinha(l)) || null; continue; } // célula vazia/fórmula sem valor: ignora
+      if (/^participa/.test(rotulo) || rotulo === '%') { participacao = percentual(valorDaLinha(l)); continue; }
+      if (/^verba\b/.test(rotulo)) { verbaPlanilha = numero(valorDaLinha(l)) || null; continue; }
+      const num = texto(l[c.numero]);
+      const valor = numero(l[c.valor]);
+      if (!num || !valor) continue;
+      const d = c.emissao !== undefined ? data(l[c.emissao]) : null;
+      if (!d) semData++;
+      notas.push({
+        numero: typeof l[c.numero] === 'number' ? String(Math.trunc(l[c.numero])) : num,
+        emissao: d ? isoDia(d) : null,
+        cnpj: c.cnpj !== undefined ? (texto(l[c.cnpj]) || null) : null,
+        valor: r2(valor),
+      });
+    }
+    if (!notas.length) return null;
+
+    const total = r2(notas.reduce((a, n) => a + n.valor, 0));
+    if (semData) avisos.push(`${semData} NF(s) sem data de emissão válida.`);
+    if (totalPlanilha !== null && Math.abs(totalPlanilha - total) > 0.05) avisos.push(`A soma das NFs (${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) não bate com o TOTAL da planilha (${totalPlanilha.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).`);
+    const verba = participacao !== null ? r2(total * participacao) : null;
+    if (verba !== null && verbaPlanilha !== null && Math.abs(verbaPlanilha - verba) > 0.05) avisos.push(`A VERBA da planilha (${verbaPlanilha.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}) não bate com TOTAL × PARTICIPAÇÃO (${verba.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).`);
+
+    // competência: último mês citado no título; ano pela NF mais recente
+    const datas = notas.filter((n) => n.emissao).map((n) => n.emissao).sort();
+    const maisRecente = datas.at(-1) || null;
+    const palavras = chave(titulo).split(' ');
+    let mesTitulo = null;
+    palavras.forEach((p) => { const i = MESES_CHAVE.indexOf(p); if (i >= 0) mesTitulo = i + 1; });
+    let competencia = maisRecente ? maisRecente.slice(0, 7) : null;
+    if (mesTitulo) {
+      const anoTitulo = (titulo.match(/\b(20\d{2})\b/) || [])[1];
+      let ano = anoTitulo ? Number(anoTitulo) : (maisRecente ? Number(maisRecente.slice(0, 4)) : new Date().getFullYear());
+      // título de dezembro com NF de janeiro: o ano é o anterior ao da NF
+      if (!anoTitulo && maisRecente && mesTitulo > Number(maisRecente.slice(5, 7)) + 6) ano -= 1;
+      competencia = `${ano}-${String(mesTitulo).padStart(2, '0')}`;
+    }
+
+    // fornecedor pelo título: tira "sell in", meses, ano e separadores
+    const fornecedorTitulo = chave(titulo.replace(/sell\s*-?\s*in/ig, ' '))
+      .split(' ').filter((p) => p && !MESES_CHAVE.includes(p) && !/^\d+$/.test(p) && p !== 'de').join(' ') || null;
+
+    return {
+      formato: 'sellin', notas, total, totalPlanilha, participacao, verbaPlanilha, verba,
+      competencia, titulo, fornecedorTitulo, avisos, nomeArquivo, aba: nomeAba,
+    };
+  }
+
+  /** Procura o sell-in no workbook (abas com "sell in" no nome primeiro). */
+  function lerSellinWorkbook(wb, XLSX, nomeArquivo = '') {
+    const ordem = [...wb.SheetNames.filter(ehAbaSellin), ...wb.SheetNames.filter((n) => !ehAbaSellin(n))];
+    for (const nome of ordem) {
+      const ws = wb.Sheets[nome];
+      if (!ws || !ws['!ref']) continue;
+      const r = lerSellin(matriz(ws, XLSX), nomeArquivo, nome);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  /** Nome da aba de sell-in num workbook aberto só com o começo das abas (sheetRows). */
+  function acharAbaSellin(wb, XLSX) {
+    for (const nome of wb.SheetNames) {
+      const ws = wb.Sheets[nome];
+      if (ws && ws['!ref'] && cabecalhoSellin(matriz(ws, XLSX)) >= 0) return nome;
+    }
+    return null;
+  }
+
+  /** O começo das abas tem cabeçalho de algum relatório de vendas que o fechamento já lê? */
+  function pareceVendas(wb, XLSX) {
+    for (const nome of wb.SheetNames) {
+      const ws = wb.Sheets[nome];
+      if (!ws || !ws['!ref']) continue;
+      const linhas = matriz(ws, XLSX);
+      if (acharLinhaCabecalho(linhas, ['ID Pedido de Venda', 'ID Cliente', 'Data', 'Produto', 'Valor']) >= 0) return true;
+      if (acharLinhaCabecalho(linhas, ['Pedido de Venda', 'ID - Nome do Cliente', 'Data de Emissão do Pedido']) >= 0) return true;
+    }
+    return false;
+  }
+
+  /** Qual fornecedor é esse sell-in: título da planilha, nome do arquivo e planilha antiga cadastrada. */
+  function identificarSellin(lido, fornecedores) {
+    const ativos = fornecedores.filter((f) => f.ativo !== false);
+    const limpa = (s) => chave(String(s ?? '').replace(/\.xlsx?$/i, '').replace(/sell\s*-?\s*in/ig, ' '));
+    const nomeF = (f) => chave(String(f.nome).replace(/\(.*\)/, ''));
+    const candidatos = [
+      [lido.fornecedorTitulo, `Título "${lido.titulo}"`],
+      [limpa(lido.nomeArquivo), `Arquivo "${lido.nomeArquivo}"`],
+    ].filter(([k]) => k);
+    for (const [k, motivo] of candidatos) {
+      const f = ativos.find((x) => nomeF(x) === k)
+        || ativos.find((x) => x.arquivo_template && limpa(x.arquivo_template) === k);
+      if (f) return { fornecedor: f, certeza: true, motivo };
+    }
+    const busca = ' ' + chave(`${lido.titulo} ${limpa(lido.nomeArquivo)}`) + ' ';
+    const achados = ativos.filter((f) => { const n = nomeF(f); return n.length >= 3 && busca.includes(' ' + n + ' '); });
+    if (achados.length === 1) return { fornecedor: achados[0], certeza: false, motivo: `"${achados[0].nome}" aparece no título/arquivo` };
+    return { fornecedor: null, certeza: false, motivo: 'Não deu pra identificar o fornecedor do sell-in' };
   }
 
   /* ───────────── qual fornecedor é esse arquivo ───────────── */
@@ -483,5 +651,5 @@
     return curto ? `${n.slice(0, 3)}/${String(a).slice(2)}` : `${n} de ${a}`;
   }
 
-  return { lerWorkbook, identificarFornecedor, resumir, criarGeo, codificar, decodificar, mesclar, gerarSlug, nomeMes, mesDe, chave, nomeProduto, idCliente, VERSAO_DASHBOARD };
+  return { lerWorkbook, identificarFornecedor, lerSellin, lerSellinWorkbook, acharAbaSellin, pareceVendas, identificarSellin, ehAbaSellin, percentual, resumir, criarGeo, codificar, decodificar, mesclar, gerarSlug, nomeMes, mesDe, chave, nomeProduto, idCliente, VERSAO_DASHBOARD };
 });

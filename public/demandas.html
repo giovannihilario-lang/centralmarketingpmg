@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/demandas-v2.css?v=3.8.12">
-  <link rel="stylesheet" href="/assets/fechamento.css?v=1.0.2">
+  <link rel="stylesheet" href="/assets/fechamento.css?v=1.1.0">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -428,7 +428,7 @@
 
         <section id="viewFechamento" class="view" data-page="fechamento">
           <div class="page-toolbar">
-            <div class="toolbar-title"><span class="eyebrow">Fornecedores parceiros</span><h2>Fechamento</h2><p>Suba os relatórios do CRM, lance os débitos e copie o e-mail pronto de cada fornecedor.</p></div>
+            <div class="toolbar-title"><span class="eyebrow">Fornecedores parceiros</span><h2>Fechamento</h2><p>Suba os relatórios do CRM e o sell-in, lance os débitos e copie o e-mail pronto de cada fornecedor.</p></div>
             <div class="toolbar-actions">
               <label class="fech-competencia">Competência<input id="fechCompetencia" type="month"></label>
               <button id="fechNovoFornBtn" class="btn secondary" type="button"><i data-lucide="building-2"></i><span>Novo fornecedor</span></button>
@@ -439,12 +439,12 @@
           <div id="fechResumo" class="fech-resumo"></div>
           <div id="fechDrop" class="fech-drop" role="button" tabindex="0">
             <i data-lucide="file-up"></i>
-            <div><strong>Arraste os relatórios do CRM aqui</strong><small>Pode soltar vários de uma vez. Aceita "Vendas por Produto", "Pedidos de Vendas por Vendedor e Produto" e as planilhas antigas do fechamento (pra carregar o histórico). Cada mês do arquivo substitui o mesmo mês no dashboard do fornecedor.</small></div>
+            <div><strong>Arraste os relatórios do CRM aqui</strong><small>Pode soltar vários de uma vez. Aceita "Vendas por Produto", "Pedidos de Vendas por Vendedor e Produto", as planilhas antigas do fechamento (pra carregar o histórico) e a planilha de Sell In (NFs, TOTAL, PARTICIPAÇÃO e VERBA), sozinha ou como aba das planilhas com tracinho. Cada mês do arquivo substitui o mesmo mês no dashboard do fornecedor.</small></div>
           </div>
           <div id="fechFila" class="fech-fila hidden"></div>
           <div class="fech-toolbar">
             <div class="search-input"><i data-lucide="search"></i><input id="fechBusca" placeholder="Buscar fornecedor ou e-mail"></div>
-            <select id="fechFiltro" aria-label="Filtrar fornecedores"><option value="todos">Todos os ativos</option><option value="pendentes">Pendentes no mês</option><option value="sem-email">Sem e-mail</option><option value="inativos">Inativos</option></select>
+            <select id="fechFiltro" aria-label="Filtrar fornecedores"><option value="todos">Todos os ativos</option><option value="pendentes">Pendentes no mês</option><option value="sellin">Com sell-in</option><option value="sem-email">Sem e-mail</option><option value="inativos">Inativos</option></select>
           </div>
           <div id="fechLista" class="fech-lista"></div>
         </section>
@@ -1434,8 +1434,8 @@
   </div>
 
   <script src="/assets/demandas-v2.js?v=3.8.19"></script>
-  <script src="/assets/fechamento-core.js?v=1.0.0"></script>
-  <script src="/assets/fechamento.js?v=1.0.2"></script>
+  <script src="/assets/fechamento-core.js?v=1.1.0"></script>
+  <script src="/assets/fechamento.js?v=1.1.0"></script>
   <script type="module" src="/assets/academia-wave2.js?v=2.0.0"></script>
 </body>
 </html>
