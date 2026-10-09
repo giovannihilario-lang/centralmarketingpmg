@@ -1733,9 +1733,10 @@ h1 .ln{will-change:transform}
     var e=function(a,b){return easeOut(clamp01((t-a)/b));};
     // header
     var a1=e(.1,.8); c.globalAlpha=a1;
-    if(logoImg.complete&&logoImg.naturalWidth){ c.save(); roundRect(c,90,120+(1-a1)*30,110,110,18); c.fillStyle='#fff'; c.fill(); c.clip(); c.drawImage(logoImg,94,124+(1-a1)*30,102,102); c.restore(); }
-    c.fillStyle='rgba(246,223,196,.7)'; c.font='500 26px Montserrat, Arial, sans-serif'; spaced(c,'CONVENÇÃO DE FORNECEDORES',232,165+(1-a1)*30,7);
-    c.fillStyle='#F6DFC4'; c.font='800 44px "Barlow Condensed", Arial Narrow, sans-serif'; spaced(c,'PMG 2026',232,215+(1-a1)*30,6);
+    var hy=(1-a1)*30;
+    if(logoImg.complete&&logoImg.naturalWidth){ c.save(); roundRect(c,90,104+hy,176,176,26); c.fillStyle='#fff'; c.fill(); c.clip(); c.drawImage(logoImg,96,110+hy,164,164); c.restore(); }
+    c.fillStyle='#F6DFC4'; c.font='800 76px "Barlow Condensed", Arial Narrow, sans-serif'; spaced(c,'CONVENÇÃO DE',300,170+hy,2); spaced(c,'FORNECEDORES',300,240+hy,2);
+    c.fillStyle=warmGrad(c,300,0,620,0); c.font='700 34px Montserrat, Arial, sans-serif'; spaced(c,'PMG 2026',302,286+hy,12);
     // big headline
     var a2=e(.35,.9); c.globalAlpha=a2; var gy=(1-a2)*60;
     c.fillStyle=warmGrad(c,90,0,990,0); fitText(c,'EU VOU!','800 300px "Barlow Condensed", Arial Narrow, sans-serif',900); c.fillText('EU VOU!',84,640+gy);
@@ -2007,7 +2008,8 @@ var PARCEIROS = [
   {nome:'Scala', logo:'/convencao-2026/logos/scala.webp'},
   {nome:'Frimesa', logo:'/convencao-2026/logos/frimesa.webp'},
   {nome:'Ceratti', logo:'/convencao-2026/logos/ceratti.webp'},
-  {nome:'Aurora', logo:'/convencao-2026/logos/aurora.webp'}
+  {nome:'Aurora', logo:'/convencao-2026/logos/aurora.webp'},
+  {nome:'Yema', logo:'/convencao-2026/logos/yema.webp'}
 ];
 /* equaliza o peso visual: logos largos ficam mais largos, logos altos mais estreitos */
 function fitLogo(img){ var r=img.naturalWidth/Math.max(1,img.naturalHeight); img.style.setProperty('--w',Math.min(88,Math.max(34,45*Math.sqrt(r)))+'%'); }
