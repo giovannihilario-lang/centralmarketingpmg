@@ -501,7 +501,7 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 @media (hover:none),(pointer:coarse),(max-width:700px){
   .grain{display:none}
   .card{transform:none!important;transform-style:flat}
-  .brand-chip,.route .pin-pulse,.play .disc::before,.scroll-hint i::after{animation:none!important}
+  .brand-chip,.route .pin-pulse,.play .disc::before{animation:none!important}
   .brand-chip.new{animation:pop2 1.2s var(--ease)!important}
   .bar.solid{background:rgba(43,7,20,.97);backdrop-filter:none;-webkit-backdrop-filter:none}
   .sound,.share,.modal{backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -650,6 +650,10 @@ h1 .ln{will-change:transform}
   .route .tag{flex-direction:column;gap:2px;font-size:10.5px;letter-spacing:.16em}
   .mural .foot .btn{width:100%;justify-content:center;white-space:normal;text-align:center;letter-spacing:.14em;line-height:1.35}
   .hero-meta small,.card .k,.foot-row,.scroll-hint{font-size:11px}
+  .scroll-hint{color:var(--cream);gap:14px}
+  .scroll-hint i{height:42px;background:rgba(246,223,196,.18)}
+  .scroll-hint i::after{height:45%;animation-duration:1.5s}
+  .scroll-hint::after{content:"";width:9px;height:9px;border-right:2px solid var(--amber);border-bottom:2px solid var(--amber);transform:rotate(45deg);animation:hintBob 1.5s ease-in-out infinite;margin-top:-4px}
   .foot-row{letter-spacing:.2em;gap:10px;justify-content:flex-start}
   .spk .tag{font-size:10.5px}
   .bar{gap:10px}
@@ -663,6 +667,7 @@ h1 .ln{will-change:transform}
   .field label{top:22px}
 }
 @media (max-width:380px){ .bar .sound{display:none} .count .head .label{letter-spacing:.24em} }
+@keyframes hintBob{0%,100%{transform:translateY(0) rotate(45deg);opacity:.5}50%{transform:translateY(6px) rotate(45deg);opacity:1}}
 @keyframes swipeHand{0%,100%{transform:translateX(0)}50%{transform:translateX(7px)}}
 </style>
 </head>
