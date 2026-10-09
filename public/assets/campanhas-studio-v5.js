@@ -2622,6 +2622,8 @@
           periodsUsed:data.periodsUsed,
           nominalPeriods:data.nominalPeriods,
           cache:data.cache || null,
+          weekly:data.weekly || [],
+          productMix:data.productMix || [],
         },
       });
 
@@ -3703,7 +3705,268 @@
   }
 
 
+  // ---------- Relatório de performance em JPG ----------
+  async function ensureHtml2Canvas() {
+    if (window.html2canvas) return window.html2canvas;
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Não foi possível carregar o gerador de imagem. Verifique a internet e tente de novo.'));
+      document.head.appendChild(script);
+    });
+    return window.html2canvas;
+  }
+
+  function reportBoxesConfig(campaign) {
+    const rule = (campaign.pointRules || []).find((item) => item.mode === 'formula' && /FARDOS/i.test(item.formula || ''));
+    const unitsPerPack = rule && (rule.packMode || 'manual') === 'manual' ? Number(rule.unitsPerPack) || 0 : 0;
+    return { rule, unitsPerPack };
+  }
+
+  function reportSellerBoxes(item, boxes) {
+    const detail = (item.pointRuleAudit || []).find((d) => d.mode === 'formula' && d.id === boxes.rule?.id);
+    if (detail?.variables && Number.isFinite(Number(detail.variables.FARDOS))) return Number(detail.variables.FARDOS);
+    return boxes.unitsPerPack > 0 ? Math.floor(Number(item.current?.pieces || 0) / boxes.unitsPerPack) : 0;
+  }
+
+  function moneyShort(value) {
+    const v = Number(value || 0);
+    if (Math.abs(v) >= 1e6) return `R$ ${number(v / 1e6, 2)} mi`;
+    if (Math.abs(v) >= 1e4) return `R$ ${number(v / 1e3, 2)} mil`;
+    return money2(v);
+  }
+
+  function shortProductName(name) {
+    return String(name || 'Produto').replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+\d+[,.]?\d*\s*(KG|G|ML|L)\b.*$/i, '').trim();
+  }
+
+  function weekLabel(start, end) {
+    const s = new Date(`${start}T12:00:00`), e = new Date(`${end}T12:00:00`);
+    const dd = (d) => String(d.getDate()).padStart(2, '0');
+    const mm = (d) => String(d.getMonth() + 1).padStart(2, '0');
+    if (start === end) return `${dd(s)}/${mm(s)}`;
+    return s.getMonth() === e.getMonth() ? `${dd(s)} A ${dd(e)}/${mm(e)}` : `${dd(s)}/${mm(s)} A ${dd(e)}/${mm(e)}`;
+  }
+
+  function campaignReportHtml(campaign, result, data) {
+    const s = result.summary || {};
+    const rows = result.results || [];
+    const currency = campaign.pointsAreCurrency === true;
+    const boxes = reportBoxesConfig(campaign);
+    const hasBoxes = boxes.unitsPerPack > 0;
+    const used = data.periodsUsed || {};
+    const start = used.currentStart || result.periods?.currentStart;
+    const last = used.currentLastInclusive || result.periods?.currentLast;
+    const prevStart = used.previousStart || result.periods?.previousStart;
+    const prevLast = used.previousLastInclusive || result.periods?.previousLast;
+    const year = String(start || '').slice(0, 4) || new Date().getFullYear();
+    const titleCase = (value) => String(value || '').toLowerCase().replace(/(^|\s)(\S)/g, (m, sp, ch) => sp + ch.toUpperCase());
+    const supplierNames = (campaign.suppliers || []).map((item) => titleCase(String(item.name || '').replace(/^\d+\s*-\s*/, ''))).filter(Boolean);
+    const clientes = (n) => `${number(n)} cliente${Number(n) === 1 ? '' : 's'}`;
+    const supplierLabel = supplierNames.join(' · ') || 'PMG';
+
+    const selling = rows.filter((item) => Number(item.current?.revenue || 0) > 0 || Number(item.current?.pieces || 0) > 0);
+    const eligible = rows.filter((item) => item.eligible);
+    const classified = rows.filter((item) => item.eligible && item.classified);
+    const bonusTotal = rows.reduce((sum, item) => sum + Number(item.bonusTotal || 0), 0);
+    const pointsPaid = currency ? classified.reduce((sum, item) => sum + Number(item.points || 0), 0) : 0;
+    const prizeTotal = pointsPaid + bonusTotal;
+    const bonusWinners = rows.filter((item) => (item.bonusesEarned || []).length);
+
+    const totalBoxes = hasBoxes ? Number(s.pieces || 0) / boxes.unitsPerPack : 0;
+    const prevBoxes = hasBoxes ? Number(s.previousPieces || 0) / boxes.unitsPerPack : 0;
+    const closedBoxes = hasBoxes ? rows.reduce((sum, item) => sum + reportSellerBoxes(item, boxes), 0) : 0;
+    const ticket = Number(s.customers) > 0 ? Number(s.revenue || 0) / Number(s.customers) : 0;
+    const isLaunch = Number(s.previousRevenue || 0) <= 0;
+
+    // Ranking: caixas fechadas quando a campanha paga por caixa; senão, a 1ª métrica do ranking.
+    const primaryMetric = (campaign.rankingMetrics || [])[0] || 'points';
+    const barValue = (item) => hasBoxes ? reportSellerBoxes(item, boxes) : rankMetric(item, primaryMetric);
+    const barText = (item) => hasBoxes
+      ? `${number(barValue(item))} cx · ${clientes(item.current?.customers || 0)}`
+      : `${metricDisplay(primaryMetric, barValue(item), currency)} · ${clientes(item.current?.customers || 0)}`;
+    const rankingTitle = hasBoxes ? 'caixas fechadas' : metricLabel(primaryMetric).toLowerCase();
+    const top = [...selling].sort((a, b) => barValue(b) - barValue(a)).slice(0, 8);
+    const maxBar = Math.max(1, ...top.map(barValue));
+    const bonusRule = (campaign.bonusRules || []).find((rule) => hasBoxes ? rule.metric === 'pieces' : rule.metric === primaryMetric);
+    const bonusLineValue = bonusRule ? (hasBoxes ? Number(bonusRule.value || 0) / boxes.unitsPerPack : Number(bonusRule.value || 0)) : 0;
+    const bonusLinePct = bonusRule && bonusLineValue > 0 ? Math.min(100, (bonusLineValue / maxBar) * 100) : null;
+
+    // Leitura automática da campanha.
+    const topVolume = [...selling].sort((a, b) => Number(b.current?.pieces || 0) - Number(a.current?.pieces || 0));
+    const top4Share = Number(s.pieces) > 0 ? topVolume.slice(0, 4).reduce((sum, item) => sum + Number(item.current?.pieces || 0), 0) / Number(s.pieces) * 100 : 0;
+    const zeroBoxes = hasBoxes ? selling.filter((item) => reportSellerBoxes(item, boxes) < 1).length : 0;
+    const weeks = Math.max(1, Math.round(((new Date(`${last}T12:00:00`) - new Date(`${start}T12:00:00`)) / 86400000 + 1) / 7));
+    const concentrated = selling.length > 0 && eligible.length / selling.length < 0.25;
+    const insight = [
+      `${isLaunch ? 'O lançamento levou os produtos da campanha a' : 'A campanha alcançou'} <b>${clientes(s.customers)}</b> em ${number(weeks)} semana${weeks === 1 ? '' : 's'}${isLaunch ? '' : `, ${pct(growth(s.revenue, s.previousRevenue))} de faturamento sobre o período anterior`}.`,
+      `A adesão da equipe ficou <b>${concentrated ? 'concentrada' : 'distribuída'}</b>: ${number(eligible.length)} de ${number(selling.length)} representantes bateram os mínimos${top4Share ? `, e os 4 maiores vendedores somam ${number(top4Share)}% do volume` : ''}.`,
+      hasBoxes && zeroBoxes ? `${number(zeroBoxes)} representante${zeroBoxes === 1 ? '' : 's'} não fech${zeroBoxes === 1 ? 'ou' : 'aram'} nem 1 caixa.` : '',
+      bonusWinners.length ? `${bonusWinners.map((item) => esc(item.name)).join(', ')} ${bonusWinners.length === 1 ? 'levou' : 'levaram'} o bônus${bonusRule ? ` de ${money2(bonusRule.amount)}` : ''}.` : (bonusRule ? 'Ninguém atingiu o bônus nesta edição.' : ''),
+    ].filter(Boolean).join(' ');
+
+    const kpi = (label, value, foot, badge, badgeKind = '') => `<div class="r-kpi"><div class="r-kpi-top"><span>${label}</span>${badge ? `<em class="${badgeKind}">${badge}</em>` : ''}</div><strong>${value}</strong><small>${foot}</small></div>`;
+    const growthBadge = (cur, prev) => Number(prev) > 0 ? `${pct(growth(cur, prev))}` : 'Novo';
+    const growthKind = (cur, prev) => Number(prev) > 0 && Number(cur) < Number(prev) ? 'down' : '';
+    const compare = (label, prevText, curText, badge, kind) => `<div class="r-cmp"><div class="r-kpi-top"><span>${label}</span><em class="${kind}">${badge}</em></div><div class="r-cmp-values"><s>${prevText}</s><i>→</i><strong>${curText}</strong></div></div>`;
+
+    const mix = (data.productMix || []).slice(0, 4);
+    const weekly = data.weekly || [];
+    const weeklyMetric = hasBoxes || weekly.some((w) => w.pieces) ? 'pieces' : 'revenue';
+    const unitName = hasBoxes ? 'bisnagas' : 'unidades';
+    const weeklyMax = Math.max(1, ...weekly.map((w) => Number(w[weeklyMetric] || 0)));
+    const weeklyPeak = weekly.reduce((best, w) => (!best || Number(w[weeklyMetric]) > Number(best[weeklyMetric]) ? w : best), null);
+    const showSide = mix.length || weekly.length;
+
+    return `<div class="pmg-report">
+      <style>
+        .pmg-report{width:1920px;background:#f3f5f2;font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;color:#17241c;padding:0 0 28px;box-sizing:border-box}
+        .pmg-report *{box-sizing:border-box}
+        .r-top{display:flex;align-items:center;justify-content:space-between;background:#fff;padding:18px 40px;border-bottom:1px solid #e3e9e4}
+        .r-brand{display:flex;align-items:center;gap:14px}.r-brand img{width:44px;height:44px;border-radius:10px;object-fit:contain}
+        .r-brand strong{display:block;font-size:19px;color:#13261b}.r-brand span{display:block;font-size:11px;font-weight:800;letter-spacing:.14em;color:#2d7a4f;margin-top:2px}
+        .r-pill{border:1px solid #bfdcc9;background:#eaf6ee;color:#1a4d2e;font-weight:800;font-size:14px;padding:10px 20px;border-radius:999px}
+        .r-body{padding:22px 40px 0}
+        .r-hero{background:linear-gradient(115deg,#1a4d2e,#2d7a4f);border-radius:18px;padding:26px 32px;color:#fff}
+        .r-hero .k{font-size:11px;font-weight:800;letter-spacing:.14em;color:#bfe6cc;text-transform:uppercase}
+        .r-hero h1{font-size:34px;margin:8px 0 8px;letter-spacing:-.02em}
+        .r-hero p{margin:0;font-size:14px;color:#e2f2e8}
+        .r-badges{display:flex;gap:10px;margin-top:16px}.r-badges span{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);padding:7px 15px;border-radius:999px;font-size:12px;font-weight:800}
+        .r-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-top:16px}
+        .r-kpi,.r-cmp{background:#fff;border:1px solid #e3e9e4;border-radius:14px;padding:16px 18px}
+        .r-kpi-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+        .r-kpi-top span{font-size:10.5px;font-weight:800;letter-spacing:.07em;color:#5f6f65;text-transform:uppercase}
+        .r-kpi-top em{font-style:normal;font-size:10px;font-weight:800;padding:3px 8px;border-radius:6px;background:#eaf6ee;color:#1a4d2e;white-space:nowrap}
+        .r-kpi-top em.gold{background:#fbf1dc;color:#9a671b}.r-kpi-top em.down{background:#fbe9e7;color:#b3261e}
+        .r-kpi strong{display:block;font-size:26px;margin-top:10px;letter-spacing:-.02em;color:#101c14}
+        .r-kpi small{display:block;font-size:11.5px;color:#7b8a80;margin-top:6px}
+        .r-insight{display:flex;gap:16px;margin-top:16px;background:#fdf4e2;border:1px solid #f1d9a8;border-left:5px solid #e0a32a;border-radius:12px;padding:16px 22px}
+        .r-insight .ic{flex:0 0 26px;height:26px;border-radius:50%;background:#e0a32a;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:15px}
+        .r-insight h4{margin:0 0 5px;font-size:11px;letter-spacing:.12em;color:#8a5a12}
+        .r-insight p{margin:0;font-size:14.5px;line-height:1.55;color:#4c3b1c}.r-insight b{color:#9a5b00}
+        .r-card{margin-top:16px;background:#fff;border:1px solid #e3e9e4;border-radius:18px;padding:22px 28px}
+        .r-card .k{font-size:11px;font-weight:800;letter-spacing:.14em;color:#2d7a4f}
+        .r-card h2{margin:6px 0 4px;font-size:21px}.r-card .sub{font-size:13px;color:#6b7a70}
+        .r-cmps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px}
+        .r-cmp-values{display:flex;align-items:baseline;gap:10px;margin-top:10px}.r-cmp-values s{color:#9aa69e;font-size:14px}
+        .r-cmp-values i{font-style:normal;color:#9aa69e}.r-cmp-values strong{font-size:24px;letter-spacing:-.02em}
+        .r-split{display:grid;grid-template-columns:${showSide ? '1.45fr 1fr' : '1fr'};gap:32px;margin-top:22px;border-top:1px solid #edf1ee;padding-top:20px}
+        .r-split h3{margin:0 0 8px;font-size:15px}
+        .r-legend{display:flex;gap:18px;font-size:11.5px;color:#6b7a70;margin-bottom:14px}.r-legend span{display:flex;align-items:center;gap:6px}
+        .r-legend i{display:inline-block;width:11px;height:11px;border-radius:3px}
+        .r-row{display:grid;grid-template-columns:34px 180px 118px 1fr 190px;align-items:center;gap:12px;height:36px}
+        .r-row .pos{font-weight:800;color:#5f6f65;font-size:13px}.r-row .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .r-tag{font-size:10px;font-weight:800;letter-spacing:.05em;padding:4px 8px;border-radius:6px;text-align:center}
+        .r-tag.ok{background:#eaf6ee;color:#1a4d2e}.r-tag.no{background:#f0f2f0;color:#7b8a80}
+        .r-bar{position:relative;height:16px;background:#eef1ee;border-radius:999px}
+        .r-bar b{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,#24693f,#4caf70)}
+        .r-bar b.no{background:linear-gradient(90deg,#c3cbc5,#d5dbd6)}
+        .r-bar u{position:absolute;top:-6px;bottom:-6px;width:3px;background:#e0a32a;border-radius:2px}
+        .r-row .val{text-align:right;font-weight:800;font-size:13.5px;white-space:nowrap}
+        .r-mix{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
+        .r-mix div{border:1px solid #e3e9e4;border-radius:12px;padding:12px 14px}
+        .r-mix span{display:block;font-size:10.5px;font-weight:800;letter-spacing:.07em;color:#2d7a4f;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .r-mix strong{display:block;font-size:20px;margin-top:5px}.r-mix small{display:block;font-size:11.5px;color:#7b8a80;margin-top:3px}
+        .r-week{display:grid;grid-template-columns:118px 1fr 120px;align-items:center;gap:12px;height:31px}
+        .r-week span{font-size:11px;font-weight:800;color:#5f6f65;letter-spacing:.03em}
+        .r-week .r-bar{height:13px}.r-week .r-bar b.peak{background:linear-gradient(90deg,#24693f,#4caf70)}
+        .r-week .r-bar b{background:linear-gradient(90deg,#c3cbc5,#d5dbd6)}.r-week strong{text-align:right;font-size:13px}
+        .r-foot{padding:14px 40px 0;text-align:right;font-size:11px;color:#8a978f}
+      </style>
+      <div class="r-top">
+        <div class="r-brand"><img src="/imagenssite/pmglogo.png" alt=""><div><strong>PMG Connect</strong><span>RELATÓRIO DE PERFORMANCE</span></div></div>
+        <div class="r-pill">${esc(campaign.name)} • ${esc(year)}</div>
+      </div>
+      <div class="r-body">
+        <section class="r-hero">
+          <div class="k">Programa de incentivo • ${esc(supplierLabel)} • ${campaign.participantMode === 'specific' ? 'Representantes selecionados' : 'Rede de representantes'}</div>
+          <h1>${esc(campaign.name)}</h1>
+          <p>${campaign.description ? `${esc(String(campaign.description).split(/(?<=\.)\s/)[0])} ` : ''}Resultado do período de ${dateBR(start)} a ${dateBR(last)}.</p>
+          <div class="r-badges"><span>${number(selling.length)} Representantes vendendo</span><span>${number(classified.length)} Classificados</span>${isLaunch ? '<span>Lançamento</span>' : `<span>${pct(growth(s.revenue, s.previousRevenue))} faturamento</span>`}</div>
+        </section>
+
+        <div class="r-kpis">
+          ${kpi('Faturamento campanha', moneyShort(s.revenue), 'Produtos da campanha', growthBadge(s.revenue, s.previousRevenue), growthKind(s.revenue, s.previousRevenue))}
+          ${kpi('Volume campanha', `${number(s.kg, 1)} kg`, `${number(s.pieces)} ${unitName} vendidas`, growthBadge(s.kg, s.previousKg), growthKind(s.kg, s.previousKg))}
+          ${hasBoxes
+            ? kpi('Caixas vendidas', `${number(totalBoxes, 1)} cx`, `${number(closedBoxes)} caixas fechadas por vendedor`, `CX ${number(boxes.unitsPerPack)} UN`, 'gold')
+            : kpi('Pedidos', number(s.orders), `${number(s.pieces)} ${unitName}`, growthBadge(s.orders, s.previousOrders), growthKind(s.orders, s.previousOrders))}
+          ${kpi('Clientes positivados', number(s.customers), `em ${number(s.orders)} pedidos`, growthBadge(s.customers, s.previousCustomers), growthKind(s.customers, s.previousCustomers))}
+          ${kpi('Ticket médio', money2(ticket), 'faturamento ÷ clientes positivados', 'Por cliente', 'gold')}
+          ${kpi('Premiação distribuída', money(prizeTotal), currency || bonusTotal ? `${money(pointsPaid)} em premiação + ${money(bonusTotal)} de bônus` : 'premiação por colocação', 'Total', 'gold')}
+        </div>
+
+        <div class="r-insight"><div class="ic">!</div><div><h4>LEITURA DA CAMPANHA</h4><p>${insight}</p></div></div>
+
+        <section class="r-card">
+          <div class="k">COMPARATIVO</div>
+          <h2>Resultado da Campanha</h2>
+          <div class="sub">Período anterior (${dateBR(prevStart)} a ${dateBR(prevLast)})${isLaunch ? ' sem vendas desses produtos: todo o resultado vem da campanha' : ''}</div>
+          <div class="r-cmps">
+            ${compare('Faturamento', money2(s.previousRevenue), money2(s.revenue), growthBadge(s.revenue, s.previousRevenue), growthKind(s.revenue, s.previousRevenue))}
+            ${compare('Volume (kg)', `${number(s.previousKg, 2)} kg`, `${number(s.kg, 2)} kg`, growthBadge(s.kg, s.previousKg), growthKind(s.kg, s.previousKg))}
+            ${compare('Clientes ativos', number(s.previousCustomers), number(s.customers), growthBadge(s.customers, s.previousCustomers), growthKind(s.customers, s.previousCustomers))}
+            ${hasBoxes
+              ? compare('Caixas', `${number(prevBoxes, 1)}`, `${number(totalBoxes, 1)} cx`, growthBadge(totalBoxes, prevBoxes), growthKind(totalBoxes, prevBoxes))
+              : compare('Unidades', number(s.previousPieces), number(s.pieces), growthBadge(s.pieces, s.previousPieces), growthKind(s.pieces, s.previousPieces))}
+          </div>
+
+          <div class="r-split">
+            <div>
+              <h3>Ranking de Representantes — ${esc(rankingTitle)} (Top ${number(top.length)})</h3>
+              <div class="r-legend"><span><i style="background:#2d7a4f"></i>Classificado (bateu os mínimos)</span><span><i style="background:#cfd6d1"></i>Não bateu o mínimo</span>${bonusLinePct != null ? `<span><i style="background:#e0a32a;width:3px"></i>Linha do bônus: ${hasBoxes ? `acima de ${number(Math.floor(bonusLineValue))} caixas` : `${metricDisplay(primaryMetric, bonusLineValue, currency)}`}</span>` : ''}</div>
+              ${top.map((item, index) => `<div class="r-row">
+                <span class="pos">${index + 1}º</span>
+                <span class="nm">${esc(item.name)}</span>
+                <span class="r-tag ${item.eligible ? 'ok' : 'no'}">${item.eligible ? 'CLASSIFICADO' : 'FORA DO MÍNIMO'}</span>
+                <div class="r-bar"><b class="${item.eligible ? '' : 'no'}" style="width:${Math.max(2, (barValue(item) / maxBar) * 100)}%"></b>${bonusLinePct != null ? `<u style="left:${bonusLinePct}%"></u>` : ''}</div>
+                <span class="val">${barText(item)}</span>
+              </div>`).join('') || '<p class="sub">Nenhuma venda no período.</p>'}
+            </div>
+            ${showSide ? `<div>
+              ${mix.length ? `<h3>Mix de Produto</h3><div class="r-mix">${mix.map((p) => `<div><span>${esc(shortProductName(p.productName))}</span><strong>${money2(p.revenue)}</strong><small>${number(p.pieces)} ${unitName} · ${clientes(p.customers)}</small></div>`).join('')}</div>` : ''}
+              ${weekly.length ? `<h3>Evolução Semanal — ${weeklyMetric === 'pieces' ? unitName : 'faturamento'}</h3>${weekly.map((w) => `<div class="r-week"><span>${weekLabel(w.start, w.end)}</span><div class="r-bar"><b class="${w === weeklyPeak ? 'peak' : ''}" style="width:${Math.max(2, (Number(w[weeklyMetric] || 0) / weeklyMax) * 100)}%"></b></div><strong>${weeklyMetric === 'pieces' ? `${number(w.pieces)} ${unitName}` : money(w.revenue)}</strong></div>`).join('')}` : ''}
+            </div>` : ''}
+          </div>
+        </section>
+      </div>
+      <div class="r-foot">Fonte: base de vendas ${esc(supplierLabel)} (período anterior × período da campanha) · gerado em ${new Date().toLocaleString('pt-BR')} · PMG Connect</div>
+    </div>`;
+  }
+
+  async function exportCampaignReportJpg(button) {
+    const ctx = app.reportContext;
+    if (!ctx?.result) { toast('Abra a performance da campanha antes de gerar o relatório.', 'error'); return; }
+    const original = button?.innerHTML;
+    if (button) { button.disabled = true; button.innerHTML = 'Gerando imagem…'; }
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:-12000px;top:0;width:1920px;pointer-events:none;';
+    host.innerHTML = campaignReportHtml(ctx.campaign, ctx.result, ctx.data || {});
+    document.body.appendChild(host);
+    try {
+      const html2canvas = await ensureHtml2Canvas();
+      const logo = host.querySelector('img');
+      if (logo && !logo.complete) await new Promise((resolve) => { logo.onload = resolve; logo.onerror = resolve; });
+      await (document.fonts?.ready || Promise.resolve());
+      const canvas = await html2canvas(host.firstElementChild, { scale: 1, backgroundColor: '#f3f5f2', useCORS: true, logging: false });
+      const link = document.createElement('a');
+      const slug = String(ctx.campaign.name || 'campanha').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+      link.download = `Relatorio-${slug}-${todayLocalDate()}.jpg`;
+      link.href = canvas.toDataURL('image/jpeg', 0.93);
+      document.body.appendChild(link); link.click(); link.remove();
+      toast('Relatório em JPG gerado.');
+    } catch (error) {
+      console.error('[relatorio-jpg]', error);
+      toast(error.message || 'Não foi possível gerar o relatório.', 'error');
+    } finally {
+      host.remove();
+      if (button) { button.disabled = false; button.innerHTML = original; icons(button); }
+    }
+  }
+
   function performanceHtml(campaign, result, data) {
+    app.reportContext = { campaign, result, data };
     const summary = result.summary;
     const used = data.periodsUsed || {};
     const nominal = data.nominalPeriods || {};
@@ -3743,7 +4006,11 @@
       </div>
     </div>`;
 
-    const overviewHtml = `${periodAudit}
+    const overviewHtml = `<div class="report-export-bar">
+      <div><strong>Relatório de performance</strong><span>Imagem 1920px pronta para compartilhar com a diretoria e o fornecedor.</span></div>
+      <button class="primary-btn" type="button" data-action="export-report-jpg"><i data-lucide="image-down"></i>Gerar relatório em JPG</button>
+    </div>
+    ${periodAudit}
     ${provenancePanel(campaign, data, result)}
     ${collectiveBaseBanner}
     ${partialProgressHtml(result, data)}
@@ -4222,6 +4489,7 @@
     if (action === 'export-benefit-csv') { exportBenefitCsv('filtered'); return; }
     if (action === 'copy-benefit-csv') return copyBenefitCsv();
     if (action === 'retry-performance') { return openPerformance(node.dataset.id, { force:true }); }
+    if (action === 'export-report-jpg') return exportCampaignReportJpg(node);
     if (action === 'consistency-diagnostic') { return runConsistencyDiagnostic(node.dataset.id); }
     if (action === 'audit-seller') return openSellerAudit(node.dataset.campaignId, node.dataset.seller);
     if (action === 'copy-seller-audit') return copySellerAudit();

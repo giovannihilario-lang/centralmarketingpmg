@@ -681,6 +681,8 @@ export async function queryPerformance(payload = {}) {
     collectiveSummary,
     orderLines,
     historicalTriggerClientIds,
+    weekly: result.weekly || [],
+    productMix: result.productMix || [],
     durationMs: Date.now() - startedAt,
     cache:{
       hit:false,

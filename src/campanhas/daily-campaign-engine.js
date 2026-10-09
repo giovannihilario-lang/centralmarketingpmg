@@ -191,6 +191,38 @@ export async function performanceRecordsets({
   const equivalentRows = collectiveSource.filter((row) => row.period === 'previous' && orderDateMs({ d: row.orderDate }) < previousEquivalentEndMs);
   const equivalent = summarizeRows(equivalentRows);
 
+  // Evolução semanal e mix por produto do período da campanha — usados no
+  // relatório em imagem. As linhas de `lines` não carregam data nem nome de
+  // produto, então o agrupamento precisa sair daqui.
+  const WEEK_MS = 7 * 86400000;
+  const weeklyMap = new Map();
+  const mixMap = new Map();
+  for (const row of collectiveSource) {
+    if (row.period !== 'current') continue;
+    const ms = orderDateMs({ d: row.orderDate });
+    if (Number.isFinite(ms)) {
+      const week = Math.max(0, Math.floor((ms - currentStartMs) / WEEK_MS));
+      if (!weeklyMap.has(week)) weeklyMap.set(week, { week, pieces: 0, kg: 0, revenue: 0, clients: new Set() });
+      const w = weeklyMap.get(week);
+      w.pieces += row.pieces; w.kg += row.kg; w.revenue += row.revenue; w.clients.add(row.clientId);
+    }
+    if (!mixMap.has(row.productId)) mixMap.set(row.productId, { productId: row.productId, pieces: 0, kg: 0, revenue: 0, clients: new Set() });
+    const m = mixMap.get(row.productId);
+    m.pieces += row.pieces; m.kg += row.kg; m.revenue += row.revenue; m.clients.add(row.clientId);
+  }
+  const dayIso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const weekly = [...weeklyMap.values()].sort((a, b) => a.week - b.week).map((w) => ({
+    week: w.week,
+    start: dayIso(currentStartMs + w.week * WEEK_MS),
+    end: dayIso(Math.min(currentStartMs + w.week * WEEK_MS + 6 * 86400000, currentEndMs - 86400000)),
+    pieces: w.pieces, kg: w.kg, revenue: w.revenue, customers: w.clients.size,
+  }));
+  const productMix = [...mixMap.values()].sort((a, b) => b.revenue - a.revenue).map((m) => ({
+    productId: m.productId,
+    productName: text(snapshot._idx.productsById.get(m.productId)?.n),
+    pieces: m.pieces, kg: m.kg, revenue: m.revenue, customers: m.clients.size,
+  }));
+
   const recordsets = [
     lines,
     ordersBySeller,
@@ -233,7 +265,7 @@ export async function performanceRecordsets({
     recordsets.push([...clients].map((clientId) => ({ clientId })));
   }
 
-  return { recordsets, snapshot };
+  return { recordsets, snapshot, weekly, productMix };
 }
 
 export async function consistencyRecordsets({ currentStart, currentEnd, previousStart, previousEnd, supplierIds = [], productIds = [], sellers = [] }) {
