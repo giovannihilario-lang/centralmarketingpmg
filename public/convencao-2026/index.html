@@ -546,6 +546,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .logos .logo-slot{flex:0 0 calc((100% - 4*var(--g))/5)}
 .logos.six .logo-slot{flex-basis:calc((100% - 5*var(--g))/6)}
 .logos.seven .logo-slot{flex-basis:calc((100% - 6*var(--g))/7)}
+.logos.eight .logo-slot{flex-basis:calc((100% - 7*var(--g))/8)}
+@media (min-width:981px){.logos.eight .logo-slot img{width:calc(var(--w,60%) * 1.2);max-width:92%;max-height:84%}}
 .logo-slot{aspect-ratio:3/2;border:1px solid var(--line);border-radius:16px;background:var(--bg-2);display:grid;place-items:center;padding:18px;text-align:center}
 .logo-slot{transition:border-color .4s,transform .4s var(--ease)}
 .logo-slot img{display:block;width:var(--w,60%);max-width:88%;max-height:78%;height:auto;object-fit:contain;filter:drop-shadow(0 6px 14px rgba(0,0,0,.35))}
@@ -558,8 +560,8 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 .apoio a{display:flex;align-items:center;justify-content:center;min-width:160px;height:70px;padding:0 26px;border:1px solid var(--line-2);border-radius:14px;color:var(--cream);text-decoration:none;font:800 clamp(24px,2.4vw,32px)/1 var(--display);letter-spacing:.04em;text-transform:uppercase;transition:border-color .3s,background .3s}
 .apoio a:hover{border-color:var(--amber);background:rgba(255,178,46,.06)}
 .apoio a img{max-height:44px;max-width:170px}
-@media (max-width:980px){.people{grid-template-columns:repeat(min(var(--n,4),2),minmax(0,1fr))}.logos .logo-slot,.logos.six .logo-slot,.logos.seven .logo-slot{flex-basis:calc((100% - 2*var(--g))/3)}}
-@media (max-width:600px){.people{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:14px;margin-inline:calc(var(--gutter)*-1);padding:0 var(--gutter) 6px;max-width:none;scrollbar-width:none}.people::-webkit-scrollbar{display:none}.spk{flex:0 0 78vw;scroll-snap-align:center}.logos .logo-slot,.logos.six .logo-slot,.logos.seven .logo-slot{flex-basis:calc((100% - 2*var(--g))/3)}.logo-slot{padding:8px;border-radius:14px}}
+@media (max-width:980px){.people{grid-template-columns:repeat(min(var(--n,4),2),minmax(0,1fr))}.logos .logo-slot,.logos.six .logo-slot,.logos.seven .logo-slot,.logos.eight .logo-slot{flex-basis:calc((100% - 2*var(--g))/3)}}
+@media (max-width:600px){.people{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:14px;margin-inline:calc(var(--gutter)*-1);padding:0 var(--gutter) 6px;max-width:none;scrollbar-width:none}.people::-webkit-scrollbar{display:none}.spk{flex:0 0 78vw;scroll-snap-align:center}.logos .logo-slot,.logos.six .logo-slot,.logos.seven .logo-slot,.logos.eight .logo-slot{flex-basis:calc((100% - 2*var(--g))/3)}.logo-slot{padding:8px;border-radius:14px}}
 
 .ap-logo{display:inline-flex;align-items:center}
 .ap-logo img{display:block;height:1.6em;width:auto;max-width:170px;object-fit:contain}
@@ -667,6 +669,7 @@ h1 .ln{will-change:transform}
   .field label{top:22px}
 }
 @media (max-width:380px){ .bar .sound{display:none} .count .head .label{letter-spacing:.24em} }
+@media (max-width:980px){.logos.m4 .logo-slot{flex-basis:calc((100% - 3*var(--g))/4)!important}}
 @keyframes hintBob{0%,100%{transform:translateY(0) rotate(45deg);opacity:.5}50%{transform:translateY(6px) rotate(45deg);opacity:1}}
 @keyframes swipeHand{0%,100%{transform:translateX(0)}50%{transform:translateX(7px)}}
 </style>
@@ -2049,7 +2052,8 @@ var PARCEIROS = [
   {nome:'Frimesa', logo:'/convencao-2026/logos/frimesa.webp'},
   {nome:'Ceratti', logo:'/convencao-2026/logos/ceratti.webp'},
   {nome:'Aurora', logo:'/convencao-2026/logos/aurora.webp'},
-  {nome:'Yema', logo:'/convencao-2026/logos/yema.webp'}
+  {nome:'Yema', logo:'/convencao-2026/logos/yema.webp'},
+  {nome:'Seara', logo:'/convencao-2026/logos/seara.webp'}
 ];
 /* equaliza o peso visual: logos largos ficam mais largos, logos altos mais estreitos */
 function fitLogo(img){ var r=img.naturalWidth/Math.max(1,img.naturalHeight); img.style.setProperty('--w',Math.min(88,Math.max(34,45*Math.sqrt(r)))+'%'); }
@@ -2084,9 +2088,11 @@ function fitLogo(img){ var r=img.naturalWidth/Math.max(1,img.naturalHeight); img
   if(lg){
     var ls=PARCEIROS.length?PARCEIROS.slice():[{},{},{},{},{}];
     var cols=5;
-    if(ls.length>10){var best=-1;[5,6,7].forEach(function(c){var r=ls.length%c,f=r?r/c:1;if(f>best+1e-9){best=f;cols=c;}});}
+    if(ls.length>10){var best=-1;[5,6,7,8].forEach(function(c){var r=ls.length%c,f=r?r/c:1;if(f>best+1e-9){best=f;cols=c;}});}
     lg.classList.toggle('six',cols===6);
     lg.classList.toggle('seven',cols===7);
+    lg.classList.toggle('eight',cols===8);
+    var mf=function(c){var r=ls.length%c;return r?r/c:1;}; lg.classList.toggle('m4',ls.length>12&&mf(4)>mf(3));
     lg.innerHTML=ls.map(function(p){
       var tba=!p.nome, inner=p.logo?'<img src="'+esc(p.logo)+'" alt="'+esc(p.nome)+'" loading="lazy" onload="fitLogo(this)" onerror="this.outerHTML=\'<span>'+esc(p.nome)+'</span>\'">':'<span>'+(tba?'Em breve':esc(p.nome))+'</span>';
       return p.site?'<a class="logo-slot" href="'+esc(p.site)+'" target="_blank" rel="noopener">'+inner+'</a>':'<div class="logo-slot'+(tba?' tba':'')+'">'+inner+'</div>';
