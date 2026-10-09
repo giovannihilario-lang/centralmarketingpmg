@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Convenção de Fornecedores PMG 2026</title>
-<meta name="description" content="Convenção de Fornecedores PMG 2026. Sexta-feira, 13 de novembro, às 18h, na Bisutti Tenerife, em São Paulo. Confirme sua presença.">
+<meta name="description" content="Convenção de Fornecedores PMG 2026. Sexta-feira, 13 de novembro, às 17h40, na Bisutti Tenerife, em São Paulo. Confirme sua presença.">
 <meta property="og:title" content="Convenção de Fornecedores PMG 2026">
-<meta property="og:description" content="As mudanças e o comportamento do novo food service. 13 de novembro, 18h, Bisutti Tenerife · São Paulo. Você é nosso convidado.">
+<meta property="og:description" content="As mudanças e o comportamento do novo food service. 13 de novembro, 17h40, Bisutti Tenerife · São Paulo. Você é nosso convidado.">
 <meta property="og:image" content="https://i.ytimg.com/vi/UlRS5bSvhEs/maxresdefault.jpg">
 <meta name="theme-color" content="#2B0714">
 <link rel="icon" type="image/png" href="/convencao-2026/logo.png">
@@ -596,6 +596,41 @@ h1 .ln{will-change:transform}
 .foot-apoio .ap-logo img{height:22px}
 .foot-apoio .ap-logo img[src*="galunion"]{height:30px}
 .foot-apoio .ap-logo em{color:var(--cream);letter-spacing:.2em}
+
+/* ---------- mobile: compacto + intuitivo ---------- */
+.swipe{display:none}
+@media (max-width:600px){
+  .swipe{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 6px}
+  .swipe-txt{display:inline-flex;align-items:center;gap:8px;font:600 10.5px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--amber);transition:opacity .5s}
+  .swipe-txt svg{width:18px;height:18px;animation:swipeHand 1.8s var(--ease) infinite}
+  .swipe.used .swipe-txt{opacity:.45}
+  .swipe.used .swipe-txt svg{animation:none}
+  .swipe-dots{display:flex;gap:6px}
+  .swipe-dots i{width:6px;height:6px;border-radius:99px;background:var(--line-2);transition:width .35s var(--ease),background .35s}
+  .swipe-dots i.on{width:18px;background:var(--grad)}
+  section.block{padding:46px var(--gutter)}
+  .sec-top{margin-bottom:22px;gap:10px}
+  .sec-top p{margin:0}
+  .story{height:170vh}
+  .video-sec{height:auto;margin-top:0}
+  .video-sticky{position:relative;height:auto;min-height:80svh;background:var(--bg)}
+  .video-frame{transform:none!important;border-radius:0}
+  .video-copy{padding:44px var(--gutter) 40px;gap:26px}
+  .video-sec .video-frame,.video-sec .video-copy{opacity:1}
+  .form{gap:16px 0;padding:22px 18px}
+  .form-foot{margin-top:4px;gap:12px}
+  .form-foot .btn{width:100%;justify-content:center}
+  .rsvp h2{margin-bottom:14px}
+  .rsvp .wrap{gap:24px}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .actions .btn{padding:12px 12px;font-size:10px;letter-spacing:.12em;justify-content:flex-start}
+  .actions .btn svg{width:16px;height:16px;flex:none}
+  .route{min-height:160px}
+  .count .head{align-items:center}
+  .mural .foot{margin-top:20px}
+  .mural .top{margin-bottom:22px;gap:10px}
+}
+@keyframes swipeHand{0%,100%{transform:translateX(0)}50%{transform:translateX(7px)}}
 </style>
 </head>
 <body>
@@ -651,18 +686,17 @@ h1 .ln{will-change:transform}
       <div class="hero-cta" data-hero>
         <p class="inv gs">Você é nosso convidado</p>
         <a class="btn solid magnetic" href="#confirmar">
-          <span class="lbl-wrap"><span data-t="Confirmar presença">Confirmar presença</span></span>
+          <span class="lbl-wrap"><span data-t="Faça sua inscrição">Faça sua inscrição</span></span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </a>
         <a class="scroll-hint" href="#convite"><i></i>Conheça a noite</a>
-        <span class="hold-hint" id="holdHint" aria-hidden="true"><i></i><span id="holdTxt">Clique e segure para bater</span></span>
       </div>
     </div>
     <div class="hero-meta" data-hero>
       <div><small>Data</small><b>13 · 11 · 2026</b></div>
-      <div><small>Horário</small><b>18h</b></div>
+      <div><small>Horário</small><b>17h40</b></div>
       <div><small>Local</small><b>Bisutti Tenerife</b></div>
-      <div class="hm-apoio"><small>Apoio</small><b><span class="ap-logo"><img src="logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span><span class="ap-logo"><img src="logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></b></div>
+      <div class="hm-apoio"><small>Apoio</small><b><span class="ap-logo"><img src="/convencao-2026/logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span><span class="ap-logo"><img src="/convencao-2026/logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></b></div>
     </div>
   </section>
 
@@ -691,7 +725,19 @@ h1 .ln{will-change:transform}
         <div><p class="label">Participantes</p><h2>Quem sobe <span class="gt">ao palco</span></h2></div>
         <p>Quem conduz a noite e o painel "Como se adaptar ao novo food service".</p>
       </div>
+      <div class="swipe" id="swipe" aria-hidden="true"><span class="swipe-txt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-4.6-2.2L4 15.5a1.6 1.6 0 0 1 2.4-2L9 15"/></svg>Arraste para o lado</span><span class="swipe-dots" id="swipeDots"></span></div>
       <div class="people" id="people"></div>
+    </div>
+  </section>
+
+  <!-- PARCEIROS -->
+  <section class="block parceiros" id="parceiros" data-serve>
+    <div class="wrap">
+      <div class="sec-top" data-reveal>
+        <div><p class="label">Parceiros</p><h2>Fornecedores <span class="gt">e parceiros</span></h2></div>
+        <p>Aqueles que encheram sua sacola de coisas gostosas!</p>
+      </div>
+      <div class="logos" id="logos"></div>
     </div>
   </section>
 
@@ -745,22 +791,11 @@ h1 .ln{will-change:transform}
 
   <div class="marquee alt" aria-hidden="true"><div class="m-track" id="m2"></div></div>
 
-  <!-- PARCEIROS -->
-  <section class="block parceiros" id="parceiros" data-serve>
-    <div class="wrap">
-      <div class="sec-top" data-reveal>
-        <div><p class="label">Parceiros</p><h2>Fornecedores <span class="gt">e parceiros</span></h2></div>
-        <p>Aqueles que encheram sua sacola de coisas gostosas!</p>
-      </div>
-      <div class="logos" id="logos"></div>
-    </div>
-  </section>
-
   <!-- DETAILS -->
   <section class="block details count" id="detalhes" data-serve>
     <div class="wrap">
       <div class="head" data-reveal>
-        <div><p class="label">Onde e quando</p><h2>A noite está chegando</h2><span class="when">Sexta-feira, 13 de novembro, às 18h</span></div>
+        <div><p class="label">Onde e quando</p><h2>A noite está chegando</h2><span class="when">Sexta-feira, 13 de novembro, às 17h40</span></div>
         <div class="dial" id="dial" aria-hidden="true">
           <svg viewBox="0 0 220 220"><defs><linearGradient id="dialGrad" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#FF4F38"/><stop offset="1" stop-color="#FFB22E"/></linearGradient></defs>
             <rect class="knob" x="96" y="0" width="28" height="18" rx="5"/>
@@ -792,7 +827,7 @@ h1 .ln{will-change:transform}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Abrir no Maps</a>
             <a class="btn magnetic" target="_blank" rel="noopener" href="https://waze.com/ul?q=Rua%20Tenerife%2C%20170%2C%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004548-040&amp;navigate=yes">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Abrir no Waze</a>
-            <a class="btn magnetic" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Conven%C3%A7%C3%A3o%20de%20Fornecedores%20PMG%202026&amp;dates=20261113T210000Z/20261114T020000Z&amp;location=Villa%20Bisutti%20Tenerife%2C%20Rua%20Tenerife%2C%20170%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004548-040&amp;details=As%20mudan%C3%A7as%20e%20o%20comportamento%20do%20novo%20food%20service">
+            <a class="btn magnetic" target="_blank" rel="noopener" href="https://calendar.google.com/calendar/render?action=TEMPLATE&amp;text=Conven%C3%A7%C3%A3o%20de%20Fornecedores%20PMG%202026&amp;dates=20261113T204000Z/20261114T020000Z&amp;location=Villa%20Bisutti%20Tenerife%2C%20Rua%20Tenerife%2C%20170%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004548-040&amp;details=As%20mudan%C3%A7as%20e%20o%20comportamento%20do%20novo%20food%20service">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Adicionar à agenda</a>
             <button class="btn magnetic" type="button" id="copy">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copiar endereço</button>
@@ -865,7 +900,7 @@ h1 .ln{will-change:transform}
           <canvas id="burst" aria-hidden="true"></canvas>
           <div class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></div>
           <h3 id="done-title" tabindex="-1">Presença confirmada</h3>
-          <p id="done-text">Tudo certo! Nos vemos em 13 de novembro, às 18h, na Bisutti Tenerife.</p>
+          <p id="done-text">Tudo certo! Nos vemos em 13 de novembro, às 17h40, na Bisutti Tenerife.</p>
           <div class="ticket-wrap"><div class="ticket" id="ticket">
             <div class="t-main">
               <div class="t-top"><img src="/convencao-2026/logo.png" alt=""><span>Convenção de Fornecedores<b>PMG 2026</b></span></div>
@@ -873,7 +908,7 @@ h1 .ln{will-change:transform}
               <div class="t-co" id="tCo">Empresa</div>
               <div class="t-info">
                 <div><small>Data</small><b>13 · 11 · 2026</b></div>
-                <div><small>Horário</small><b>18h</b></div>
+                <div><small>Horário</small><b>17h40</b></div>
                 <div><small>Local</small><b>Bisutti Tenerife</b></div>
               </div>
             </div>
@@ -893,7 +928,7 @@ h1 .ln{will-change:transform}
 
 <footer>
   <div class="wordmark" id="wordmark" aria-hidden="true"><span class="gt">Food Service</span><small>Convenção de Fornecedores PMG · 2026</small></div>
-  <div class="foot-row"><span>PMG Atacadista</span><span class="foot-apoio" id="apoio">Apoio <span class="ap-logo"><img src="logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span> <span class="ap-logo"><img src="logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></span><span>13 · 11 · 2026 · Bisutti Tenerife · São Paulo</span></div>
+  <div class="foot-row"><span>PMG Atacadista</span><span class="foot-apoio" id="apoio">Apoio <span class="ap-logo"><img src="/convencao-2026/logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span> <span class="ap-logo"><img src="/convencao-2026/logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></span><span>13 · 11 · 2026 · Bisutti Tenerife · São Paulo</span></div>
 </footer>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Vídeo da 10ª Convenção de Fornecedores PMG 2025">
@@ -928,7 +963,7 @@ h1 .ln{will-change:transform}
   var MOBILE=!fine||innerWidth<700;
   if(MOBILE) root.classList.add('is-mobile');
   var G=window.gsap, ST=window.ScrollTrigger, hasG=!!(G&&ST)&&!reduce;
-  if(hasG) G.registerPlugin(ST);
+  if(hasG){ G.registerPlugin(ST); if(MOBILE) ST.config({ignoreMobileResize:true}); }
   var $=function(s,c){return (c||document).querySelector(s);}, $$=function(s,c){return [].slice.call((c||document).querySelectorAll(s));};
 
   /* ---------- smooth scroll ---------- */
@@ -948,6 +983,10 @@ h1 .ln{will-change:transform}
     a.addEventListener('click',function(e){
       var id=a.getAttribute('href'); if(id.length<2) return;
       var t=$(id); if(!t) return; e.preventDefault();
+      if(id==='#confirmar'){ var fm=$('#rsvp-form'), dn=$('#rsvp-done'); t=(dn&&!dn.hidden)?dn:(fm&&!fm.hidden?fm:t);
+        var off=(bar?bar.offsetHeight:70)+14;
+        if(lenis) lenis.scrollTo(t,{offset:-off,duration:1.1}); else scrollTo({top:Math.max(0,t.getBoundingClientRect().top+scrollY-off),behavior:reduce?'auto':'smooth'});
+        return; }
       if(id==='#video'&&hasG){ var dest=t.getBoundingClientRect().top+scrollY+innerHeight*.9; if(lenis) lenis.scrollTo(dest,{duration:1.1}); else scrollTo({top:dest,behavior:'smooth'}); return; }
       if(lenis) lenis.scrollTo(t,{offset:id==='#topo'?0:-70,duration:1.1}); else t.scrollIntoView({behavior:reduce?'auto':'smooth'});
     });
@@ -961,7 +1000,7 @@ h1 .ln{will-change:transform}
     bar.classList.toggle('solid',y>40);
     if(y>innerHeight*.9 && y>lastS+2) bar.classList.add('away');
     else if(y<lastS-2 || y<=innerHeight*.9) bar.classList.remove('away');
-    if(hasG){var vr=vsec.getBoundingClientRect(); vsec.classList.toggle('pinned',vr.top<=1 && vr.bottom>0);}
+    if(hasG&&!MOBILE){var vr=vsec.getBoundingClientRect(); vsec.classList.toggle('pinned',vr.top<=1 && vr.bottom>0);}
     lastS=y;
     if(!hasG){var h=document.documentElement.scrollHeight-innerHeight;$('#progress').style.transform='scaleX('+(h>0?y/h:0)+')';}
   }
@@ -1047,16 +1086,17 @@ h1 .ln{will-change:transform}
     G.to('.hero-inner',{opacity:.25,ease:'none',scrollTrigger:{trigger:'#hero',start:'40% top',end:'bottom top',scrub:true}});
     // generic reveals
     $$('[data-reveal]').forEach(function(el){
-      G.from(el,{y:70,opacity:0,duration:1.2,ease:'expo.out',clearProps:'transform,opacity',scrollTrigger:{trigger:el,start:'top 88%',once:true}});
+      G.from(el,{y:MOBILE?24:70,opacity:0,duration:MOBILE?.7:1.2,ease:'expo.out',clearProps:'transform,opacity',scrollTrigger:{trigger:el,start:MOBILE?'top 98%':'top 88%',once:true}});
     });
     // big text scrub
     G.to($$('.w',big),{opacity:1,stagger:.08,ease:'none',scrollTrigger:{trigger:big,start:'top 78%',end:'bottom 45%',scrub:.3}});
     // video expand
+    if(MOBILE){ $('#vframe').style.transform='none'; $('#video').classList.add('pinned'); G.set('#vcopy .year, #vcopy h2, #vcopy .bottom p, #playBtn',{opacity:1,y:0,yPercent:0}); } else {
     var vt=G.timeline({scrollTrigger:{trigger:'#video',start:'top top',end:'bottom bottom',scrub:.3,invalidateOnRefresh:true}});
     vt.fromTo('#vframe',{scale:function(){return innerWidth<600?.84:.68;},borderRadius:28},{scale:1,borderRadius:0,ease:'power2.inOut',duration:1},.12)
       .fromTo('#vcopy .year',{yPercent:60,opacity:0},{yPercent:0,opacity:1,duration:.6},.25)
       .fromTo('#vcopy h2, #vcopy .bottom p, #playBtn',{y:60,opacity:0},{y:0,opacity:1,stagger:.08,duration:.5},.4)
-      .to({}, {duration:.4});
+      .to({}, {duration:.4}); }
     // footer wordmark
     
   }
@@ -1101,7 +1141,7 @@ h1 .ln{will-change:transform}
   }
 
   /* ---------- countdown (rolling digits) ---------- */
-  var target=Date.UTC(2026,10,13,21,0,0);
+  var target=Date.UTC(2026,10,13,20,40,0);
   var boxes={}; $$('#clock .digits').forEach(function(d){boxes[d.getAttribute('data-k')]={el:d,cols:[]};});
   function ensureCols(b,n){
     while(b.cols.length<n){var dg=document.createElement('span');dg.className='dg';var st=document.createElement('span');st.className='strip';
@@ -1194,7 +1234,7 @@ h1 .ln{will-change:transform}
     .then(function(res){
       var first=v.nome.split(' ')[0];
       $('#done-title').textContent = res==='atualizado' ? 'Inscrição atualizada' : 'Presença confirmada';
-      $('#done-text').textContent = res==='atualizado' ? 'Pronto, '+first+'! Seus dados foram atualizados. Nos vemos em 13 de novembro, às 18h, na Bisutti Tenerife.' : 'Tudo certo, '+first+'! Nos vemos em 13 de novembro, às 18h, na Bisutti Tenerife.';
+      $('#done-text').textContent = res==='atualizado' ? 'Pronto, '+first+'! Seus dados foram atualizados. Nos vemos em 13 de novembro, às 17h40, na Bisutti Tenerife.' : 'Tudo certo, '+first+'! Nos vemos em 13 de novembro, às 17h40, na Bisutti Tenerife.';
       statusEl.textContent=''; showTicket({nome:v.nome,empresa:v.empresa,cargo:v.cargo,email:v.email},true); setTimeout(function(){mural.refresh();},400);
       if(hasG) G.from(done,{y:30,opacity:0,duration:.9,ease:'expo.out'});
     })
@@ -1652,7 +1692,7 @@ h1 .ln{will-change:transform}
     try{localStorage.setItem('pmg26-ticket',JSON.stringify(d));}catch(e){}
     var first=d.nome.split(' ')[0];
     form.hidden=true; done.hidden=false; $('#myTicket').hidden=true;
-    if(fresh===false){ $('#done-title').textContent='Seu ingresso'; $('#done-text').textContent='Que bom te ver de novo, '+first+'! Sua presença está confirmada para 13 de novembro, às 18h, na Bisutti Tenerife.'; }
+    if(fresh===false){ $('#done-title').textContent='Seu ingresso'; $('#done-text').textContent='Que bom te ver de novo, '+first+'! Sua presença está confirmada para 13 de novembro, às 17h40, na Bisutti Tenerife.'; }
     if(fresh!==false) burst();
     if(hasG){ G.fromTo(tk,{rotateX:65,y:80,opacity:0},{rotateX:0,y:0,opacity:1,duration:1.6,ease:'expo.out',delay:.2,clearProps:'transform,opacity'}); }
     setTimeout(function(){ try{$('#done-title').focus({preventScroll:true});}catch(e){$('#done-title').focus();} },60);
@@ -1697,7 +1737,7 @@ h1 .ln{will-change:transform}
     // info box
     var a5=e(1.3,.9); c.globalAlpha=a5; var iy=(1-a5)*40;
     c.strokeStyle='rgba(246,223,196,.3)'; c.lineWidth=2; c.beginPath(); c.moveTo(90,1560+iy); c.lineTo(990,1560+iy); c.stroke();
-    [['DATA','13 · 11 · 2026'],['HORÁRIO','18H'],['LOCAL','CASA BISUTTI']].forEach(function(p,i){
+    [['DATA','13 · 11 · 2026'],['HORÁRIO','17H40'],['LOCAL','CASA BISUTTI']].forEach(function(p,i){
       var x=90+i*310; c.fillStyle='rgba(246,223,196,.5)'; c.font='500 22px Montserrat, Arial, sans-serif'; spaced(c,p[0],x,1610+iy,6);
       c.fillStyle='#F6DFC4'; fitText(c,p[1],'700 52px "Barlow Condensed", Arial Narrow, sans-serif',285); c.fillText(p[1],x,1672+iy);
     });
@@ -1717,7 +1757,7 @@ h1 .ln{will-change:transform}
     c.fillStyle='rgba(246,223,196,.7)'; spacedFit(c,[d.empresa,d.cargo].filter(Boolean).join(' · ').toUpperCase(),110,450,3,'600 28px Montserrat, Arial, sans-serif',1070);
     c.setLineDash([10,10]); c.strokeStyle='rgba(246,223,196,.35)'; c.beginPath(); c.moveTo(110,510); c.lineTo(1180,510); c.stroke();
     c.beginPath(); c.moveTo(1240,60); c.lineTo(1240,H-60); c.stroke(); c.setLineDash([]);
-    [['DATA','13 · 11 · 2026'],['HORÁRIO','18H'],['LOCAL','CASA BISUTTI']].forEach(function(p,i){var x=110+i*360;c.fillStyle='rgba(246,223,196,.5)';c.font='500 20px Montserrat, Arial, sans-serif';spaced(c,p[0],x,570,6);c.fillStyle='#F6DFC4';fitText(c,p[1],'700 54px "Barlow Condensed", Arial Narrow, sans-serif',330);c.fillText(p[1],x,635);});
+    [['DATA','13 · 11 · 2026'],['HORÁRIO','17H40'],['LOCAL','CASA BISUTTI']].forEach(function(p,i){var x=110+i*360;c.fillStyle='rgba(246,223,196,.5)';c.font='500 20px Montserrat, Arial, sans-serif';spaced(c,p[0],x,570,6);c.fillStyle='#F6DFC4';fitText(c,p[1],'700 54px "Barlow Condensed", Arial Narrow, sans-serif',330);c.fillText(p[1],x,635);});
     c.fillStyle='#2B0714'; c.beginPath(); c.arc(1240,40,26,0,6.283); c.arc(1240,H-40,26,0,6.283); c.fill();
     c.save(); c.translate(1330,H/2); c.rotate(-Math.PI/2); c.fillStyle='#F6DFC4'; c.font='700 40px "Barlow Condensed", Arial Narrow, sans-serif'; c.textAlign='center'; spaced(c,d.code,-150,14,8); c.restore();
     var bs=barsFor(d.code), tot=bs.reduce(function(a,w){return a+w*2+3;},0), k=150/tot, x=1385; bs.forEach(function(w,i){c.fillStyle=i%4===3?'rgba(246,223,196,.35)':'rgba(246,223,196,.9)';c.fillRect(x,180,w*2*k,400);x+=(w*2+3)*k;});
@@ -1771,7 +1811,7 @@ h1 .ln{will-change:transform}
       '<g class="steam"><path d="M78 26 C68 12 88 2 78 -14"/><path d="M100 22 C90 6 112 -4 100 -22"/><path d="M122 26 C112 12 132 2 122 -14"/></g>'+
       '<g class="lid"><path d="M26 118 C26 58 58 34 100 34 C142 34 174 58 174 118 Z"/><path class="shine" d="M48 100 C50 74 66 56 88 50"/><path d="M92 34 L92 26 Q100 16 108 26 L108 34"/></g>'+
       '<path class="plate" d="M8 122 L192 122 M30 130 L170 130"/></svg>';
-    if(!hasG){ root.classList.add('no-serve'); return; }
+    if(!hasG||MOBILE){ root.classList.add('no-serve'); return; }
     secs.forEach(function(sec){
       var el=document.createElement('div'); el.className='serve'; el.innerHTML=svg; sec.insertBefore(el,sec.firstChild);
       var wrap=sec.querySelector('.wrap'), lid=el.querySelector('.lid'), steam=$$('.steam path',el);
@@ -1869,7 +1909,7 @@ h1 .ln{will-change:transform}
      ===================================================================== */
   (function hold(){
     var hero=$('#hero'), hint=$('#holdHint'), timer=0;
-    if(hint) $('#holdTxt').textContent = fine ? 'Clique e segure para bater' : 'Toque e segure para bater';
+    return; // interação de segurar desativada
     function isUI(t){ return t.closest && t.closest('a,button,input,label,.bar'); }
     hero.addEventListener('pointerdown',function(e){ if(isUI(e.target)) return; clearTimeout(timer); timer=setTimeout(function(){ holding=true; hero.classList.add('holding'); if(hint) hint.classList.add('gone'); },fine?60:220); });
     function up(){ clearTimeout(timer); holding=false; hero.classList.remove('holding'); }
@@ -1902,31 +1942,31 @@ h1 .ln{will-change:transform}
 
 <script>
 /* ===== EDITE AQUI: participantes e parceiros =====
-   Participante: {nome:'Nome', empresa:'Empresa', papel:'Palestrante', foto:'fotos/nome.jpg'}
-   Parceiro:     {nome:'Marca', logo:'logos/marca.png', site:'https://...'}  (logo e site opcionais) */
+   Participante: {nome:'Nome', empresa:'Empresa', papel:'Palestrante', foto:'/convencao-2026/fotos/nome.jpg'}
+   Parceiro:     {nome:'Marca', logo:'/convencao-2026/logos/marca.png', site:'https://...'}  (logo e site opcionais) */
 var PARTICIPANTES = [
-  {nome:'Ingrid Devisate', empresa:'IFB', papel:'VP', foto:'fotos/ingrid.webp'},
-  {nome:'Simone Galante', empresa:'Galunion', papel:'CEO', foto:'fotos/simone.webp'},
-  {nome:'Netão', empresa:'Bom Beef', papel:'CEO', foto:'fotos/netao.webp'},
+  {nome:'Ingrid Devisate', empresa:'IFB', papel:'VP', foto:'/convencao-2026/fotos/ingrid.webp'},
+  {nome:'Simone Galante', empresa:'Galunion', papel:'CEO', foto:'/convencao-2026/fotos/simone.webp'},
+  {nome:'Netão', empresa:'Bom Beef', papel:'CEO', foto:'/convencao-2026/fotos/netao.webp'},
   {papel:'Convidado'},
-  {nome:'Eduardo Pereira', empresa:'PMG', papel:'Gerente Comercial', foto:'fotos/eduardo.webp?v=2'},
-  {nome:'Edilson Neves', empresa:'PMG', papel:'Diretor de Marketing', foto:'fotos/edilson.webp?v=2'}
+  {nome:'Eduardo Pereira', empresa:'PMG', papel:'Gerente Comercial', foto:'/convencao-2026/fotos/eduardo.webp?v=2'},
+  {nome:'Edilson Neves', empresa:'PMG', papel:'Diretor de Marketing', foto:'/convencao-2026/fotos/edilson.webp?v=2'}
 ];
 var PARCEIROS = [
-  {nome:'Gomes da Costa', logo:'logos/gomes-da-costa.webp'},
-  {nome:'Boccaneira', logo:'logos/boccaneira.webp'},
-  {nome:'J. Macêdo', logo:'logos/jmacedo.webp'},
-  {nome:'Prieto', logo:'logos/prieto.webp'},
-  {nome:'Camil', logo:'logos/camil.webp'},
-  {nome:'Quatá', logo:'logos/quata.webp'},
-  {nome:'Tirolez', logo:'logos/tirolez.webp'},
-  {nome:'Harald', logo:'logos/harald.webp'},
-  {nome:'Polenghi', logo:'logos/polenghi.webp'},
-  {nome:'Ajinomoto', logo:'logos/ajinomoto.webp'},
-  {nome:'Scala', logo:'logos/scala.webp'},
-  {nome:'Frimesa', logo:'logos/frimesa.webp'},
-  {nome:'Ceratti', logo:'logos/ceratti.webp'},
-  {nome:'Aurora', logo:'logos/aurora.webp'}
+  {nome:'Gomes da Costa', logo:'/convencao-2026/logos/gomes-da-costa.webp'},
+  {nome:'Boccaneira', logo:'/convencao-2026/logos/boccaneira.webp'},
+  {nome:'J. Macêdo', logo:'/convencao-2026/logos/jmacedo.webp'},
+  {nome:'Prieto', logo:'/convencao-2026/logos/prieto.webp'},
+  {nome:'Camil', logo:'/convencao-2026/logos/camil.webp'},
+  {nome:'Quatá', logo:'/convencao-2026/logos/quata.webp'},
+  {nome:'Tirolez', logo:'/convencao-2026/logos/tirolez.webp'},
+  {nome:'Harald', logo:'/convencao-2026/logos/harald.webp'},
+  {nome:'Polenghi', logo:'/convencao-2026/logos/polenghi.webp'},
+  {nome:'Ajinomoto', logo:'/convencao-2026/logos/ajinomoto.webp'},
+  {nome:'Scala', logo:'/convencao-2026/logos/scala.webp'},
+  {nome:'Frimesa', logo:'/convencao-2026/logos/frimesa.webp'},
+  {nome:'Ceratti', logo:'/convencao-2026/logos/ceratti.webp'},
+  {nome:'Aurora', logo:'/convencao-2026/logos/aurora.webp'}
 ];
 /* equaliza o peso visual: logos largos ficam mais largos, logos altos mais estreitos */
 function fitLogo(img){ var r=img.naturalWidth/Math.max(1,img.naturalHeight); img.style.setProperty('--w',Math.min(88,Math.max(34,45*Math.sqrt(r)))+'%'); }
@@ -1940,6 +1980,22 @@ function fitLogo(img){ var r=img.naturalWidth/Math.max(1,img.naturalHeight); img
       var tba=!p.nome, first=tba?'':String(p.nome).split(' ')[0];
       return '<article class="spk'+(tba?' tba':'')+'"><div class="panel"></div><span class="big" aria-hidden="true">'+esc(first)+'</span>'+(!p.nome&&p.papel?'<span class="tag">'+esc(p.papel)+'</span>':'')+'<div class="ph">'+(p.foto?'<img src="'+esc(p.foto)+'" alt="'+esc(p.nome)+'" loading="lazy">':sil)+'</div><div class="info"><p class="nm">'+(tba?'Em breve':esc(p.nome))+'</p><span class="line"></span><p class="co">'+(tba?'A anunciar':'<b>'+esc(p.papel||'')+'</b> · '+esc(p.empresa))+'</p></div></article>';
     }).join('');
+    (function swipe(){
+      var sw=document.getElementById('swipe'), dots=document.getElementById('swipeDots'); if(!sw) return;
+      var cards=[].slice.call(pe.children);
+      dots.innerHTML=cards.map(function(){return '<i></i>';}).join('');
+      var ds=[].slice.call(dots.children), used=false, nudged=false;
+      function active(){ var c=pe.scrollLeft+pe.clientWidth/2, k=0, best=1e9;
+        cards.forEach(function(el,i){ var m=el.offsetLeft+el.offsetWidth/2, d=Math.abs(m-c); if(d<best){best=d;k=i;} });
+        ds.forEach(function(d,i){d.classList.toggle('on',i===k);}); }
+      active();
+      pe.addEventListener('scroll',function(){ active(); if(!used&&pe.scrollLeft>30){ used=true; sw.classList.add('used'); } },{passive:true});
+      if('IntersectionObserver' in window) new IntersectionObserver(function(es){
+        if(!es[0].isIntersecting||nudged||pe.scrollWidth<=pe.clientWidth+4) return; nudged=true;
+        if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        setTimeout(function(){ if(used) return; pe.scrollTo({left:70,behavior:'smooth'}); setTimeout(function(){ if(!used) pe.scrollTo({left:0,behavior:'smooth'}); },650); },500);
+      },{threshold:.6}).observe(pe);
+    })();
   }
   var lg=document.getElementById('logos');
   if(lg){
