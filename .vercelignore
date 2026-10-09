@@ -22,3 +22,7 @@ node_modules
 /data
 *.md
 *.txt
+
+# Projeto de vídeo (Remotion) roda só local, não faz parte do deploy.
+# Sem isso a Vercel tenta checar os .tsx dele e quebra o build.
+/my-video
