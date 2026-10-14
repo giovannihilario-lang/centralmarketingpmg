@@ -3810,6 +3810,26 @@
     const growthKind = (cur, prev) => Number(prev) > 0 && Number(cur) < Number(prev) ? 'down' : '';
     const compare = (label, prevText, curText, badge, kind) => `<div class="r-cmp"><div class="r-kpi-top"><span>${label}</span><em class="${kind}">${badge}</em></div><div class="r-cmp-values"><s>${prevText}</s><i>→</i><strong>${curText}</strong></div></div>`;
 
+    // Veredito: a campanha bateu ou não a meta coletiva.
+    const goals = result.collectiveGoals || [];
+    const goalsHit = goals.filter((goal) => goal.hit).length;
+    const nominalLast = result.periods?.currentLast || campaign.end || last;
+    const opText = (target) => String(target || '').replace(/^>=/, '≥').replace(/^<=/, '≤').replace(/^==/, '=');
+    const verdict = !goals.length
+      ? { kind:'neutral', mark:'i', title:'Sem meta coletiva', text:`O resultado depende só das metas individuais: ${number(eligible.length)} de ${number(selling.length)} representantes bateram o mínimo.` }
+      : result.collectiveHit
+        ? { kind:'hit', mark:'✓', title:'Meta batida', text:`A campanha atingiu ${goals.length === 1 ? 'a meta coletiva' : `as ${number(goals.length)} metas coletivas`}${data.partial ? `, mesmo com o período ainda em andamento (até ${dateBR(nominalLast)})` : ''}.` }
+        : data.partial
+          ? { kind:'pending', mark:'…', title:'Meta ainda não batida', text:`Campanha em andamento até ${dateBR(nominalLast)}: ${goals.length === 1 ? 'a meta coletiva ainda não foi atingida' : `${number(goalsHit)} de ${number(goals.length)} metas coletivas atingidas até agora`}.` }
+          : { kind:'miss', mark:'✕', title:'Meta não batida', text:`A campanha não atingiu ${goals.length === 1 ? 'a meta coletiva' : `todas as metas coletivas (${number(goalsHit)} de ${number(goals.length)})`}. Como a meta coletiva não foi batida, não há classificados para premiação.` };
+    // Aqui goal.value já é o resultado apurado; a meta configurada fica em goal.audit.target.
+    const goalChip = (goal) => {
+      const label = goal.mode === 'growth_percent' ? `Crescimento de ${metricLabel(goal.metric, true)}` : metricLabel(goal.metric);
+      const valueText = goal.audit?.valueText || (goal.mode === 'growth_percent' ? pct(goal.value) : metricDisplay(goal.metric, goal.value, currency));
+      const target = goal.audit?.target ? `meta ${opText(goal.audit.target)} · ` : '';
+      return `<div class="r-goal ${goal.hit ? 'hit' : 'miss'}"><span>${esc(label)}</span><strong>${esc(valueText)}</strong><small>${esc(target)}${goal.hit ? 'atingida' : 'não atingida'}</small></div>`;
+    };
+
     const mix = (data.productMix || []).slice(0, 4);
     const weekly = data.weekly || [];
     const weeklyMetric = hasBoxes || weekly.some((w) => w.pieces) ? 'pieces' : 'revenue';
@@ -3832,6 +3852,21 @@
         .r-hero h1{font-size:34px;margin:8px 0 8px;letter-spacing:-.02em}
         .r-hero p{margin:0;font-size:14px;color:#e2f2e8}
         .r-badges{display:flex;gap:10px;margin-top:16px}.r-badges span{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);padding:7px 15px;border-radius:999px;font-size:12px;font-weight:800}
+        .r-verdict{display:flex;align-items:center;gap:22px;margin-top:16px;border-radius:16px;padding:18px 26px;border:2px solid}
+        .r-verdict.hit{background:#e6f5eb;border-color:#2d7a4f}.r-verdict.miss{background:#fbe9e7;border-color:#b3261e}
+        .r-verdict.pending{background:#fdf4e2;border-color:#e0a32a}.r-verdict.neutral{background:#fff;border-color:#d5ddd7}
+        .r-verdict .mk{flex:0 0 58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;color:#fff}
+        .r-verdict.hit .mk{background:#2d7a4f}.r-verdict.miss .mk{background:#b3261e}.r-verdict.pending .mk{background:#e0a32a}.r-verdict.neutral .mk{background:#7b8a80}
+        .r-verdict .tx{flex:0 0 560px}.r-verdict .tx span{display:block;font-size:11px;font-weight:800;letter-spacing:.14em;color:#5f6f65}
+        .r-verdict .tx strong{display:block;font-size:30px;letter-spacing:-.02em;margin-top:2px}
+        .r-verdict.hit .tx strong{color:#1a4d2e}.r-verdict.miss .tx strong{color:#b3261e}.r-verdict.pending .tx strong{color:#9a5b00}
+        .r-verdict .tx p{margin:4px 0 0;font-size:13.5px;line-height:1.45;color:#3d4a42}
+        .r-goals{flex:1;display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-end}
+        .r-goal{min-width:230px;background:#fff;border-radius:12px;padding:11px 16px;border:1px solid #e3e9e4;border-left:5px solid}
+        .r-goal.hit{border-left-color:#2d7a4f}.r-goal.miss{border-left-color:#b3261e}
+        .r-goal span{display:block;font-size:10.5px;font-weight:800;letter-spacing:.07em;color:#5f6f65;text-transform:uppercase}
+        .r-goal strong{display:block;font-size:22px;margin-top:4px}.r-goal.hit strong{color:#1a4d2e}.r-goal.miss strong{color:#b3261e}
+        .r-goal small{display:block;font-size:11.5px;color:#6b7a70;margin-top:2px}
         .r-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-top:16px}
         .r-kpi,.r-cmp{background:#fff;border:1px solid #e3e9e4;border-radius:14px;padding:16px 18px}
         .r-kpi-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -3883,6 +3918,12 @@
           <h1>${esc(campaign.name)}</h1>
           <p>${campaign.description ? `${esc(String(campaign.description).split(/(?<=\.)\s/)[0])} ` : ''}Resultado do período de ${dateBR(start)} a ${dateBR(last)}.</p>
           <div class="r-badges"><span>${number(selling.length)} Representantes vendendo</span><span>${number(classified.length)} Classificados</span>${isLaunch ? '<span>Lançamento</span>' : `<span>${pct(growth(s.revenue, s.previousRevenue))} faturamento</span>`}</div>
+        </section>
+
+        <section class="r-verdict ${verdict.kind}">
+          <div class="mk">${verdict.mark}</div>
+          <div class="tx"><span>RESULTADO DA CAMPANHA</span><strong>${verdict.title}</strong><p>${verdict.text}</p></div>
+          ${goals.length ? `<div class="r-goals">${goals.map(goalChip).join('')}</div>` : ''}
         </section>
 
         <div class="r-kpis">
