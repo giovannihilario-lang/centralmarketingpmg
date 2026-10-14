@@ -353,13 +353,9 @@ function localTodayAsUtcDate() {
 
 function fixedSixMondayPeriods(startRaw, asOfRaw = null) {
   const start = parseDate(startRaw, 'campaignStart');
-  if (start.getUTCDay() !== 1) {
-    const error = new Error('A primeira data da campanha precisa ser uma segunda-feira.');
-    error.code = 'PERIODO_INVALIDO';
-    throw error;
-  }
 
-  // Regra PMG: a campanha e a referência são sempre definidas por seis segundas-feiras.
+  // Regra PMG: a campanha e a referência são sempre blocos de seis semanas (início + 35 dias),
+  // sem restrição de dia da semana para o início.
   // Ex.: campanha 22/06 -> 27/07; anterior 11/05 -> 15/06.
   const nominalCurrentLast = addUtcDays(start, 35);
   const nominalPreviousStart = addUtcDays(start, -42);

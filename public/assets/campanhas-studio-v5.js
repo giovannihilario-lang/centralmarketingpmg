@@ -904,8 +904,7 @@
     if (!start || Number.isNaN(start.getTime())) return { valid:false, error:'Informe a data inicial da campanha.' };
 
     if (mode === 'six_mondays') {
-      if (start.getDay() !== 1) return { valid:false, error:'No modelo PMG, o início precisa ser uma segunda-feira.' };
-
+      // Sem regra de dia de início: qualquer data abre um bloco de 6 semanas (36 dias).
       const currentLast = new Date(start); currentLast.setDate(currentLast.getDate() + 35);
       const currentEndExclusive = new Date(currentLast); currentEndExclusive.setDate(currentEndExclusive.getDate() + 1);
       const previousStart = new Date(start); previousStart.setDate(previousStart.getDate() - 42);
@@ -916,8 +915,8 @@
         valid:true, mode, days:36, weeks:6, mondays:6,
         currentStart:inputDate(start), currentEnd:inputDate(currentEndExclusive), currentLast:inputDate(currentLast),
         previousStart:inputDate(previousStart), previousEnd:inputDate(previousEndExclusive), previousLast:inputDate(previousLast),
-        label:'Modelo PMG · 6 segundas-feiras',
-        previousLabel:'Referência anterior · 6 segundas-feiras',
+        label:'Modelo PMG · 6 semanas',
+        previousLabel:'Referência anterior · 6 semanas',
       };
     }
 
@@ -996,27 +995,27 @@
         <div class="field full">
           <label>Modelo de período</label>
           <div class="period-mode-grid">
-            ${choiceCard('period-mode','six_mondays','calendar-range','Modelo PMG · 6 segundas','Mantém o preenchimento automático atual: começa em uma segunda e termina na 6ª segunda-feira.',campaign.periodMode !== 'custom')}
+            ${choiceCard('period-mode','six_mondays','calendar-range','Modelo PMG · 6 semanas','Preenchimento automático: começa em qualquer dia e termina 5 semanas depois, no mesmo dia da semana.',campaign.periodMode !== 'custom')}
             ${choiceCard('period-mode','custom','calendar-days','Período livre','Escolha qualquer data inicial e final. A referência anterior terá exatamente a mesma duração.',campaign.periodMode === 'custom')}
           </div>
         </div>
         <div class="field">
-          <label>${customPeriod ? 'Data inicial da campanha *' : '1ª segunda-feira da campanha *'}</label>
+          <label>Data inicial da campanha *</label>
           <div class="date-picker-control">
             <input id="campaignStart" type="date" value="${esc(campaign.start)}" aria-label="Escolher data inicial da campanha">
             <button type="button" class="date-picker-button" data-action="open-date-picker" data-target="campaignStart" title="Abrir calendário"><i data-lucide="calendar-days"></i></button>
           </div>
-          <small class="hint">${customPeriod ? 'Pode ser qualquer dia da semana.' : 'No modelo PMG, a data inicial precisa ser uma segunda-feira.'}</small>
+          <small class="hint">Pode ser qualquer dia da semana.</small>
         </div>
         <div class="field">
-          <label>${customPeriod ? 'Data final da campanha *' : '6ª segunda-feira · calculada automaticamente'}</label>
+          <label>${customPeriod ? 'Data final da campanha *' : 'Data final · calculada automaticamente'}</label>
           <div class="date-picker-control ${customPeriod ? '' : 'is-readonly'}">
             <input id="campaignEnd" type="date" value="${esc(campaign.end)}" ${customPeriod ? '' : 'disabled'} aria-label="Escolher data final da campanha">
             ${customPeriod
               ? `<button type="button" class="date-picker-button" data-action="open-date-picker" data-target="campaignEnd" title="Abrir calendário"><i data-lucide="calendar-days"></i></button>`
               : `<span class="date-picker-button is-static"><i data-lucide="calendar-check-2"></i></span>`}
           </div>
-          <small class="hint">${customPeriod ? 'A referência anterior é calculada automaticamente com a mesma quantidade de dias, imediatamente antes da campanha.' : 'Fechamento calculado automaticamente a partir da primeira segunda-feira.'}</small>
+          <small class="hint">${customPeriod ? 'A referência anterior é calculada automaticamente com a mesma quantidade de dias, imediatamente antes da campanha.' : 'Fechamento calculado automaticamente: 6 semanas a partir da data inicial.'}</small>
         </div>
         <div class="period-preview" id="periodPreview">${periodPreview(periods)}</div>
         <div class="field full"><label>Participantes</label><div class="choice-grid">
@@ -4067,7 +4066,7 @@
 
     <div class="meta-block period-meta">
       <strong>Regra de período:</strong>
-      ${campaign.periodMode === 'custom' ? 'período livre' : 'modelo PMG · 6 segundas'}
+      ${campaign.periodMode === 'custom' ? 'período livre' : 'modelo PMG · 6 semanas'}
       · campanha ${dateBR(result.periods.currentStart)} a ${dateBR(result.periods.currentLast)}
       · referência anterior ${dateBR(result.periods.previousStart)} a ${dateBR(result.periods.previousLast)}
       · coluna SQL ${esc(data.dateReference || 'dbo.Vendas.[Data]')}.
