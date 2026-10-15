@@ -591,6 +591,9 @@ footer{position:relative;z-index:2;overflow:hidden;padding:clamp(60px,8vw,110px)
 @media (min-width:601px){.people .spk:nth-child(n+5){margin-top:18px}}
 @media (max-width:980px){.people .spk{flex-basis:calc((100% - clamp(16px,2vw,28px))/2)}}
 @media (max-width:600px){.people{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scroll-snap-type:x mandatory}.people .spk{flex:0 0 72vw;scroll-snap-align:center}}
+/* convidados (5) na linha de cima, equipe PMG (Eduardo e Edilson) sozinha embaixo */
+@media (min-width:981px){.people .spk{flex-basis:calc((100% - 4*clamp(16px,2vw,28px))/5)}.people .spk:nth-child(n+5){margin-top:0}.people .spk:nth-child(n+6){margin-top:18px}}
+@media (min-width:601px) and (max-width:980px){.people .spk:nth-child(5){margin-inline:calc(25% + clamp(16px,2vw,28px)/4)}}
 .marquee{display:none}
 h1 .ln{will-change:transform}
 .hero-inner{will-change:opacity}
@@ -2032,9 +2035,9 @@ h1 .ln{will-change:transform}
 var PARTICIPANTES = [
   {nome:'Edu Guedes', empresa:'Apresentador de TV', papel:'Chef de cozinha', foto:'/convencao-2026/fotos/edu-guedes.webp'},
   {nome:'Netão', empresa:'Bom Beef', papel:'CEO', foto:'/convencao-2026/fotos/netao.webp'},
+  {nome:'Rogério Barreira', empresa:"McDonald's Brasil", papel:'Presidente', foto:'/convencao-2026/fotos/barreira.webp'},
   {nome:'Ingrid Devisate', empresa:'IFB', papel:'VP', foto:'/convencao-2026/fotos/ingrid.webp'},
   {nome:'Simone Galante', empresa:'Galunion', papel:'CEO', foto:'/convencao-2026/fotos/simone.webp'},
-  {nome:'Rogério Barreira', empresa:"McDonald's Brasil", papel:'Presidente', foto:'/convencao-2026/fotos/barreira.webp'},
   {nome:'Eduardo Pereira', empresa:'PMG', papel:'Gerente Comercial', foto:'/convencao-2026/fotos/eduardo.webp?v=2'},
   {nome:'Edilson Neves', empresa:'PMG', papel:'Diretor de Marketing', foto:'/convencao-2026/fotos/edilson.webp?v=2'}
 ];
