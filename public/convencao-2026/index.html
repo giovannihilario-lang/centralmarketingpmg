@@ -601,6 +601,14 @@ h1 .ln{will-change:transform}
 .foot-apoio .ap-logo img{height:22px}
 .foot-apoio .ap-logo img[src*="galunion"]{height:30px}
 .foot-apoio .ap-logo em{color:var(--cream);letter-spacing:.2em}
+/* rodapé enxuto: só o apoio, IFB e Galunion lado a lado */
+footer{padding:clamp(30px,4vw,48px) 0!important}
+.foot-row.foot-only{justify-content:center!important;padding-top:0}
+.foot-only .foot-apoio{gap:0}
+.foot-only .foot-apoio .ap-logo{padding:0 clamp(18px,2.4vw,30px);border-left:1px solid var(--line);height:44px}
+.foot-only .foot-apoio .ap-logo:first-of-type{margin-left:clamp(18px,2.4vw,30px)}
+.foot-only .foot-apoio .ap-logo img{height:34px}
+.foot-only .foot-apoio .ap-logo img[src*="galunion"]{height:44px}
 
 .photo-pick{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
 .photo-btn{border-color:rgba(255,178,46,.55)}
@@ -971,8 +979,7 @@ h1 .ln{will-change:transform}
 </main>
 
 <footer>
-  <div class="wordmark" id="wordmark" aria-hidden="true"><span class="gt">Food Service</span><small>Convenção de Fornecedores PMG · 2026</small></div>
-  <div class="foot-row"><span>PMG Atacadista</span><span class="foot-apoio" id="apoio">Apoio <span class="ap-logo"><img src="/convencao-2026/logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span> <span class="ap-logo"><img src="/convencao-2026/logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></span><span>13 · 11 · 2026 · Bisutti Tenerife · São Paulo</span></div>
+  <div class="foot-row foot-only"><span class="foot-apoio" id="apoio">Apoio <span class="ap-logo"><img src="/convencao-2026/logos/ifb.png" alt="IFB, Instituto Foodservice Brasil" onerror="this.remove()"><em>IFB</em></span><span class="ap-logo"><img src="/convencao-2026/logos/galunion.png" alt="Galunion" onerror="this.remove()"><em>Galunion</em></span></span></div>
 </footer>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Vídeo da 10ª Convenção de Fornecedores PMG 2025">
