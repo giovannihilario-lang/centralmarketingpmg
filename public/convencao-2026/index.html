@@ -683,6 +683,39 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
 @media (max-width:980px){.logos.m4 .logo-slot{flex-basis:calc((100% - 3*var(--g))/4)!important}}
 @keyframes hintBob{0%,100%{transform:translateY(0) rotate(45deg);opacity:.5}50%{transform:translateY(6px) rotate(45deg);opacity:1}}
 @keyframes swipeHand{0%,100%{transform:translateX(0)}50%{transform:translateX(7px)}}
+/* ===== ajustes de responsividade para celulares estreitos ===== */
+@media (max-width:600px){
+  .label{letter-spacing:.26em;gap:12px}
+  .label::before{width:28px;flex:none}
+  /* mural: nomes longos quebram linha em vez de serem cortados com "..." */
+  .cloud{padding:22px 16px;gap:10px 16px}
+  .brand-chip{white-space:normal;overflow:visible;text-overflow:clip;text-align:center;overflow-wrap:anywhere;line-height:1.02}
+  .brand-chip.s1{font-size:clamp(18px,5.4vw,22px)}
+  .brand-chip.s2{font-size:clamp(22px,6.6vw,28px)}
+  .brand-chip.s3{font-size:clamp(26px,8.2vw,34px)}
+  /* apoio do topo: IFB e Galunion lado a lado */
+  .hm-apoio b{flex-wrap:nowrap!important;gap:18px!important}
+  .hm-apoio .ap-logo img{height:28px}
+  .hm-apoio .ap-logo img[src*="galunion"]{height:36px}
+  /* rodapé: cabe inteiro sem cortar */
+  .foot-row.foot-only{padding:0 12px}
+  .foot-only .foot-apoio{flex-wrap:nowrap;letter-spacing:.2em}
+  .foot-only .foot-apoio .ap-logo{padding:0 14px;height:36px}
+  .foot-only .foot-apoio .ap-logo:first-of-type{margin-left:14px}
+  .foot-only .foot-apoio .ap-logo img{height:26px}
+  .foot-only .foot-apoio .ap-logo img[src*="galunion"]{height:34px}
+}
+@media (max-width:360px){
+  .hm-apoio{gap:12px!important}
+  .hm-apoio b{gap:12px!important}
+  .hm-apoio .ap-logo img{height:24px}
+  .hm-apoio .ap-logo img[src*="galunion"]{height:31px}
+  .foot-only .foot-apoio{letter-spacing:.14em}
+  .foot-only .foot-apoio .ap-logo{padding:0 10px}
+  .foot-only .foot-apoio .ap-logo:first-of-type{margin-left:10px}
+  .foot-only .foot-apoio .ap-logo img{height:22px}
+  .foot-only .foot-apoio .ap-logo img[src*="galunion"]{height:29px}
+}
 </style>
 </head>
 <body>
@@ -918,7 +951,6 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
         <p>As marcas parceiras que já garantiram presença na Convenção de Fornecedores 2026.</p>
       </div>
       <div class="cloud" id="cloud" aria-live="polite"><p class="empty">Carregando o mural…</p></div>
-      <div class="foot"><a class="btn solid magnetic" href="#confirmar"><span class="lbl-wrap"><span data-t="Colocar minha empresa no mural">Colocar minha empresa no mural</span></span></a></div>
     </div>
   </section>
 
