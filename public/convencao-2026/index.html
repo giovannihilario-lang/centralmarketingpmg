@@ -945,7 +945,7 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
   <section class="block mural" id="confirmados" data-serve>
     <div class="wrap">
       <div class="top" data-reveal>
-        <div><p class="label">Quem já confirmou</p><h2><b class="gt" id="muralCount">0</b> <span id="muralWord">empresas confirmadas</span></h2></div>
+        <div><p class="label">Quem já confirmou</p><h2>Empresas <b class="gt">confirmadas</b></h2></div>
         <p>As marcas parceiras que já garantiram presença na Convenção de Fornecedores 2026.</p>
       </div>
       <div class="cloud" id="cloud" aria-live="polite"><p class="empty">Carregando o mural…</p></div>
@@ -1985,11 +1985,11 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
      MURAL OF CONFIRMED COMPANIES (public: company names only)
      ===================================================================== */
   var mural=(function(){
-    var cloud=$('#cloud'), countEl=$('#muralCount'), wordEl=$('#muralWord'); if(!cloud) return {refresh:function(){}};
+    var cloud=$('#cloud'); if(!cloud) return {refresh:function(){}};
     var known={}, first=true, vis=false, timer=0;
     function sizeFor(name,i){ var h=hash(name)%10; return h<4?'s1':h<8?'s2':'s3'; }
     function render(list){
-      var n=list.length; countEl.textContent=n; wordEl.textContent= n===1 ? 'empresa confirmada' : 'empresas confirmadas';
+      var n=list.length;
       if(!n){ cloud.innerHTML='<p class="empty"><b>Seja a primeira</b>Nenhuma empresa confirmou ainda. A sua pode abrir o mural.</p>'; return; }
       var empty=cloud.querySelector('.empty'); if(empty) cloud.textContent='';
       list.forEach(function(r,i){
