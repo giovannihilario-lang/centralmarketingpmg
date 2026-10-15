@@ -235,7 +235,7 @@ section.block{position:relative;z-index:2;padding:clamp(64px,8vw,120px) var(--gu
 .card .v{font:800 clamp(56px,6.4vw,110px)/.85 var(--display);margin:30px 0 0;font-variant-numeric:tabular-nums;white-space:nowrap}
 .card .sub{margin:14px 0 0;font-size:13px;letter-spacing:.18em;text-transform:uppercase}
 .card .venue{font:800 clamp(44px,5vw,84px)/.9 var(--display);text-transform:uppercase;margin:30px 0 0}
-.card .addr{font-style:normal;color:var(--dim);margin:14px 0 24px;font-size:15.5px}
+.card .addr{font-style:normal;color:var(--cream);margin:16px 0 24px;font-size:clamp(17px,1.5vw,20px);line-height:1.5}
 .actions{display:flex;flex-wrap:wrap;gap:10px}
 .actions .btn{padding:12px 16px;font-size:11px}
 .toast{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin:14px 0 0;min-height:1.4em}
@@ -880,7 +880,7 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
   <section class="block details count" id="detalhes" data-serve>
     <div class="wrap">
       <div class="head" data-reveal>
-        <div><p class="label">Onde e quando</p><h2>A noite está chegando</h2><span class="when">Sexta-feira, 13 de novembro, às 17h40</span></div>
+        <div><p class="label">Onde e quando</p><h2>A noite está chegando</h2></div>
         <div class="dial" id="dial" aria-hidden="true">
           <svg viewBox="0 0 220 220"><defs><linearGradient id="dialGrad" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#FF4F38"/><stop offset="1" stop-color="#FFB22E"/></linearGradient></defs>
             <rect class="knob" x="96" y="0" width="28" height="18" rx="5"/>
@@ -905,7 +905,6 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
           <div class="loc">
           <div class="loc-info">
           <p class="k">Local</p>
-          <p class="venue gt">Bisutti Tenerife</p>
           <address class="addr" id="addr">Rua Tenerife, 170 - Vila Olímpia<br>São Paulo - SP, 04548-040</address>
           <div class="actions">
             <a class="btn magnetic" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&amp;destination=Villa%20Bisutti%20Tenerife%2C%20Rua%20Tenerife%2C%20170%20-%20Vila%20Ol%C3%ADmpia%2C%20S%C3%A3o%20Paulo%20-%20SP%2C%2004548-040&amp;travelmode=driving">
@@ -935,7 +934,6 @@ footer{padding:clamp(30px,4vw,48px) 0!important}
               <circle cx="300" cy="98" r="7" fill="#FFB22E" stroke="#2B0714" stroke-width="3"/>
               <circle id="routeDot" cx="-10" cy="238" r="4.5" fill="#F6DFC4"/>
             </svg>
-            <div class="tag"><span><b>Bisutti Tenerife</b> · Rua Tenerife, 170</span><span>Mapa ilustrativo</span></div>
           </div>
           </div>
         </div>
